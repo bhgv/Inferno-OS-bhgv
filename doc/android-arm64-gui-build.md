@@ -584,3 +584,17 @@ The Linux x64/ARM64-QEMU matrix is268 source pairs and1048 main full-console roo
 per target plus controls. Other parameter shapes, local scalar/aggregate results,
 imports and remaining AWM dependencies are still open. No Android device GUI/APK
 acceptance is established by this selected local-result step.
+
+## Local scalar argument packets (INFERNO-0198)
+
+Selected Command helpers now support parameterless calls and up to eight
+byte/int/big/real arguments, optionally following Context/ListString. Complete
+call packets determine exact aligned spans, entry definitions and scalar classes;
+numeric slots cannot overlap GC roots or the frame tail. Existing managed
+results and forwarding compose with both parameter modes. See the
+[report](dis64-inferno-local-arguments-report.md) and updated RU/EN tutorial.
+
+The Linux x64/ARM64-QEMU matrix is300 source pairs and1176 main full-console roots
+per target plus controls. General standalone managed parameters, local numeric
+results, imports and the rest of AWM remain separate work. No Android device
+GUI/APK acceptance is implied.

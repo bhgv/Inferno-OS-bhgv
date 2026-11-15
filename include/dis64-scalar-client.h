@@ -20,6 +20,7 @@ struct Dis64ScalarClientView {
  unsigned int count,frame,calls,literals,contexttype,bytearrays,bytetype,intarrays,inttype;
  unsigned int prooftype,localcount,localused,localtype[8],localentry[8];
  unsigned int returning,returnkind,localvalue[8],localresult[8];
+ unsigned int argprefix,argcount,argkinds[8],localprefix[8],localargc[8],localargs[8][8];
  Dis64CallDecoded decoded[Dis64ClientCode];
 };
 
@@ -278,9 +279,17 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
   if(8*i>v->frame-24 || nslots==Dis64ClientSlots)return 0;
   slots[nslots++]=(Dis64ClientSlot){8*i,Dis64ClientRoot,1};
  }
- if(library){unsigned int bits[2]={0};
+ if(library && (!v->prooftype || v->argprefix)){unsigned int bits[2]={0};
   if(!dis64clientrootoperand(slots,nslots,AFP,64,Dis64ClientOpaque,bits) ||
      !dis64clientrootoperand(slots,nslots,AFP,72,Dis64ClientListString,bits))return 0;
+ }
+ /* Only the call packet's exact numeric parameter spans are defined on entry. */
+ if(library && v->prooftype){unsigned int argat=v->argprefix?80:64;
+  for(i=0;i<v->argcount;i++){unsigned int bits[2]={0},width=dis64clientwidth(v->argkinds[i]);
+   if(!width)return 0;argat=(argat+width-1)&~(width-1);
+   if(!dis64clientbit(slots,&nslots,v->frame,AFP,argat,v->argkinds[i],bits))return 0;
+   seed[0]|=bits[0];seed[1]|=bits[1];argat+=width;
+  }
  }
  /* Solve MOVP class equalities before deriving executable CFG facts. */
  for(k=0;k<=Dis64ClientSlots;k++){
@@ -295,7 +304,7 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
    if(!dis64clientindex(v,i,slots,&nslots,reads,writes))return 0;
   }
   if(library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IFRAME){unsigned int bits[2]={0},assigned=0;
-   if(!dis64clientlocalcall(v,i,slots,nslots,bits,&assigned))return 0;
+   if(!dis64clientlocalcall(v,i,slots,&nslots,bits,&assigned))return 0;
   }
   if(!library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IMFRAME){
    Dis64Binding binding;unsigned int bits[2]={0};long ordinal=v->decoded[i].instruction.middle;
@@ -323,7 +332,7 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
    node->load=1;node->next=i+1;continue;
   }
   if(in->op==IFRAME){unsigned int assigned=0;
-   if(!library || !dis64clientlocalcall(v,i,slots,nslots,node->need,&assigned))return 0;
+   if(!library || !dis64clientlocalcall(v,i,slots,&nslots,node->need,&assigned))return 0;
    node->load=assigned;i+=dis64clientlocalend(v,i);node->next=i+1;continue;
   }
   if(in->op!=IMFRAME){

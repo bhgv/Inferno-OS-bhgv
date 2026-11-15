@@ -77,7 +77,7 @@ def main():
      observed=re.search(r'index-pause-observations=(\d+)',r.stderr);assert observed and int(observed[1])>0,(name,r.stderr)
    if name.startswith('result-')and not(a.gc_control or a.materialize_only or a.local_result_map_control):
     observed=re.search(r'managed-result-observations=(\d+)',r.stderr);assert observed and int(observed[1])>0,(name,r.stderr)
-   if name.startswith('local-')and not(a.gc_control or a.materialize_only):
+   if name.startswith(('local-','args-'))and not(a.gc_control or a.materialize_only):
     observed=re.search(r'local-frame-observations=(\d+)',r.stderr);assert observed and int(observed[1])>0,(name,r.stderr)
    print('PASS ordinary .m init -> file LOAD -> managed MCALL/RET:',arch,name,flush=True)
   print('PASS ordinary init pipeline:',arch,len(rows),'pairs; actual GC'+('; constructor-only'if a.materialize_only else'; semantic managed-result map omission'if a.local_result_map_control else'; semantic '+a.gc_control+' omission'if a.gc_control else'; semantic '+a.field_offset_control+' offset omission'if a.field_offset_control else'; semantic reference width omission'if a.reference_width_control else';96 scheduler roots per pair'),flush=True)

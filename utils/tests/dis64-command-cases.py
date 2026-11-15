@@ -33,6 +33,7 @@ def cases(pathlength=13):
  yield from intarraycases(pathlength)
  yield from localcases(pathlength)
  yield from resultcases(pathlength)
+ yield from argumentcases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -406,3 +407,48 @@ def resultcases(pathlength=13):
   provider='implement Command;include "command.m";'+declarations+'init('+args+'){'+body+'}'+definitions
   caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"abc"::nil;m->init(nil,argv);if(len argv!=2)'+bad+'}'
   yield 'result-'+name,provider,caller,1 if name in('error','nested-error')else 0
+
+def argumentcases(pathlength=13):
+ bad='{z:=0;bad:=1/z;}'
+ rootargs='ctxt:ref Draw->Context,argv:list of string'
+ ok='return "okay";'
+ rows=[
+ ('empty','','','first();','',[]),
+ ('empty-result','','string','s:=first();if(s!="okay")'+bad,ok,[]),
+ ('int','n:int','string','n:=7;s:=first(n);if(s!="okay")'+bad,'if(n!=7)'+bad+ok,[]),
+ ('int-immediate','n:int','string','s:=first(7);if(s!="okay")'+bad,'if(n!=7)'+bad+ok,[]),
+ ('int-negative','n:int','string','n:=-123456;s:=first(n);if(s!="okay")'+bad,'if(n!= -123456)'+bad+ok,[]),
+ ('int-high','n:int','string','n:=268435455;n<<=3;n+=6;s:=first(n);if(s!="okay")'+bad,'e:=268435455;e<<=3;e+=6;if(n!=e)'+bad+ok,[]),
+ ('byte','b:byte','string','n:=255;b:=byte n;s:=first(b);if(s!="okay")'+bad,'n:=int b;if(n!=255)'+bad+ok,[]),
+ ('byte-immediate','b:byte','string','s:=first(byte 255);if(s!="okay")'+bad,'n:=int b;if(n!=255)'+bad+ok,[]),
+ ('byte-zero','b:byte','string','s:=first(byte 0);if(s!="okay")'+bad,'n:=int b;if(n!=0)'+bad+ok,[]),
+ ('bytes-packed','a:byte,b:byte,c:byte,n:int','string','s:=first(byte 7,byte 128,byte 255,65536);if(s!="okay")'+bad,'x:=int a;y:=int b;z:=int c;if(x!=7 || y!=128 || z!=255 || n!=65536)'+bad+ok,[]),
+ ('big','b:big','string','n:=7;b:=big n;b<<=40;s:=first(b);if(s!="okay")'+bad,'n:=7;e:=big n;e<<=40;if(b!=e)'+bad+ok,[]),
+ ('big-negative','b:big','string','n:=-7;b:=big n;b<<=40;s:=first(b);if(s!="okay")'+bad,'n:=-7;e:=big n;e<<=40;if(b!=e)'+bad+ok,[]),
+ ('real','r:real','string','n:=5;d:=4;r:=real n;q:=real d;r/=q;s:=first(r);if(s!="okay")'+bad,'n:=5;d:=4;e:=real n;q:=real d;e/=q;if(r!=e)'+bad+ok,[]),
+ ('real-negative','r:real','string','n:=-5;d:=4;r:=real n;q:=real d;r/=q;s:=first(r);if(s!="okay")'+bad,'n:=-5;d:=4;e:=real n;q:=real d;e/=q;if(r!=e)'+bad+ok,[]),
+ ('mix','a:byte,n:int,b:big,r:real','string','n:=7;b:=big n;r:=real n;s:=first(byte 255,n,b,r);if(s!="okay")'+bad,'x:=int a;e:=7;y:=big e;z:=real e;if(x!=255 || n!=7 || b!=y || r!=z)'+bad+ok,[]),
+ ('reverse','r:real,b:big,n:int,a:byte','string','n:=7;b:=big n;r:=real n;s:=first(r,b,n,byte 255);if(s!="okay")'+bad,'x:=int a;e:=7;y:=big e;z:=real e;if(x!=255 || n!=7 || b!=y || r!=z)'+bad+ok,[]),
+ ('prefix-int',rootargs+',n:int','string','s:=first(ctxt,argv,7);if(s!="okay")'+bad,'if(n!=7 || len argv!=2 || ctxt!=nil)'+bad+ok,[]),
+ ('prefix-mix',rootargs+',a:byte,n:int,b:big,r:real','string','n:=7;b:=big n;r:=real n;s:=first(ctxt,argv,byte 255,n,b,r);if(s!="okay")'+bad,'x:=int a;e:=7;y:=big e;z:=real e;if(x!=255 || n!=7 || b!=y || r!=z || len argv!=2)'+bad+ok,[]),
+ ('eight','a:int,b:int,c:int,d:int,e:int,f:int,g:int,h:int','string','s:=first(1,2,3,4,5,6,7,8);if(s!="okay")'+bad,'n:=a+b+c+d+e+f+g+h;if(n!=36)'+bad+ok,[]),
+ ('prefix-eight',rootargs+',a:int,b:int,c:int,d:int,e:int,f:int,g:int,h:int','string','s:=first(ctxt,argv,1,2,3,4,5,6,7,8);if(s!="okay")'+bad,'n:=a+b+c+d+e+f+g+h;if(n!=36 || len argv!=2)'+bad+ok,[]),
+ ('mutate','n:int','string','n:=7;s:=first(n);if(n!=7 || s!="okay")'+bad,'n+=3;if(n!=10)'+bad+ok,[]),
+ ('loop','n:int','string','i:=0;s:string;while(i<3){s=first(i);i++;}if(s!="okay")'+bad,'if(n<0 || n>2)'+bad+ok,[]),
+ ('nested','n:int','string','s:=first(7);if(s!="okay")'+bad,'return second(n);',[('second','n:int','string','if(n!=7)'+bad+ok)]),
+ ('nested-prefix',rootargs+',n:int','string','s:=first(ctxt,argv,7);if(s!="okay")'+bad,'return second(n);',[('second','n:int','string','if(n!=7)'+bad+ok)]),
+ ('nested-to-prefix','n:int','string','s:=first(7);if(s!="okay")'+bad,'xs:="local"::nil;return second(nil,xs,n);',[('second',rootargs+',n:int','string','if(n!=7 || len argv!=1 || ctxt!=nil)'+bad+ok)]),
+ ('list-result','n:int','list of string','xs:=first(7);s:=hd xs;if(s!="okay" || len xs!=1)'+bad,'if(n!=7)'+bad+'xs:="okay"::nil;return xs;',[]),
+ ('array-result','n:int','array of int','a:=first(7);n:=a[1];if(n!=7)'+bad,'a:=array[2]of int;a[1]=n;return a;',[]),
+ ('context-result','n:int','ref Draw->Context','c:=first(7);if(c==nil)'+bad,'if(n!=7)'+bad+'c:=ref Draw->Context(nil,nil,nil);return c;',[]),
+ ('live-caller','n:int','string','a:=array[2]of int;a[1]=65536;s:=first(7);n:=a[1];if(n!=65536 || s!="okay")'+bad,'if(n!=7)'+bad+ok,[]),
+ ('live-callee','n:int','string','s:=first(7);if(s!="okay")'+bad,'xs:="owned"::nil;second(n);if(len xs!=1)'+bad+ok,[('second','n:int','','if(n!=7)'+bad)]),
+ ('error','n:int','','first(7);','if(n!=7)'+bad+'z:=0;bad:=1/z;',[]),
+ ('empty-error','','','first();','z:=0;bad:=1/z;',[])]
+ for name,args,result,body,helper,others in rows:
+  functions=[('first',args,result,helper)]+others
+  declarations=''.join(fn+':fn('+params+')'+(':'+ty if ty else'')+';'for fn,params,ty,_ in functions)
+  definitions=''.join(fn+'('+params+')'+(':'+ty if ty else'')+'{'+code+'}'for fn,params,ty,code in functions)
+  provider='implement Command;include "command.m";'+declarations+'init('+rootargs+'){'+body+'}'+definitions
+  caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"abc"::nil;m->init(nil,argv);}'
+  yield 'args-'+name,provider,caller,1 if name in('error','empty-error')else 0

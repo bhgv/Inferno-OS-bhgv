@@ -13,7 +13,14 @@ dis64commandargs(Decl *fn){return dis64commandparams(fn) && fn->ty->tof->kind==T
 static int
 dis64commandhelper(Decl *fn)
 {
- Type *t;if(!dis64commandparams(fn))return 0;t=fn->ty->tof;
+ Type *t;Decl *arg;unsigned int n=0;
+ if(!fn || !fn->sym || !fn->ty || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys || !fn->ty->tof)return 0;
+ arg=fn->ty->ids;
+ if(arg && arg->next && arg->ty->kind==Tref && arg->ty->tof->kind==Tadt && arg->next->ty->kind==Tlist && arg->next->ty->tof->kind==Tstring)arg=arg->next->next;
+ for(;arg;arg=arg->next){
+  if(n++==8 || (arg->ty->kind!=Tbyte && arg->ty->kind!=Tint && arg->ty->kind!=Tbig && arg->ty->kind!=Treal))return 0;
+ }
+ t=fn->ty->tof;
  return t->kind==Tnone || t->kind==Tstring || (t->kind==Tlist && t->tof->kind==Tstring) ||
   (t->kind==Tref && t->tof->kind==Tadt) || (t->kind==Tarray && (t->tof->kind==Tbyte || t->tof->kind==Tint));
 }

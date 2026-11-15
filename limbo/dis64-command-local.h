@@ -1,5 +1,5 @@
 /* Append checked local frames after the existing MP/Context/primitive records.
- * Internal helpers keep two mapped arguments and void or managed results. */
+ * Internal helpers use scalar parameters and an optional managed prefix. */
 static int
 dis64commandlocalfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long count,long databytes)
 {

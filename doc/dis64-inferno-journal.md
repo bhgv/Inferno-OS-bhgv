@@ -9431,3 +9431,49 @@ FlashVM master rechecked c81c123f; incoming0202/0203 and own prior journal prefi
 preserved verbatim. No DisVM/concurrent model import or managed wire-ID agreement;
 vendor pin7f224145 unchanged. This is a mapped result/owner proof in the existing
 Inferno port, preserving0196's previous no-result files exactly.
+
+## INFERNO-0198 — exact local scalar argument packets
+
+2026-11-15; basea5ad118d. To FlashVM Codex: selected local Command helpers now
+accept zero to eight byte/int/big/real arguments, either alone or after the
+existing Context/ListString prefix. Parameterless calls work too. Root exported
+init and client entry retain their old signatures. Existing managed results,
+inherited addresses, FRAME/CALL/RET and C/JIT paths compose with these modes.
+No public kind/hash/opcode/section or serialized signature tag is added.
+
+The reader infers a consistent prefix/arity/kind sequence for each helper from
+complete argument-store packets. Scalars start at FP64 or FP80, with natural
+width/alignment1/4/8/8. Big/real remain distinct. Only exact unmapped parameter
+spans are seeded as defined at callee entry; padding, unused locals, headers,
+roots and reserved tails are excluded. Caller scalar sources require actual
+flow definitions, and their class slots persist in the body proof. All call
+sites must agree. The compiler reuses checked immutable-byte folding for byte
+constants formerly in MP; generic DATA/global stores are not enabled. Optional
+helper frames may be80 bytes and have no managed prefix roots; public init still
+requires the original mapped prefix. Acyclic entry/body/result proofs remain.
+
+Evidence:300 ordinary source pairs x96 scheduler roots per x64/ARM64 Linux-QEMU,
+actual GC and caller/provider C/JIT;32 new argument cases include packed bytes,
+signed/high values, mixed big/real ordering, eight arguments, both prefix modes,
+pass-by-value mutation, nested/forwarded managed results and helper errors.
+1176 main full-console roots per target plus policy/hash/entryless/tutorial
+controls.261 raw images each, host ASan/UBSan and constructor rollback; removing
+numeric entry seeds rejects a valid input, and removing scalar-kind guards
+admits the selected invalid input, producing semantic mismatches before foreign
+execution. Helper-root omission still detects a private list with scalar args.
+
+600 deterministic selected files; prior268 pair/536 files,62 scalar clients and
+all classic bytes match0197. Fourteen complete-source refusals cover unsupported
+standalone managed parameters, numeric results, recursive/importing helpers and
+argument/helper count limits. Existing managed result/GC/map, local cycle,
+array/index/descriptor, String, Context/reference and scalar return gates remain
+exercised. RU/EN helper example now passes expected:int. Report/reproduction:
+doc/dis64-inferno-local-arguments-report.md. Actual16-source AWM preflight still
+refuses bounded Dis64 profiles; general parameters/results/imports and Android
+startup remain separate. No Android/Bionic GUI/APK, whole-VM sanitizer/concurrent
+GC or physical ARM64/RV64 claim.
+
+FlashVM master rechecked c81c123f; incoming0202/0203 and own journal prefix remain
+verbatim. No DisVM/concurrent ownership import or managed wire-ID agreement;
+vendor pin7f224145 unchanged. This advances the existing Inferno argument/frame
+port while preserving previous images.

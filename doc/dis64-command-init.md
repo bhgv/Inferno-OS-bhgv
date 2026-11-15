@@ -18,11 +18,11 @@ include "sh.m";
 ```limbo
 implement Command;
 include "command.m";
-validate: fn(ctxt: ref Draw->Context, argv: list of string): string;
+validate: fn(ctxt: ref Draw->Context, argv: list of string, expected: int): string;
 init(ctxt: ref Draw->Context, argv: list of string)
 {
     if(ctxt == nil || ctxt.display != nil) return;
-    status := validate(ctxt, argv);
+    status := validate(ctxt, argv, 3);
     if(status != "checked"){ z := 0; bad := 1/z; }
     saved := ctxt;
     display := ctxt.display;
@@ -52,9 +52,9 @@ init(ctxt: ref Draw->Context, argv: list of string)
     if(total != 11){ z := 0; bad := 1/z; }
     keep := saved;
 }
-validate(ctxt: ref Draw->Context, argv: list of string): string
+validate(ctxt: ref Draw->Context, argv: list of string, expected: int): string
 {
-    if(ctxt == nil || len argv != 3){ z := 0; bad := 1/z; }
+    if(ctxt == nil || len argv != expected){ z := 0; bad := 1/z; }
     keep := argv;
     return "checked";
 }
@@ -178,8 +178,8 @@ signature interoperability from this fixed-shape experiment.
 
 The admitted provider has one Command.init export at PC0/frame0, no imports,
 bounded proven bodies and the existing private 24-byte MP prefix and mapped
-literal roots. Up to eight local helpers use the same two mapped arguments and
-void or checked managed results; they have separate frames and an acyclic call graph.
+literal roots. Up to eight local helpers use checked fixed-width parameters and
+void or managed results; they have separate frames and an acyclic call graph.
 The executable importer still has an argument-free void process entry. One
 interface/path is admitted. Up to32 extra readonly String roots are admitted per
 image, each at most255 Runes,1024 Runes in aggregate. General DATA initializers,
@@ -248,13 +248,14 @@ array initializers and other element types are still outside this profile.
 
 Local helper declarations belong to the implementation file, as `validate` above
 demonstrates. They are reached through ordinary FRAME/CALL/RET; only init is
-exported. Each helper currently takes exactly `(ctxt: ref Draw->Context,
-argv: list of string)`. A helper returns void, String, list of String, an ADT
-reference or a byte/int array. Arguments occupy mapped FP64/FP72 in
-its own frame. The collector traces caller, prepared and active callee frames;
+exported. A helper takes zero to eight scalar parameters, optionally preceded
+by `(ctxt: ref Draw->Context, argv: list of string)`. Scalars are byte/int/big/real.
+A helper returns void, String, list of String, an ADT reference or a byte/int
+array. The optional prefix occupies mapped FP64/FP72; scalars start at FP64
+without it, or FP80 after it, each aligned to its own width. The collector traces caller, prepared and active callee frames;
 helper-local lists/strings/arrays and caller values survive nested calls.
 Branches cannot enter call setup or cross function boundaries. Recursive graphs,
-other helper parameter shapes, scalar/aggregate results and imports from a helper still refuse the
+standalone managed parameter shapes, scalar/aggregate results and helper imports still refuse the
 whole file. These limits describe the selected profile, not Limbo itself.
 
 A managed result is written directly into a mapped caller root, using a full
@@ -266,3 +267,19 @@ caller use. Every normal return must have assigned its result. Bare pointers,
 scalar slots, missing assignments and conflicting classes are rejected. Nil may
 be returned without inventing a new wire type. Use an explicit local before
 returning a computed operation when it is outside the selected opcode set.
+
+The `expected: int` parameter above is passed by value. A helper may update its
+parameter without changing the caller variable. Numeric argument slots must be
+unmapped and fully written before CALL. Packed byte parameters remain one byte;
+big and real share size, but retain distinct checked classes.
+
+| Scalar parameter | Bytes | Alignment |
+| --- | ---: | ---: |
+| byte | 1 | 1 |
+| int | 4 | 4 |
+| big | 8 | 8 |
+| real | 8 | 8 |
+
+Every call of a helper must use the same prefix, arity and scalar-kind sequence.
+Neither padding nor an unused local is an initialized parameter. The executable
+entry and exported Command.init keep their original signatures.
