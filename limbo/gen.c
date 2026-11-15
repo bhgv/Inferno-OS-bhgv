@@ -118,6 +118,21 @@ tdecls(void)
 }
 
 
+/* A selected Context constructor must not inherit a String/List temporary's
+ * declaration. Classic Dis retains its historic pointer-slot reuse unchanged. */
+static int
+tcontext(Type *t)
+{
+ Decl *d;
+ if(!t || t->kind!=Tref || !t->tof || t->tof->kind!=Tadt || !(d=t->tof->decl))return 0;
+ return d->sym && !strcmp(d->sym->name,"Context") && d->dot && d->dot->sym && !strcmp(d->dot->sym->name,"Draw");
+}
+static int
+tcontextcompatible(Type *a,Type *b)
+{
+ return emitscalar64<4 || (!tcontext(a) && !tcontext(b)) || (a->kind==Tref && b->kind==Tref && a->tof==b->tof);
+}
+
 /* Acquire or allocate a temporary with checked usage and reference accounting. */
 Node*
 talloc(Node *n, Type *t, Node *nok)
@@ -129,7 +144,7 @@ talloc(Node *n, Type *t, Node *nok)
 	ok = nil;
 	if(nok != nil)
 		ok = nok->decl;
-	if(ok == nil || ok->tref == 0 || tattr[ok->ty->kind].big != tattr[t->kind].big || ok->ty->align != t->align)
+	if(ok == nil || ok->tref == 0 || tattr[ok->ty->kind].big != tattr[t->kind].big || ok->ty->align != t->align || !tcontextcompatible(ok->ty,t))
 		ok = nil;
 	*n = znode;
 	n->op = Oname;
@@ -173,7 +188,7 @@ talloc(Node *n, Type *t, Node *nok)
 		if(d->tref == 1
 		&& tattr[d->ty->kind].isptr == tattr[t->kind].isptr
 		&& d->ty->size == t->size
-		&& d->ty->align == t->align){
+		&& d->ty->align == t->align && tcontextcompatible(d->ty,t)){
 			d->tref = declrefsum(d->tref, 1);
 			n->decl = d;
 			return n;

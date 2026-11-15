@@ -9,7 +9,7 @@ def sections(data):
   k,f,at,n=struct.unpack_from('>HHII',data,32+12*i);assert f==1 and k not in d;d[k]=data[at:at+n]
  return d
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map'));p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
  with tempfile.TemporaryDirectory(prefix='command-init-',dir=ROOT)as td:
   w=Path(td);env['TMPDIR']=str(w);(w/'command.m').write_text(CASES['INTERFACE']);(w/'library.m').write_text('Library:module{inc:fn(n:int):int;};')
   # Legacy fixture declarations are compile-only; live interface comes solely from files.
@@ -17,12 +17,14 @@ def main():
   source=w/'test.c';text=P['unit']();text=text.replace('require(int condition)', 'baserequire(int condition,const char *expression,int line)',1).replace('checks);\n\t\tabort();','checks);fprintf(stderr,"line=%d predicate=%s\\n",line,expression);exit(10);',1);text=text.replace('/* Bound each allocation','#define require(c) baserequire((c),#c,__LINE__)\n/* Bound each allocation',1).replace('#define require(c) libraryrequire','#undef require\n#define require(c) libraryrequire');text=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-gc.py'))['instrument'](text);
   header=subprocess.check_output([str(a.limbo.resolve()),'-H','-M','Command','-I',str(ROOT/'module'),str(w/'command.m')],env=env,text=True)
   (w/'command-generated.h').write_text(header)
-  hook='#include "command-generated.h"\n'+(ROOT/'utils/tests/dis64-command-context.c').read_text()
+  width=(ROOT/'utils/tests/dis64-reference-width.c').read_text()
+  if a.reference_width_control:width=width.replace('actual_bnel();','actual_bnew();').replace('actual_beql();','actual_beqw();')
+  hook=width+'\n'+'#include "command-generated.h"\n'+(ROOT/'utils/tests/dis64-command-context.c').read_text()
   at=text.index('/* Both caller CODE and provider CODE');text=text[:at]+hook+'\n'+text[at:]
   text=text.replace('argc<=8','argc<=10').replace('guarded|=!strcmp(argv[i],"guarded");','commandfields|=!strcmp(argv[i],"fields");commandcontext|=!strcmp(argv[i],"context");guarded|=!strcmp(argv[i],"guarded");')
   head,tail=text.rsplit('root=p->R.FP;',1);text=head+'root=p->R.FP;if(commandcontext)commandcontextseed(&view,root);'+tail
   marker=' for(jit=0;jit<2;jit++){\n  cflag=jit;allocations=0;m=readmod("client.dis64"'
-  assert text.count(marker)==1;text=text.replace(marker,' commandproviderfaults(&view);\n'+marker)
+  assert text.count(marker)==1;text=text.replace(marker,' commandreferencewidth();commandproviderfaults(&view);\n'+marker)
   if a.gc_control=='context-map':text=text.replace('commandcontextnomark=0','commandcontextnomark=1')
   if a.gc_control=='callee-frame':
    assert text.count('clientloads++;')==1;text=text.replace('clientloads++;','ml->m->type[0]->mark=noptrs;clientloads++;')
@@ -45,10 +47,11 @@ def main():
     (w/(filename+'.b')).write_text(text);subprocess.run([str(a.limbo.resolve()),flag,'-I',str(ROOT/'module'),'-I',str(w),'-o',str(w/(filename+'.dis64')),str(w/(filename+'.b'))],env=env,check=True,capture_output=True)
    imported=sections((w/'client.dis64').read_bytes())[5];exported=sections((w/'command.dis64').read_bytes())[6]
    assert imported[16:]==exported[20:]and struct.unpack_from('>IIII',imported,16)==(0xface0186,expectedhash,2,0),(name,imported.hex(),exported.hex())
-   r=subprocess.run(shlex.split(env.get('NATIVE64_RUNNER',''))+[str(binary),str(w/'client.dis64'),str(w/'command.dis64'),'0','0',str(failure),'guarded']+(['context','fields']if name=='fields-native'else['context']if name=='context-non-nil'else[])+(['materialize']if a.materialize_only else[]),env=env,capture_output=True,text=True,timeout=120)
-   if a.field_offset_control:assert r.returncode==10 and 'Context field identity mismatch'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
+   r=subprocess.run(shlex.split(env.get('NATIVE64_RUNNER',''))+[str(binary),str(w/'client.dis64'),str(w/'command.dis64'),'0','0',str(failure),'guarded']+(['context','fields']if name in('fields-native','branches-native','branches-native-loop','branches-native-mixed','constructors-native')else['context']if name=='context-non-nil'else[])+(['materialize']if a.materialize_only else[]),env=env,capture_output=True,text=True,timeout=120)
+   if a.reference_width_control:assert r.returncode==10 and 'reference width mismatch'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
+   elif a.field_offset_control:assert r.returncode==10 and 'Context field identity mismatch'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
    elif a.gc_control:assert r.returncode==10 and 'client GC graph retention mismatch'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
    else:assert not r.returncode,(name,r.returncode,r.stderr)
    print('PASS ordinary .m init -> file LOAD -> managed MCALL/RET:',arch,name,flush=True)
-  print('PASS ordinary init pipeline:',arch,len(rows),'pairs; actual GC'+('; constructor-only'if a.materialize_only else'; semantic '+a.gc_control+' omission'if a.gc_control else'; semantic '+a.field_offset_control+' offset omission'if a.field_offset_control else';96 scheduler roots per pair'),flush=True)
+  print('PASS ordinary init pipeline:',arch,len(rows),'pairs; actual GC'+('; constructor-only'if a.materialize_only else'; semantic '+a.gc_control+' omission'if a.gc_control else'; semantic '+a.field_offset_control+' offset omission'if a.field_offset_control else'; semantic reference width omission'if a.reference_width_control else';96 scheduler roots per pair'),flush=True)
 if __name__=='__main__':main()

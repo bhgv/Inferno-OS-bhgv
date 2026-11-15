@@ -455,3 +455,18 @@ Incremental mk dependencies now rebuild load64.o when the selected checker or
 constructor changes. Complete-console normal-path tests additionally require
 successful provider linking, while missing-file tests retain graceful nil return.
 Exact evidence and limits: [INFERNO-0187](dis64-inferno-context-fields-report.md).
+
+## Reference conditions and Context construction (INFERNO-0188)
+
+The selected Command/client path now compiles ordinary field nil conditions,
+compatible pointer identity tests, short-circuit guards and loops with existing
+64-bit comparisons. `ref Draw->Context(nil,nil,nil)` works in local declarations,
+assignments, reloads and callees. Context temporary slots keep their type instead
+of reusing String/List declarations. Classic output and prior private images
+remain byte-identical. Save a constructor into a local before a module call;
+allocation inside prepared call setup is still outside this profile.
+
+[RU](dis64-command-init.ru.md) / [EN](dis64-command-init.md) examples now exercise
+ordinary construction and a direct field condition. Exact evidence:
+[INFERNO-0188](dis64-inferno-reference-branches-report.md). This still does not
+create GUI resources or establish AWM/Android/Bionic APK/device execution.

@@ -28,11 +28,13 @@ static int
 dis64clientinstructionread(const unsigned char *data,unsigned int bytes,Dis64CallDecoded *out,unsigned int *used)
 {
  Dis64CallDecoded d={0};unsigned int at=2,n;
- if(data && bytes>=2 && data[0]==IMOVP && data[1]==(SRC(AFP|AIND)|DST(AFP))){
+ if(data && bytes>=2 && ((data[0]==IMOVP && data[1]==(SRC(AFP|AIND)|DST(AFP))) ||
+   ((data[0]==IBEQL || data[0]==IBNEL) && data[1]==(SRC(AFP|AIND)|AXINM|DST(AIMM))))){
+  if(data[1]&ARM){if(!dis64operandread(data+at,bytes-at,&d.instruction.middle,&n))return 0;at+=n;}
   if(!out || !used || !dis64operandread(data+at,bytes-at,&d.instruction.source,&n))return 0;at+=n;
   if(!dis64operandread(data+at,bytes-at,&d.secondary,&n))return 0;at+=n;
   if(!dis64operandread(data+at,bytes-at,&d.instruction.destination,&n))return 0;at+=n;
-  d.instruction.op=IMOVP;d.instruction.mode=data[1];*out=d;*used=at;return 1;
+  d.instruction.op=data[0];d.instruction.mode=data[1];*out=d;*used=at;return 1;
  }
  if(data && bytes>=2 && data[0]==IMOVP && data[1]==(SRC(AMP)|DST(AFP|AIND))){
   if(!out || !used || !dis64operandread(data+at,bytes-at,&d.instruction.source,&n))return 0;at+=n;
@@ -165,7 +167,7 @@ dis64clienteffect(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,
  const Dis64Instruction *in,Dis64ClientNode *node)
 {
  unsigned int kind=Dis64Int,sourcekind,mm=in->mode&ARM,lm,branch=dis64clientbranch(in->op);long lhs;int binary=0;
- if(dis64clientmanagedop(in))return dis64clientmanagedroles(slots,count,frame,in,node->need,node->give);
+ if(dis64clientmanagedop(in) || dis64clientreferencecompare(slots,*count,in))return dis64clientmanagedroles(slots,count,frame,in,node->need,node->give);
  if(in->op==IJMP)return in->mode==(SRC(AXXX)|DST(AIMM));
  if((in->op==IBEQL || in->op==IBNEL) && in->mode==(SRC(AMP)|AXINM|DST(AIMM)))return in->source==0 && in->middle==8;
  if(branch){
@@ -264,7 +266,7 @@ dis64clientprove(Dis64ScalarClientView *v,int library)
  /* Solve MOVP class equalities before deriving executable CFG facts. */
  for(k=0;k<=Dis64ClientSlots;k++){
   changed=nslots;for(i=0;i<nslots;i++)previous[i]=slots[i].kind;
-  for(i=0;i<v->count;i++)if(dis64clientmanagedop(&v->decoded[i].instruction) || dis64clientfieldop(v->decoded+i)){
+  for(i=0;i<v->count;i++)if(dis64clientmanagedop(&v->decoded[i].instruction) || dis64clientfieldop(v->decoded+i) || dis64clientreferencecompare(slots,nslots,&v->decoded[i].instruction)){
    unsigned int reads[2]={0},writes[2]={0};
    if(dis64clientfieldop(v->decoded+i)){if(!dis64clientfieldroles(slots,nslots,v->decoded+i,reads,writes))return 0;}
    else if(!dis64clientmanagedroles(slots,&nslots,v->frame,&v->decoded[i].instruction,reads,writes))return 0;

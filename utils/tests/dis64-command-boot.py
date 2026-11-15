@@ -15,7 +15,7 @@ def main():
   def execute(jit,owner='Client',error=''):
    output=B['execute'](command+['-c',str(jit),'-X','dis64-calls','-d',vmc]);assert 'native64 scalar module '+owner+': jit='+str(jit)+', exit="'+error+'"'in output and B['RETIRED']in output and 'panic:'not in output and 'faults:'not in output and ('Broken:'in output)==bool(error),output
   for name,text,client,failure in C['cases'](len(vmp)):
-   if name in('context-non-nil','fields-native'):continue # Separate native C-seeded record witness, not guest construction.
+   if name in('context-non-nil','fields-native','branches-native','branches-native-loop','branches-native-mixed','constructors-native'):continue # Separate native C-seeded record witness, not guest construction.
    # A valid provider must actually link; a nil-returning importer alone cannot
    # distinguish a successful no-op init from admission refusal.
    compile(text,client.replace('if(m==nil)return;','if(m==nil){z:=0;bad:=1/z;}'))

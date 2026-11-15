@@ -11,11 +11,13 @@ dis64commandshape(Decl *fn)
 static int
 dis64clientencode(uchar *out,unsigned int *at,Dis64Instruction *in,long base,long secondary,long field)
 {
- long values[3];unsigned int i,n;
+ long values[4];unsigned int i,n,count=0;
  if(USRC(in->mode)!=(AFP|AIND))return callfileencode(out,at,in,base,secondary);
- if(in->op!=IMOVP || in->mode!=(SRC(AFP|AIND)|DST(AFP)) || *at>CallFileBytes-18)return 0;
- out[(*at)++]=in->op;out[(*at)++]=in->mode;values[0]=in->source;values[1]=field;values[2]=in->destination;
- for(i=0;i<3;i++){n=disoperand(out+*at,4,values[i]);if(!n)return 0;*at+=n;}return 1;
+ if(*at>CallFileBytes-18 || !((in->op==IMOVP && in->mode==(SRC(AFP|AIND)|DST(AFP))) ||
+  ((in->op==IBEQL || in->op==IBNEL) && in->mode==(SRC(AFP|AIND)|AXINM|DST(AIMM)))))return 0;
+ out[(*at)++]=in->op;out[(*at)++]=in->mode;if(in->mode&ARM)values[count++]=in->middle;
+ values[count++]=in->source;values[count++]=field;values[count++]=in->destination;
+ for(i=0;i<count;i++){n=disoperand(out+*at,4,values[i]);if(!n)return 0;*at+=n;}return 1;
 }
 int
 dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long count,long databytes)

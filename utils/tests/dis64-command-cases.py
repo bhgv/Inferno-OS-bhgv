@@ -23,6 +23,8 @@ def cases(pathlength=13):
   caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;s:="library.dis64";argv:=s::s::nil;'+invoke+'keep:=argv;}'
   yield name,prefix+body+'}',caller,failure
  yield from fieldcases(pathlength)
+ yield from branchcases(pathlength)
+ yield from constructorcases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -41,6 +43,53 @@ def fieldcases(pathlength=13):
  ('fields-nil-write','ctxt.screen=nil;','m->init(nil,argv);',3),
  ('fields-native',read+'if(d==nil){z:=0;bad:=1/z;}if(s==nil){z:=0;bad:=1/z;}if(w==nil){z:=0;bad:=1/z;}'+clear+'aliasd:=d;aliass:=s;aliasw:=w;'+restore,'ctxt:ref Draw->Context;m->init(ctxt,argv);m->init(ctxt,argv);keepctxt:=ctxt;',0),
  ('fields-cons',read+check+'s0:=hd argv;local:=s0::argv;keep:=local;'+clear+restore,invoke,0)]
+ for name,body,call,failure in rows:
+  client='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;s:="library.dis64";argv:=s::s::nil;'+call+'keep:=argv;}'
+  yield name,prefix+body+'}',client,failure
+
+def branchcases(pathlength=13):
+ prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
+ bad='{z:=0;bad:=1/z;}'
+ nilcheck='if(ctxt.display!=nil)'+bad+'if(nil!=ctxt.screen)'+bad+'if(ctxt.wm!=nil)'+bad
+ invoke='ctxt:=ref Draw->Context;m->init(ctxt,argv);m->init(ctxt,argv);keepctxt:=ctxt;'
+ seeded='ctxt:ref Draw->Context;m->init(ctxt,argv);m->init(ctxt,argv);keepctxt:=ctxt;'
+ rows=[('branches-fields',nilcheck,invoke,0),
+ ('branches-equal','if(ctxt.display==nil){if(ctxt.screen==nil){if(ctxt.wm==nil)return;}}z:=0;bad:=1/z;',invoke,0),
+ ('branches-context-alias','alias:=ctxt;if(alias!=ctxt)'+bad+'if(ctxt!=alias)'+bad,invoke,0),
+ ('branches-context-distinct','other:=ref Draw->Context;if(other==ctxt)'+bad+'if(ctxt==other)'+bad,invoke,0),
+ ('branches-context-nil','alias:ref Draw->Context;if(alias==ctxt)'+bad+'if(ctxt==alias)'+bad,invoke,0),
+ ('branches-list-alias','copy:=argv;if(copy!=argv)'+bad+'if(argv!=copy)'+bad,invoke,0),
+ ('branches-list-distinct','head:=hd argv;other:=head::argv;if(other==argv)'+bad+'if(argv==other)'+bad,invoke,0),
+ ('branches-field-alias','d:=ctxt.display;d2:=d;s:=ctxt.screen;s2:=s;w:=ctxt.wm;w2:=w;if(d!=d2)'+bad+'if(s!=s2)'+bad+'if(w!=w2)'+bad,invoke,0),
+ ('branches-caller',nilcheck,invoke.replace('m->init(ctxt,argv);m->init(ctxt,argv);',nilcheck+'alias:=ctxt;if(alias!=ctxt)'+bad+'m->init(ctxt,argv);'),0),
+ ('branches-short-circuit','if(ctxt==nil || ctxt.display==nil)return;z:=0;bad:=1/z;','m->init(nil,argv);ctxt:=ref Draw->Context;m->init(ctxt,argv);',0),
+ ('branches-loop','i:=0;while(ctxt.wm==nil && i<3){i++;}if(i!=3)'+bad,invoke,0),
+ ('branches-nil-error','if(ctxt.display==nil)return;','m->init(nil,argv);',3),
+ ('branches-native','if(ctxt.display==nil)'+bad+'if(ctxt.screen==nil)'+bad+'if(ctxt.wm==nil)'+bad+'d:=ctxt.display;alias:=d;if(d!=alias)'+bad,seeded,0),
+ ('branches-native-loop','w:=ctxt.wm;i:=0;while(ctxt.wm!=nil){ctxt.wm=nil;i++;}if(i!=1)'+bad+'ctxt.wm=w;',seeded,0)]
+ mixed=''
+ for field,local in [('display','d'),('screen','scr'),('wm','w')]:
+  mixed+=local+':=ctxt.'+field+';ctxt.'+field+'=nil;'
+  for other in ('display','screen','wm'):mixed+='if(ctxt.'+other+('!=nil)'if other==field else'==nil)')+bad
+  mixed+='ctxt.'+field+'='+local+';'
+ rows.append(('branches-native-mixed',mixed,seeded,0))
+ for name,body,call,failure in rows:
+  client='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;s:="library.dis64";argv:=s::s::nil;'+call+'keep:=argv;}'
+  yield name,prefix+body+'}',client,failure
+
+def constructorcases(pathlength=13):
+ prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
+ bad='{z:=0;bad:=1/z;}'
+ check='if(ctxt==nil)'+bad+'if(ctxt.display!=nil)'+bad+'if(ctxt.screen!=nil)'+bad+'if(ctxt.wm!=nil)'+bad
+ call='ctxt:=ref Draw->Context(nil,nil,nil);m->init(ctxt,argv);m->init(ctxt,argv);keepctxt:=ctxt;'
+ rows=[('constructors-local',check,call,0),
+ ('constructors-assignment',check,call.replace('ctxt:=ref Draw->Context(nil,nil,nil);','ctxt:ref Draw->Context;ctxt=ref Draw->Context(nil,nil,nil);'),0),
+ ('constructors-reload',check,call.replace('m->init(ctxt,argv);m->init(ctxt,argv);','m->init(ctxt,argv);m=load Command "library.dis64";if(m==nil)return;m->init(ctxt,argv);'),0),
+ ('constructors-callee', 'other:=ref Draw->Context(nil,nil,nil);ctxt=other;'+check,'m->init(nil,argv);',0),
+ ('constructors-distinct',check+'other:=ref Draw->Context(nil,nil,nil);if(other==ctxt)'+bad,call,0),
+ ('constructors-reassign',check,'ctxt:=ref Draw->Context(nil,nil,nil);m->init(ctxt,argv);ctxt=ref Draw->Context(nil,nil,nil);m->init(ctxt,argv);keepctxt:=ctxt;',0),
+ ('constructors-loop',check,'i:=0;while(i<3){ctxt:=ref Draw->Context(nil,nil,nil);m->init(ctxt,argv);i++;}',0),
+ ('constructors-native','d:=ctxt.display;s:=ctxt.screen;w:=ctxt.wm;other:=ref Draw->Context(d,s,w);d2:=other.display;s2:=other.screen;w2:=other.wm;if(d2!=d)'+bad+'if(s2!=s)'+bad+'if(w2!=w)'+bad+'if(other==ctxt)'+bad,'ctxt:ref Draw->Context;m->init(ctxt,argv);m->init(ctxt,argv);keepctxt:=ctxt;',0)]
  for name,body,call,failure in rows:
   client='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;s:="library.dis64";argv:=s::s::nil;'+call+'keep:=argv;}'
   yield name,prefix+body+'}',client,failure

@@ -20,7 +20,7 @@ implement Command;
 include "command.m";
 init(ctxt: ref Draw->Context, argv: list of string)
 {
-    if(ctxt == nil) return;
+    if(ctxt == nil || ctxt.display != nil) return;
     saved := ctxt;
     display := ctxt.display;
     screen := ctxt.screen;
@@ -51,7 +51,7 @@ init()
     if(m == nil) return;
     s := "library.dis64";
     argv := s :: s :: nil;
-    ctxt := ref Draw->Context;
+    ctxt := ref Draw->Context(nil, nil, nil);
     m->init(ctxt, argv);
     if(len argv != 2){ z := 0; bad := 1/z; }
     m->init(nil, argv);
@@ -96,7 +96,7 @@ normal unload removes it. Allocation refusals retire all intermediate owners.
 
 | Value | Native location | GC role |
 | --- | --- | --- |
-| ctxt | callee FP+64 | opaque ADT reference |
+| ctxt | callee FP+64 | Context reference |
 | argv | callee FP+72 | list of String |
 | parameter prefix | 80 bytes total | map bytes `00 c0` |
 | bare Draw.Context | 24 bytes | three mapped pointer fields, initially nil |
@@ -107,7 +107,7 @@ caller's variables. List cells and String objects remain shared managed objects.
 The actual collector sees both caller and callee frames, including callee-private
 cons cells. Existing C dispatch and JIT paths execute the same checked code.
 
-`ctxt := ref Draw->Context;` creates a bare record with nil display/screen/wm.
+`ctxt := ref Draw->Context(nil, nil, nil);` creates a bare record with nil display/screen/wm.
 The selected profile now admits the three Context pointer fields at native offsets
 0/8/16 (classic offsets0/4/8). Read a field into a typed local, then copy, clear,
 restore or nil-test that reference. Each field has its own internal opaque role;
@@ -116,12 +116,17 @@ actual collector traces the three fields and their mapped frame aliases. Field
 writes use the existing MOVP reference-count/barrier behavior.
 
 This is reference transport, not resource creation: nested field dereferences,
-Display/Screen allocation, channel operations, indirect-to-indirect copies and
-fused field comparisons remain refused. Use explicit locals as in the example.
-A direct typed parameter assignment `ctxt = ref Draw->Context(nil,nil,nil)` is
-covered in a callee; constructor expressions that introduce an untyped temporary
-can still refuse. A non-nil record does not establish a display/window manager.
-For exact evidence see [INFERNO-0187](dis64-inferno-context-fields-report.md).
+Display/Screen allocation, channel operations and indirect-to-indirect copies
+remain refused. Direct `ctxt.display == nil` / `!= nil` tests and pointer identity
+comparisons between compatible Context/list/field aliases are admitted. They use
+full-width reference comparisons; String equality remains content-based and is
+outside this subset. Short-circuit guards can avoid a nil Context dereference.
+
+`ref Draw->Context(nil,nil,nil)` now works in local declarations, assignments,
+loops and callee constructors. The selected compiler preserves Context temporary
+types instead of recycling a String/List slot. Evaluate a constructor into a
+local before calling init; a constructor inside prepared call setup still refuses. A non-nil record does not establish a display/window manager.
+For exact evidence see [INFERNO-0188](dis64-inferno-reference-branches-report.md).
 
 ## Exact private boundary
 

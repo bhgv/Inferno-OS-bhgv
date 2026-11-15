@@ -39,9 +39,9 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
 
 /* One exact Context field and one direct mapped root. No nested dereference. */
 static int
-typedclientfield(Inst *in,Dis64TypedBody *p,unsigned int pc)
+typedclientfield(Inst *in,Dis64TypedBody *p,unsigned int pc,int probe)
 {
- Addr *a;Type *t;Dis64Layout layout={0};unsigned int i,bm,vm;long base,value;int actual,read,kind,ok=0;
+ Addr *a;Type *t;Dis64Layout layout={0};unsigned int i,bm,vm;long base,value=0;int actual,read,kind,ok=0;vm=AFP;
  read=in->sm==Afpind;a=read?&in->s:&in->d;
  if(in->op!=IMOVP || in->mm!=Anone || in->branch || (read?in->dm!=Afp:in->dm!=Afpind) ||
     !a->decl || !(t=a->decl->ty) || t->kind!=Tref || !(t=t->tof) || t->kind!=Tadt ||
@@ -51,12 +51,40 @@ typedclientfield(Inst *in,Dis64TypedBody *p,unsigned int pc)
  for(i=0;i<3;i++)if(layout.leaves[i].legacy!=4*i || layout.leaves[i].native!=8*i || layout.leaves[i].oldbytes!=4 || layout.leaves[i].bytes!=8 || layout.leaves[i].kind!=(i==2?Tchan:Tref))goto done;
  if(!typedoperand(Afp,a,TypedRoot,0,0,p,&base,&bm,&actual) || actual!=Tref)goto done;
  kind=a->offset==8?Tchan:Tref;
- if(!typedoperand(read?in->dm:in->sm,read?&in->d:&in->s,TypedRoot,0,0,p,&value,&vm,&actual) ||
-    (actual!=kind && actual!=Tany) || (read?vm!=AFP:vm!=AFP && vm!=AMP))goto done;
+ if(!probe && (!typedoperand(read?in->dm:in->sm,read?&in->d:&in->s,TypedRoot,0,0,p,&value,&vm,&actual) ||
+    (actual!=kind && actual!=Tany) || (read?vm!=AFP:vm!=AFP && vm!=AMP)))goto done;
  if(!p->contextfields){p->contextfields=allocmem(p->count*sizeof(long));memset(p->contextfields,0,p->count*sizeof(long));}
  p->contextfields[pc]=2*a->offset;
  p->code[pc]=(Dis64Instruction){IMOVP,read?SRC(AFP|AIND)|DST(AFP):SRC(vm)|DST(AFP|AIND),0,read?base:value,read?value:base};ok=1;
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"context-field-roles");
+}
+
+/* Pointer comparisons use the complete native reference, including fused
+ * Context field reads. The nil constant remains a readonly mapped MP root. */
+static int
+typedclientreferencekind(int kind)
+{
+ return kind==Tref || kind==Tchan || kind==Tlist || kind==Tmodule || kind==Tany;
+}
+static int
+typedclientcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
+{
+ Addr *left=&in->s,*right=&in->m;int lm=in->sm,rm=in->mm,sk,mk;unsigned int sm,mm;long source,middle;
+ if(in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc)return typedfail(p,"reference-branch");
+ if(lm==Amp && rm==Afpind){Addr *a=left;int m=lm;left=right;right=a;lm=rm;rm=m;}
+ if(lm==Afpind){
+  Inst field=*in;Dis64Instruction *out=p->code+pc;long base;
+  /* Reuse the same exact Context owner/field geometry, with a temporary
+   * direct destination solely for deriving its checked base/displacement. */
+  field.op=IMOVP;field.s=*left;field.sm=Afpind;field.mm=Anone;field.dm=Afp;field.d=*left;field.branch=nil;
+  if(!typedclientfield(&field,p,pc,1) || !typedoperand(rm,right,TypedRoot,0,1,p,&middle,&mm,&mk) || mk!=Tany || mm!=AMP)return typedfail(p,"field-nil-roles");
+  base=out->source;*out=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(AFP|AIND)|AXINM|DST(AIMM),middle,base,in->branch->pc-p->first};return 1;
+ }
+ if(!typedoperand(lm,left,TypedRoot,0,0,p,&source,&sm,&sk) || !typedoperand(rm,right,TypedRoot,0,1,p,&middle,&mm,&mk))return 0;
+ if(sk==Tany && mk!=Tany){long v=source;unsigned int mode=sm;int kind=sk;source=middle;sm=mm;sk=mk;middle=v;mm=mode;mk=kind;}
+ if(!typedclientreferencekind(sk) || !typedclientreferencekind(mk) || sm!=AFP ||
+    (mk==Tany?mm!=AMP:mm!=AFP || sk!=mk || sk==Tmodule))return typedfail(p,"reference-compare-roles");
+ p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(sm)|(mm==AMP?AXINM:AXINF)|DST(AIMM),middle,source,in->branch->pc-p->first};return 1;
 }
 
 static int typedmultibody(TypedMulti*,unsigned int,unsigned int);
@@ -142,15 +170,11 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
         }else if(c->external>=2 && in->op==IMOVP && (in->sm==Afpind || in->dm==Afpind)){
-            if(!typedclientfield(in,p,pc-p->first))goto fail;pc++;
-        }else if(c->external>=2 && ((in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) && ((in->s.decl && in->s.decl->ty && (in->s.decl->ty->kind==Tmodule || in->s.decl->ty->kind==Tlist || in->s.decl->ty->kind==Tref || in->s.decl->ty->kind==Tchan)) || (in->m.decl && in->m.decl->ty && (in->m.decl->ty->kind==Tmodule || in->m.decl->ty->kind==Tlist || in->m.decl->ty->kind==Tref || in->m.decl->ty->kind==Tchan))))){
-            long source,middle;unsigned int sm,mm;int sk,mk;
-            if(in->dm!=Apc || in->branch==nil || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc ||
-               !typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&source,&sm,&sk) ||
-               !typedoperand(in->mm,&in->m,TypedRoot,0,1,p,&middle,&mm,&mk)){typedfail(p,"load-nil-branch");goto fail;}
-            if(sk==Tany && (mk==Tmodule || mk==Tlist || mk==Tref || mk==Tchan)){long v=source;unsigned int mode=sm;int kind=sk;source=middle;sm=mm;sk=mk;middle=v;mm=mode;mk=kind;}
-            if((sk!=Tmodule && sk!=Tlist && sk!=Tref && sk!=Tchan) || mk!=Tany || sm!=AFP || mm!=AMP){typedfail(p,"load-nil-roles");goto fail;}
-            p->code[pc-p->first]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(AFP)|AXINM|DST(AIMM),middle,source,in->branch->pc-p->first};pc++;
+            if(!typedclientfield(in,p,pc-p->first,0))goto fail;pc++;
+        }else if(c->external>=2 && (in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) &&
+          ((in->s.decl && in->s.decl->ty && typedclientreferencekind(in->s.decl->ty->kind)) ||
+           (in->m.decl && in->m.decl->ty && typedclientreferencekind(in->m.decl->ty->kind)))){
+            if(!typedclientcompare(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->external>=2 && (in->op==INEW || in->op==INEWZ)){
             if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){

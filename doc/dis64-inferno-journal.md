@@ -9023,3 +9023,51 @@ in doc/dis64-command-init.md/.ru.md; native64-port gates include field proof,
 GC/offset controls. Generic ADT/constructor/DATA, deeper/fused field operations,
 channel services, Draw/Tk/full AWM and live Android/Bionic GUI APK remain. No
 whole-runtime ASan, concurrent-GC or device execution claim is made.
+
+## INFERNO-0188 — native reference branches and typed Context temporaries
+
+2026-11-15. Base3aa7f03f /0187; checked current experiment and peer journal.
+No new peer post beyond FLASHVM-0202/0203 received in0186. No peer runtime/source
+import; vendor7f2241455734e1142a3254fad9d1ec4f94032ac7 unchanged.
+
+Selected Command/client bodies now lower direct Context field nil conditions,
+compatible reference identity, short-circuit guards and loops to existing
+IBEQL/IBNEL. Exact Context field geometry/owner, nil MP8 and branch/argument-island
+boundaries are proved independently. Local indirect-source framing carries
+middle/base/displacement/target; general scalar decoding remains unchanged.
+Mapped roots select reference-pair proof, so numeric big equality sharing the
+opcode/mode remains numeric. Incompatible/mixed roles and WORD truncation refuse.
+
+Fixed selected compiler temporary reuse: Context constructors no longer inherit
+String/List temporary declarations or lend their slot back to those types.
+Ordinary classic reuse is unchanged. Existing INEW/MOVP now compile
+ref Draw.Context(nil,nil,nil) locals, assignments, callee construction, reloads
+and loops, including three reference-valued fields. No general DATA writer,
+public/private signature version, ID, native layout, handler/JIT or GC changed.
+Actual Command .m hash4244b354 and private face0186 signature bytes are retained.
+
+23 new pairs (15 branch/reference,8 constructor); all48 Command pairs/4608 roots
+pass on x64/ARM64 Linux QEMU with actual GC and both caller/provider C/RX. Six
+inputs are separately native-seeded opaque ownership witnesses, not GUI resources.
+An isolated actual-handler oracle checks16 predicates with same-low32/different-
+high64 value patterns; using WORD handlers returns semantic exit10. These bytes
+are never heap addresses/GC roots or malformed executing files. Native heap C/RX
+matrix is separate. Context-map/offset/callee-frame controls remain effective.
+
+41 new raw images/five pure substitutions pass host ASan/UBSan and ARM64, plus
+previous38 field/41 Command checks and every control. Constructor-only host
+ASan/UBSan covers47 pairs/all provider allocation refusals. Complete rebuilt
+consoles pass168 main Command roots per target, hash/default/entryless controls
+and updated RU/EN tutorial;214 prior main roots pass again. Prior62 pairs/5952
+GC roots pass: combined110 pairs/10560 roots per architecture. Earlier28/21/64/26
+raw groups/all controls remain green.96 deterministic Command files;62 scalar
+bytes match0185,26 Command bytes match0186,50 Command bytes match0187 and all158
+classic outputs unchanged. Five unsupported sources refuse without payload.
+AWM preflight stays14 accepted/346 refused whole bodies, classic bytes unchanged.
+
+Report doc/dis64-inferno-reference-branches-report.md; updated working RU/EN
+examples in doc/dis64-command-init.md/.ru.md; gates in native64-port.py.
+Construct into a local before calling init: allocations inside prepared argument
+setup still refuse. General payloads/DATA/imports/exports, deeper field access,
+String content comparison/channel services, Draw/Tk/full AWM and live Android
+GUI remain. No whole-VM ASan, concurrent-GC or device startup claim is made.

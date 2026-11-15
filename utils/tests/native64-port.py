@@ -160,6 +160,12 @@ def main():
         command = [sys.executable, str(tests/'dis64-context-fields-proof.py'), '--limbo', str(tools/'limbo')]
         if control: command += ['--control', control]
         run(command, build, env, logs/('context-field-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-command.py'), '--reference-width-control', '--case', 'branches-context-distinct',
+         '--limbo', str(tools/'limbo')], build, env, logs/'reference-width-control.log')
+    for control in (None, 'offset', 'nil', 'owner', 'roles', 'classification'):
+        command = [sys.executable, str(tests/'dis64-reference-branches-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('reference-branches-proof-'+str(control)+'.log'))
     run([sys.executable, str(tests/'dis64-command-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'command-init-boot.log')
     run([sys.executable, str(tests/'dis64-command-producer.py'), '--limbo', str(tools/'limbo')],

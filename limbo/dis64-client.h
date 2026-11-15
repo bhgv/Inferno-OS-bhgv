@@ -68,7 +68,7 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
   if(dis64clientbranch(in.op)){
    if(in.destination<0 || (unsigned long)in.destination>=body.count)goto done;
    in.destination=pcs[in.destination];
-   if((in.op==IBEQL || in.op==IBNEL) && (in.mode&ARM)==AXINM){if(!nilvalue || in.mode!=(SRC(AFP)|AXINM|DST(AIMM)) || in.middle!=niloffset)goto done;if(in.source==moduleoffset){in.mode=SRC(AMP)|AXINM|DST(AIMM);in.source=0;}in.middle=8;}
+   if((in.op==IBEQL || in.op==IBNEL) && (in.mode&ARM)==AXINM){if(!nilvalue || (in.mode!=(SRC(AFP)|AXINM|DST(AIMM)) && in.mode!=(SRC(AFP|AIND)|AXINM|DST(AIMM))) || in.middle!=niloffset)goto done;if(USRC(in.mode)==AFP && in.source==moduleoffset){in.mode=SRC(AMP)|AXINM|DST(AIMM);in.source=0;}in.middle=8;}
   }
   if(in.op==IMOVP || in.op==ILENC || in.op==ILENL || in.op==ICONSP || in.op==IHEADP || in.op==ITAIL){
    if(USRC(in.mode)==AMP){if(in.source==pathoffset)in.source=16;else if(nilvalue && in.source==niloffset)in.source=8;else goto done;}
