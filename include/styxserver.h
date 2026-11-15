@@ -91,7 +91,7 @@ Styxfile *styxfindfile(Styxserver *server, Path qid);
 
 int	styxperm(Styxfile *file, char *uid, int mode);
 long styxreadstr(ulong off, char *buf, ulong n, char *str);
-Qid styxqid(int path, int isdir);
+Qid styxqid(Path path, int isdir);
 void *styxmalloc(int n);
 void styxfree(void *p);
 void styxdebug(void);

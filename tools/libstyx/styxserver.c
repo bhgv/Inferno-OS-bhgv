@@ -38,10 +38,10 @@ struct Fid
 {
 	Client 	*client;
 	Fid *next;
-	short	fid;
+	u32int	fid;
 	ushort	open;
 	ushort	mode;	/* read/write */
-	ulong	offset;	/* in file */
+	vlong	offset;	/* in file */
 	int		dri;		/* dirread index */
 	Qid		qid;
 };
@@ -53,7 +53,7 @@ struct Walkqid
 	Qid	qid[1];
 };
 
-#define ASSERT(A,B) styxassert((int)A,B)
+#define ASSERT(A,B) styxassert((A)!=0,B)
 
 static int hash(Path);
 static void deletefids(Client *);
@@ -354,7 +354,7 @@ styxfindfile(Styxserver *server, Path path)
 }
 
 static Fid *
-findfid(Client *c, short fid)
+findfid(Client *c, u32int fid)
 {
 	Fid *f;
 	for(f = c->fids; f && f->fid != fid; f = f->next)
@@ -392,7 +392,7 @@ deletefids(Client *c)
 }
 
 Fid *
-newfid(Client *c, short fid, Qid qid){
+newfid(Client *c, u32int fid, Qid qid){
 	Fid *f;
 
 	f = styxmalloc(sizeof(Fid));
@@ -421,7 +421,7 @@ eqqid(Qid a, Qid b)
 }
 
 static Fid *
-fidclone(Fid *old, short fid)
+fidclone(Fid *old, u32int fid)
 {
 	Fid *new;
 
@@ -623,6 +623,7 @@ run(Client *c)
 	Fcall f;
 	Fid *fp, *nfp;
 	int i, open, mode;
+	ulong count;
 	char ebuf[EMSGLEN];
 	Walkqid *wq;
 	Styxfile *file;
@@ -671,11 +672,7 @@ run(Client *c)
 		}
 		nfp = findfid(c, f.newfid);
 		f.type = Rerror;
-		if(nfp){
-			deletefid(c, nfp);
-			nfp = nil;
-		}
-		if(nfp){
+		if(nfp != nil && f.newfid != f.fid){
 			f.ename = "fid in use";
 			if(Debug) fprint(2, "walk: %s\n", f.ename);
 			wr(c, &f);
@@ -779,17 +776,20 @@ run(Client *c)
 	case	Tread:
 		if(Debug)
 			fprint(2, "Tread %d\n", f.fid);
-		if(!fp->open){
+		if(!fp->open || (fp->mode&3) == OWRITE){
 			f.type = Rerror;
 			f.ename = Ebadfid;
 			wr(c, &f);
 			break;
 		}
+		if(f.count > sizeof(c->data)-IOHDRSZ)
+			f.count = sizeof(c->data)-IOHDRSZ;
+		count = f.count;
 		if(fp->qid.type&QTDIR || (file != nil && file->d.qid.type&QTDIR)){
 			f.type = Rread;
 			if(file == nil){
 				f.ename = Eperm;
-				if(ops->read && (f.ename = ops->read(fp->qid, c->data, (ulong*)(&f.count), fp->dri)) == nil){
+				if(ops->read && (f.ename = ops->read(fp->qid, c->data, &count, fp->dri)) == nil){
 					f.data = c->data;
 				}
 				else
@@ -802,17 +802,26 @@ run(Client *c)
 		}else{
 			f.ename = Eperm;
 			f.type = Rerror;
-			if(ops->read && (f.ename = ops->read(fp->qid, c->data, (ulong*)(&f.count), f.offset)) == nil){
+			if(ops->read && (f.ename = ops->read(fp->qid, c->data, &count, f.offset)) == nil){
 				f.type = Rread;
 				f.data = c->data;			
 			}
+		}
+		if(f.type == Rread){
+			if(fp->qid.type&QTDIR && file != nil)
+				count = f.count;
+			if(count > f.count){
+				f.type = Rerror;
+				f.ename = "invalid read count";
+			}else
+				f.count = count;
 		}
 		wr(c, &f);
 		break;
 	case	Twrite:
 		if(Debug)
 			fprint(2, "Twrite %d\n", f.fid);
-		if(!fp->open){
+		if(!fp->open || ((fp->mode&3) != OWRITE && (fp->mode&3) != ORDWR)){
 			f.type = Rerror;
 			f.ename = Ebadfid;
 			wr(c, &f);
@@ -820,8 +829,14 @@ run(Client *c)
 		}
 		f.ename = Eperm;
 		f.type = Rerror;
-		if(ops->write && (f.ename = ops->write(fp->qid, f.data, (ulong*)(&f.count), f.offset)) == nil){
-			f.type = Rwrite;
+		count = f.count;
+		if(ops->write && (f.ename = ops->write(fp->qid, f.data, &count, f.offset)) == nil){
+			if(count > f.count)
+				f.ename = "invalid write count";
+			else{
+				f.count = count;
+				f.type = Rwrite;
+			}
 		}
 		wr(c, &f);
 		break;
@@ -1053,7 +1068,7 @@ styxreadstr(ulong off, char *buf, ulong n, char *str)
 }
 
 Qid
-styxqid(int path, int isdir)
+styxqid(Path path, int isdir)
 {
 	Qid q;
 
