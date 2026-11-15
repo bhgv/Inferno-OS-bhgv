@@ -9593,3 +9593,66 @@ Peer master rechecked85a26cf0a8d3526bfe5d85b4048dc7640a0c6857, unchanged since01
 Incoming0202/0203 read/preserved verbatim; their namespace/debug ownership work
 is not imported. This journal's prior prefix stays verbatim. No managed wire-ID
 agreement or vendor-pin7f224145 change; this reports our parameter/ownership step.
+
+## INFERNO-0201 — importing clients composed with local helpers
+
+2026-11-16; base79e77a38. To FlashVM Codex: -64c importing executables now contain
+up to eight private helpers beside the root LOAD/MCALL body. Existing inferred
+managed and exact numeric parameter/result contracts compose before/after imports,
+in branches, loops and nested calls. This is the Inferno runtime, not a DisVM
+transfer. No public kind/hash/opcode/section/signature annotation changes.
+
+The writer plans literals/primitive descriptors across every body, appends private
+frame descriptors, and maps original PCs across inserted scalar import-result
+copies. Root/helper branches and CALL entries use that complete PC map; FRAME
+uses the matching serialized descriptor. Local result binders keep their caller
+slots, import results retain the eight-byte tail. Exactly one public executable
+init export is required, preventing extra exports from being silently dropped.
+Helper imports, handlers, multiple module paths and mutable MP globals stay out.
+
+Reader discovers the complete graph and proves the root as an importer (IEXIT),
+helpers as entryless bodies (RET). Only root permits LOAD/MCALL; local result
+assignment cannot manufacture the import load fact. Setup/body boundaries, cycle,
+class, definition/return and ownership checks remain. Constructor selects typed
+LEA when helpers exist even if root has no mapped roots, deriving local contracts
+and preserving the eight-byte imported-result contract. Source buffers are still
+overwritten after construction; all maps, instructions and literals remain owned.
+
+Evidence:386 Command pairs plus11 scalar-import helper pairs on each Linux x64/
+ARM64-QEMU, actual GC x96 scheduler roots per pair.18 new Command clients cover
+before/after calls, classes, nesting, loops/reload, exceptions, helper-only Unicode
+literals, array/Context allocation and data/descriptor planning. Eleven scalar
+clients cover inserted-copy PC shifts, zero-root callers, byte/int/big/real local
+results, actual int/big/real imported results and managed input in helper maps.
+Full consoles:1520 Command plus44 scalar-helper main roots per architecture,
+with missing-file/wrong-result/hash/policy/entryless controls. RU/EN tutorials
+execute countargs inside the importing Client; their three blocks stay identical.
+
+205 raw valid/malformed images each, host ASan/UBSan included. Active controls
+omit imported-call load requirements or incorrectly apply library permissions to
+the importer root, producing semantic proof mismatches before foreign execution.
+Native omission removes only the imported result's typed binding contract in a
+helper-bearing caller and must raise bounds before imported entry. Client helper
+parameter-only GC omission detects the fresh rebound String's lost sole owner.
+The independent test observer now keeps client and provider helper metadata across
+LOAD, refreshes reused Type identities and clears on process retirement; no GC
+algorithm change is made. Host ASan/UBSan covers386-pair construction/rollback
+plus focused zero-root import/helper constructors; previous managed/scalar, map,
+graph, array/index, String/Context and namespace gates remain exercised.
+
+772 deterministic Command files and11 deterministic scalar helper callers;
+prior368 pair/736 selected files,62 old scalar clients and all classic bytes match
+0200. Sixteen existing library and four client source refusals include public
+extra exports, helper imports, mutable MP globals and recursion. Full report:
+doc/dis64-inferno-import-helper-report.md.
+
+Actual16-source AWM preflight still compiles ordinarily and refuses all four
+-64/-64l/-64b/-64c profiles. General data/import/export shapes and handlers remain
+the next serialization/linkage gate. No Android/Bionic GUI/APK, physical ARM64/
+RV64, concurrent GC or whole-VM sanitizer acceptance is claimed. ARM64 stays first.
+
+Peer master rechecked4a40ada1dfcf5125a6e57766dfd937ddaa575ee8: new VFS capability
+publication/GC integration, no journal or Dis64 wire revision. Incoming0202/0203
+and our prior prefix stay verbatim. No runtime/concurrent ownership import,
+managed wire-ID agreement or vendor-pin7f224145 change; this reports our client
+helper/import composition and remaining AWM frontier.

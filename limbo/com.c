@@ -421,8 +421,10 @@ if(debug['v']) print("fncom: %s %d %p\n", d->sym->name, d->refs, d);
 	excs = reve(excs);
 
 	if(emitscalar64 >= 4){
-        if(emitscalar64==4 && excs==nil && impdecls->next==nil && ldts!=nil)
+        if(emitscalar64==4 && excs==nil && impdecls->next==nil && ldts!=nil && nlink==1)
             dis64clientfile(entry,globals,ldts,fns,nfns,firstinst,ninst,offset);
+        else if(emitscalar64==4 && nlink!=1)
+            error(impdecl->src.start, "Dis64 client: exactly one executable init export is supported");
         else if(emitscalar64==5 && excs==nil && impdecls->next==nil && ldts==nil && dis64commandfile(globals,fns,nfns,firstinst,ninst,offset))
             ;
         else if(excs != nil || impdecls->next != nil || ldts != nil || globals != nil || offset != 0)

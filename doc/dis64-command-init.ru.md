@@ -72,6 +72,7 @@ validate(ctxt: ref Draw->Context, argv: list of string, expected: int, label: st
 implement Client;
 include "command.m";
 Client: module { init: fn(); };
+countargs: fn(xs: list of string): int;
 init()
 {
     m := load Command "library.dis64";
@@ -98,10 +99,16 @@ init()
     if(parsed != number || len bytes != 2){ z := 0; bad := 1/z; }
     argv := "wm" :: "Привет" :: "a\0z" :: nil;
     ctxt := ref Draw->Context(nil, nil, nil);
+    argc := countargs(argv);
+    if(argc != 3){ z := 0; bad := 1/z; }
     m->init(ctxt, argv);
     if(len argv != 3){ z := 0; bad := 1/z; }
     m->init(nil, argv);
     keep := ctxt;
+}
+countargs(xs: list of string): int
+{
+    return len xs;
 }
 ```
 
@@ -317,3 +324,10 @@ managed-параметр в начале также допускается. Пр
 требует класс Array, а индексирование — конкретный ByteArray/IntArray. Возврат
 массива с невыведенным классом элементов запрещён: размер или карта GC не
 заменяют тип элементов. Для возврата среза используйте явную local-переменную.
+
+Сам импортирующий клиент также допускает до восьми локальных helpers — пример
+`countargs` теперь выполняется в Client рядом с LOAD/MCALL. Helpers используют
+те же проверяемые параметры, результаты и карты кадров; импортировать могут
+только команды главного тела init. Главный init завершается IEXIT, helpers — RET.
+Вызовы до LOAD не заменяют факт загрузки перед MCALL. Дополнительные публичные
+экспорты и изменяемые глобальные MP-данные этим не включаются.

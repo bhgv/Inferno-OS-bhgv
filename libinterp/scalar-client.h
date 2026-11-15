@@ -33,14 +33,14 @@ dis64clientconstruct(void *argument)
  for(i=0;i<v->count;i++){
   Dis64CallDecoded *d=v->decoded+i;if(!dis64runtimeinstruction(&d->instruction))return 0;
   dis64runtimeinst(m->prog+i,&d->instruction,m->prog);
-  if(roots && d->instruction.op==ILEA)m->prog[i].reg=v->localcount?dis64clientlocalcontract(v,i):8;
+  if((roots || v->localcount) && d->instruction.op==ILEA)m->prog[i].reg=v->localcount?dis64clientlocalcontract(v,i):8;
   if(USRC(d->instruction.mode)==(AFP|AIND)){m->prog[i].s.i.f=d->instruction.source;m->prog[i].s.i.s=d->secondary;}
   if(UDST(d->instruction.mode)==(AFP|AIND)){m->prog[i].d.i.f=d->instruction.destination;m->prog[i].d.i.s=d->secondary;}
  }
  if(!disstringpoolget(&v->strings,0,&name))return 0;
  m->name=mallocz(name.count+1,1);if(!m->name)return 0;
  for(j=0;j<name.count;j++){disruneat(&name,j,&rune);m->name[j]=rune;}
- m->path=strdup(b->path);if(!m->path)return 0;m->entry=v->module.profile?m->prog:nil;m->entryt=v->module.profile?m->type[0]:nil;m->cstep=roots?native64typedlea8step:native64lea8step;
+ m->path=strdup(b->path);if(!m->path)return 0;m->entry=v->module.profile?m->prog:nil;m->entryt=v->module.profile?m->type[0]:nil;m->cstep=(roots || v->localcount)?native64typedlea8step:native64lea8step;
  if(!v->module.profile){Dis64Binding binding;
   if(!dis64clientbindingget(&v->imports,0,&binding))return 0;
   m->ext=mallocz(2*sizeof(Link),1);if(!m->ext)return 0;

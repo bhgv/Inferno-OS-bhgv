@@ -4,23 +4,26 @@ static Heap *clientgraph[256];
 static unsigned int clientgraphcount;
 static int clientindexpause;
 static unsigned int clientindexpauses;
-static Type *clientlocaltypes[8];
-static unsigned int clientlocalargcount[8],clientlocalargoffset[8][8];
-static unsigned int clientlocalcount,clientlocalpauses,clientlocalvalues[8];
+static Type *clientlocaltypes[128];
+static unsigned int clientlocalargcount[128],clientlocalargoffset[128][8];
+static unsigned int clientlocalcount,clientlocalpauses,clientlocalvalues[128];
 static void *clientresulttargets[64];
-static unsigned int clientresultcount,clientresultpauses;
+static unsigned int clientresultcount,clientresultpauses,clientownpauses,clientlocalclients[128];
 static void
 clientlocalremember(Module *module,const uchar *data,unsigned int bytes)
 {
- Dis64ScalarClientView view;clientlocalcount=clientresultcount=0;
- if(dis64commandcheck(data,bytes,&view))for(unsigned int i=0;i<view.localcount;i++){
-  unsigned int offset=view.localprefix[i]?80:64;clientlocalargcount[i]=0;
+ Dis64ScalarClientView view;
+ if(dis64commandcheck(data,bytes,&view) || dis64clientcheck(data,bytes,&view))for(unsigned int i=0;i<view.localcount;i++){
+  unsigned int slot=0,offset=view.localprefix[i]?80:64;Type *type=module->type[view.localtype[i]];
+  while(slot<clientlocalcount && clientlocaltypes[slot]!=type)slot++;
+  if(slot==clientlocalcount){require(clientlocalcount<128);clientlocalcount++;}
+  clientlocalargcount[slot]=0;
   for(unsigned int j=0;j<view.localargc[i];j++){
    unsigned int kind=view.localargs[i][j],width=dis64clientwidth(kind);offset=(offset+width-1)&~(width-1);
-   if(dis64clientisroot(kind))clientlocalargoffset[i][clientlocalargcount[i]++]=offset;
+   if(dis64clientisroot(kind))clientlocalargoffset[slot][clientlocalargcount[slot]++]=offset;
    offset+=width;
   }
-  clientlocaltypes[clientlocalcount]=module->type[view.localtype[i]];clientlocalvalues[clientlocalcount++]=view.localresult[i];
+  clientlocaltypes[slot]=type;clientlocalvalues[slot]=view.localresult[i];clientlocalclients[slot]=view.module.profile;
  }
 }
 static void
@@ -75,7 +78,7 @@ clientcollect(Prog *process,Module *client,uchar *root)
    memmove(&frame,fp,sizeof(frame));if(frame.mr && frame.mr!=H)clientobserve(frame.mr);type=frame.t?frame.t:extent->reg.TR;
    require(native64localtype(type) && (uintptr)type->size<=(uintptr)top-(uintptr)fp);
    if(fp==process->R.FP)for(i=0;i<clientlocalcount;i++)if(type==clientlocaltypes[i]){
-    clientlocalpauses++;
+    clientlocalpauses++;if(clientlocalclients[i])clientownpauses++;
     if(clientlocalvalues[i]){wantresult=1;resultkind=clientlocalvalues[i];memmove(&returnaddress,fp+32,sizeof(returnaddress));}
    }
    if(fp!=process->R.FP){require(nframeaddresses<128);frameaddresses[nframeaddresses]=fp;frametypes[nframeaddresses++]=type;}

@@ -622,3 +622,17 @@ point at general module data/imports/handlers and importing module shapes.
 Android/Bionic GUI startup and APK acceptance remain open. Detailed limitations,
 malformed-file controls and parameter-only GC omission are in
 dis64-inferno-managed-argument-report.md.
+
+## Importing client helpers (INFERNO-0201)
+
+The -64c importing client can now keep up to eight private helpers alongside
+root LOAD/MCALL, including managed/numeric arguments/results. Whole-client PC
+mapping accounts for inserted scalar import-result copies; helper literals and
+primitive/frame descriptors share the existing owned module data. Typed result
+binding also applies when the root frame has no GC roots. Extra public exports,
+helper imports and mutable MP globals still refuse.
+
+Linux x64/ARM64-QEMU evidence is386 Command pairs plus11 numeric-import pairs and
+1564 main full-console roots per architecture. All16 actual AWM startup sources
+still refuse all four selected profiles; Android/Bionic GUI/APK is not available
+from this step. Details and controls: dis64-inferno-import-helper-report.md.

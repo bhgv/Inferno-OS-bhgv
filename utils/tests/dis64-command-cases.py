@@ -36,6 +36,7 @@ def cases(pathlength=13):
  yield from argumentcases(pathlength)
  yield from scalarresultcases(pathlength)
  yield from managedargumentcases(pathlength)
+ yield from importhelpercases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -535,3 +536,35 @@ def managedargumentcases(pathlength=13):
   provider='implement Command;include "command.m";'+declarations+'init('+prefix+'){'+body+'}'+definitions
   caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"abc"::nil;m->init(nil,argv);}'
   yield 'managedarg-'+name,provider,caller,1 if name=='string-error'else 4 if name=='bytes-error'else 0
+
+def importhelpercases(pathlength=13):
+ bad='{z:=0;bad:=1/z;}'
+ args='ctxt:ref Draw->Context,argv:list of string'
+ provider='implement Command;include "command.m";init('+args+'){if(len argv!=2)'+bad+'}'
+ load='m:=load Command "library.dis64";if(m==nil)return;'
+ call='argv:="wm"::"abc"::nil;m->init(nil,argv);'
+ rows=[
+ ('before','s:string','int','n:=first("abc");if(n!=3)'+bad+load+call,'return len s;',[]),
+ ('after','s:string','int',load+'n:=first("abc");if(n!=3)'+bad+call,'return len s;',[]),
+ ('around','n:int','int','a:=first(7);'+load+call+'b:=first(a);if(b!=9)'+bad,'return n+1;',[]),
+ ('byte','n:int','byte',load+'b:=first(511);n:=int b;if(n!=255)'+bad+call,'return byte n;',[]),
+ ('big','n:int','big',load+'b:=first(7);n:=7;e:=big n;e<<=40;if(b!=e)'+bad+call,'b:=big n;b<<=40;return b;',[]),
+ ('real','n:int','real',load+'r:=first(7);n:=7;e:=real n;if(r!=e)'+bad+call,'return real n;',[]),
+ ('string','s:string','string',load+'s:=first("old");if(s!="old!")'+bad+call,'s+="!";return s;',[]),
+ ('list','xs:list of string','string',load+'xs:="okay"::nil;s:=first(xs);if(s!="okay")'+bad+call,'return hd xs;',[]),
+ ('array','a:array of int','int',load+'a:=array[2]of int;a[1]=123456;n:=first(a);if(n!=123456)'+bad+call,'n:=a[1];return n;',[]),
+ ('construct','n:int','array of int',load+'a:=first(7);n:=a[1];if(n!=7)'+bad+call,'a:=array[2]of int;a[1]=n;return a;',[]),
+ ('literal','','string',load+'s:=first();if(s!="Привет")'+bad+call,'return "Привет";',[]),
+ ('context','','ref Draw->Context',load+'c:=first();if(c==nil || c.display!=nil)'+bad+call,'c:=ref Draw->Context(nil,nil,nil);return c;',[]),
+ ('nested','s:string','int',load+'n:=first("abc");if(n!=3)'+bad+call,'return second(s);',[('second','s:string','int','return len s;')]),
+ ('loop','n:int','int',load+'n:=0;while(n<3){n=first(n);'+call+'}if(n!=3)'+bad,'return n+1;',[]),
+ ('reload','n:int','int',load+'a:=first(7);'+call+'m=load Command "library.dis64";if(m==nil)return;b:=first(a);'+ 'm->init(nil,argv);if(b!=9)'+bad,'return n+1;',[]),
+ ('void','s:string','',load+'first("abc");'+call,'if(len s!=3)'+bad,[]),
+ ('rebound','s:string','string',load+'s:=first("owned");if(s!="owned!")'+bad+call,'s+="!";second();return s;',[('second','','','n:=0;while(n<2)n++;')]),
+ ('error','s:string','',load+'first("abc");'+call,'if(len s!=3)'+bad+'z:=0;bad:=1/z;',[])]
+ for name,params,result,body,helper,others in rows:
+  functions=[('first',params,result,helper)]+others
+  declarations=''.join(fn+':fn('+ps+')'+(':'+ty if ty else'')+';'for fn,ps,ty,_ in functions)
+  definitions=''.join(fn+'('+ps+')'+(':'+ty if ty else'')+'{'+code+'}'for fn,ps,ty,code in functions)
+  caller='implement Client;include "command.m";Client:module{init:fn();};'+declarations+'init(){'+body+'}'+definitions
+  yield 'importhelper-'+name,provider,caller,1 if name=='error'else 0

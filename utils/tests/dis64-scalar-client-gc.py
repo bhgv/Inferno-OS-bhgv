@@ -20,6 +20,8 @@ def instrument(source,control=None):
   source=source.replace('Tstring.free=freeheap;', 'Tstring.free=freestring;Tarray.free=freearray;Tarray.mark=markarray;Tarray.size=sizeof(Array);')
   source=source.replace('Tptr.ref==1);','Tptr.ref==1 && Tarray.ref==1 && Tbyte.ref==1);')
  at=source.index('/* Both caller CODE and provider CODE');source=source[:at]+(ROOT/'utils/tests/dis64-scalar-client-gc.c').read_text()+'\n'+source[at:]
+ source=source.replace('clientloads++;','clientlocalremember(ml->m,providerfile,providerfilebytes);clientloads++;')
+ source=source.replace('observedispatch(m,jit);m->ss=','clientlocalremember(m,clientfile,clientfilebytes);observedispatch(m,jit);m->ss=')
  source=source.replace('clientempty(void){','clientempty(void){clientlocalcount=clientresultcount=0;for(int slot=1;slot<GcSlots;slot++)require(numericblock(slot)->magic==MAGIC_F);')
  head,tail=source.rsplit('done=kprotect(executeprocess,p);if(!done)break;',1);source=head+'done=kprotect(executeprocess,p);if(!done)break;clientcollect(p,m,root);'+tail
  if control=='frame':source=source.replace('clientproviderjit=cflag=pjit;', 'm->type[0]->mark=noptrs;clientproviderjit=cflag=pjit;')

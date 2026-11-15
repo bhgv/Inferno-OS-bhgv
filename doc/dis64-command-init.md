@@ -72,6 +72,7 @@ validate(ctxt: ref Draw->Context, argv: list of string, expected: int, label: st
 implement Client;
 include "command.m";
 Client: module { init: fn(); };
+countargs: fn(xs: list of string): int;
 init()
 {
     m := load Command "library.dis64";
@@ -98,10 +99,16 @@ init()
     if(parsed != number || len bytes != 2){ z := 0; bad := 1/z; }
     argv := "wm" :: "Привет" :: "a\0z" :: nil;
     ctxt := ref Draw->Context(nil, nil, nil);
+    argc := countargs(argv);
+    if(argc != 3){ z := 0; bad := 1/z; }
     m->init(ctxt, argv);
     if(len argv != 3){ z := 0; bad := 1/z; }
     m->init(nil, argv);
     keep := ctxt;
+}
+countargs(xs: list of string): int
+{
+    return len xs;
 }
 ```
 
@@ -317,3 +324,10 @@ parameter needs the Array class; indexing additionally requires ByteArray or
 IntArray. Returning an array whose element class was not inferred is refused:
 size and GC maps do not replace element types. Use an explicit local to return
 a computed slice.
+
+The importing client itself also supports up to eight local helpers: `countargs`
+now executes in Client alongside LOAD/MCALL. Helpers use the same checked
+parameters, results and frame maps; only the root init body may load/call imports.
+Root init ends with IEXIT, helpers with RET. Calling a helper before LOAD does
+not establish the load fact required by MCALL. Extra public exports and mutable
+global MP data are not enabled by this composition.

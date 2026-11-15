@@ -307,7 +307,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         in=c->instructions[pc];
         if(in->op!=ICALL && in->op!=IMCALL && in->branch!=nil && inside[in->branch->pc-p->first]){typedfail(p,"multi-setup-branch");goto fail;}
     }
-    if((c->external!=3 && !p->nsites && !p->nexternal) || !typedresults(p))goto fail;
+    if((c->external<2 && !p->nsites && !p->nexternal) || !typedresults(p))goto fail;
     free(inside);p->tail=c->external?4:3;c->state[index]=2;c->height[index]=h;return 1;
 fail:
     free(inside);c->state[index]=3;return 0;

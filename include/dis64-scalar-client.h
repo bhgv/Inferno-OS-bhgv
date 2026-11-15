@@ -147,13 +147,13 @@ dis64clientopen(const unsigned char *data,unsigned int bytes,Dis64ScalarClientVi
  }
  if(!dis64modulecheck(data+module.offset,module.bytes,&v.module) || v.module.profile!=1 || v.module.name!=0 ||
     v.module.entry || v.module.frametype || v.module.datatype!=1 ||
-    !dis64typescheck(data+types.offset,types.bytes,5,4096,&v.types) ||
+    !dis64typescheck(data+types.offset,types.bytes,13,4096,&v.types) ||
     !dis64typeget(&v.types,0,&frame) || !dis64typeget(&v.types,1,&mp) || frame.bytes<80 || frame.align!=8 ||
     mp.align!=8)return 0;
 
  if(!disstringpoolcheck(data+v.names.offset,v.names.bytes,65536,&v.strings) ||
     !dis64clientbindingscheck(data+v.requests.offset,v.requests.bytes,0,&v.strings,0,0,64,64,&v.imports) ||
-    v.requests.bytes>Dis64LocalBytes || v.names.bytes>Dis64LocalBytes || !v.imports.count || !dis64clientdatacheck(&v) || v.localcount || v.code.bytes<4)return 0;
+    v.requests.bytes>Dis64LocalBytes || v.names.bytes>Dis64LocalBytes || !v.imports.count || !dis64clientdatacheck(&v) || v.code.bytes<4)return 0;
  for(i=0;i<v.imports.count+3;i++){
   if(!disstringpoolget(&v.strings,i,&name) || !name.count || name.count>(i==1?1023U:255U))return 0;
   for(j=0;j<name.count;j++)if(!disruneat(&name,j,&rune) || !rune || rune>127 || (i==1 && j==0 && rune=='$'))return 0;
@@ -314,7 +314,7 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
   for(i=0;i<v->count;i++)if((v->decoded[i].instruction.op==IINDB || v->decoded[i].instruction.op==IINDW)){unsigned int reads[2]={0},writes[2]={0};
    if(!dis64clientindex(v,i,slots,&nslots,reads,writes))return 0;
   }
-  if(library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IFRAME){unsigned int bits[2]={0},gives[2]={0},assigned=0;
+  if(library || v->localcount)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IFRAME){unsigned int bits[2]={0},gives[2]={0},assigned=0;
    if(!dis64clientlocalcall(v,i,slots,&nslots,bits,gives,&assigned))return 0;
   }
   if(!library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IMFRAME){
@@ -343,7 +343,7 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
    node->load=1;node->next=i+1;continue;
   }
   if(in->op==IFRAME){unsigned int assigned=0;
-   if(!library || !dis64clientlocalcall(v,i,slots,&nslots,node->need,node->give,&assigned))return 0;
+   if((!library && !v->localcount) || !dis64clientlocalcall(v,i,slots,&nslots,node->need,node->give,&assigned))return 0;
    node->load=assigned;i+=dis64clientlocalend(v,i);node->next=i+1;continue;
   }
   if(in->op!=IMFRAME){
@@ -405,7 +405,7 @@ static int
 dis64clientcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClientView *out)
 {
  Dis64ScalarClientView v;
- if(!out || !dis64clientopen(data,bytes,&v) || !dis64clientprove(&v,0))return 0;
+ if(!out || !dis64clientopen(data,bytes,&v) || !(v.localcount?dis64clientlocalprove(&v):dis64clientprove(&v,0)))return 0;
  *out=v;return 1;
 }
 #include "dis64-command-image.h"

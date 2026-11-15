@@ -7,10 +7,10 @@ CLIENT=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client.py'));BOOT=runpy
 def main():
  p=argparse.ArgumentParser(description=__doc__)
  for name in ('limbo','emu','root'):p.add_argument('--'+name,required=True,type=Path)
- p.add_argument('--runner',default='');p.add_argument('--cfg',action='store_true');p.add_argument('--numeric',action='store_true');p.add_argument('--managed',action='store_true');a=p.parse_args();env=dict(os.environ);command=shlex.split(a.runner)+[str(a.emu.resolve()),'-v','-r',str(a.root.resolve())];runs=0
+ p.add_argument('--runner',default='');p.add_argument('--cfg',action='store_true');p.add_argument('--numeric',action='store_true');p.add_argument('--managed',action='store_true');p.add_argument('--local',action='store_true');a=p.parse_args();env=dict(os.environ);command=shlex.split(a.runner)+[str(a.emu.resolve()),'-v','-r',str(a.root.resolve())];runs=0
  with tempfile.TemporaryDirectory(prefix='scalar-client-boot-',dir=a.root.resolve())as td:
   w=Path(td);env['TMPDIR']=str(w);provider=w/'library.dis64';caller=w/'client.dis64';vmprovider='/'+str(provider.relative_to(a.root.resolve()));vmcaller='/'+str(caller.relative_to(a.root.resolve()))
-  rows=runpy.run_path(str(ROOT/('utils/tests/dis64-scalar-client-managed-cases.py'if a.managed else'utils/tests/dis64-scalar-client-numeric-cases.py'if a.numeric else'utils/tests/dis64-scalar-client-cases.py')))['cases']()if a.cfg or a.numeric or a.managed else(row+(False,)for row in CLIENT['cases']())
+  rows=runpy.run_path(str(ROOT/('utils/tests/dis64-scalar-client-local-cases.py'if a.local else'utils/tests/dis64-scalar-client-managed-cases.py'if a.managed else'utils/tests/dis64-scalar-client-numeric-cases.py'if a.numeric else'utils/tests/dis64-scalar-client-cases.py')))['cases']()if a.cfg or a.numeric or a.managed or a.local else(row+(False,)for row in CLIENT['cases']())
   if a.managed:rows=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-managed-cases.py'))['cases'](len(vmprovider))
   for name,text,fn,kind,args,values,expected,failure,callertext,guarded in rows:
    (w/'library.m').write_text(CLIENT['NS']['declarations'](text));(w/'library.b').write_text(text);(w/'client.b').write_text(callertext.replace('"library.dis64"','"'+vmprovider+'"'))
@@ -19,13 +19,13 @@ def main():
     output=BOOT['execute'](command+['-c',str(jit),'-X','dis64-calls','-d',vmcaller]);error='dereference of nil'if failure==3 else'invalid argument'if failure==2 else'zero divide'if failure else''
     assert 'native64 scalar module '+('Library'if failure==1 else'Client')+': jit='+str(jit)+', exit="'+error+'"'in output and BOOT['RETIRED']in output and 'panic:'not in output and 'faults:'not in output and ('Broken:'in output)==bool(failure),output
     runs+=1;print('PASS full OS importing Limbo client:',name,'jit='+str(jit),'error='+repr(error),flush=True)
-   if a.cfg or a.numeric or a.managed:
+   if a.cfg or a.numeric or a.managed or a.local:
     saved=provider.read_bytes();provider.unlink()
     for jit in (0,1):
      output=BOOT['execute'](command+['-c',str(jit),'-X','dis64-calls','-d',vmcaller]);assert 'native64 scalar module Client: jit='+str(jit)+', exit=""'in output and BOOT['RETIRED']in output and 'Broken:'not in output and 'panic:'not in output and 'faults:'not in output,output
      runs+=1
     provider.write_bytes(saved)
-  if a.cfg or a.numeric or a.managed:
+  if a.cfg or a.numeric or a.managed or a.local:
    if a.numeric or a.managed:
     (w/'library.m').write_text('Library:module{inc:fn(n:int):int;};')
     (w/'library.b').write_text('implement Library;Library:module{inc:fn(n:int):int;};inc(n:int):int{return n+1;}')
@@ -36,8 +36,8 @@ def main():
    for jit in (0,1):
     output=BOOT['execute'](command+['-c',str(jit),'-X','dis64-calls','-d',vmcaller]);assert 'native64 scalar module Client:'in output and 'exit="zero divide"'in output and BOOT['RETIRED']in output and 'panic:'not in output and 'faults:'not in output,output
    output=BOOT['execute'](command+['-c','1','-d',vmcaller]);assert 'panic: loading 'in output and BOOT['RETIRED']not in output,output
-   print('PASS '+('managed'if a.managed else'numeric'if a.numeric else'CFG')+' wrong-result conditional controls: C/RX',flush=True)
-   print('PASS full OS '+('managed'if a.managed else'numeric'if a.numeric else'CFG')+' clients including graceful missing-file returns:',runs,'C/RX OS roots',flush=True);return
+   print('PASS '+('local'if a.local else'managed'if a.managed else'numeric'if a.numeric else'CFG')+' wrong-result conditional controls: C/RX',flush=True)
+   print('PASS full OS '+('local'if a.local else'managed'if a.managed else'numeric'if a.numeric else'CFG')+' clients including graceful missing-file returns:',runs,'C/RX OS roots',flush=True);return
 
   saved=provider.read_bytes()
   # Validly typed wrong implementation must trip the command's own integer result guard.

@@ -19,7 +19,7 @@ def main():
    # A valid provider must actually link; a nil-returning importer alone cannot
    # distinguish a successful no-op init from admission refusal.
    compile(text,client.replace('if(m==nil)return;','if(m==nil){z:=0;bad:=1/z;}'))
-   for jit in (0,1):execute(jit,'Command'if failure else'Client','negative array size'if failure==5 else'array bounds error'if failure==4 else'dereference of nil'if failure==3 else'zero divide'if failure else'');runs+=1
+   for jit in (0,1):execute(jit,'Command'if failure and not name.startswith('importhelper-')else'Client','negative array size'if failure==5 else'array bounds error'if failure==4 else'dereference of nil'if failure==3 else'zero divide'if failure else'');runs+=1
    saved=provider.read_bytes();compile(text,client);provider.unlink()
    for jit in (0,1):execute(jit);runs+=1
    provider.write_bytes(saved);print('PASS full OS ordinary init:',name,'C/RX + missing file',flush=True)

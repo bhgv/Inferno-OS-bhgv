@@ -16,8 +16,7 @@ def main():
   # Legacy fixture declarations are compile-only; live interface comes solely from files.
   (w/'library.h').write_bytes(subprocess.check_output([str(a.limbo.resolve()),'-H','-R','-M','Library',str(w/'library.m')],env=env))
   source=w/'test.c';text=P['unit'](codecs=True);text=text.replace('require(int condition)', 'baserequire(int condition,const char *expression,int line)',1).replace('checks);\n\t\tabort();','checks);fprintf(stderr,"line=%d predicate=%s\\n",line,expression);exit(10);',1);text=text.replace('/* Bound each allocation','#define require(c) baserequire((c),#c,__LINE__)\n/* Bound each allocation',1).replace('#define require(c) libraryrequire','#undef require\n#define require(c) libraryrequire');text=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-gc.py'))['instrument'](text);
-  text=text.replace('require(clientloads>0);return 0;','require(clientloads>0);fprintf(stderr,"index-pause-observations=%u\\n",clientindexpauses);fprintf(stderr,"local-frame-observations=%u\\n",clientlocalpauses);fprintf(stderr,"managed-result-observations=%u\\n",clientresultpauses);return 0;')
-  text=text.replace('clientloads++;','clientlocalremember(ml->m,providerfile,providerfilebytes);clientloads++;')
+  text=text.replace('require(clientloads>0);return 0;','require(clientloads>0);fprintf(stderr,"index-pause-observations=%u\\n",clientindexpauses);fprintf(stderr,"local-frame-observations=%u\\n",clientlocalpauses);fprintf(stderr,"import-helper-observations=%u\\n",clientownpauses);fprintf(stderr,"managed-result-observations=%u\\n",clientresultpauses);return 0;')
   if a.local_result_map_control or a.scalar_result_map_control:
    old='m->prog[i].reg=v->localcount?dis64clientlocalcontract(v,i):8;';assert text.count(old)==1;text=text.replace(old,'m->prog[i].reg=24;'if a.scalar_result_map_control else'm->prog[i].reg=8;')
   header=subprocess.check_output([str(a.limbo.resolve()),'-H','-M','Command','-I',str(ROOT/'module'),str(w/'command.m')],env=env,text=True)
@@ -81,6 +80,8 @@ def main():
     observed=re.search(r'managed-result-observations=(\d+)',r.stderr);assert observed and int(observed[1])>0,(name,r.stderr)
    if name.startswith(('local-','args-','scalarresult-','managedarg-'))and not(a.gc_control or a.materialize_only or a.local_result_map_control or a.scalar_result_map_control):
     observed=re.search(r'local-frame-observations=(\d+)',r.stderr);assert observed and int(observed[1])>0,(name,r.stderr)
+   if name.startswith('importhelper-')and not(a.gc_control or a.materialize_only):
+    observed=re.search(r'import-helper-observations=(\d+)',r.stderr);assert observed and int(observed[1])>0,(name,r.stderr)
    print('PASS ordinary .m init -> file LOAD -> managed MCALL/RET:',arch,name,flush=True)
   print('PASS ordinary init pipeline:',arch,len(rows),'pairs; actual GC'+('; constructor-only'if a.materialize_only else'; semantic scalar-result map omission'if a.scalar_result_map_control else'; semantic managed-result map omission'if a.local_result_map_control else'; semantic '+a.gc_control+' omission'if a.gc_control else'; semantic '+a.field_offset_control+' offset omission'if a.field_offset_control else'; semantic reference width omission'if a.reference_width_control else';96 scheduler roots per pair'),flush=True)
 if __name__=='__main__':main()

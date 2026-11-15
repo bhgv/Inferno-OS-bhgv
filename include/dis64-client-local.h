@@ -164,7 +164,7 @@ dis64clientlocalprove(Dis64ScalarClientView *v)
      body.decoded[j].instruction.destination=target-start;
     }
    }
-   if(!dis64clientbodyprove(&body,1,1))return 0;
+   if(!dis64clientbodyprove(&body,i || !v->module.profile,1))return 0;
    if(i){
     if(body.returnkind==Dis64ClientArray)return 0;
     v->localresult[i-1]=body.returnkind;
@@ -189,5 +189,5 @@ dis64clientlocalcontract(const Dis64ScalarClientView *v,unsigned int pc)
   for(i=0;i<v->localcount;i++)if(v->decoded[at].instruction.source==v->localtype[i])
    return dis64clientisroot(v->localresult[i])?24:dis64clientwidth(v->localresult[i]);
  }
- return 0;
+ return v->module.profile?8:0;
 }
