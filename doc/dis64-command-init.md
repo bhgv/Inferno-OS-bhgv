@@ -31,12 +31,15 @@ init(ctxt: ref Draw->Context, argv: list of string)
     ctxt.display = display;
     ctxt.screen = screen;
     ctxt.wm = wm;
+    greeting := "Привет";
+    if(len greeting != 6 || greeting[0] != 1055){ z := 0; bad := 1/z; }
     total := 0;
     while(argv != nil){
         part := hd argv;
         total += len part;
         argv = tl argv;
     }
+    if(total != 11){ z := 0; bad := 1/z; }
     keep := saved;
 }
 ```
@@ -49,11 +52,10 @@ init()
 {
     m := load Command "library.dis64";
     if(m == nil) return;
-    s := "library.dis64";
-    argv := s :: s :: nil;
+    argv := "wm" :: "Привет" :: "a\0z" :: nil;
     ctxt := ref Draw->Context(nil, nil, nil);
     m->init(ctxt, argv);
-    if(len argv != 2){ z := 0; bad := 1/z; }
+    if(len argv != 3){ z := 0; bad := 1/z; }
     m->init(nil, argv);
     keep := ctxt;
 }
@@ -119,14 +121,15 @@ This is reference transport, not resource creation: nested field dereferences,
 Display/Screen allocation, channel operations and indirect-to-indirect copies
 remain refused. Direct `ctxt.display == nil` / `!= nil` tests and pointer identity
 comparisons between compatible Context/list/field aliases are admitted. They use
-full-width reference comparisons; String equality remains content-based and is
-outside this subset. Short-circuit guards can avoid a nil Context dereference.
+full-width reference comparisons; String equality and ordered comparisons now use content, with signed Rune32
+ordering and nil/empty content equality. Character indexing returns a Rune in
+an int and preserves Unicode code points and embedded NUL. Short-circuit guards can avoid a nil Context dereference.
 
 `ref Draw->Context(nil,nil,nil)` now works in local declarations, assignments,
 loops and callee constructors. The selected compiler preserves Context temporary
 types instead of recycling a String/List slot. Evaluate a constructor into a
 local before calling init; a constructor inside prepared call setup still refuses. A non-nil record does not establish a display/window manager.
-For exact evidence see [INFERNO-0188](dis64-inferno-reference-branches-report.md).
+For exact evidence see [INFERNO-0189](dis64-inferno-client-literals-report.md).
 
 ## Exact private boundary
 
@@ -140,7 +143,8 @@ signature interoperability from this fixed-shape experiment.
 The admitted provider has one Command.init export at PC0/frame0, no imports or
 helper calls, a bounded proven body and the existing private 24-byte MP layout.
 The executable importer still has an argument-free void process entry. One
-interface/path is admitted; arbitrary literals, general DATA initializers,
+interface/path is admitted. Up to32 extra readonly String roots are admitted per
+image, each at most255 Runes,1024 Runes in aggregate. General DATA initializers,
 additional exports, arbitrary ADT fields and general ADT/array payloads remain refused.
 Only the selected client reader admits the required MP-to-prepared-frame MOVP;
 the general scalar instruction reader is unchanged.
@@ -151,3 +155,18 @@ with `dis64-command-boot.py`, independent raw refusal checks with
 (all in utils/tests, each accepts `--limbo`). The callee-frame omission control
 must detect a reclaimed observed object before resuming execution.
 Linux x64/ARM64 QEMU results do not establish Android/Bionic GUI/APK startup.
+
+The String pool/MP convention reuses the earlier private managed-file trial:
+extra records follow the binding names; their owned roots occupy MP24+8*i. MP
+bytes/maps cover every root. If MP grows, descriptor2 independently describes
+Context24/E0; INEW must use it, not the expanded MP descriptor1. Without literals,
+the original two-descriptor image and all previous bytes are preserved. This is
+still a private opt-in convention, not a public managed initializer ABI.
+
+Source `""` keeps classic nil-like representation at MP8. A serialized zero-Rune
+record is a separately owned non-nil empty String; constructor gates distinguish
+these references while String content comparison treats nil and empty equally.
+ASCII may use byte storage; other literals use Rune storage. C extensions must
+use String length/representation, never strlen for a value containing NUL.
+String mutation, concatenation, slicing and general payload construction remain
+outside this profile.

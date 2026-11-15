@@ -470,3 +470,17 @@ allocation inside prepared call setup is still outside this profile.
 ordinary construction and a direct field condition. Exact evidence:
 [INFERNO-0188](dis64-inferno-reference-branches-report.md). This still does not
 create GUI resources or establish AWM/Android/Bionic APK/device execution.
+
+## Owned literals and String content operations (INFERNO-0189)
+
+The selected Command/client path now admits readonly String literals (Unicode,
+NUL and empty/nil), character indexing and content comparisons through existing
+VM handlers/JIT. Extra owned MP roots reuse the earlier private managed-file
+literal convention. Expanded MP gets its own complete map; independent Context
+24/E0 descriptor2 prevents allocating a Context with the larger MP layout.
+Prior images and all compared classic outputs remain byte-identical.
+
+Updated [RU](dis64-command-init.ru.md) / [EN](dis64-command-init.md) code constructs
+Unicode/NUL argv. [INFERNO-0189](dis64-inferno-client-literals-report.md) separates
+actual C/RX/GC execution from constructor-only lossless Rune witnesses. This does
+not enable general DATA, Draw/Tk/full AWM or an Android/Bionic GUI device run.

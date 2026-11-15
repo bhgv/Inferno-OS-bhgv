@@ -36,7 +36,7 @@ int main(int argc,char**argv)
   require(steps<10000);namespacefault=admissionrequired=dontcompile=0;
   if(mode==1 || mode==2){if(guarded)require(!worker.env->errstr[0] && R.FP==root);else require(worker.env->errstr[0]);}
   else if(failure){
-   require(!strcmp(worker.env->errstr,failure==3?exNilref:failure==2?exInval:exZdiv));
+   require(!strcmp(worker.env->errstr,failure==4?exBounds:failure==3?exNilref:failure==2?exInval:exZdiv));
    if(failure==2){value=0;memmove(&value,root+erroroffset,errorbytes);require(value==123);}
   }
   else {if(worker.env->errstr[0] || R.FP!=root)fprintf(stderr,"client execution: error=%s jit=%d provider=%d grow=%d q=%d mode=%d pc=%p owner=%s dispc=%lu\n",worker.env->errstr,jit,pjit,grow,q,mode,(void*)R.PC,R.M->m->name,(unsigned long)(((uintptr)R.PC-(uintptr)R.M->m->prog)/sizeof(Inst)));require(!worker.env->errstr[0] && R.FP==root);value=0;if(result){memmove(&value,root+offset,result==Dis64Int?4:8);require(value==expected);}}

@@ -213,3 +213,5 @@ runt.$O: $ROOT/include/native64-sys-fixed.h
 load64.$O: scalar-client.h $ROOT/include/dis64-scalar-client.h $ROOT/include/dis64-client-managed.h\
  $ROOT/include/dis64-command-binding.h $ROOT/include/dis64-command-image.h
 readmod.$O: $ROOT/include/dis64-command-binding.h
+
+load64.$O: $ROOT/include/dis64-client-literals.h $ROOT/include/dis64-managed-trial.h

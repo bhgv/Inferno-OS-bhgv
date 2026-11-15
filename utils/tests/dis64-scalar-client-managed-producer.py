@@ -24,7 +24,7 @@ def main():
     counts[isnew]+=1
   assert seen==OPS,seen
   base=managed[4][8];interface.write_text('Library:module{inc:fn(n:int):int;};')
-  negative=[base.replace('l:=s::nil;','l:=7::nil;').replace('len h','h'),base.replace('l:=s::nil;','inner:=s::nil;l:=inner::nil;'),base.replace('s:="library.dis64";','s:="unrelated literal";'),base.replace('init:fn();','init:fn(argv:list of string);').replace('init(){','init(argv:list of string){')]
+  negative=[base.replace('l:=s::nil;','l:=7::nil;').replace('len h','h'),base.replace('l:=s::nil;','inner:=s::nil;l:=inner::nil;'),base.replace('s:="library.dis64";','s:="unrelated literal";s[0]=65;'),base.replace('init:fn();','init:fn(argv:list of string);').replace('init(){','init(argv:list of string){')]
   for body in negative:
    source.write_text(body);image.unlink(missing_ok=True);r=compile(a.limbo,'-64c',image,False)
    assert r.returncode and 'Dis64 client:'in r.stderr and(not image.exists()or not image.stat().st_size),r.stderr

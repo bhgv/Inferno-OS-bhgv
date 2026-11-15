@@ -9,7 +9,8 @@ def sections(data):
   k,f,at,n=struct.unpack_from('>HHII',data,32+12*i);assert f==1 and k not in d;d[k]=data[at:at+n]
  return d
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map','mp-tail'));p.add_argument('--literal-wire',choices=('empty','signed-runes'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ if a.literal_wire and(not a.materialize_only or a.case!=['literals-context']):p.error('--literal-wire requires --materialize-only --case literals-context')
  with tempfile.TemporaryDirectory(prefix='command-init-',dir=ROOT)as td:
   w=Path(td);env['TMPDIR']=str(w);(w/'command.m').write_text(CASES['INTERFACE']);(w/'library.m').write_text('Library:module{inc:fn(n:int):int;};')
   # Legacy fixture declarations are compile-only; live interface comes solely from files.
@@ -25,6 +26,9 @@ def main():
   head,tail=text.rsplit('root=p->R.FP;',1);text=head+'root=p->R.FP;if(commandcontext)commandcontextseed(&view,root);'+tail
   marker=' for(jit=0;jit<2;jit++){\n  cflag=jit;allocations=0;m=readmod("client.dis64"'
   assert text.count(marker)==1;text=text.replace(marker,' commandreferencewidth();commandproviderfaults(&view);\n'+marker)
+  text=text.replace('clientloads++;','commandproviderliterals(ml);clientloads++;')
+  text=text.replace('observedispatch(m,jit);m->ss=', 'commandliteralcheck(&view,m->origmp);observedispatch(m,jit);m->ss=')
+  if a.gc_control=='mp-tail':text=text.replace('clientproviderjit=cflag=pjit;','m->type[1]->mark=clientliteralmpmark;clientproviderjit=cflag=pjit;')
   if a.gc_control=='context-map':text=text.replace('commandcontextnomark=0','commandcontextnomark=1')
   if a.gc_control=='callee-frame':
    assert text.count('clientloads++;')==1;text=text.replace('clientloads++;','ml->m->type[0]->mark=noptrs;clientloads++;')
@@ -45,6 +49,8 @@ def main():
   for name,provider,caller,failure in rows:
    for filename,text,flag in [('command',provider,'-64b'),('client',caller,'-64c')]:
     (w/(filename+'.b')).write_text(text);subprocess.run([str(a.limbo.resolve()),flag,'-I',str(ROOT/'module'),'-I',str(w),'-o',str(w/(filename+'.dis64')),str(w/(filename+'.b'))],env=env,check=True,capture_output=True)
+   if a.literal_wire:
+    helpers=runpy.run_path(str(ROOT/'utils/tests/dis64-client-literals-proof.py'));parts=sections((w/'command.dis64').read_bytes());values=helpers['pool'](parts[7]);values[4]=[]if a.literal_wire=='empty'else[0,0x80000000,0xffffffff];parts[7]=helpers['poolbytes'](values);(w/'command.dis64').write_bytes(helpers['P']['rebuild'](parts))
    imported=sections((w/'client.dis64').read_bytes())[5];exported=sections((w/'command.dis64').read_bytes())[6]
    assert imported[16:]==exported[20:]and struct.unpack_from('>IIII',imported,16)==(0xface0186,expectedhash,2,0),(name,imported.hex(),exported.hex())
    r=subprocess.run(shlex.split(env.get('NATIVE64_RUNNER',''))+[str(binary),str(w/'client.dis64'),str(w/'command.dis64'),'0','0',str(failure),'guarded']+(['context','fields']if name in('fields-native','branches-native','branches-native-loop','branches-native-mixed','constructors-native')else['context']if name=='context-non-nil'else[])+(['materialize']if a.materialize_only else[]),env=env,capture_output=True,text=True,timeout=120)

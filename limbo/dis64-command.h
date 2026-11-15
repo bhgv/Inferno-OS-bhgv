@@ -1,3 +1,4 @@
+#include "dis64-file-strings.h"
 /* Selected ordinary Command.init producer; fixed opaque-ref/ListString contract. */
 static int
 dis64commandshape(Decl *fn)
@@ -22,42 +23,43 @@ dis64clientencode(uchar *out,unsigned int *at,Dis64Instruction *in,long base,lon
 int
 dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long count,long databytes)
 {
- Dis64TypedBody body={0};Dis64ScalarClientView *proof=nil;Dis64Type types[2];Dis64ModuleInfo module={0};Dis64Payload sections[5];
- DisStringPoolRecord names[4];DisStringPoolView pool;Decl *fn,*g,*nilvalue=nil;Dis64LayoutLeaf *leaf;Dis64Instruction in;
+ FileStrings literals;Dis64TypedBody body={0};Dis64ScalarClientView *proof=nil;Dis64Type types[3];Dis64ModuleInfo module={0};Dis64Payload sections[5];
+ DisStringPoolRecord names[4+Dis64ManagedLiterals];DisStringPoolView pool;Decl *fn;Dis64LayoutLeaf *leaf;Dis64Instruction in;
  uchar *code=nil,*output=nil,*typedata=nil,*strings=nil,*runes=nil,*maps=nil;uchar metadata[24],exports[36];
- unsigned int sizes[5],i,at=4,bytes,niloffset=0;char *failure="unsupported ordinary init library",*detail=nil;
+ unsigned int sizes[5],i,at=4,bytes,ntypes;char *failure="unsupported ordinary init library",*detail=nil;
  if(strcmp(impdecl->sym->name,"Command") || nf<1 || !dis64commandshape(functions[0]))return 0;
  fn=functions[0];
- if(nf!=1 || fn->pc->pc || count<1 || count>128 || databytes!=0 && databytes!=4)goto done;
- for(g=globals;g;g=g->next){if(nilvalue || g->ty->kind!=Tany || g->init || !g->sym || strcmp(g->sym->name,"nil"))goto done;nilvalue=g;}
+ if(nf!=1 || fn->pc->pc || count<1 || count>128 || !filestringscollect(&literals,globals,databytes))goto done;
  failure="unsupported init body/layout";
- if(databytes!=4*(nilvalue!=nil) || !dis64typedcommand(fn,globals,functions,nf,instructions,count,count,&body) || body.nsites || body.nexternal || body.frame.bytes>4080)goto done;
+ if(!dis64typedcommand(fn,globals,functions,nf,instructions,count,count,&body) || body.nsites || body.nexternal || body.frame.bytes>4080 || !filestringsplan(&literals,&body,0))goto done;
  failure="unsupported init data/local kinds";
- if(body.data.count!=(nilvalue!=nil))goto done;
- if(nilvalue){if(body.data.leaves[0].kind!=Tany)goto done;niloffset=body.data.leaves[0].native;}
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;
   if(leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tref && leaf->kind!=Tchan && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=-1)goto done;
  }
- code=allocmem(CallFileBytes);output=allocmem(CallFileBytes);typedata=allocmem(CallFileBytes);strings=allocmem(CallFileBytes);runes=allocmem(4*(4+4*255));maps=allocmem(65);memset(maps,0,65);proof=allocmem(sizeof(*proof));
+ code=allocmem(CallFileBytes);output=allocmem(CallFileBytes);typedata=allocmem(CallFileBytes);strings=allocmem(CallFileBytes);runes=allocmem((4+Dis64ManagedLiterals)*(4+4*1023));maps=allocmem(72);memset(maps,0,72);proof=allocmem(sizeof(*proof));
  {char *texts[]={"Command","command.dis64","Command","init"};unsigned int j,n;
-  for(i=0;i<4;i++){n=strlen(texts[i]);dis64put32(runes+i*(4+4*255),n);for(j=0;j<n;j++)dis64put32(runes+i*(4+4*255)+4+4*j,texts[i][j]);names[i]=(DisStringPoolRecord){runes+i*(4+4*255),4+4*n};}
+  for(i=0;i<4;i++){n=strlen(texts[i]);dis64put32(runes+i*(4+4*1023),n);for(j=0;j<n;j++)dis64put32(runes+i*(4+4*1023)+4+4*j,texts[i][j]);names[i]=(DisStringPoolRecord){runes+i*(4+4*1023),4+4*n};}
  }
+ if(!filestringpool(&literals,runes,names,4))goto done;
  failure="unsupported init operand encoding";
  for(i=0;i<body.count;i++){
   in=body.code[i];
-  if((in.op==IBEQL || in.op==IBNEL) && (in.mode&ARM)==AXINM){if(!nilvalue || in.middle!=niloffset)goto done;in.middle=8;}
-  if(USRC(in.mode)==AMP){if(!nilvalue || in.source!=niloffset)goto done;in.source=8;}
+  if((in.op==IBEQL || in.op==IBNEL) && (in.mode&ARM)==AXINM){if(!literals.nilvalue || in.middle!=literals.niloffset)goto done;in.middle=8;}
+  if(USRC(in.mode)==AMP && !filestringaddress(&literals,in.source,&in.source))goto done;
+  if((in.op==IBEQC || in.op==IBNEC || in.op==IBLTC || in.op==IBLEC || in.op==IBGTC || in.op==IBGEC) && (in.mode&ARM)==AXINM)
+   if(!filestringaddress(&literals,in.middle,&in.middle))goto done;
+  if(in.op==INEW || in.op==INEWZ)in.source=literals.literals?2:1;
   if(!dis64clientencode(code,&at,&in,in.destination,body.contextfields?body.contextfields[i]:0,body.contextfields?body.contextfields[i]:0))goto done;
  }
- dis64put32(code,body.count);sizes[1]=at;maps[64]=0xe0;
+ dis64put32(code,body.count);sizes[1]=at;
  for(i=0;i<body.frame.count;i++){
   leaf=body.frame.leaves+i;if(leaf->kind==Tref || leaf->kind==Tchan || leaf->kind==Tstring || leaf->kind==Tlist || leaf->kind==Tany)maps[leaf->native/64]|=0x80>>((leaf->native/8)%8);
  }
- types[0]=(Dis64Type){body.frame.bytes+16,8,maps,(body.frame.bytes+79)/64};types[1]=(Dis64Type){24,8,maps+64,1};module.databytes=24;module.datatype=1;
+ types[0]=(Dis64Type){body.frame.bytes+16,8,maps,(body.frame.bytes+79)/64};ntypes=filestringtypes(&literals,types,maps);module.databytes=24+8*literals.literals;module.datatype=1;
  sizes[3]=dis64commandbindingwrite(exports,1,sign(fn));
- if(!dis64modulewrite(metadata,sizeof(metadata),&module,&sizes[0]) || !dis64typeswrite(typedata,CallFileBytes,types,2,&sizes[2]) ||
-    !disstringpoolwrite(strings,CallFileBytes,names,4,&sizes[4]) || !disstringpoolcheck(strings,sizes[4],65536,&pool))goto done;
+ if(!dis64modulewrite(metadata,sizeof(metadata),&module,&sizes[0]) || !dis64typeswrite(typedata,CallFileBytes,types,ntypes,&sizes[2]) ||
+    !disstringpoolwrite(strings,CallFileBytes,names,4+literals.literals,&sizes[4]) || !disstringpoolcheck(strings,sizes[4],65536,&pool))goto done;
  sections[0]=(Dis64Payload){Dis64Module,Dis64Required,metadata,sizes[0]};sections[1]=(Dis64Payload){Dis64Code,Dis64Required,code,sizes[1]};sections[2]=(Dis64Payload){Dis64Types,Dis64Required,typedata,sizes[2]};
  sections[3]=(Dis64Payload){Dis64Exports,Dis64Required,exports,sizes[3]};sections[4]=(Dis64Payload){Dis64Strings,Dis64Required,strings,sizes[4]};
  failure="independent init proof refused output";

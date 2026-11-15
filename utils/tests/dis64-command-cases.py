@@ -25,6 +25,7 @@ def cases(pathlength=13):
  yield from fieldcases(pathlength)
  yield from branchcases(pathlength)
  yield from constructorcases(pathlength)
+ yield from literalcases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -92,4 +93,40 @@ def constructorcases(pathlength=13):
  ('constructors-native','d:=ctxt.display;s:=ctxt.screen;w:=ctxt.wm;other:=ref Draw->Context(d,s,w);d2:=other.display;s2:=other.screen;w2:=other.wm;if(d2!=d)'+bad+'if(s2!=s)'+bad+'if(w2!=w)'+bad+'if(other==ctxt)'+bad,'ctxt:ref Draw->Context;m->init(ctxt,argv);m->init(ctxt,argv);keepctxt:=ctxt;',0)]
  for name,body,call,failure in rows:
   client='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;s:="library.dis64";argv:=s::s::nil;'+call+'keep:=argv;}'
+  yield name,prefix+body+'}',client,failure
+
+def literalcases(pathlength=13):
+ prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
+ bad='{z:=0;bad:=1/z;}'
+ pairs=[('ascii','hello',5,104),('unicode','Привет',6,1055),('supplementary','a🚀z',3,97),('nul','a\\0z',3,97),('empty','',0,None)]
+ rows=[]
+ for name,text,length,first in pairs:
+  body='s:="'+text+'";if(len s!='+str(length)+')'+bad
+  if first is not None:body+='c:=s[0];if(c!='+str(first)+')'+bad
+  if name=='supplementary':body+='c1:=s[1];if(c1!=128640)'+bad
+  if name=='nul':body+='c1:=s[1];c2:=s[2];if(c1!=0 || c2!=122)'+bad
+  rows.append(('literals-'+name,body,'m->init(nil,argv);',0))
+ rows += [
+ ('literals-arguments','p:=hd argv;if(p!="wm")'+bad+'argv=tl argv;p=hd argv;if(p!="-font")'+bad+'argv=tl argv;p=hd argv;if(p!="你好")'+bad+'if(len argv!=1)'+bad,'m->init(nil,argv);',0),
+ ('literals-order','a:="a";b:="aé";if(a>=b || b<=a || a>b || b<a || a==b || !(a!=b))'+bad,'m->init(nil,argv);',0),
+ ('literals-nil-empty','a:string;b:="";if(a!=b || a!="" || b!=nil)'+bad,'m->init(nil,argv);',0),
+ ('literals-nul-compare','a:="a\\0z";b:="a\\0y";if(a<=b || a==b)'+bad,'m->init(nil,argv);',0),
+ ('literals-loop','a:="a🚀z";total:=0;i:=0;while(i<len a){total+=a[i];i++;}if(total!=128859)'+bad,'m->init(nil,argv);',0),
+ ('literals-index-negative','a:="text";i:=-1;c:=a[i];','m->init(nil,argv);',4),
+ ('literals-index-end','a:="text";i:=len a;c:=a[i];','m->init(nil,argv);',4),
+ ('literals-index-nil','a:string;c:=a[0];','m->init(nil,argv);',3),
+ ('literals-index-empty','a:="";c:=a[0];','m->init(nil,argv);',3),
+ ('literals-context','a:="owned";ctxt=ref Draw->Context(nil,nil,nil);if(ctxt.display!=nil)'+bad+'if(len a!=5)'+bad,'ctxt:=ref Draw->Context(nil,nil,nil);m->init(ctxt,argv);keepctxt:=ctxt;',0),
+ ('literals-private-list','a:="private";local:=a::argv;argv=nil;head:=hd local;if(head!="private")'+bad+'if(len local!=4)'+bad,'m->init(nil,argv);',0),
+ ('literals-caller','p:=hd argv;if(p!="wm")'+bad,'a:="caller🚀";if(len a!=7)'+bad+'c:=a[6];if(c!=128640)'+bad+'m->init(nil,argv);',0),
+ ('literals-reload','a:="reload";if(len a!=6)'+bad,'i:=0;while(i<3){m->init(nil,argv);m=load Command "library.dis64";if(m==nil)return;i++;}',0),
+ ('literals-long','a:="'+('é'*255)+'";if(len a!=255)'+bad+'c:=a[254];if(c!=233)'+bad,'m->init(nil,argv);',0),
+ ('literals-duplicates','a:="same";b:="same";if(a!=b)'+bad,'m->init(nil,argv);',0)]
+ for label,values in [('count-limit',['v%02d'%i for i in range(32)]),('total-limit',['a'*255,'b'*255,'c'*255,'d'*255,'tail'])]:
+  body='s:string;total:=0;'
+  for value in values:body+='s="'+value+'";total+=len s;'
+  body+='if(total!='+str(sum(map(len,values)))+')'+bad
+  rows.append(('literals-'+label,body,'m->init(nil,argv);',0))
+ for name,body,call,failure in rows:
+  client='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"-font"::"你好"::nil;'+call+'keep:=argv;}'
   yield name,prefix+body+'}',client,failure

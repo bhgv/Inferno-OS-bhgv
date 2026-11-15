@@ -6,10 +6,11 @@ def instrument(source,control=None):
  extract=runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))['function']
  for signature in ('void\nmarkheap(', 'void*\npoolalloc(', 'void\npoolfree('):source=source.replace(extract(source,signature),'',1)
  source=source.replace('int mutator, nprop, gchalt;','')
+ source=source.replace(extract(source,'int hmsize('),'int hmsize(void *h){Bhdr *b=(Bhdr*)((uchar*)h-O(Bhdr,u.data));require(b->magic==MAGIC_A);return b->size-O(Bhdr,u.data);}',1)
  collector='\n'.join(l for l in (ROOT/'libinterp/gc.c').read_text().splitlines()if not l.startswith('#include'))
  for signature in ('void\nptradd(', 'void\nptrdel('):collector=collector.replace(extract(collector,signature),'',1)
  collector=collector.replace(extract(collector,'static void\nptrmark('),'static void ptrmark(void){for(int i=0;i<nlinkpins;i++)Setmark(linkpins[i]);}')
- arena=(ROOT/'utils/tests/dis64-numeric-gc.c').read_text().split('/* Run single-instruction quanta')[0].replace('#define GcSlots 8','#define GcSlots 64').replace('#define GcSlotBytes 256','#define GcSlotBytes 2048')
+ arena=(ROOT/'utils/tests/dis64-numeric-gc.c').read_text().split('/* Run single-instruction quanta')[0].replace('#define GcSlots 8','#define GcSlots 256').replace('#define GcSlotBytes 256','#define GcSlotBytes 2048')
  arena=arena.replace(extract(arena,'int\nprint('),'',1)
  arena=arena.replace('require(pool == heapmem && bytes <= GcSlotBytes-O(Bhdr, u.data));','require(pool == heapmem && bytes <= GcSlotBytes-O(Bhdr, u.data));\n allocations++;if(allocations==failat)return nil;',1)
  at=source.index('static Prog *observed;');source=source[:at]+collector+'\n'+arena+'\n'+source[at:]

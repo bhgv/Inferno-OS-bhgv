@@ -40,11 +40,14 @@ def unit():
  handlers+='\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in names)
  s=s.replace('#include "tests/leaf-cons-stub.h"','#define cons unused_client_cons_stub\n#include "tests/leaf-cons-stub.h"\n#undef cons')
  heap=(ROOT/'libinterp/heap.c').read_text();strings=(ROOT/'libinterp/string.c').read_text()
+ s+='\n'+extract(strings,'String*\nnewrunes(')+'\n'
  s+='\n'+extract(heap,'void\nfreelist(')+'\nType Tlist={1,freelist,markheap,sizeof(List)};\n'+extract(xec,'List*\ncons(')+'\n'+extract(xec,'OP(movp)')+'\n#define movp actual_movp\n'+extract(xec,'static List*\nlisthead(')+'\n'
  s+='\n'+extract(heap,'Heap*\nheap(')+'\n'+extract(xec,'static void\nnewrecord(')+'\n'+extract(xec,'OP(new)')+'\n'+extract(xec,'OP(newz)')+'\n'
  handlers+='\noptab[INEW]=actual_new;optab[INEWZ]=actual_newz;\n'
  names=('consp','headp','tail','lenl');s+='\n'.join(extract(xec,'OP('+n+')')for n in names)+'\n'+extract(strings,'OP(lenc)')+'\n#undef movp\n'
  handlers+='\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in names+('movp','lenc'))
+ s+='\n'+extract(strings,'int\nstringcmp(')+'\n'+extract(xec,'static void\nbranchstring(')+'\n'+extract(strings,'OP(indc)')+'\n'+'\n'.join(extract(xec,'OP('+n+')')for n in ('beqc','bnec','bltc','blec','bgtc','bgec'))
+ handlers+='\noptab[IINDC]=actual_indc;\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in ('beqc','bnec','bltc','blec','bgtc','bgec'))
  return s+'\n'+(ROOT/'utils/tests/dis64-scalar-client.c').read_text().replace(' CLIENT_HANDLERS',handlers)
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--cfg',action='store_true');p.add_argument('--numeric',action='store_true');p.add_argument('--managed',action='store_true');p.add_argument('--gc',action='store_true');p.add_argument('--gc-control',choices=('frame','list'));p.add_argument('--case',action='append',choices=[r[0]for r in cases()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-cases.py'))['cases']()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-numeric-cases.py'))['cases']()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-managed-cases.py'))['cases']()]);a=p.parse_args();

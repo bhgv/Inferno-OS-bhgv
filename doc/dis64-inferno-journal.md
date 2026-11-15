@@ -9071,3 +9071,56 @@ Construct into a local before calling init: allocations inside prepared argument
 setup still refuse. General payloads/DATA/imports/exports, deeper field access,
 String content comparison/channel services, Draw/Tk/full AWM and live Android
 GUI remain. No whole-VM ASan, concurrent-GC or device startup claim is made.
+
+## INFERNO-0189 — owned Rune32 literals and String content operations
+
+2026-11-15. Baseed811716 /0188; checked current experiment/peer journal. No new
+post beyond FLASHVM-0202/0203 received in0186. No peer runtime/source imported;
+vendor7f2241455734e1142a3254fad9d1ec4f94032ac7 unchanged.
+
+Selected client/Command files now admit ordinary readonly String constants,
+Unicode/NUL, String indexing and all six content comparisons using existing
+production handlers/JIT. Source/data locations are Type/Decl checked; the actual
+single LOAD path is distinguished from unrelated constants. Existing private
+managed-file placement is reused: trailing Rune32 records, MP24+8*i roots,
+32 records/255 Runes each/1024 aggregate. No public ID/opcode/section, signature
+version/hash or native layout changed; face0186 and .m hash4244b354 are retained.
+This is not general managed initializer/ABI admission or an interoperability claim.
+
+Extended MP has its exact size/map. Independent descriptor2 remains Context24/E0;
+NEW must use it rather than expanded MP1. No-literal images keep descriptor1 and
+old bytes. Independent proof checks complete pool/type/MP agreement, used roots,
+String/Word roles and CFG/island boundaries. Constructor pins MP, publishes each
+owned String before later failure, copies full contents, and normal linkmod
+shares String references into the cloned MP. No file payload pointer is retained.
+Source empty literals preserve classic nil representation; serialized zero-Rune
+records independently create non-nil empty owners. NUL never passes through strlen.
+
+22 new pairs; all70 Command pairs/6720 scheduler roots per x64/ARM64 Linux QEMU
+pass actual GC and caller/provider C/RX. Native content checks cover source and
+clone MP against every wire Rune; source-wire checks compare independent expected
+Unicode/NUL values.32 literals/MP280 and255/1024-Rune boundaries execute. The GC
+observer follows module links/MP plus frame/list/record graphs. Omitting only MP
+literal-tail marking loses an observed String before resume, semantic exit10 on
+both targets; private-list frame omission also detects loss. Production collector
+is unchanged; the test arena/observer are bounded at256 slots with actual hmsize.
+
+36 new raw images/four pure guard controls pass host ASan/UBSan and ARM64, plus
+prior41 Command/38 field/41 reference and28/21/64/26 scalar groups/all controls.
+Constructor-only host ASan/UBSan covers70 pairs/all provider allocation refusals;
+extra x64/ARM64 constructors preserve non-nil empty and [0,80000000,ffffffff]
+Rune records. Modified-value witness code does not execute. Full rebuilt consoles
+pass256 main Command roots each plus controls and updated RU/EN tutorial;214
+previous main roots pass again. Prior62 pairs/5952 actual-GC roots pass: combined
+132 pairs/12672 roots per target.140 deterministic Command files;62 scalar bytes
+match0185,26 Command bytes0186,50 bytes0187,96 bytes0188, all202 classic outputs
+unchanged. Eight unsupported/boundary sources emit no payload. AWM remains
+14 accepted/346 refused bodies, with unchanged classic code.
+
+Report doc/dis64-inferno-client-literals-report.md; working examples
+ doc/dis64-command-init.md/.ru.md; native64-port gates include literals/raw/wire/GC.
+General DATA/ADT/arrays, String mutation/concat/slicing, more imports/exports,
+prepared-call constructors, channel/Draw/Tk/full AWM and live Android GUI remain.
+No whole-VM ASan, concurrent-GC or Bionic/device result is inferred.
+
+Additional scalar-library literal gate:4 source pairs/384 actual-GC roots on each target, including direct MP indexing without a mapped FP String. Combined136 pairs/13056 roots per target;206 classic outputs byte-identical. Added to native64-port.py.

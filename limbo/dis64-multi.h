@@ -59,6 +59,20 @@ typedclientfield(Inst *in,Dis64TypedBody *p,unsigned int pc,int probe)
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"context-field-roles");
 }
 
+static int
+typedclientstring(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
+{
+ unsigned int sm,mm,dm;long source,middle,destination;int actual,index=in->op==IINDC;
+ if(!typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) ||
+    !typedoperand(in->mm,&in->m,index?Tint:Tstring,index,1,p,&middle,&mm,&actual))return 0;
+ if(index){if(in->branch || !typedoperand(in->dm,&in->d,Tint,0,0,p,&destination,&dm,&actual) || dm!=AFP || (mm!=AIMM && mm!=AFP))return typedfail(p,"string-index-roles");}
+ else{
+  if(in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc || (mm!=AFP && mm!=AMP))return typedfail(p,"string-branch-roles");
+  destination=in->branch->pc-p->first;dm=AIMM;
+ }
+ p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|(mm==AIMM?AXIMM:mm==AFP?AXINF:AXINM)|DST(dm),middle,source,destination};return 1;
+}
+
 /* Pointer comparisons use the complete native reference, including fused
  * Context field reads. The nil constant remains a readonly mapped MP root. */
 static int
@@ -169,6 +183,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
+        }else if(c->external>=2 && (in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)){
+            if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->external>=2 && in->op==IMOVP && (in->sm==Afpind || in->dm==Afpind)){
             if(!typedclientfield(in,p,pc-p->first,0))goto fail;pc++;
         }else if(c->external>=2 && (in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) &&

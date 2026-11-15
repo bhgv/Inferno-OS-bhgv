@@ -17,9 +17,11 @@ struct Dis64ScalarClientView {
  DisStringPoolView strings;
  Dis64Bindings imports;
  Dis64Section code,requests,names;
- unsigned int count,frame,calls;
+ unsigned int count,frame,calls,literals,contexttype;
  Dis64CallDecoded decoded[Dis64ClientCode];
 };
+
+#include "dis64-client-literals.h"
 
 /* Local indirect framing for checked managed arguments and Context fields.
  * Exactly one operand is indirect; secondary holds its displacement. The
@@ -120,15 +122,15 @@ dis64clientopen(const unsigned char *data,unsigned int bytes,Dis64ScalarClientVi
   switch(s.kind){case Dis64Module:module=s;break;case Dis64Code:v.code=s;break;case Dis64Types:types=s;break;case Dis64Imports:v.requests=s;break;case Dis64Strings:v.names=s;break;default:return 0;}
  }
  if(!dis64modulecheck(data+module.offset,module.bytes,&v.module) || v.module.profile!=1 || v.module.name!=0 ||
-    v.module.entry || v.module.frametype || v.module.databytes!=24 || v.module.datatype!=1 ||
-    !dis64typescheck(data+types.offset,types.bytes,2,4096,&v.types) || v.types.count!=2 ||
+    v.module.entry || v.module.frametype || v.module.datatype!=1 ||
+    !dis64typescheck(data+types.offset,types.bytes,3,4096,&v.types) ||
     !dis64typeget(&v.types,0,&frame) || !dis64typeget(&v.types,1,&mp) || frame.bytes<80 || frame.align!=8 ||
-    mp.bytes!=24 || mp.align!=8 || mp.mapbytes!=1 || mp.map[0]!=0xe0)return 0;
+    mp.align!=8)return 0;
 
  if(!disstringpoolcheck(data+v.names.offset,v.names.bytes,65536,&v.strings) ||
     !dis64clientbindingscheck(data+v.requests.offset,v.requests.bytes,0,&v.strings,0,0,64,64,&v.imports) ||
-    v.requests.bytes>Dis64LocalBytes || v.names.bytes>Dis64LocalBytes || !v.imports.count || v.strings.count!=v.imports.count+3 || v.code.bytes<4)return 0;
- for(i=0;i<v.strings.count;i++){
+    v.requests.bytes>Dis64LocalBytes || v.names.bytes>Dis64LocalBytes || !v.imports.count || !dis64clientdatacheck(&v) || v.code.bytes<4)return 0;
+ for(i=0;i<v.imports.count+3;i++){
   if(!disstringpoolget(&v.strings,i,&name) || !name.count || name.count>(i==1?1023U:255U))return 0;
   for(j=0;j<name.count;j++)if(!disruneat(&name,j,&rune) || !rune || rune>127 || (i==1 && j==0 && rune=='$'))return 0;
  }
@@ -158,6 +160,7 @@ dis64clientbranch(unsigned int op)
 {
  switch(op){case IJMP:case IBEQW:case IBNEW:case IBLTW:case IBLEW:case IBGTW:case IBGEW:
  case IBEQL:case IBNEL:case IBLTL:case IBLEL:case IBGTL:case IBGEL:
+ case IBEQC:case IBNEC:case IBLTC:case IBLEC:case IBGTC:case IBGEC:
  case IBEQF:case IBNEF:case IBLTF:case IBLEF:case IBGTF:case IBGEF:return 1;}
  return 0;
 }
@@ -252,7 +255,7 @@ dis64clientprove(Dis64ScalarClientView *v,int library)
  Dis64CallDecoded *d;Dis64Instruction *in;Dis64Binding b;
  const unsigned char *data=v->envelope.data;
  for(i=0;i<v->count;i++){if(at>=v->code.bytes || !dis64clientinstructionread(data+v->code.offset+at,v->code.bytes-at,v->decoded+i,&used))return 0;at+=used;}
- if(at!=v->code.bytes)return 0;
+ if(at!=v->code.bytes || !dis64clientliteraluses(v))return 0;
  if(!dis64typeget(&v->types,0,&frame))return 0;
  for(i=0;i<frame.mapbytes*8;i++)if(frame.map[i/8]&(0x80>>(i%8))){
   if(i<8)return 0;

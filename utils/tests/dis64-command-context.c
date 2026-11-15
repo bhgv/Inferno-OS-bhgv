@@ -34,6 +34,29 @@ commandfieldcheck(void)
  }
 }
 
+/* Compare owned source/clone String values with the complete wire Rune32
+ * records. Empty records are non-nil owners; no strlen or UTF-8 truncation. */
+static void
+commandliteralcheck(const Dis64ScalarClientView *view,uchar *mp)
+{
+ unsigned int i,j,expected,actual;String *value;DisRuneView rune;
+ for(i=0;i<view->literals;i++){
+  require(disstringpoolget(&view->strings,view->imports.count+3+i,&rune));memmove(&value,mp+24+8*i,sizeof(value));
+  require(value!=nil && value!=H && D2H(value)->t==&Tstring && (unsigned int)(value->len<0?-value->len:value->len)==rune.count && value->max>=(int)rune.count);
+  for(j=0;j<rune.count;j++){
+   require(disruneat(&rune,j,&expected));if(value->len<0)memmove(&actual,value->Srune+j,sizeof(actual));else actual=value->Sascii[j];require(actual==expected);
+  }
+ }
+}
+static void
+commandproviderliterals(Modlink *link)
+{
+ Dis64ScalarClientView view;unsigned int i;void *a,*b;
+ require(dis64commandcheck(providerfile,providerfilebytes,&view));
+ commandliteralcheck(&view,link->m->origmp);commandliteralcheck(&view,link->MP);
+ for(i=0;i<view.literals;i++){memmove(&a,link->m->origmp+24+8*i,sizeof(a));memmove(&b,link->MP+24+8*i,sizeof(b));require(a==b);}
+}
+
 static void clientempty(void);
 /* Every provider read/constructor/link allocation failure must retire the source
  * MP, its clone, exported names, code, maps, pins and normal registry entry. */
@@ -46,7 +69,7 @@ commandproviderfaults(const Dis64ScalarClientView *view)
    view->envelope.data+view->names.offset,view->names.bytes,0);
   require(link && link!=H && !link->m->entry && !link->m->entryt && link->m->ext && link->nlinks==1 &&
    link->MP!=H && link->m->origmp!=H && link->MP!=link->m->origmp && modules==link->m);
-  total=allocations;ptrdel(D2H(link));destroy(link);clientempty();require(Tmodlink.ref==1);
+  commandproviderliterals(link);total=allocations;ptrdel(D2H(link));destroy(link);clientempty();require(Tmodlink.ref==1);
   for(fault=1;fault<=total;fault++){
    allocations=0;failat=fault;link=read64calllibrary("library.dis64",jit,view->envelope.data+view->requests.offset,view->requests.bytes,
     view->envelope.data+view->names.offset,view->names.bytes,0);failat=0;
