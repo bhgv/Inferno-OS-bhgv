@@ -38,7 +38,7 @@ probe(Array *array, WORD index, int operation, int alias, int valid, uchar *expe
 {
 	union {uvlong align;uchar bytes[128];} slots;
 	uchar before[128];
-	WORD wanted=(WORD)(uintptr)expected;
+	uintptr wanted=(uintptr)expected;
 	Inst sentinel;
 	void (*functions[])(void)={indx,indb,indw,indl,indf};
 	int sa,ia,oa,offset;

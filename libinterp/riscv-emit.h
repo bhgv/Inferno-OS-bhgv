@@ -595,7 +595,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvguard(&b, 7, Rvt0, Rvt4); rvr(&b, 0x33, 0, 1, Rvt4, Rvt4, Rvt6); rvguard(&b, 7, Rvt0, Rvt4);
 		rvguard(&b, 1, Rvt3, Rvzero); rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt3, Rvt6);
 		rvr(&b, 0x33, 0, 0, Rvt5, Rvt3, Rvt4); rvguard(&b, 7, Rvt5, Rvt3);
-		rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, abi->wordbytes);
+		rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, 8);
 		break;
 	case IMULX: case IDIVX:
 		/* Preserve the signed 64-bit intermediate; only DIVX needs hardware division. */
@@ -869,7 +869,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 			if(scale) rvi(&b, 0x13, 1, Rvt4, Rvt4, scale);
 			rvr(&b, 0x33, 0, 0, Rvt5, Rvt3, Rvt4);
 			rvguard(&b, 7, Rvt5, Rvt3);
-			rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, abi->wordbytes);
+			rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, 8);
 		}
 		break;
 	case IRUNT:

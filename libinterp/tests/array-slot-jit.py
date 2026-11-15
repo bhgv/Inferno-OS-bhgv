@@ -93,7 +93,7 @@ int emit(u32int *out,int cap,int wb,int op)
                 if os.environ.get('ARRAY_SLOT_OP') and op!=int(os.environ['ARRAY_SLOT_OP']):
                     continue
                 sw=8
-                mw=dw=wb
+                mw=8;dw=wb
                 out=(C.c_uint32*257)(*([0xa5a5a5a5]*257))
                 n=lib.emit(out,256,wb,op)
                 require(0<n<=128 and lib.emit(None,256,wb,op)==n,(arch,wb,name,'sizing'))
@@ -105,7 +105,7 @@ int emit(u32int *out,int cap,int wb,int op)
                 machine.mem_write(CODE,bytes(out)[:n*4])
                 machine.ctl_remove_cache(CODE,CODE+1024)
                 maximum=(1<<(wb*8-1))-1
-                cases=[('slot',slot,pointer) for slot,width in ((('s',8),('d',wb)) if op==5 else (('s',8),('d',wb),('m',wb)))
+                cases=[('slot',slot,pointer) for slot,width in ((('s',8),('d',wb)) if op==5 else (('s',8),('d',wb),('m',8)))
                        for pointer in [0,MASK]+[MASK-i for i in range(1,width)]]
                 cases += [('owner',pointer,0) for pointer in [0,MASK]+[MASK-i for i in range(1,wb)]]
                 cases += [('type',pointer,0) for pointer in [0,MASK]+[MASK-i for i in range(1,28)]]
@@ -180,7 +180,7 @@ int emit(u32int *out,int cap,int wb,int op)
                             put(image,24,m)
                             expected=bytearray(image)
                             if valid:
-                                put(expected,(d if op==5 else m)-BASE,result,dw)
+                                put(expected,(d if op==5 else m)-BASE,result,dw if op==5 else mw)
                             machine.mem_write(BASE,bytes(image))
                             machine.mem_write(top,bytes(topimage))
                             if arch=='amd64':

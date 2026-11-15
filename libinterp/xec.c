@@ -1981,7 +1981,8 @@ static void
 arrayindex(int width)
 {
 	Array *array;
-	WORD index, address;
+	WORD index;
+	uchar *address;
 
 	/* Capture sources only after all decoded slots fit, including the result. */
 	if(R.s == nil || R.s == H || (uintptr)R.s > (uintptr)-1-sizeof(array) ||
@@ -1990,7 +1991,7 @@ arrayindex(int width)
 		error(exBounds);
 	memmove(&array, R.s, sizeof(array));
 	memmove(&index, R.d, sizeof(index));
-	address = (WORD)(uintptr)arrayaddress(array, index, width);
+	address = arrayaddress(array, index, width);
 	memmove(R.m, &address, sizeof(address));
 }
 

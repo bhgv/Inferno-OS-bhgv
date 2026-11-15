@@ -547,7 +547,7 @@ static void realbranches(Module *m) {
 static void arrays(Module *m) {
     Type type={0};Array array={0},*owner;
     uchar bytes[128];
-    WORD index,out;
+    WORD index;uintptr out;
     int operations[]={IINDB,IINDW,IINDL,IINDF},op,i,stride;
     Inst *pc=m->prog+1;
     active=m;R.PC=pc;
@@ -559,7 +559,7 @@ static void arrays(Module *m) {
         if(i<0 || i>=8){assert(!kprotect(dispatch,nil));assert(out==123);}
         else {
             stride=op==0?1:op==1?sizeof(WORD):8;
-            assert(kprotect(dispatch,nil) && (UWORD)out==(UWORD)(uintptr)(bytes+i*stride));
+            assert(kprotect(dispatch,nil) && out==(uintptr)(bytes+i*stride));
         }
         assert(R.PC==pc);
     }

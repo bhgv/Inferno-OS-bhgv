@@ -141,7 +141,7 @@ main(void)
     LeafLayout abi = {0};
     unsigned char memory[512], expected[512];
     void *code, *output;
-    uintptr owner, descriptor, backing, bad;
+    uintptr owner, descriptor, backing, bad, address;
     WORD length, index, result;
     int op, n, alignment, slot, fault, width, li, ii, si, dataid, alias, valid;
     char *selection = getenv("ARRAY_SLOT_CASE");
@@ -174,7 +174,7 @@ main(void)
         if(!selection || strcmp(selection,"slots")==0){
             for(alignment = 0; alignment < 8; alignment++){
                 for(slot = 0; slot < (op == 5 ? 2 : 3); slot++){
-                    width = slot == 0 ? sizeof(owner) : sizeof(WORD);
+                    width = slot == 0 || slot == 2 ? sizeof(owner) : sizeof(WORD);
                     for(fault = 0; fault <= width; fault++){
                         memset(memory,0xa5,sizeof(memory));
                         R.s = memory+32+alignment;
@@ -234,9 +234,9 @@ main(void)
                                     if(op == 5) R.d = output; else R.m = output;
                                     valid = op == 5 || (index >= 0 && index < length && width >= 0 &&
                                         (width == 0 || (dataid == 2 && (uvlong)index <= 0x7fffffff/(unsigned)width)));
-                                    result = op == 5 ? length : (WORD)(backing+(width == 0 ? 0 : (uintptr)index*(unsigned)width));
+                                    result = length;address=backing+(width == 0 ? 0 : (uintptr)index*(unsigned)width);
                                     memcpy(expected,memory,sizeof(expected));
-                                    if(valid) memcpy(expected+((uchar *)output-memory),&result,sizeof(result));
+                                    if(valid){if(op==5)memcpy(expected+((uchar *)output-memory),&result,sizeof(result));else memcpy(expected+((uchar *)output-memory),&address,sizeof(address));}
                                     verify(handlers[op],code,memory,valid ? nil : exBounds,valid,expected,FE_DIVBYZERO);
                                 }
                             }
@@ -274,9 +274,9 @@ main(void)
                 valid = op != 4;
                 /* Only prefixes that actually wrap are used for the generic probe. */
                 if(!valid && fault > abi.typesize+4) continue;
-                result = op == 5 ? length : (WORD)backing;
+                result = length;address=backing;
                 memcpy(expected,memory,sizeof(expected));
-                if(valid) memcpy(expected+(op == 5 ? 128 : 256),&result,sizeof(result));
+                if(valid){if(op==5)memcpy(expected+128,&result,sizeof(result));else memcpy(expected+256,&address,sizeof(address));}
                 verify(handlers[op],code,memory,valid ? nil : exBounds,valid,expected,FE_DIVBYZERO);
             }
         }

@@ -19,10 +19,11 @@ Failures raise exBounds without changing the destination.
 
 The helper preserves fixed opcode strides for byte, word, real and big arrays;
 only indx consults the descriptor's size. A generic nil/H/negative-size descriptor
-is rejected after owner/index validation. Pointer results still use the active
-VM word slot: WORD32 with host pointers is an explicit scalar test model, not a
-completed pointer-preserving ABI32/ABI64 bridge. The cast through uintptr makes
-that existing narrowing explicit; no builtin/frame layout is silently changed.
+is rejected after owner/index validation. Pointer results now use a native pointer slot, independently of scalar WORD.
+The C handler and AMD64/ARM64/RV64 emitters capture scalar indexes at WORD width
+and publish the complete pointer. This corrects the earlier explicit narrowing
+in Word32/ref64. Borrowed address slots therefore require native pointer storage;
+this is not automatic admission of legacy 32-bit frames.
 This is not a verifier for arbitrary fabricated array storage or real allocation
 ownership, which remains the heap/runtime's responsibility.
 
@@ -43,10 +44,9 @@ parent crash on every empty record. Both complete word models pass ASan+UBSan
 with stack instrumentation enabled. The sandbox's known error-jump warning is
 not suppressed.
 
-AMD64, AArch64 and RV64 additionally emit lena for both word widths and fixed
-indb/indw/indl/indf address computation when WORD can hold a native pointer.
-WORD32 address-producing leaves decline compilation and retain the interpreter
-path. Generic indx remains in the helper, including zero-width descriptors.
+AMD64, AArch64 and RV64 emit native-pointer results for fixed and descriptor
+indexing in both WORD models. LENA still writes a scalar WORD. Generic INDX
+preserves zero-width descriptor identities.
 RV64 captures source pointer slots with two word loads, preserving the existing
 four-byte operand-alignment contract without requiring misaligned LD support.
 Array length/data offsets are derived from the actual Array declaration during
@@ -78,3 +78,10 @@ ARM64 and RV64M. Descriptor offsets are supplied explicitly by the compiler
 adapter. See README.aggregate-slots.md for native-domain guards, zero-sized
 records, malformed layouts and the expanded C/native verification matrices.
 WORD32 retains the existing C narrowing behavior and declines this native leaf.
+
+
+INFERNO-0193 adds `array-pointer-width.py`: independent high-address/canary/alias
+oracles on all three emitters and per-backend narrowing omission controls.
+The selected Limbo file profile still refuses direct INDB: its borrowed temporary
+and consumer proof must be ported before native pointers can occupy that frame.
+See [port report](../../doc/dis64-inferno-index-width-report.md).

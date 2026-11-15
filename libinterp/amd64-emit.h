@@ -2964,7 +2964,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		/* Bound all decoded slots before reading owners, indices or descriptors. */
 		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
 		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, abi->wordbytes);
-		x64ptr(&b, 1, abi->m); x64pcspan(&b, 9, abi->wordbytes);
+		x64ptr(&b, 1, abi->m); x64pcspan(&b, 9, 8);
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		x64byte(&b, 0x48); x64byte(&b, 0x85); x64byte(&b, 0xc0); x64guard(&b, 0x75);
 		x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf8); x64byte(&b, 0xff); x64guard(&b, 0x75);
@@ -3001,7 +3001,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64patchbyte(&b, empty, b.n-empty-1);
 		x64byte(&b, 0x48); x64byte(&b, 0x89); x64byte(&b, 0xd0);
 		x64patchbyte(&b, done, b.n-done-1);
-		x64ptr(&b, 2, abi->m); x64store(&b, 0, abi->wordbytes);
+		x64ptr(&b, 2, abi->m); x64store(&b, 0, 8);
 	}else if(p.kind == LeafFixedFrame){
 		/* Read the explicit frame layout before capturing either arithmetic operand. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047) return 0;
@@ -3208,7 +3208,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		x64ptr(&b, 0, abi->s); x64pcspan(&b, 8, 8);
 		x64ptr(&b, 2, abi->d); x64pcspan(&b, 10, abi->wordbytes);
 		if(p.kind == LeafIndex){
-			x64ptr(&b, 1, abi->m); x64pcspan(&b, 9, abi->wordbytes);
+			x64ptr(&b, 1, abi->m); x64pcspan(&b, 9, 8);
 		}
 		x64ptr(&b, 0, abi->s); x64load(&b, 0, 8);
 		if(p.kind == LeafLength){
@@ -3244,7 +3244,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			x64byte(&b, 0x48); x64byte(&b, 0x83); x64byte(&b, 0xf9); x64byte(&b, 0xff); x64guard(&b, 0x75);
 			if(scale){ x64byte(&b, 0x48); x64byte(&b, 0xc1); x64byte(&b, 0xe0); x64byte(&b, scale); }
 			x64byte(&b, 0x48); x64byte(&b, 0x01); x64byte(&b, 0xc8); x64guard(&b, 0x73);
-			x64ptr(&b, 2, abi->m); x64store(&b, 0, abi->wordbytes);
+			x64ptr(&b, 2, abi->m); x64store(&b, 0, 8);
 		}
 	}else if(p.kind == LeafRealPower){
 		/* Preflight complete slots before loads, conversions or FP effects. */

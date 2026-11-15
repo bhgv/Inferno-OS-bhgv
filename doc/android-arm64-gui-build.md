@@ -519,3 +519,13 @@ Updated [EN](dis64-command-init.md)/[RU](dis64-command-init.ru.md) examples keep
 view after dropping the original buffer. Element indexing remains refused: the
 shared arrayindex helper's WORD-sized address result needs a coherent native
 borrowed-pointer port before Word32/ref64 execution. No Android GUI/APK claim.
+
+## Native index-result width (INFERNO-0193)
+
+C and AMD64/ARM64/RV64 array index paths now preserve full native addresses in
+Word32/ref64. Index/length scalar widths are unchanged. Independent high-address
+oracles, narrowing controls and native x64/ARM64-QEMU differential execution are
+recorded in the [report](dis64-inferno-index-width-report.md). Selected Limbo
+indexing remains refused until its borrowed temporary slots and owner/consumer
+proof are ported. A corrected low-level address result does not enable general
+indexed AWM modules or establish Android device GUI/APK execution.

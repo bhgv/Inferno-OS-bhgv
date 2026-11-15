@@ -408,7 +408,7 @@ leafop(LeafOp *p, int op, int wordbytes)
 	case INEGF: p->kind = LeafNegReal; p->bytes = 8; break;
 	case ILENA: p->kind = LeafLength; break;
 	case IINDB: case IINDW: case IINDL: case IINDF:
-		/* Match the C interpreter: validate a native address, then store WORD. */
+		/* Native address result width is independent of scalar WORD width. */
 		p->kind = LeafIndex;
 		p->bytes = op == IINDB ? 1 : op == IINDW ? wordbytes : 8;
 		break;

@@ -24,7 +24,7 @@ main(void)
 	uchar expected[160],initial[160],backing[256];
 	uintptr bases[]={(uintptr)backing,0,(uintptr)H,(uintptr)-32};
 	int widths[]={0,1,3,7,8,16,255,0x7fffffff};
-	WORD index,wanted;
+	WORD index;uintptr wanted;
 	Inst sentinel;
 	REG saved=R;
 	int w,i,b,sa,ia,placement,d,k;
@@ -41,7 +41,7 @@ main(void)
 		type.size=widths[w];index=i;array.data=(uchar*)bases[b];
 		if(type.size && (bases[b]==0 || bases[b]==(uintptr)H ||
 		   (uvlong)i*type.size>0x7fffffff || bases[b]>(uintptr)-1-(uintptr)i*type.size))continue;
-		wanted=(WORD)(bases[b]+(uintptr)i*type.size);
+		wanted=bases[b]+(uintptr)i*type.size;
 		for(sa=0;sa<8;sa++)for(ia=0;ia<8;ia++)for(placement=0;placement<12;placement++){
 			for(k=0;k<sizeof(slots.bytes);k++)slots.bytes[k]=(uchar)(k*37+11);
 			R.s=slots.bytes+16+sa;R.d=slots.bytes+56+ia;
