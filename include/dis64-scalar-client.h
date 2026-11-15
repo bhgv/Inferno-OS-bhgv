@@ -18,6 +18,7 @@ struct Dis64ScalarClientView {
  Dis64Bindings imports;
  Dis64Section code,requests,names;
  unsigned int count,frame,calls,literals,contexttype,bytearrays,bytetype,intarrays,inttype;
+ unsigned int prooftype,localcount,localused,localtype[8],localentry[8];
  Dis64CallDecoded decoded[Dis64ClientCode];
 };
 
@@ -141,7 +142,7 @@ dis64clientopen(const unsigned char *data,unsigned int bytes,Dis64ScalarClientVi
 
  if(!disstringpoolcheck(data+v.names.offset,v.names.bytes,65536,&v.strings) ||
     !dis64clientbindingscheck(data+v.requests.offset,v.requests.bytes,0,&v.strings,0,0,64,64,&v.imports) ||
-    v.requests.bytes>Dis64LocalBytes || v.names.bytes>Dis64LocalBytes || !v.imports.count || !dis64clientdatacheck(&v) || v.code.bytes<4)return 0;
+    v.requests.bytes>Dis64LocalBytes || v.names.bytes>Dis64LocalBytes || !v.imports.count || !dis64clientdatacheck(&v) || v.localcount || v.code.bytes<4)return 0;
  for(i=0;i<v.imports.count+3;i++){
   if(!disstringpoolget(&v.strings,i,&name) || !name.count || name.count>(i==1?1023U:255U))return 0;
   for(j=0;j<name.count;j++)if(!disruneat(&name,j,&rune) || !rune || rune>127 || (i==1 && j==0 && rune=='$'))return 0;
@@ -259,17 +260,18 @@ dis64commandarguments(Dis64ScalarClientView *v,unsigned int pc,Dis64ClientSlot *
  return in->op==IMCALL && in->mode==(SRC(AFP)|AXIMM|DST(AMP)) && in->source==40 && !in->destination && !in->middle;
 }
 
+#include "dis64-client-local.h"
 /* All instructions and islands are proved before CFG facts are solved. */
 static int
-dis64clientprove(Dis64ScalarClientView *v,int library)
+dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
 {
  Dis64ClientSlot slots[Dis64ClientSlots]={{0}};Dis64ClientNode nodes[Dis64ClientCode]={{0}},*node;
  unsigned int nslots=0,i,j,k,changed,seed[2]={0},previous[Dis64ClientSlots],at=4,used,offset,kind,width,result,ordinal,start;Dis64Type frame;
  Dis64CallDecoded *d;Dis64Instruction *in;Dis64Binding b;
  const unsigned char *data=v->envelope.data;
- for(i=0;i<v->count;i++){if(at>=v->code.bytes || !dis64clientinstructionread(data+v->code.offset+at,v->code.bytes-at,v->decoded+i,&used))return 0;at+=used;}
- if(at!=v->code.bytes || !dis64clientliteraluses(v))return 0;
- if(!dis64typeget(&v->types,0,&frame))return 0;
+ if(!ready){for(i=0;i<v->count;i++){if(at>=v->code.bytes || !dis64clientinstructionread(data+v->code.offset+at,v->code.bytes-at,v->decoded+i,&used))return 0;at+=used;}
+ if(at!=v->code.bytes || !dis64clientliteraluses(v))return 0;}
+ if(!dis64typeget(&v->types,v->prooftype,&frame))return 0;
  for(i=0;i<frame.mapbytes*8;i++)if(frame.map[i/8]&(0x80>>(i%8))){
   if(i<8)return 0;
   if(8*i>v->frame-24 || nslots==Dis64ClientSlots)return 0;
@@ -289,6 +291,9 @@ dis64clientprove(Dis64ScalarClientView *v,int library)
   }
   for(i=0;i<v->count;i++)if((v->decoded[i].instruction.op==IINDB || v->decoded[i].instruction.op==IINDW)){unsigned int reads[2]={0},writes[2]={0};
    if(!dis64clientindex(v,i,slots,&nslots,reads,writes))return 0;
+  }
+  if(library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IFRAME){unsigned int bits[2]={0};
+   if(!dis64clientlocalcall(v,i,slots,nslots,bits))return 0;
   }
   if(!library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IMFRAME){
    Dis64Binding binding;unsigned int bits[2]={0};long ordinal=v->decoded[i].instruction.middle;
@@ -310,6 +315,10 @@ dis64clientprove(Dis64ScalarClientView *v,int library)
   if(in->op==IINDB || in->op==IINDW){
    if(!dis64clientindex(v,i,slots,&nslots,node->need,node->give))return 0;
    node->next=i+2;i++;continue;
+  }
+  if(in->op==IFRAME){
+   if(!library || !dis64clientlocalcall(v,i,slots,nslots,node->need))return 0;
+   i+=3;node->next=i+1;continue;
   }
   if(in->op!=IMFRAME){
    if(dis64clientfieldop(d)){if(!dis64clientfieldroles(slots,nslots,d,node->need,node->give))return 0;}
@@ -351,6 +360,8 @@ dis64clientprove(Dis64ScalarClientView *v,int library)
     (nodes[i].target<v->count && !nodes[nodes[i].target].boundary)))return 0;
  if(!dis64clientflow(nodes,v->count,seed))return 0;return 1;
 }
+static int
+dis64clientprove(Dis64ScalarClientView *v,int library){return dis64clientbodyprove(v,library,0);}
 static int
 dis64clientcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClientView *out)
 {

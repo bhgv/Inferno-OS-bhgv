@@ -1,13 +1,15 @@
 #include "dis64-file-strings.h"
 /* Selected ordinary Command.init producer; fixed opaque-ref/ListString contract. */
 static int
-dis64commandshape(Decl *fn)
+dis64commandargs(Decl *fn)
 {
  Decl *a,*b;
- if(!fn || !fn->sym || strcmp(fn->sym->name,"init") || !fn->ty || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys || fn->ty->tof->kind!=Tnone)return 0;
+ if(!fn || !fn->sym || !fn->ty || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys || fn->ty->tof->kind!=Tnone)return 0;
  a=fn->ty->ids;b=a?a->next:nil;
  return a && b && !b->next && a->ty->kind==Tref && a->ty->tof->kind==Tadt && b->ty->kind==Tlist && b->ty->tof->kind==Tstring;
 }
+static int
+dis64commandshape(Decl *fn){return dis64commandargs(fn) && !strcmp(fn->sym->name,"init");}
 /* Existing Dis indirect-source operand order; selected field proof owns its role. */
 static int
 dis64clientencode(uchar *out,unsigned int *at,Dis64Instruction *in,long base,long secondary,long field)
@@ -20,6 +22,7 @@ dis64clientencode(uchar *out,unsigned int *at,Dis64Instruction *in,long base,lon
  values[count++]=in->source;values[count++]=field;values[count++]=in->destination;
  for(i=0;i<count;i++){n=disoperand(out+*at,4,values[i]);if(!n)return 0;*at+=n;}return 1;
 }
+#include "dis64-command-local.h"
 int
 dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long count,long databytes)
 {
@@ -28,6 +31,7 @@ dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long c
  uchar *code=nil,*output=nil,*typedata=nil,*strings=nil,*runes=nil,*maps=nil;uchar metadata[24],exports[36];
  unsigned int sizes[5],i,at=4,bytes,ntypes;char *failure="unsupported ordinary init library",*detail=nil;
  if(strcmp(impdecl->sym->name,"Command") || nf<1 || !dis64commandshape(functions[0]))return 0;
+ if(nf>1)return dis64commandlocalfile(globals,functions,nf,instructions,count,databytes);
  fn=functions[0];
  if(nf!=1 || fn->pc->pc || count<1 || count>128 || !filestringscollect(&literals,globals,databytes))goto done;
  failure="unsupported init body/layout";

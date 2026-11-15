@@ -76,3 +76,8 @@ BIN=$ROOT/$OBJDIR/bin
 
 CFLAGS='-DINCPATH="'$ROOT/module'"' $CFLAGS
 YFLAGS=-d
+
+# The selected file writer and its independent proof are included by dis64-calls.c.
+dis64-calls.$O: dis64-client.h dis64-command.h dis64-command-local.h dis64-file-strings.h\
+	$ROOT/include/dis64-scalar-client.h $ROOT/include/dis64-client-local.h\
+	$ROOT/include/dis64-client-literals.h $ROOT/include/dis64-command-image.h

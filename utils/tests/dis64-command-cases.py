@@ -31,6 +31,7 @@ def cases(pathlength=13):
  yield from arraycases(pathlength)
  yield from indexcases(pathlength)
  yield from intarraycases(pathlength)
+ yield from localcases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -320,3 +321,45 @@ def intarraycases(pathlength=13):
   call='a:=array[2]of int;a[1]=123456;n:=a[1];if(n!=123456)'+bad+'argv:="wm"::nil;m->init(nil,argv);keep:=argv;'
   caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;'+call+'}'
   yield 'intarray-'+name,prefix+body+'}',caller,failure
+
+def localcases(pathlength=13):
+ args='ctxt:ref Draw->Context,argv:list of string'
+ bad='{z:=0;bad:=1/z;}'
+ check='if(len argv!=2)'+bad+'s:=hd argv;if(s!="wm")'+bad
+ default='first(ctxt,argv);'
+ rows=[
+ ('once',default,check,[],0),
+ ('twice',default+default,check,[],0),
+ ('loop','i:=0;while(i<3){first(ctxt,argv);i++;}',check,[],0),
+ ('nil-args','first(nil,nil);','if(ctxt!=nil || argv!=nil)'+bad,[],0),
+ ('context','ctxt=ref Draw->Context(nil,nil,nil);first(ctxt,argv);if(ctxt==nil)'+bad,'if(ctxt==nil)'+bad+check,[],0),
+ ('context-fields','ctxt=ref Draw->Context(nil,nil,nil);first(ctxt,argv);','if(ctxt==nil)'+bad+'d:=ctxt.display;s:=ctxt.screen;w:=ctxt.wm;if(d!=nil || s!=nil || w!=nil)'+bad,[],0),
+ ('callee-list',default,'local:="owned"::argv;argv=nil;if(len local!=3)'+bad+'head:=hd local;if(head!="owned")'+bad+'keep:=local;',[],0),
+ ('callee-loop',default,'total:=0;while(argv!=nil){s:=hd argv;total+=len s;argv=tl argv;}if(total!=5)'+bad,[],0),
+ ('callee-string',default,'s:="a🚀z";s=s[1:2];if(s!="🚀")'+bad,[],0),
+ ('callee-bytes',default,'a:=array[3]of byte;a[1]=byte 90;n:=int a[1];if(n!=90)'+bad,[],0),
+ ('callee-ints',default,'a:=array[3]of int;a[1]=123456;n:=a[1];if(n!=123456)'+bad,[],0),
+ ('callee-slice',default,'a:=array[4]of int;b:=a[1:];a=nil;b[0]=65536;n:=b[0];if(n!=65536)'+bad,[],0),
+ ('caller-live','a:=array[2]of int;a[1]=65536;first(ctxt,argv);n:=a[1];if(n!=65536)'+bad,'a:=array[2]of byte;a[1]=byte 90;n:=int a[1];if(n!=90)'+bad,[],0),
+ ('early-return',default+default,'if(len argv==2)return;'+bad,[],0),
+ ('branch','if(argv!=nil)first(ctxt,argv);',check,[],0),
+ ('nested',default,'second(ctxt,argv);', [('second',check)],0),
+ ('deep',default,'second(ctxt,argv);',[('second','third(ctxt,argv);'),('third',check)],0),
+ ('diamond',default,'second(ctxt,argv);third(ctxt,argv);',[('second','fourth(ctxt,argv);'),('third','fourth(ctxt,argv);'),('fourth',check)],0),
+ ('sibling','first(ctxt,argv);second(ctxt,argv);',check,[('second',check)],0),
+ ('cross','first(ctxt,argv);second(ctxt,argv);','second(ctxt,argv);',[('second',check)],0),
+ ('max-depth',default,'a:=array[2]of int;b:=array[2]of byte;a[1]=65536;b[1]=byte 90;h2(ctxt,argv);n:=a[1];v:=int b[1];if(n!=65536 || v!=90)'+bad,[(('h'+str(i)),('h'+str(i+1)+'(ctxt,argv);')if i<8 else check)for i in range(2,9)],0),
+ ('nested-loop',default,'i:=0;while(i<3){second(ctxt,argv);i++;}', [('second',check)],0),
+ ('nested-live',default,'a:=array[2]of int;a[1]=65536;second(ctxt,argv);n:=a[1];if(n!=65536)'+bad,[('second','a:=array[2]of byte;a[1]=byte 7;n:=int a[1];if(n!=7)'+bad)],0),
+ ('nested-nil',default,'second(nil,nil);',[('second','if(argv!=nil || ctxt!=nil)'+bad)],0),
+ ('error',default,'z:=0;bad:=1/z;',[],1),
+ ('nested-error',default,'second(ctxt,argv);',[('second','z:=0;bad:=1/z;')],1),
+ ('bounds',default,'a:=array[1]of int;n:=a[1];',[],4),
+ ('nested-bounds',default,'second(ctxt,argv);',[('second','a:=array[1]of byte;n:=int a[1];')],4)]
+ for name,body,helper,others,failure in rows:
+  helpers=[('first',helper)]+others
+  declarations=''.join(fn+':fn('+args+');'for fn,_ in helpers)
+  definitions=''.join(fn+'('+args+'){'+code+'}'for fn,code in helpers)
+  provider='implement Command;include "command.m";'+declarations+'init('+args+'){'+body+'}'+definitions
+  caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"a🚀z"::nil;m->init(nil,argv);if(len argv!=2)'+bad+'}'
+  yield 'local-'+name,provider,caller,failure

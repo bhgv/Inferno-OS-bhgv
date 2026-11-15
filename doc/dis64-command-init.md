@@ -18,9 +18,11 @@ include "sh.m";
 ```limbo
 implement Command;
 include "command.m";
+validate: fn(ctxt: ref Draw->Context, argv: list of string);
 init(ctxt: ref Draw->Context, argv: list of string)
 {
     if(ctxt == nil || ctxt.display != nil) return;
+    validate(ctxt, argv);
     saved := ctxt;
     display := ctxt.display;
     screen := ctxt.screen;
@@ -48,6 +50,11 @@ init(ctxt: ref Draw->Context, argv: list of string)
     }
     if(total != 11){ z := 0; bad := 1/z; }
     keep := saved;
+}
+validate(ctxt: ref Draw->Context, argv: list of string)
+{
+    if(ctxt == nil || len argv != 3){ z := 0; bad := 1/z; }
+    keep := argv;
 }
 ```
 
@@ -167,8 +174,10 @@ No new public opcode, section or type-kind ID is assigned; prior scalar signatur
 v1 bytes remain unchanged. Other implementations must not infer general managed
 signature interoperability from this fixed-shape experiment.
 
-The admitted provider has one Command.init export at PC0/frame0, no imports or
-helper calls, a bounded proven body and the existing private 24-byte MP prefix and mapped literal roots.
+The admitted provider has one Command.init export at PC0/frame0, no imports,
+bounded proven bodies and the existing private 24-byte MP prefix and mapped
+literal roots. Up to eight local helpers use the same two mapped arguments and
+void return; they have separate checked frames and an acyclic call graph.
 The executable importer still has an argument-free void process entry. One
 interface/path is admitted. Up to32 extra readonly String roots are admitted per
 image, each at most255 Runes,1024 Runes in aggregate. General DATA initializers,
@@ -234,3 +243,13 @@ distinct checked classes and primitive descriptors, even in the same frame.
 An empty `[0:0]` slice of nil remains nil; nonempty nil slices and out-of-range
 accesses keep the existing runtime errors. Compound indexed operations, general
 array initializers and other element types are still outside this profile.
+
+Local helper declarations belong to the implementation file, as `validate` above
+demonstrates. They are reached through ordinary FRAME/CALL/RET; only init is
+exported. Each helper currently takes exactly `(ctxt: ref Draw->Context,
+argv: list of string)` and returns void. Arguments occupy mapped FP64/FP72 in
+its own frame. The collector traces caller, prepared and active callee frames;
+helper-local lists/strings/arrays and caller values survive nested calls.
+Branches cannot enter call setup or cross function boundaries. Recursive graphs,
+other helper signatures/results and imports from a helper still refuse the
+whole file. These limits describe the selected profile, not Limbo itself.

@@ -10,10 +10,15 @@ dis64clientdatacheck(Dis64ScalarClientView *v)
  Dis64Type mp,context,byte;DisRuneView value;unsigned int i,j,map,total=0,base=v->imports.count+3;
  if(v->strings.count<base || v->strings.count-base>Dis64ManagedLiterals)return 0;
  v->literals=v->strings.count-base;v->contexttype=v->literals?2:1;
- if(v->types.count<v->contexttype+1 || v->types.count>v->contexttype+3)return 0;
- v->bytearrays=v->intarrays=v->bytetype=v->inttype=0;
+ if(v->types.count<v->contexttype+1 || v->types.count>v->contexttype+11)return 0;
+ v->prooftype=0;v->bytearrays=v->intarrays=v->bytetype=v->inttype=v->localcount=v->localused=0;
+ for(i=0;i<8;i++)v->localentry[i]=0;
  for(i=v->contexttype+1;i<v->types.count;i++){
-  if(!dis64typeget(&v->types,i,&byte) || byte.mapbytes!=1 || byte.map[0])return 0;
+  if(!dis64typeget(&v->types,i,&byte))return 0;
+  if(byte.bytes>=96 && byte.align==8 && byte.mapbytes==(byte.bytes+63)/64 && byte.mapbytes>=2 && !byte.map[0] && (byte.map[1]&0xc0)==0xc0){
+   if(v->localcount==8)return 0;v->localtype[v->localcount++]=i;continue;
+  }
+  if(v->localcount || byte.mapbytes!=1 || byte.map[0])return 0;
   if(byte.bytes==1 && byte.align==1 && !v->bytearrays && !v->intarrays){v->bytearrays=1;v->bytetype=i;}
   else if(byte.bytes==4 && byte.align==4 && !v->intarrays){v->intarrays=1;v->inttype=i;}
   else return 0;

@@ -4,6 +4,14 @@ static Heap *clientgraph[256];
 static unsigned int clientgraphcount;
 static int clientindexpause;
 static unsigned int clientindexpauses;
+static Type *clientlocaltypes[8];
+static unsigned int clientlocalcount,clientlocalpauses;
+static void
+clientlocalremember(Module *module,const uchar *data,unsigned int bytes)
+{
+ Dis64ScalarClientView view;clientlocalcount=0;
+ if(dis64commandcheck(data,bytes,&view))for(unsigned int i=0;i<view.localcount;i++)clientlocaltypes[clientlocalcount++]=module->type[view.localtype[i]];
+}
 static void
 clientobserve(void *value)
 {
@@ -43,7 +51,7 @@ clientcollect(Prog *process,Module *client,uchar *root)
     else memmove(&index,process->R.FP+previous->d.ind,sizeof(index));
     memmove(&address,process->R.FP+previous->reg,sizeof(address));
     require(array!=H && array!=nil && index>=0 && index<array->len && address==array->data+(previous->op==IINDB?1:4)*index);
-    require(previous->reg==m->type[0]->size-16);
+    {Frame active;memmove(&active,process->R.FP,sizeof(active));Type *current=active.t?active.t:((Stkext*)process->R.EX)->reg.TR;require(current && previous->reg==current->size-16);}
     clientindexpause=1;clientindexpauses++;
    }
   }
@@ -55,6 +63,7 @@ clientcollect(Prog *process,Module *client,uchar *root)
    require(++frames<128 && (uintptr)fp<(uintptr)top && (uintptr)top-(uintptr)fp>=sizeof(Frame));
    memmove(&frame,fp,sizeof(frame));if(frame.mr && frame.mr!=H)clientobserve(frame.mr);type=frame.t?frame.t:extent->reg.TR;
    require(native64localtype(type) && (uintptr)type->size<=(uintptr)top-(uintptr)fp);
+   if(fp==process->R.FP)for(i=0;i<clientlocalcount;i++)if(type==clientlocaltypes[i])clientlocalpauses++;
    for(i=0;i<(unsigned int)type->np;i++)for(bit=0;bit<8;bit++)if(type->map[i]&(0x80>>bit)){
     memmove(&value,fp+64*i+8*bit,sizeof(value));clientobserve(value);
    }

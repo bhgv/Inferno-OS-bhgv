@@ -555,3 +555,17 @@ The source/GC matrix is210 pairs and the complete Linux x64/ARM64-QEMU consoles
 each execute816 main roots plus controls. This does not yet compile the general
 AWM startup graph: its16 ordinary modules still refuse the bounded Dis64
 profiles. Android device startup, GUI/input and APK acceptance remain open.
+
+## Local managed void calls (INFERNO-0196)
+
+Selected Command libraries can now call up to eight internal void helpers with
+the same Context/list-of-String arguments. Existing FRAME/CALL/RET and JIT paths
+run separate mapped frames; each body and the acyclic graph are independently
+checked. Helpers may use the already admitted String/list/byte/int operations,
+and live caller values survive nested calls and GC. See the
+[report](dis64-inferno-command-local-report.md) and updated RU/EN tutorial.
+
+The Linux x64/ARM64-QEMU source/GC matrix is238 pairs; complete console execution
+covers928 main roots per target plus controls. General signatures/managed results,
+imports/exports and the remaining AWM startup graph are still outside this fixed
+Command-helper profile. This is not Android device GUI/APK acceptance.

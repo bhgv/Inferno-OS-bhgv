@@ -10,7 +10,7 @@ dis64commandcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClient
   switch(s.kind){case Dis64Module:module=s;break;case Dis64Code:v.code=s;break;case Dis64Types:types=s;break;case Dis64Exports:v.requests=s;break;case Dis64Strings:v.names=s;break;default:return 0;}
  }
  if(!dis64modulecheck(data+module.offset,module.bytes,&v.module) || v.module.profile || v.module.name || v.module.datatype!=1 ||
-    !dis64typescheck(data+types.offset,types.bytes,5,4096,&v.types) || !dis64typeget(&v.types,0,&frame) || !dis64typeget(&v.types,1,&mp) ||
+    !dis64typescheck(data+types.offset,types.bytes,13,4096,&v.types) || !dis64typeget(&v.types,0,&frame) || !dis64typeget(&v.types,1,&mp) ||
     frame.bytes<96 || frame.align!=8 || mp.align!=8 ||
     !disstringpoolcheck(data+v.names.offset,v.names.bytes,65536,&v.strings) || !dis64commandname(&v.strings,0,"Command") ||
     !dis64clientbindingscheck(data+v.requests.offset,v.requests.bytes,1,&v.strings,&v.types,0,1,2,&v.imports) ||
@@ -19,7 +19,7 @@ dis64commandcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClient
   if(!disstringpoolget(&v.strings,i,&name) || !name.count || name.count>255)return 0;
   for(j=0;j<name.count;j++)if(!disruneat(&name,j,&c) || !c || c>127)return 0;
  }
- v.frame=frame.bytes;v.count=dis64u32(data+v.code.offset);if(!v.count || v.count>Dis64ClientCode || !dis64clientprove(&v,1))return 0;
+ v.frame=frame.bytes;v.count=dis64u32(data+v.code.offset);if(!v.count || v.count>Dis64ClientCode || !(v.localcount?dis64clientlocalprove(&v):dis64clientprove(&v,1)))return 0;
  *out=v;return 1;
 }
 /* Full signature bytes, module identity and fixed export coordinates must match. */
