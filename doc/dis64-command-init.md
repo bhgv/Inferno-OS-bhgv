@@ -33,6 +33,13 @@ init(ctxt: ref Draw->Context, argv: list of string)
     ctxt.wm = wm;
     greeting := "Привет";
     if(len greeting != 6 || greeting[0] != 1055){ z := 0; bad := 1/z; }
+    original := greeting;
+    greeting += "!";
+    greeting[0] = 1057;
+    middle := greeting[1:6];
+    if(original != "Привет" || greeting != "Сривет!" || middle != "ривет"){
+        z := 0; bad := 1/z;
+    }
     total := 0;
     while(argv != nil){
         part := hd argv;
@@ -141,7 +148,7 @@ v1 bytes remain unchanged. Other implementations must not infer general managed
 signature interoperability from this fixed-shape experiment.
 
 The admitted provider has one Command.init export at PC0/frame0, no imports or
-helper calls, a bounded proven body and the existing private 24-byte MP layout.
+helper calls, a bounded proven body and the existing private 24-byte MP prefix and mapped literal roots.
 The executable importer still has an argument-free void process entry. One
 interface/path is admitted. Up to32 extra readonly String roots are admitted per
 image, each at most255 Runes,1024 Runes in aggregate. General DATA initializers,
@@ -168,5 +175,8 @@ record is a separately owned non-nil empty String; constructor gates distinguish
 these references while String content comparison treats nil and empty equally.
 ASCII may use byte storage; other literals use Rune storage. C extensions must
 use String length/representation, never strlen for a value containing NUL.
-String mutation, concatenation, slicing and general payload construction remain
-outside this profile.
+String concatenation, local character stores and slices now use existing ADDC,
+INSC and SLICEC handlers. Mapped local owners are required; shared literals/aliases
+are preserved by copy-on-write. Index equal to length appends one character; a
+larger or negative index raises bounds error. Slices use character indexes,
+including Unicode and NUL. General payload construction remains outside this profile.

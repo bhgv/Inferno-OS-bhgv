@@ -46,6 +46,8 @@ def unit():
  handlers+='\noptab[INEW]=actual_new;optab[INEWZ]=actual_newz;\n'
  names=('consp','headp','tail','lenl');s+='\n'.join(extract(xec,'OP('+n+')')for n in names)+'\n'+extract(strings,'OP(lenc)')+'\n#undef movp\n'
  handlers+='\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in names+('movp','lenc'))
+ s+='\n'+extract(strings,'String*\nslicer(')+'\n'+extract(strings,'void\ncvtup(')+'\n'+extract(strings,'String*\nstringdup(')+'\n'+extract(strings,'String*\naddstring(')+'\n'+'\n'.join(extract(strings,'OP('+n+')')for n in ('addc','insc','slicec'))
+ handlers+='\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in ('addc','insc','slicec'))
  s+='\n'+extract(strings,'int\nstringcmp(')+'\n'+extract(xec,'static void\nbranchstring(')+'\n'+extract(strings,'OP(indc)')+'\n'+'\n'.join(extract(xec,'OP('+n+')')for n in ('beqc','bnec','bltc','blec','bgtc','bgec'))
  handlers+='\noptab[IINDC]=actual_indc;\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in ('beqc','bnec','bltc','blec','bgtc','bgec'))
  return s+'\n'+(ROOT/'utils/tests/dis64-scalar-client.c').read_text().replace(' CLIENT_HANDLERS',handlers)

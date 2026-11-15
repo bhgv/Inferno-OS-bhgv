@@ -484,3 +484,14 @@ Updated [RU](dis64-command-init.ru.md) / [EN](dis64-command-init.md) code constr
 Unicode/NUL argv. [INFERNO-0189](dis64-inferno-client-literals-report.md) separates
 actual C/RX/GC execution from constructor-only lossless Rune witnesses. This does
 not enable general DATA, Draw/Tk/full AWM or an Android/Bionic GUI device run.
+
+## Local String writes and slices (INFERNO-0190)
+
+Selected clients and Command.init libraries now lower concat/append, character
+stores and slices with checked FP String ownership and initialized int indexes.
+Existing C handlers/JIT preserve shared literals/aliases through copy-on-write;
+MP remains readonly. [Report](dis64-inferno-string-write-report.md) records actual
+x64/ARM64 Linux-QEMU execution and the source review against FlashVM DisVM, whose
+C String implementation is already identical. Updated [EN](dis64-command-init.md)
+and [RU](dis64-command-init.ru.md) examples exercise these operations.
+This does not admit general DATA/Draw/Tk/full AWM or establish Android device GUI.

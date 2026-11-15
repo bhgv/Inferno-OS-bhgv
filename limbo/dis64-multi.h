@@ -63,6 +63,15 @@ static int
 typedclientstring(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 {
  unsigned int sm,mm,dm;long source,middle,destination;int actual,index=in->op==IINDC;
+ if(in->op==IADDC || in->op==IINSC || in->op==ISLICEC){
+  int numeric=in->op!=IADDC;
+  if(in->branch || !typedoperand(in->sm,&in->s,numeric?Tint:Tstring,numeric,0,p,&source,&sm,&actual) ||
+     !typedoperand(in->mm==Anone?in->dm:in->mm,in->mm==Anone?&in->d:&in->m,numeric?Tint:Tstring,numeric,1,p,&middle,&mm,&actual) ||
+     !typedoperand(in->dm,&in->d,Tstring,0,0,p,&destination,&dm,&actual) || dm!=AFP ||
+     (numeric?(mm!=AIMM && mm!=AFP):(mm!=AFP && mm!=AMP)))return typedfail(p,"string-write-roles");
+  p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|(mm==AIMM?AXIMM:mm==AFP?AXINF:AXINM)|DST(dm),middle,source,destination};return 1;
+ }
+
  if(!typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) ||
     !typedoperand(in->mm,&in->m,index?Tint:Tstring,index,1,p,&middle,&mm,&actual))return 0;
  if(index){if(in->branch || !typedoperand(in->dm,&in->d,Tint,0,0,p,&destination,&dm,&actual) || dm!=AFP || (mm!=AIMM && mm!=AFP))return typedfail(p,"string-index-roles");}
@@ -183,7 +192,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
-        }else if(c->external>=2 && (in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)){
+        }else if(c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->external>=2 && in->op==IMOVP && (in->sm==Afpind || in->dm==Afpind)){
             if(!typedclientfield(in,p,pc-p->first,0))goto fail;pc++;

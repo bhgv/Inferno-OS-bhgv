@@ -47,7 +47,7 @@ dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long c
   in=body.code[i];
   if((in.op==IBEQL || in.op==IBNEL) && (in.mode&ARM)==AXINM){if(!literals.nilvalue || in.middle!=literals.niloffset)goto done;in.middle=8;}
   if(USRC(in.mode)==AMP && !filestringaddress(&literals,in.source,&in.source))goto done;
-  if((in.op==IBEQC || in.op==IBNEC || in.op==IBLTC || in.op==IBLEC || in.op==IBGTC || in.op==IBGEC) && (in.mode&ARM)==AXINM)
+  if((in.op==IADDC || in.op==IBEQC || in.op==IBNEC || in.op==IBLTC || in.op==IBLEC || in.op==IBGTC || in.op==IBGEC) && (in.mode&ARM)==AXINM)
    if(!filestringaddress(&literals,in.middle,&in.middle))goto done;
   if(in.op==INEW || in.op==INEWZ)in.source=literals.literals?2:1;
   if(!dis64clientencode(code,&at,&in,in.destination,body.contextfields?body.contextfields[i]:0,body.contextfields?body.contextfields[i]:0))goto done;

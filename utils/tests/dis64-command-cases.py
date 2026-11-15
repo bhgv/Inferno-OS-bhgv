@@ -26,6 +26,7 @@ def cases(pathlength=13):
  yield from branchcases(pathlength)
  yield from constructorcases(pathlength)
  yield from literalcases(pathlength)
+ yield from stringwritecases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -130,3 +131,35 @@ def literalcases(pathlength=13):
  for name,body,call,failure in rows:
   client='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"-font"::"你好"::nil;'+call+'keep:=argv;}'
   yield name,prefix+body+'}',client,failure
+
+
+def stringwritecases(pathlength=13):
+ prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
+ bad='{z:=0;bad:=1/z;}'
+ rows=[
+ ('concat','a:="ab";b:="cd";s:=a+b;if(s!="abcd" || a!="ab" || b!="cd")'+bad,0),
+ ('mixed','a:="a";b:="🚀";s:=a+b;c:=s[1];if(len s!=2 || c!=128640)'+bad,0),
+ ('nul','a:="a\\0";b:="z";s:=a+b;if(len s!=3 || s[1]!=0 || s[2]!=122)'+bad,0),
+ ('nil','a:string;b:="x";s:=a+b;t:=b+a;u:=a+a;if(s!="x" || t!="x" || u!=nil)'+bad,0),
+ ('append','s:="a";s+="b";s+="🚀";if(s!="ab🚀")'+bad,0),
+ ('self','s:="ab";s+=s;if(s!="abab")'+bad,0),
+ ('cow','s:="abc";alias:=s;s[1]=90;if(s!="aZc" || alias!="abc")'+bad,0),
+ ('widen','s:="abc";s[1]=128640;if(s!="a🚀c")'+bad,0),
+ ('wide','s:="a🚀c";s[1]=90;if(s!="aZc")'+bad,0),
+ ('grow','s:string;s[0]=97;s[1]=128640;s[2]=0;c0:=s[0];c1:=s[1];c2:=s[2];if(len s!=3 || c0!=97 || c1!=128640 || c2!=0)'+bad,0),
+ ('slice','s:="abcde";alias:=s;t:=s[1:4];if(t!="bcd" || alias!="abcde")'+bad,0),
+ ('slice-wide','s:="a🚀éz";t:=s[1:3];if(t!="🚀é" || len t!=2)'+bad,0),
+ ('slice-nul','s:="a\\0z";t:=s[1:2];if(len t!=1 || t[0]!=0)'+bad,0),
+ ('slice-empty','s:="abc";t:=s[1:1];if(len t!=0)'+bad,0),
+ ('slice-nil','s:string;t:=s[0:0];if(len t!=0)'+bad,0),
+ ('slice-inplace','s:="abcde";s=s[1:4];if(s!="bcd")'+bad,0),
+ ('loop','s:string;i:=0;while(i<8){s+="x";i++;}if(len s!=8)'+bad,0),
+ ('list','s:="ab";xs:=s::nil;s[0]=90;old:=hd xs;if(old!="ab" || s!="Zb")'+bad,0),
+ ('write-negative','s:="a";i:=-1;s[i]=90;',4),
+ ('write-gap','s:="a";i:=2;s[i]=90;',4),
+ ('slice-negative','s:="a";i:=-1;t:=s[i:1];',4),
+ ('slice-reversed','s:="abc";i:=2;j:=1;t:=s[i:j];',4),
+ ('slice-end','s:="a";j:=2;t:=s[0:j];',4)]
+ for name,body,failure in rows:
+  client='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;s:="wm";argv:=s::nil;'+('a:="client";b:="🚀";c:=a+b;c[0]=67;d:=c[1:];if(d!="lient🚀")'+bad if not failure else '')+'m->init(nil,argv);keep:=argv;}'
+  yield 'strings-'+name,prefix+body+'}',client,failure

@@ -7,7 +7,7 @@ dis64clientrootkind(Dis64ClientSlot *slots,unsigned int count,unsigned int mode,
  if(mode==AFP)for(i=0;i<count;i++)if(slots[i].offset==(unsigned long)offset && dis64clientisroot(slots[i].kind))return slots[i].kind;
  return 0;
 }
-/* Only exact mapped FP cells and the two readonly managed MP cells are roots. */
+/* Only exact mapped FP cells and readonly mapped MP cells are roots. */
 static int
 dis64clientrootoperand(Dis64ClientSlot *slots,unsigned int count,unsigned int mode,long offset,unsigned int kind,unsigned int bits[2])
 {
@@ -23,7 +23,7 @@ dis64clientrootoperand(Dis64ClientSlot *slots,unsigned int count,unsigned int mo
 static int
 dis64clientmanagedop(const Dis64Instruction *in)
 {
- switch(in->op){case IMOVP:return UDST(in->mode)==AFP;case INEW:case INEWZ:case IINDC:case IBEQC:case IBNEC:case IBLTC:case IBLEC:case IBGTC:case IBGEC:case ILENC:case ILENL:case ICONSP:case IHEADP:case ITAIL:return 1;}
+ switch(in->op){case IMOVP:return UDST(in->mode)==AFP;case INEW:case INEWZ:case IADDC:case IINSC:case ISLICEC:case IINDC:case IBEQC:case IBNEC:case IBLTC:case IBLEC:case IBGTC:case IBGEC:case ILENC:case ILENL:case ICONSP:case IHEADP:case ITAIL:return 1;}
  return (in->op==IBEQL || in->op==IBNEL) && in->mode==(SRC(AFP)|AXINM|DST(AIMM));
 }
 /* LONG numeric equality uses the same opcode/mode. A mapped root operand,
@@ -39,6 +39,19 @@ dis64clientmanagedroles(Dis64ClientSlot *slots,unsigned int *count,unsigned int 
  const Dis64Instruction *in,unsigned int need[2],unsigned int give[2])
 {
  unsigned int source,destination,sk=Dis64ClientRoot,dk=Dis64ClientRoot;
+ if(in->op==IADDC || in->op==IINSC || in->op==ISLICEC){
+  unsigned int mm=in->mode&ARM;int numeric=in->op!=IADDC;
+  if(UDST(in->mode)!=AFP)return 0;
+  if(numeric){
+   if((mm!=AXIMM && mm!=AXINF) || (mm==AXIMM && (in->middle < -32768 || in->middle>32767)) ||
+      !dis64clientbit(slots,count,frame,USRC(in->mode),in->source,Dis64Int,need) ||
+      !dis64clientbit(slots,count,frame,mm==AXIMM?AIMM:AFP,in->middle,Dis64Int,need))return 0;
+  }else if((mm!=AXINF && mm!=AXINM) ||
+    !dis64clientrootoperand(slots,*count,USRC(in->mode),in->source,Dis64ClientString,need) ||
+    !dis64clientrootoperand(slots,*count,mm==AXINF?AFP:AMP,in->middle,Dis64ClientString,need))return 0;
+  if(numeric && !dis64clientrootoperand(slots,*count,AFP,in->destination,Dis64ClientString,need))return 0;
+  return dis64clientrootoperand(slots,*count,AFP,in->destination,Dis64ClientString,give);
+ }
  if(in->op==IINDC){
   unsigned int mm=in->mode&ARM;
   if(UDST(in->mode)!=AFP || (mm!=AXIMM && mm!=AXINF) || (mm==AXIMM && (in->middle < -32768 || in->middle>32767)))return 0;
