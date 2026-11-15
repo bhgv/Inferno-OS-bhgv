@@ -42,6 +42,8 @@ struct Client
 	int		nc;			/* bytes consumed from front of msg by convM2S */
 	char	data[MSGMAX];	/* Tread/Rread data */
 	int		state;
+	uint		msize;	/* negotiated full-message bound */
+	int		versioned;	/* negative rejects unsupported sessions */
 	Fid		*fids;
 	char		*uname;	/* uid */
 	char		*aname;	/* attach name */

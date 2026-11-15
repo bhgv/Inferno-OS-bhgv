@@ -112,6 +112,8 @@ newclient(Styxserver *server, int fd)
 	c->nread = 0;
 	c->nc = 0;
 	c->state = 0;
+	c->msize = MSGMAX;
+	c->versioned = -1;
 	c->fids = nil;
 	c->uname = strdup(eve);
 	c->aname = strdup("");
@@ -131,15 +133,17 @@ freeclient(Client *c)
 	if(Debug)
 		fprint(2, "Freeing client at %lux\n", (ulong)c);
 	server = c->server;
+	deletefids(c);
 	if(server->ops->freeclient)
 		server->ops->freeclient(c);
 	for(p = &server->clients; *p; p = &(*p)->next)
 		if(*p == c){
 			styxclosesocket(c->fd);
 			*p = c->next;
-			deletefids(c);
 			free(c->uname);
 			free(c->aname);
+			if(server->curc == c)
+				server->curc = nil;
 			styxfree(c);
 			return;
 		}
@@ -188,6 +192,8 @@ rd(Client *c, Fcall *r)
 	n = GBIT32((uchar*)c->msg);
 	if(n < 7 || n > MSGMAX)
 		goto Bad;
+	if(c->nread >= 5 && c->msg[4] != Tversion && c->msize != 0 && n > c->msize)
+		goto Bad;
 	if(c->nread < n)
 		return 0;
 	c->nc = convM2S((uchar*)c->msg, n, r);
@@ -210,6 +216,11 @@ wr(Client *c, Fcall *r)
 	char buf[MSGMAX];
 
 	n = convS2M(r, (uchar*)buf, sizeof(buf));
+	if(n > (c->msize != 0 ? c->msize : MSGMAX)){
+		r->type = Rerror;
+		r->ename = "reply exceeds negotiated msize";
+		n = convS2M(r, (uchar*)buf, sizeof(buf));
+	}
 	if(n <= 0)
 		goto Bad;
 	for(sent = 0; sent < n; sent += m){
@@ -389,17 +400,26 @@ deletefid(Client *c, Fid *d)
 		}
 }
 
+/* Clunk session handles while the per-client backend context is still alive. */
 static void
 deletefids(Client *c)
 {
 	Fid *f, *g;
+	Client *previous;
 
-	for(f = c->fids; f; f = g){
+	previous = c->server->curc;
+	c->server->curc = c;
+	f = c->fids;
+	c->fids = nil;
+	for(; f != nil; f = g){
+		g = f->next;
 		decreff(f);
 		decopen(f);
-		g = f->next;
+		if(f->open && c->server->ops->close != nil)
+			c->server->ops->close(f->qid, f->mode);
 		styxfree(f);
 	}
+	c->server->curc = previous;
 }
 
 Fid *
@@ -646,6 +666,12 @@ run(Client *c)
 	ebuf[0] = 0;
 	if(rd(c, &f) <= 0)
 		return;
+	if(f.type != Tversion && c->versioned < 0){
+		f.type = Rerror;
+		f.ename = "version not negotiated";
+		wr(c, &f);
+		return;
+	}
 	if(f.type == Tflush){
 		flushtag(f.oldtag);
 		f.type = Rflush;
@@ -795,6 +821,8 @@ run(Client *c)
 		}
 		if(f.count > sizeof(c->data)-IOHDRSZ)
 			f.count = sizeof(c->data)-IOHDRSZ;
+		if(c->msize != 0 && f.count > c->msize-IOHDRSZ)
+			f.count = c->msize-IOHDRSZ;
 		count = f.count;
 		if(fp->qid.type&QTDIR || (file != nil && file->d.qid.type&QTDIR)){
 			f.type = Rread;
@@ -889,11 +917,11 @@ run(Client *c)
 		f.ename = "stat error";
 		if(ops->stat == nil && file != nil){
 			f.type = Rstat;
-			f.nstat = convD2M(&file->d, f.stat, MAXSTAT);
+			f.nstat = convD2M(&file->d, f.stat, c->msize != 0 ? c->msize-9 : MAXSTAT);
 		}
 		else if(ops->stat && (f.ename = ops->stat(fp->qid, &dir)) == nil){
 			f.type = Rstat;
-			f.nstat = convD2M(&dir, f.stat, MAXSTAT);
+			f.nstat = convD2M(&dir, f.stat, c->msize != 0 ? c->msize-9 : MAXSTAT);
 		}
 		else
 			f.type = Rerror;
@@ -926,44 +954,63 @@ run(Client *c)
 		wr(c, &f);
 		break;
 	case	Tversion:
-		if(Debug)
-			fprint(2, "Tversion\n");
+		if(f.tag != NOTAG || f.msize < 256){
+			f.type = Rerror;
+			f.ename = "invalid version tag or msize below 256";
+			wr(c, &f);
+			break;
+		}
+		deletefids(c);
+		c->msize = f.msize > MSGMAX ? MSGMAX : f.msize;
+		c->versioned = strcmp(f.version, VERSION9P) == 0 ||
+			strncmp(f.version, VERSION9P".", 7) == 0 ? 1 : -1;
+		f.msize = c->msize;
+		f.version = c->versioned > 0 ? VERSION9P : "unknown";
 		f.type = Rversion;
-		f.tag = NOTAG;
 		wr(c, &f);
 		break;
 	case Tauth:
-		if(Debug)
-			fprint(2, "Tauth\n");
-		f.type = Rauth;
+		f.type = Rerror;
+		f.ename = "authentication not provided";
 		wr(c, &f);
 		break;
 	case	Tattach:
-		if(Debug)
-			fprint(2, "Tattach %d %s %s\n", f.fid, f.uname[0] ? f.uname : c->uname, f.aname[0]? f.aname: c->aname);
-		if(fp){
-			f.type = Rerror;
+		f.type = Rerror;
+		if(fp != nil)
 			f.ename = "fid in use";
-		}else{
+		else if(f.afid != NOFID)
+			f.ename = "authentication fid not supported";
+		else if(c->fids != nil &&
+			((f.uname[0] && strcmp(f.uname, c->uname) != 0) ||
+			(f.aname[0] && strcmp(f.aname, c->aname) != 0)))
+			f.ename = "connection identity already in use";
+		else{
+			char *uname, *aname;
 			Qid q;
 
-			if(f.uname[0]){
+			uname = c->uname;
+			aname = c->aname;
+			c->uname = strdup(f.uname[0] ? f.uname : uname);
+			c->aname = strdup(f.aname[0] ? f.aname : aname);
+			if(c->uname == nil || c->aname == nil)
+				f.ename = Enomem;
+			else
+				f.ename = ops->attach != nil ? ops->attach(c->uname, c->aname) : nil;
+			if(f.ename != nil){
+				snprint(ebuf, sizeof(ebuf), "%s", f.ename);
+				f.ename = ebuf;
 				free(c->uname);
-				c->uname = strdup(f.uname);
-			}
-			if(f.aname[0]){
 				free(c->aname);
-				c->aname = strdup(f.aname);
+				c->uname = uname;
+				c->aname = aname;
+			}else{
+				free(uname);
+				free(aname);
+				q = styxqid(Qroot, 1);
+				newfid(c, f.fid, q);
+				f.type = Rattach;
+				f.qid = q;
 			}
-			q.path = Qroot;
-			q.type = QTDIR;
-			q.vers = 0;
-			fp = newfid(c, f.fid, q);
-			f.type = Rattach;
-			f.fid = fp->fid;
-			f.qid = q;
-			if(ops->attach && (f.ename = ops->attach(c->uname, c->aname)) != nil)
-				f.type = Rerror;
 		}
 		wr(c, &f);
 		break;
@@ -1030,18 +1077,19 @@ styxprocess(Styxserver *server)
 		server->curc = c;
 		if(c->fd >= 0 && styxnewmsg(server, c->fd))
 			c->state |= CRECV;
-		if(c->state&(CNREAD|CRECV)){
+		if(c->state&(CNREAD|CRECV|CDISC)){
+			if(!(c->state&CDISC))
+				do
+					run(c);
+				while((c->state&CNREAD) && !(c->state&CDISC));
 			if(c->state&CDISC){
 				styxfreeclient(server, c->fd);
 				freeclient(c);
-			}else
-				do
-					run(c);
-				while(c->state&CNREAD);
+			}
 		}
 		c = next;
 	}
-	
+	server->curc = nil;
 	return nil;
 }
 
