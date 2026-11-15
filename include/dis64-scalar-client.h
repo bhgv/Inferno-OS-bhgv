@@ -19,6 +19,7 @@ struct Dis64ScalarClientView {
  Dis64Section code,requests,names;
  unsigned int count,frame,calls,literals,contexttype,bytearrays,bytetype,intarrays,inttype;
  unsigned int prooftype,localcount,localused,localtype[8],localentry[8];
+ unsigned int returning,returnkind,localvalue[8],localresult[8];
  Dis64CallDecoded decoded[Dis64ClientCode];
 };
 
@@ -284,16 +285,17 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
  /* Solve MOVP class equalities before deriving executable CFG facts. */
  for(k=0;k<=Dis64ClientSlots;k++){
   changed=nslots;for(i=0;i<nslots;i++)previous[i]=slots[i].kind;
-  for(i=0;i<v->count;i++)if(dis64clientmanagedop(&v->decoded[i].instruction) || dis64clientfieldop(v->decoded+i) || dis64clientreferencecompare(slots,nslots,&v->decoded[i].instruction)){
+  for(i=0;i<v->count;i++)if(dis64clientresultstore(v->decoded+i) || dis64clientmanagedop(&v->decoded[i].instruction) || dis64clientfieldop(v->decoded+i) || dis64clientreferencecompare(slots,nslots,&v->decoded[i].instruction)){
    unsigned int reads[2]={0},writes[2]={0};
-   if(dis64clientfieldop(v->decoded+i)){if(!dis64clientfieldroles(slots,nslots,v->decoded+i,reads,writes))return 0;}
+   if(dis64clientresultstore(v->decoded+i)){if(!dis64clientreturn(v,v->decoded+i,slots,nslots,reads))return 0;}
+   else if(dis64clientfieldop(v->decoded+i)){if(!dis64clientfieldroles(slots,nslots,v->decoded+i,reads,writes))return 0;}
    else if(!dis64clientmanagedroles(slots,&nslots,v->frame,&v->decoded[i].instruction,reads,writes,v))return 0;
   }
   for(i=0;i<v->count;i++)if((v->decoded[i].instruction.op==IINDB || v->decoded[i].instruction.op==IINDW)){unsigned int reads[2]={0},writes[2]={0};
    if(!dis64clientindex(v,i,slots,&nslots,reads,writes))return 0;
   }
-  if(library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IFRAME){unsigned int bits[2]={0};
-   if(!dis64clientlocalcall(v,i,slots,nslots,bits))return 0;
+  if(library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IFRAME){unsigned int bits[2]={0},assigned=0;
+   if(!dis64clientlocalcall(v,i,slots,nslots,bits,&assigned))return 0;
   }
   if(!library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IMFRAME){
    Dis64Binding binding;unsigned int bits[2]={0};long ordinal=v->decoded[i].instruction.middle;
@@ -310,15 +312,19 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
   start=i;node=nodes+i;node->boundary=1;node->target=v->count;
   d=v->decoded+i;in=&d->instruction;
   if(in->op==ILOAD){if(library || in->mode!=(SRC(AMP)|AXIMM|DST(AMP)) || in->middle || in->source!=16 || in->destination)return 0;node->load=1;node->next=i+1;continue;}
-  if(in->op==IEXIT || (library && in->op==IRET)){if((library && in->op!=IRET) || in->mode!=(SRC(AXXX)|DST(AXXX)))return 0;node->next=v->count;continue;}
+  if(in->op==IEXIT || (library && in->op==IRET)){if((library && in->op!=IRET) || in->mode!=(SRC(AXXX)|DST(AXXX)))return 0;node->needload=library && v->returning;node->next=v->count;continue;}
   if(i==v->count-1)return 0;
   if(in->op==IINDB || in->op==IINDW){
    if(!dis64clientindex(v,i,slots,&nslots,node->need,node->give))return 0;
    node->next=i+2;i++;continue;
   }
-  if(in->op==IFRAME){
-   if(!library || !dis64clientlocalcall(v,i,slots,nslots,node->need))return 0;
-   i+=3;node->next=i+1;continue;
+  if(dis64clientresultstore(d)){
+   if(!library || !dis64clientreturn(v,d,slots,nslots,node->need))return 0;
+   node->load=1;node->next=i+1;continue;
+  }
+  if(in->op==IFRAME){unsigned int assigned=0;
+   if(!library || !dis64clientlocalcall(v,i,slots,nslots,node->need,&assigned))return 0;
+   node->load=assigned;i+=dis64clientlocalend(v,i);node->next=i+1;continue;
   }
   if(in->op!=IMFRAME){
    if(dis64clientfieldop(d)){if(!dis64clientfieldroles(slots,nslots,d,node->need,node->give))return 0;}

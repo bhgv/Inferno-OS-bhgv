@@ -569,3 +569,18 @@ The Linux x64/ARM64-QEMU source/GC matrix is238 pairs; complete console executio
 covers928 main roots per target plus controls. General signatures/managed results,
 imports/exports and the remaining AWM startup graph are still outside this fixed
 Command-helper profile. This is not Android device GUI/APK acceptance.
+
+## Local managed results (INFERNO-0197)
+
+Selected Command helpers now return managed String/list/ref/byte-array/int-array
+values through a full native address in a mapped caller root. Result-bearing
+callees are independently checked before caller uses; every normal return must
+assign a compatible result. Inherited result addresses support forwarding chains
+without dropping the ancestor GC owner. See the
+[report](dis64-inferno-managed-result-report.md) and the String-returning helper
+in the RU/EN tutorial.
+
+The Linux x64/ARM64-QEMU matrix is268 source pairs and1048 main full-console roots
+per target plus controls. Other parameter shapes, local scalar/aggregate results,
+imports and remaining AWM dependencies are still open. No Android device GUI/APK
+acceptance is established by this selected local-result step.

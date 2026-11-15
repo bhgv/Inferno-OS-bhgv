@@ -32,6 +32,7 @@ def cases(pathlength=13):
  yield from indexcases(pathlength)
  yield from intarraycases(pathlength)
  yield from localcases(pathlength)
+ yield from resultcases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -363,3 +364,45 @@ def localcases(pathlength=13):
   provider='implement Command;include "command.m";'+declarations+'init('+args+'){'+body+'}'+definitions
   caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"a🚀z"::nil;m->init(nil,argv);if(len argv!=2)'+bad+'}'
   yield 'local-'+name,provider,caller,failure
+
+def resultcases(pathlength=13):
+ args='ctxt:ref Draw->Context,argv:list of string'
+ bad='{z:=0;bad:=1/z;}'
+ rows=[
+ ('string','string','return "owned";','s:=first(ctxt,argv);if(s!="owned")'+bad,[]),
+ ('unicode','string','return "a🚀z";','s:=first(ctxt,argv);if(len s!=3 || s!="a🚀z")'+bad,[]),
+ ('nil-string','string','return nil;','s:=first(ctxt,argv);if(s!=nil)'+bad,[]),
+ ('empty-string','string','return "";','s:=first(ctxt,argv);if(len s!=0)'+bad,[]),
+ ('head','string','s:=hd argv;return s;','s:=first(ctxt,argv);if(s!="wm")'+bad,[]),
+ ('concat','string','s:="one";s+="two";return s;','s:=first(ctxt,argv);if(s!="onetwo")'+bad,[]),
+ ('slice-string','string','s:="a🚀z";s=s[1:2];return s;','s:=first(ctxt,argv);if(s!="🚀")'+bad,[]),
+ ('nul','string','s:="a\0z";return s;','s:=first(ctxt,argv);if(len s!=3)'+bad+'i:=1;n:=s[i];if(n!=0)'+bad,[]),
+ ('replace-string','string','s:="new";return s;','s:="old";s=first(ctxt,argv);if(s!="new")'+bad,[]),
+ ('repeat-string','string','return "new";','s:string;i:=0;while(i<3){s=first(ctxt,argv);i++;}if(s!="new")'+bad,[]),
+ ('list','list of string','local:="owned"::argv;argv=nil;return local;','xs:=first(ctxt,argv);if(len xs!=3)'+bad+'s:=hd xs;if(s!="owned")'+bad,[]),
+ ('nil-list','list of string','return nil;','xs:=first(ctxt,argv);if(xs!=nil)'+bad,[]),
+ ('tail','list of string','return tl argv;','xs:=first(ctxt,argv);if(len xs!=1)'+bad+'s:=hd xs;if(s!="abc")'+bad,[]),
+ ('replace-list','list of string','return "new"::nil;','xs:="old"::argv;xs=first(ctxt,argv);s:=hd xs;if(len xs!=1 || s!="new")'+bad,[]),
+ ('context','ref Draw->Context','local:=ref Draw->Context(nil,nil,nil);return local;','c:=first(ctxt,argv);if(c==nil)'+bad+'d:=c.display;if(d!=nil)'+bad,[]),
+ ('nil-context','ref Draw->Context','return nil;','c:=first(ctxt,argv);if(c!=nil)'+bad,[]),
+ ('borrow-context','ref Draw->Context','return ctxt;','c:=ref Draw->Context(nil,nil,nil);d:=first(c,argv);if(c!=d)'+bad,[]),
+ ('bytes','array of byte','a:=array[3]of byte;a[1]=byte 90;return a;','a:=first(ctxt,argv);n:=int a[1];if(n!=90 || len a!=3)'+bad,[]),
+ ('nil-bytes','array of byte','return nil;','a:=first(ctxt,argv);if(a!=nil)'+bad,[]),
+ ('byte-view','array of byte','s:="abcdef";a:=array of byte s;b:=a[1:4];a=nil;return b;','a:=first(ctxt,argv);s:=string a;if(s!="bcd")'+bad,[]),
+ ('ints','array of int','a:=array[3]of int;a[1]=123456;return a;','a:=first(ctxt,argv);n:=a[1];if(n!=123456)'+bad,[]),
+ ('int-view','array of int','a:=array[4]of int;a[2]=65536;b:=a[1:];a=nil;return b;','a:=first(ctxt,argv);n:=a[1];if(n!=65536)'+bad,[]),
+ ('branch','string','if(argv==nil)return nil;return hd argv;','s:=first(ctxt,argv);t:=first(nil,nil);if(s!="wm" || t!=nil)'+bad,[]),
+ ('forward','string','return second(ctxt,argv);','s:=first(ctxt,argv);if(s!="deep")'+bad,[('second','string','return "deep";')]),
+ ('forward-list','list of string','return second(ctxt,argv);','xs:=first(ctxt,argv);s:=hd xs;if(s!="deep")'+bad,[('second','list of string','return "deep"::argv;')]),
+ ('forward-array','array of int','return second(ctxt,argv);','a:=first(ctxt,argv);n:=a[1];if(n!=65536)'+bad,[('second','array of int','a:=array[2]of int;a[1]=65536;return a;')]),
+ ('local-result','string','s:=second(ctxt,argv);s+="!";return s;','s:=first(ctxt,argv);if(s!="deep!")'+bad,[('second','string','return "deep";')]),
+ ('caller-live','string','return "new";','a:=array[2]of int;a[1]=65536;s:=first(ctxt,argv);n:=a[1];if(n!=65536 || s!="new")'+bad,[]),
+ ('error','string','z:=0;bad:=1/z;return nil;','s:=first(ctxt,argv);',[]),
+ ('nested-error','string','return second(ctxt,argv);','s:=first(ctxt,argv);',[('second','string','z:=0;bad:=1/z;return nil;')])]
+ for name,kind,helper,body,others in rows:
+  functions=[('first',kind,helper)]+others
+  declarations=''.join(fn+':fn('+args+'):'+ty+';'for fn,ty,_ in functions)
+  definitions=''.join(fn+'('+args+'):'+ty+'{'+code+'}'for fn,ty,code in functions)
+  provider='implement Command;include "command.m";'+declarations+'init('+args+'){'+body+'}'+definitions
+  caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"abc"::nil;m->init(nil,argv);if(len argv!=2)'+bad+'}'
+  yield 'result-'+name,provider,caller,1 if name in('error','nested-error')else 0

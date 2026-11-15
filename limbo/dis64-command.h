@@ -1,12 +1,21 @@
 #include "dis64-file-strings.h"
 /* Selected ordinary Command.init producer; fixed opaque-ref/ListString contract. */
 static int
-dis64commandargs(Decl *fn)
+dis64commandparams(Decl *fn)
 {
  Decl *a,*b;
- if(!fn || !fn->sym || !fn->ty || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys || fn->ty->tof->kind!=Tnone)return 0;
+ if(!fn || !fn->sym || !fn->ty || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys)return 0;
  a=fn->ty->ids;b=a?a->next:nil;
  return a && b && !b->next && a->ty->kind==Tref && a->ty->tof->kind==Tadt && b->ty->kind==Tlist && b->ty->tof->kind==Tstring;
+}
+static int
+dis64commandargs(Decl *fn){return dis64commandparams(fn) && fn->ty->tof->kind==Tnone;}
+static int
+dis64commandhelper(Decl *fn)
+{
+ Type *t;if(!dis64commandparams(fn))return 0;t=fn->ty->tof;
+ return t->kind==Tnone || t->kind==Tstring || (t->kind==Tlist && t->tof->kind==Tstring) ||
+  (t->kind==Tref && t->tof->kind==Tadt) || (t->kind==Tarray && (t->tof->kind==Tbyte || t->tof->kind==Tint));
 }
 static int
 dis64commandshape(Decl *fn){return dis64commandargs(fn) && !strcmp(fn->sym->name,"init");}

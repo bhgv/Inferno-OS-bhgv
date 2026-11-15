@@ -1,5 +1,5 @@
 /* Append checked local frames after the existing MP/Context/primitive records.
- * Internal helpers keep the same two mapped arguments and void return as init. */
+ * Internal helpers keep two mapped arguments and void or managed results. */
 static int
 dis64commandlocalfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long count,long databytes)
 {
@@ -12,10 +12,10 @@ dis64commandlocalfile(Decl *globals,Decl **functions,int nf,Inst *instructions,l
  if(nf<2 || nf>9 || count<1 || count>128 || !filestringscollect(&literals,globals,databytes))goto done;
  for(j=0;j<(unsigned int)nf;j++){
   body=bodies+j;
-  if(!dis64commandargs(functions[j]) || !functions[j]->pc || functions[j]->pc->pc!=(long)cursor ||
+  if(!(j?dis64commandhelper(functions[j]):dis64commandargs(functions[j])) || !functions[j]->pc || functions[j]->pc->pc!=(long)cursor ||
      !dis64typedcommand(functions[j],globals,functions,nf,instructions,count,count,body) || body->nexternal ||
      body->frame.bytes>4080 || body->first!=cursor || !filestringsplan(&literals,body,0))goto done;
-  for(i=0;i<body->nsites;i++)if(body->sites[i].contract || body->sites[i].inherited)goto done;
+  for(i=0;i<body->nsites;i++)if(body->sites[i].contract && body->sites[i].contract!=24)goto done;
   for(i=0;i<body->frame.count;i++){
    leaf=body->frame.leaves+i;
    if(leaf->kind!=Tbyte && leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tref && leaf->kind!=Tchan && leaf->kind!=Tarray && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=-1)goto done;

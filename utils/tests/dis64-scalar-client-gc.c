@@ -5,12 +5,14 @@ static unsigned int clientgraphcount;
 static int clientindexpause;
 static unsigned int clientindexpauses;
 static Type *clientlocaltypes[8];
-static unsigned int clientlocalcount,clientlocalpauses;
+static unsigned int clientlocalcount,clientlocalpauses,clientlocalvalues[8];
+static void *clientresulttargets[64];
+static unsigned int clientresultcount,clientresultpauses;
 static void
 clientlocalremember(Module *module,const uchar *data,unsigned int bytes)
 {
- Dis64ScalarClientView view;clientlocalcount=0;
- if(dis64commandcheck(data,bytes,&view))for(unsigned int i=0;i<view.localcount;i++)clientlocaltypes[clientlocalcount++]=module->type[view.localtype[i]];
+ Dis64ScalarClientView view;clientlocalcount=clientresultcount=0;
+ if(dis64commandcheck(data,bytes,&view))for(unsigned int i=0;i<view.localcount;i++){clientlocaltypes[clientlocalcount]=module->type[view.localtype[i]];clientlocalvalues[clientlocalcount++]=view.localvalue[i];}
 }
 static void
 clientobserve(void *value)
@@ -37,7 +39,7 @@ static void
 clientcollect(Prog *process,Module *client,uchar *root)
 {
  Stkext *extent=(Stkext*)process->R.EX;uchar *top=process->R.SP,*fp;Type *type;Frame frame;
- void *value;unsigned int i,bit,frames=0;USED(client);USED(root);
+ void *value,*returnaddress=nil,*rootaddresses[1024];unsigned int i,j,bit,frames=0,naddresses=0,wantresult=0;USED(client);USED(root);
  clientindexpause=0;
  if(process->R.M!=H && process->R.M!=nil){
   Module *m=process->R.M->m;uintptr pc=(uintptr)process->R.PC,base=(uintptr)m->prog;
@@ -63,13 +65,24 @@ clientcollect(Prog *process,Module *client,uchar *root)
    require(++frames<128 && (uintptr)fp<(uintptr)top && (uintptr)top-(uintptr)fp>=sizeof(Frame));
    memmove(&frame,fp,sizeof(frame));if(frame.mr && frame.mr!=H)clientobserve(frame.mr);type=frame.t?frame.t:extent->reg.TR;
    require(native64localtype(type) && (uintptr)type->size<=(uintptr)top-(uintptr)fp);
-   if(fp==process->R.FP)for(i=0;i<clientlocalcount;i++)if(type==clientlocaltypes[i])clientlocalpauses++;
+   if(fp==process->R.FP)for(i=0;i<clientlocalcount;i++)if(type==clientlocaltypes[i]){
+    clientlocalpauses++;
+    if(clientlocalvalues[i]){wantresult=1;memmove(&returnaddress,fp+32,sizeof(returnaddress));}
+   }
    for(i=0;i<(unsigned int)type->np;i++)for(bit=0;bit<8;bit++)if(type->map[i]&(0x80>>bit)){
+    if(fp!=process->R.FP){require(naddresses<1024);rootaddresses[naddresses++]=fp+64*i+8*bit;}
     memmove(&value,fp+64*i+8*bit,sizeof(value));clientobserve(value);
    }
    fp+=type->size;
   }
   top=extent->reg.SP;extent=(Stkext*)extent->reg.EX;
+ }
+ if(wantresult){
+  require(returnaddress!=nil && returnaddress!=H);
+  for(j=0;j<naddresses && returnaddress!=rootaddresses[j];j++);
+  require(j<naddresses && (uintptr)returnaddress>0xffffffffULL);clientresultpauses++;
+  for(j=0;j<clientresultcount && returnaddress!=clientresulttargets[j];j++);
+  if(j==clientresultcount){require(clientresultcount<64);clientresulttargets[clientresultcount++]=returnaddress;}
  }
  numericcollect(process);
  for(i=0;i<clientgraphcount;i++)if(numericowner(clientgraph[i])->magic!=MAGIC_A){
@@ -103,4 +116,17 @@ clientindexframemark(Type *type,void *frame)
 {
  if(clientindexpause)clientcodecframemark(type,frame);
  else markheap(type,frame);
+}
+
+/* Lose only a recorded caller result root; callee/private/argument maps remain. */
+static void
+clientresultframemark(Type *type,void *frame)
+{
+ Type one={0};void *value;unsigned int i,j;one.size=8;one.np=1;one.map[0]=0x80;
+ for(i=0;i<(unsigned int)type->np*8;i++)if(type->map[i/8]&(0x80>>(i%8))){
+  void *slot=(uchar*)frame+8*i;
+  for(j=0;j<clientresultcount && slot!=clientresulttargets[j];j++);
+  if(j<clientresultcount)continue;
+  memmove(&value,slot,sizeof(value));markheap(&one,&value);
+ }
 }

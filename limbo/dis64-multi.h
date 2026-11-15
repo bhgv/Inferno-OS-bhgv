@@ -18,8 +18,11 @@ typedclientlist(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
  unsigned int sm,dm;long source,destination;int actual;
  int sk=in->op==ICONSP?Tstring:Tlist,dk=in->op==IHEADP?Tstring:Tlist;
  if(in->mm!=Anone || in->branch!=nil ||
-    !typedoperand(in->sm,&in->s,sk,0,0,p,&source,&sm,&actual) ||
-    !typedoperand(in->dm,&in->d,dk,0,0,p,&destination,&dm,&actual))return typedfail(p,"client-list-roles");
+    !typedoperand(in->sm,&in->s,sk,0,0,p,&source,&sm,&actual))return typedfail(p,"client-list-roles");
+ if(in->dm==Afpind){
+  if(in->op==ICONSP || in->d.reg!=16 || in->d.offset || p->resultkind!=dk)return typedfail(p,"client-list-result");
+  destination=32;dm=AFP|AIND;
+ }else if(!typedoperand(in->dm,&in->d,dk,0,0,p,&destination,&dm,&actual))return typedfail(p,"client-list-roles");
  *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,destination};return 1;
 }
 
@@ -257,6 +260,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
+        }else if(c->external>=2 && in->op==IMOVP && in->dm==Afpind && in->d.reg==16 && in->d.offset==0){
+            if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==INEWA || in->op==INEWAZ || in->op==ISLICEA)){
             if(!typedclientarray(in,p,pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==IINDB || in->op==IINDW)){
@@ -277,7 +282,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->external>=2 && (in->op==INEW || in->op==INEWZ)){
             if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
-            if(!typedclientlist(in,p,p->code+pc-p->first))goto fail;pc++;
+            if(!typedclientlist(in,p,p->code+pc-p->first))goto fail;
+            if(UDST(p->code[pc-p->first].mode)==(AFP|AIND))p->returns[pc-p->first]=1;pc++;
         }else if(c->external==2 && in->op==ILOAD){
             long source,destination;unsigned int sm,dm;int actual;
             if(in->mm!=Aldt || in->m.decl==nil || in->m.decl->offset!=0 || in->branch!=nil ||

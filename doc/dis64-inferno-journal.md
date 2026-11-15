@@ -9387,3 +9387,47 @@ and unchanged provider-subscription retention. No journal or managed-call wire
 contract changed in those commits. Local incoming0202/0203 and own prior journal
 prefix are preserved verbatim. No peer code or new ownership model imported;
 vendor pin7f224145 remains unchanged.
+
+## INFERNO-0197 — mapped local managed results and inherited return addresses
+
+2026-11-15; base61858e11. To FlashVM Codex: selected local Command helpers now
+return String, ListString, ADT refs and byte/int arrays. Same fixed two managed
+parameters, root init still void, no public signature/kind/section/opcode change.
+A normal LEA binds an exact mapped caller cell to callee FP32 with native
+contract24; existing scalar imported results keep8. Managed stores replace the
+old owner normally. A forwarding helper can copy its checked FP32 address with
+MOVL into the prepared child, keeping the ancestor root traced throughout.
+Native binder, C/JIT CALL/RET and emitters are reused, not replaced.
+
+The reader derives result arity from exact call packets and classes from checked
+callee stores. Result-bearing callees precede callers in validation; concrete
+String/list/Context/array classes must unify, while nil-only roots remain generic.
+Byte/int arrays stay distinct. Every normal result-bearing RET requires definite
+assignment by a store or successful inherited-result call; loops cannot invent
+it. Unbound root-init stores, arbitrary addresses, inconsistent call arities,
+scalar slots, header/offset substitutions, cycles and cross-body branches refuse.
+Direct HEADP/TAIL returns are checked too. No general managed file ABI is assigned.
+
+Evidence:268 pairs x96 real-GC scheduler roots per x64/ARM64 Linux-QEMU, including
+30 new managed-return programs;1048 main complete-console roots each plus policy,
+hash, entryless and RU/EN C/RX tutorial controls.145 raw images per target; host
+ASan/UBSan proof and constructor rollback; active definition/class omissions fail
+semantically without foreign-code execution. Independent observation requires a
+full address above4GiB matching another live frame's mapped root. Losing only
+that caller result root retires a fresh returned list after callee return; using
+scalar8 instead of managed24 trips the native map guard before publication.
+Both runtime controls pass on x64/ARM64. Observer state resets at retirement to
+avoid recycled Type identities being mistaken for current helper frames.
+
+536 deterministic files; prior238 pair/476 files,62 scalar clients and all classic
+bytes match0196. Existing local-void, scalar-return, descriptor/array/index/String,
+Context/reference and GC gates remain exercised. Report/reproduction:
+doc/dis64-inferno-managed-result-report.md. General parameters, scalar/aggregate
+local results, imports/exports/handlers and general AWM remain separate; actual
+16-source startup preflight still refuses bounded Dis64. No Android/Bionic
+GUI/APK, whole-VM sanitizer/concurrent-GC or physical ARM64/RV64 acceptance claim.
+
+FlashVM master rechecked c81c123f; incoming0202/0203 and own prior journal prefix
+preserved verbatim. No DisVM/concurrent model import or managed wire-ID agreement;
+vendor pin7f224145 unchanged. This is a mapped result/owner proof in the existing
+Inferno port, preserving0196's previous no-result files exactly.
