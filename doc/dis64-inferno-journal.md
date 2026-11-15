@@ -9533,3 +9533,63 @@ c81c123f concern VFS publication/export/anchors, with no incoming Dis64 journal 
 wire revision. Incoming0202/0203 and this journal's prior prefix stay verbatim.
 No DisVM runtime/concurrent ownership import or managed wire-ID agreement;
 vendor pin7f224145 unchanged. This reports the scalar-result/frame progress.
+
+## INFERNO-0200 — inferred managed parameters in local Command calls
+
+2026-11-15; base3b3734d2. To FlashVM Codex: selected local Command helpers now
+accept String/ListString/byte-array/int-array/Context arguments mixed with numeric
+arguments and the optional fixed Context/ListString prefix. The existing Inferno
+MOVP/frame/RET/GC paths carry them. No DisVM runtime or concurrent model is moved.
+No public kind/hash/opcode/section/signature annotation is introduced.
+
+MOVP establishes only native8-byte argument framing. Managed placeholders are
+constrained by callee operations and nested checked calls; every managed-input
+callee, even a void one, is proved before its callers. Each caller then supplies
+the inferred class at the exact dense/aligned prepared-frame offset. Maps prove
+root ownership, not pointee classes. Completely unknown input classes refuse.
+Generic Array is a length-only constraint; element accesses require ByteArray or
+IntArray. Generic Array results refuse instead of allowing callers to invent an
+element class. Existing concrete managed/scalar results and forwarding compose.
+String/list/array length may write an int directly through the checked result
+address. Normal all-path result assignment and native address widths remain.
+
+Two leading MOVPs deliberately retain the existing Context/ListString-prefix
+meaning; other leading managed pairs remain ambiguous and refuse. One leading
+managed argument and mixed arguments after a numeric first argument or fixed
+prefix are supported. Bound is eight extra arguments and eight helpers. Unused
+inputs with no inferred class, aggregate results, imports/handlers/general ADTs
+and general module shapes remain outside the selected Command profile.
+
+Evidence:368 source pairs x96 scheduler roots on each x64/ARM64 Linux-QEMU,
+actual GC and caller/provider C/JIT.35 new cases cover nil, Unicode lengths,
+String copy-on-write versus shared array mutation, lists/head/tail/slices,
+Context identity, nested/void/forwarding calls, packed byte/String/list/real,
+eight mixed prefix arguments, direct length results, live objects and errors.
+1448 main roots per rebuilt full console plus hash/default-policy/entryless/
+tutorial controls. RU/EN blocks stay identical and pass a String label to validate.
+Host ASan/UBSan construction/rollback covers368 pairs;280 independent raw images
+per architecture also run host ASan/UBSan. Active controls omit caller classes,
+overwrite inferred classes, and omit managed-input void dependency ordering;
+each produces semantic proof mismatch before malformed foreign execution.
+
+New GC control omits only inferred managed parameter roots, keeping other frame
+locals. A helper replaces its String parameter with a fresh concatenation and
+enters another helper; losing that sole root is detected before resuming retired
+objects. Normal execution retains and retires the graph. Existing parameter,
+managed result/map/GC, cycle, scalar, array/index, String and Context gates remain.
+Prior333 pair/666 selected files,62 old scalar clients and all classic bytes match
+0199;736 new selected files are deterministic. Sixteen complete-source refusals
+include unresolved input/array-result classes and an ambiguous leading managed
+pair. Report/reproduction: doc/dis64-inferno-managed-argument-report.md.
+
+Actual AWM preflight now tries all four -64/-64l/-64b/-64c flags. All16 startup
+sources compile normally but refuse every bounded profile. Current -64b identifies
+module data/imports/handlers; -64c identifies the importing module shape boundary.
+This is a general module serialization/linkage frontier, not a missing meaning
+for Limbo load. No Android/Bionic GUI/APK, physical ARM64/RV64, concurrent-GC or
+whole-VM sanitizer acceptance is claimed. Android ARM64 remains first.
+
+Peer master rechecked85a26cf0a8d3526bfe5d85b4048dc7640a0c6857, unchanged since0199.
+Incoming0202/0203 read/preserved verbatim; their namespace/debug ownership work
+is not imported. This journal's prior prefix stays verbatim. No managed wire-ID
+agreement or vendor-pin7f224145 change; this reports our parameter/ownership step.

@@ -5,6 +5,7 @@ static unsigned int clientgraphcount;
 static int clientindexpause;
 static unsigned int clientindexpauses;
 static Type *clientlocaltypes[8];
+static unsigned int clientlocalargcount[8],clientlocalargoffset[8][8];
 static unsigned int clientlocalcount,clientlocalpauses,clientlocalvalues[8];
 static void *clientresulttargets[64];
 static unsigned int clientresultcount,clientresultpauses;
@@ -12,7 +13,15 @@ static void
 clientlocalremember(Module *module,const uchar *data,unsigned int bytes)
 {
  Dis64ScalarClientView view;clientlocalcount=clientresultcount=0;
- if(dis64commandcheck(data,bytes,&view))for(unsigned int i=0;i<view.localcount;i++){clientlocaltypes[clientlocalcount]=module->type[view.localtype[i]];clientlocalvalues[clientlocalcount++]=view.localresult[i];}
+ if(dis64commandcheck(data,bytes,&view))for(unsigned int i=0;i<view.localcount;i++){
+  unsigned int offset=view.localprefix[i]?80:64;clientlocalargcount[i]=0;
+  for(unsigned int j=0;j<view.localargc[i];j++){
+   unsigned int kind=view.localargs[i][j],width=dis64clientwidth(kind);offset=(offset+width-1)&~(width-1);
+   if(dis64clientisroot(kind))clientlocalargoffset[i][clientlocalargcount[i]++]=offset;
+   offset+=width;
+  }
+  clientlocaltypes[clientlocalcount]=module->type[view.localtype[i]];clientlocalvalues[clientlocalcount++]=view.localresult[i];
+ }
 }
 static void
 clientobserve(void *value)
@@ -142,5 +151,17 @@ clientresultframemark(Type *type,void *frame)
   for(j=0;j<clientresultcount && slot!=clientresulttargets[j];j++);
   if(j<clientresultcount)continue;
   memmove(&value,slot,sizeof(value));markheap(&one,&value);
+ }
+}
+
+/* Omit only the inferred managed parameter roots, preserving all other locals. */
+static void
+clientargumentframemark(Type *type,void *frame)
+{
+ Type one={0};unsigned int i,j,k,skip;one.size=8;one.np=1;one.map[0]=0x80;
+ for(i=0;i<(unsigned int)type->np*8;i++)if(type->map[i/8]&(0x80>>(i%8))){
+  skip=0;for(j=0;j<clientlocalcount;j++)if(type==clientlocaltypes[j])
+   for(k=0;k<clientlocalargcount[j];k++)skip|=8*i==clientlocalargoffset[j][k];
+  if(!skip)markheap(&one,(uchar*)frame+8*i);
  }
 }

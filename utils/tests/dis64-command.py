@@ -9,7 +9,7 @@ def sections(data):
   k,f,at,n=struct.unpack_from('>HHII',data,32+12*i);assert f==1 and k not in d;d[k]=data[at:at+n]
  return d
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map','mp-tail','codec-array','array-backing','index-owner','local-frame','local-result'));p.add_argument('--literal-wire',choices=('empty','signed-runes'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--local-result-map-control',action='store_true');p.add_argument('--scalar-result-map-control',action='store_true');p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map','mp-tail','codec-array','array-backing','index-owner','local-frame','local-result','local-argument'));p.add_argument('--literal-wire',choices=('empty','signed-runes'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--local-result-map-control',action='store_true');p.add_argument('--scalar-result-map-control',action='store_true');p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
  if a.literal_wire and(not a.materialize_only or a.case!=['literals-context']):p.error('--literal-wire requires --materialize-only --case literals-context')
  with tempfile.TemporaryDirectory(prefix='command-init-',dir=ROOT)as td:
   w=Path(td);env['TMPDIR']=str(w);(w/'command.m').write_text(CASES['INTERFACE']);(w/'library.m').write_text('Library:module{inc:fn(n:int):int;};')
@@ -41,6 +41,8 @@ def main():
    assert text.count('clientloads++;')==1;text=text.replace('clientloads++;','ml->m->type[0]->mark=clientindexframemark;clientloads++;')
   if a.gc_control=='local-result':
    text=text.replace('clientloads++;','ml->m->type[0]->mark=clientresultframemark;clientloads++;')
+  if a.gc_control=='local-argument':
+   text=text.replace('clientloads++;','for(unsigned int local=0;local<clientlocalcount;local++)clientlocaltypes[local]->mark=clientargumentframemark;clientloads++;')
   if a.gc_control=='local-frame':
    text=text.replace('clientloads++;','for(unsigned int local=0;local<clientlocalcount;local++)clientlocaltypes[local]->mark=noptrs;clientloads++;')
   if a.gc_control=='callee-frame':
@@ -77,7 +79,7 @@ def main():
      observed=re.search(r'index-pause-observations=(\d+)',r.stderr);assert observed and int(observed[1])>0,(name,r.stderr)
    if name.startswith(('result-','scalarresult-'))and not(a.gc_control or a.materialize_only or a.local_result_map_control or a.scalar_result_map_control):
     observed=re.search(r'managed-result-observations=(\d+)',r.stderr);assert observed and int(observed[1])>0,(name,r.stderr)
-   if name.startswith(('local-','args-','scalarresult-'))and not(a.gc_control or a.materialize_only or a.local_result_map_control or a.scalar_result_map_control):
+   if name.startswith(('local-','args-','scalarresult-','managedarg-'))and not(a.gc_control or a.materialize_only or a.local_result_map_control or a.scalar_result_map_control):
     observed=re.search(r'local-frame-observations=(\d+)',r.stderr);assert observed and int(observed[1])>0,(name,r.stderr)
    print('PASS ordinary .m init -> file LOAD -> managed MCALL/RET:',arch,name,flush=True)
   print('PASS ordinary init pipeline:',arch,len(rows),'pairs; actual GC'+('; constructor-only'if a.materialize_only else'; semantic scalar-result map omission'if a.scalar_result_map_control else'; semantic managed-result map omission'if a.local_result_map_control else'; semantic '+a.gc_control+' omission'if a.gc_control else'; semantic '+a.field_offset_control+' offset omission'if a.field_offset_control else'; semantic reference width omission'if a.reference_width_control else';96 scheduler roots per pair'),flush=True)

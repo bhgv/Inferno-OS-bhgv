@@ -12,7 +12,7 @@ dis64clientresultstore(const Dis64CallDecoded *d)
 {
  unsigned int source,kind;int binary;
  return UDST(d->instruction.mode)==(AFP|AIND) && d->instruction.destination==32 &&
-  (d->instruction.op==IMOVP || d->instruction.op==IHEADP || d->instruction.op==ITAIL || dis64clientoperation(d->instruction.op,&source,&kind,&binary));
+  (d->instruction.op==ILENC || d->instruction.op==ILENL || d->instruction.op==ILENA || d->instruction.op==IMOVP || d->instruction.op==IHEADP || d->instruction.op==ITAIL || dis64clientoperation(d->instruction.op,&source,&kind,&binary));
 }
 static int
 dis64clientreturn(Dis64ScalarClientView *v,const Dis64CallDecoded *d,Dis64ClientSlot *slots,unsigned int *count,unsigned int need[2])
@@ -26,6 +26,9 @@ dis64clientreturn(Dis64ScalarClientView *v,const Dis64CallDecoded *d,Dis64Client
    if(mm==AXIMM && (kind!=Dis64Int || in->middle < -32768 || in->middle > 32767))return 0;
    if(!dis64clientbit(slots,count,v->frame,mm==AXIMM?AIMM:AFP,in->middle,kind,need))return 0;
   }else if(mm!=AXNON)return 0;
+ }else if(in->op==ILENC || in->op==ILENL || in->op==ILENA){
+  source=in->op==ILENC?Dis64ClientString:in->op==ILENL?Dis64ClientListString:Dis64ClientArray;kind=Dis64Int;
+  if(mm!=AXNON || !dis64clientrootoperand(slots,*count,USRC(in->mode),in->source,source,need))return 0;
  }else{
   if(mm!=AXNON || !dis64clientrootoperand(slots,*count,USRC(in->mode),in->source,in->op==IMOVP?Dis64ClientRoot:Dis64ClientListString,need))return 0;
   kind=in->op==IHEADP?Dis64ClientString:in->op==ITAIL?Dis64ClientListString:dis64clientrootkind(slots,*count,USRC(in->mode),in->source);
@@ -37,16 +40,16 @@ dis64clientreturn(Dis64ScalarClientView *v,const Dis64CallDecoded *d,Dis64Client
 static unsigned int
 dis64clientargkind(unsigned int op)
 {
- return op==IMOVB?Dis64ClientByte:op==IMOVW?Dis64Int:op==IMOVL?Dis64Big:op==IMOVF?Dis64Real:0;
+ return op==IMOVP?Dis64ClientRoot:op==IMOVB?Dis64ClientByte:op==IMOVW?Dis64Int:op==IMOVL?Dis64Big:op==IMOVF?Dis64Real:0;
 }
-/* Parameters are the bounded, densely aligned argument stores before the binder.
- * Managed inputs keep the known Context/list prefix; the rest are scalar. */
+/* Parameters are densely aligned stores before the binder. Two leading MOVPs
+ * retain the existing Context/list prefix; other MOVPs need inferred classes. */
 static unsigned int
 dis64clientlocalscan(const Dis64ScalarClientView *v,unsigned int pc,unsigned int *prefix,unsigned int *argc,unsigned int kinds[8],unsigned int *value)
 {
  unsigned int at=pc+1,j,offset=64,kind,width;const Dis64Instruction *in;const Dis64CallDecoded *d;
  *prefix=*argc=*value=0;if(pc>=v->count || v->count-pc<2)return 0;
- if(v->decoded[at].instruction.op==IMOVP){
+ if(v->count-at>=2 && v->decoded[at].instruction.op==IMOVP && v->decoded[at+1].instruction.op==IMOVP){
   if(v->count-at<3)return 0;
   for(j=0;j<2;j++){
    d=v->decoded+at+j;in=&d->instruction;
@@ -89,7 +92,10 @@ dis64clientlocalcall(Dis64ScalarClientView *v,unsigned int pc,Dis64ClientSlot *s
  for(j=0;j<argc;j++){
   d=v->decoded+pc+1+prefix+j;in=&d->instruction;kind=v->localargs[i][j];width=dis64clientwidth(kind);
   offset=(offset+width-1)&~(width-1);
-  if(kinds[j]!=kind || d->secondary!=offset || !dis64clientbit(slots,count,v->frame,USRC(in->mode),in->source,kind,need))return 0;
+  if((kinds[j]==Dis64ClientRoot?!dis64clientisroot(kind):kinds[j]!=kind) || d->secondary!=offset)return 0;
+  if(dis64clientisroot(kind)){
+   if(kind==Dis64ClientRoot || !dis64clientrootoperand(slots,*count,USRC(in->mode),in->source,kind,need))return 0;
+  }else if(!dis64clientbit(slots,count,v->frame,USRC(in->mode),in->source,kind,need))return 0;
   offset+=width;
  }
  if(value){
@@ -137,7 +143,10 @@ dis64clientlocalprove(Dis64ScalarClientView *v)
  for(k=0;k<v->localcount;k++)for(i=0;i<=v->localcount;i++)if(edges[i]&(1U<<k))edges[i]|=edges[k+1];
  for(i=0;i<v->localcount;i++)if(edges[i+1]&(1U<<i))return 0;
  expected=(1U<<v->localcount)-1;reach=edges[0];if(reach!=expected)return 0;
- for(i=0;i<v->localcount;i++)if(v->localvalue[i])resultmask|=1U<<i;
+ for(i=0;i<v->localcount;i++){
+  if(v->localvalue[i])resultmask|=1U<<i;
+  for(j=0;j<v->localargc[i];j++)if(dis64clientisroot(v->localargs[i][j]))resultmask|=1U<<i;
+ }
  for(k=0;k<=v->localcount;k++){
   progress=0;
   for(i=0;i<=v->localcount;i++)if(!(done&(1U<<i)) && !(edges[i]&resultmask&~(done>>1))){
@@ -156,7 +165,11 @@ dis64clientlocalprove(Dis64ScalarClientView *v)
     }
    }
    if(!dis64clientbodyprove(&body,1,1))return 0;
-   if(i)v->localresult[i-1]=body.returnkind;
+   if(i){
+    if(body.returnkind==Dis64ClientArray)return 0;
+    v->localresult[i-1]=body.returnkind;
+    for(n=0;n<body.argcount;n++)v->localargs[i-1][n]=body.argkinds[n];
+   }
    done|=1U<<i;progress=1;
   }
   if(done==((1U<<(v->localcount+1))-1))return 1;

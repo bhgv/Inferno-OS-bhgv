@@ -296,7 +296,9 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
  if(library && v->prooftype){unsigned int argat=v->argprefix?80:64;
   for(i=0;i<v->argcount;i++){unsigned int bits[2]={0},width=dis64clientwidth(v->argkinds[i]);
    if(!width)return 0;argat=(argat+width-1)&~(width-1);
-   if(!dis64clientbit(slots,&nslots,v->frame,AFP,argat,v->argkinds[i],bits))return 0;
+   if(dis64clientisroot(v->argkinds[i])){
+    if(!dis64clientrootoperand(slots,nslots,AFP,argat,v->argkinds[i],bits))return 0;
+   }else if(!dis64clientbit(slots,&nslots,v->frame,AFP,argat,v->argkinds[i],bits))return 0;
    seed[0]|=bits[0];seed[1]|=bits[1];argat+=width;
   }
  }
@@ -382,7 +384,20 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
  if((library?v->calls!=0:!v->calls) || v->decoded[v->count-1].instruction.op!=(unsigned int)(library?IRET:IEXIT))return 0;
  for(i=0;i<v->count;i++)if(nodes[i].boundary && ((nodes[i].next<v->count && !nodes[nodes[i].next].boundary) ||
     (nodes[i].target<v->count && !nodes[nodes[i].target].boundary)))return 0;
- if(!dis64clientflow(nodes,v->count,seed))return 0;return 1;
+ if(!dis64clientflow(nodes,v->count,seed))return 0;
+ /* Unknown roots are safe for nil locals, never a type assertion for inputs. */
+ if(library && v->prooftype){unsigned int argat=v->argprefix?80:64;
+  for(i=0;i<v->argcount;i++){
+   width=dis64clientwidth(v->argkinds[i]);argat=(argat+width-1)&~(width-1);
+   if(dis64clientisroot(v->argkinds[i])){
+    kind=dis64clientrootkind(slots,nslots,AFP,argat);
+    if(!kind || kind==Dis64ClientRoot)return 0;
+    v->argkinds[i]=kind;
+   }
+   argat+=width;
+  }
+ }
+ return 1;
 }
 static int
 dis64clientprove(Dis64ScalarClientView *v,int library){return dis64clientbodyprove(v,library,0);}

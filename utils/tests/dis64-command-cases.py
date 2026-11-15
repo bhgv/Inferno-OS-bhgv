@@ -35,6 +35,7 @@ def cases(pathlength=13):
  yield from resultcases(pathlength)
  yield from argumentcases(pathlength)
  yield from scalarresultcases(pathlength)
+ yield from managedargumentcases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -487,3 +488,50 @@ def scalarresultcases(pathlength=13):
   provider='implement Command;include "command.m";'+declarations+'init('+rootargs+'){'+body+'}'+definitions
   caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"abc"::nil;m->init(nil,argv);}'
   yield 'scalarresult-'+name,provider,caller,0
+
+def managedargumentcases(pathlength=13):
+ bad='{z:=0;bad:=1/z;}'
+ prefix='ctxt:ref Draw->Context,argv:list of string'
+ rows=[
+ ('string','s:string','int','n:=first("Привет");if(n!=6)'+bad,'return len s;',[]),
+ ('string-nil','s:string','int','n:=first(nil);if(n!=0)'+bad,'return len s;',[]),
+ ('string-return','s:string','string','s:=first("okay");if(s!="okay")'+bad,'n:=len s;if(n!=4)'+bad+'return s;',[]),
+ ('string-copy','s:string','string','s:="old";t:=first(s);if(s!="old" || t!="old!")'+bad,'s+="!";return s;',[]),
+ ('string-int','s:string,n:int','int','n:=first("abc",7);if(n!=10)'+bad,'l:=len s;return l+n;',[]),
+ ('string-nested','s:string','int','n:=first("abc");if(n!=3)'+bad,'return second(s);',[('second','s:string','int','return len s;')]),
+ ('string-void','s:string','','first("abc");','if(len s!=3)'+bad,[]),
+ ('string-branch','s:string,go:int','string','s:=first("okay",1);if(s!="okay")'+bad,'if(go){n:=len s;return s;}return "no";',[]),
+ ('string-loop','s:string','int','i:=0;while(i<3){n:=first("abc");if(n!=3)'+bad+'i++;}','return len s;',[]),
+ ('list','xs:list of string','int','xs:="a"::"b"::nil;n:=first(xs);if(n!=2 || len xs!=2)'+bad,'return len xs;',[]),
+ ('list-nil','xs:list of string','int','n:=first(nil);if(n!=0)'+bad,'return len xs;',[]),
+ ('list-head','xs:list of string','string','xs:="okay"::nil;s:=first(xs);if(s!="okay" || len xs!=1)'+bad,'return hd xs;',[]),
+ ('list-tail','xs:list of string','list of string','xs:="a"::"okay"::nil;ys:=first(xs);s:=hd ys;if(s!="okay" || len xs!=2)'+bad,'return tl xs;',[]),
+ ('list-nested','xs:list of string','int','xs:="a"::nil;n:=first(xs);if(n!=1)'+bad,'return second(xs);',[('second','xs:list of string','int','return len xs;')]),
+ ('bytes-length','a:array of byte','int','a:=array[3]of byte;n:=first(a);if(n!=3)'+bad,'return len a;',[]),
+ ('ints-length','a:array of int','int','a:=array[3]of int;n:=first(a);if(n!=3)'+bad,'return len a;',[]),
+ ('nil-array-length','a:array of int','int','n:=first(nil);if(n!=0)'+bad,'return len a;',[]),
+ ('bytes','a:array of byte','int','a:=array[2]of byte;a[1]=byte 255;n:=first(a);if(n!=255)'+bad,'n:=int a[1];return n;',[]),
+ ('bytes-mutate','a:array of byte','','a:=array[2]of byte;first(a);n:=int a[1];if(n!=255)'+bad,'a[1]=byte 255;',[]),
+ ('bytes-slice','a:array of byte','array of byte','a:=array[3]of byte;a[1]=byte 255;b:=first(a);a=nil;n:=int b[0];if(n!=255 || len b!=2)'+bad,'n:=int a[1];b:=a[1:];return b;',[]),
+ ('ints','a:array of int','int','a:=array[2]of int;a[1]=123456;n:=first(a);if(n!=123456)'+bad,'n:=a[1];return n;',[]),
+ ('ints-mutate','a:array of int','','a:=array[2]of int;first(a);n:=a[1];if(n!=123456)'+bad,'a[1]=123456;',[]),
+ ('ints-nested','a:array of int','int','a:=array[2]of int;a[1]=7;n:=first(a);if(n!=7)'+bad,'return second(a);',[('second','a:array of int','int','n:=a[1];return n;')]),
+ ('context','c:ref Draw->Context','','c:=ref Draw->Context(nil,nil,nil);first(c);if(c==nil)'+bad,'if(c==nil || c.display!=nil)'+bad,[]),
+ ('context-return','c:ref Draw->Context','ref Draw->Context','c:=ref Draw->Context(nil,nil,nil);d:=first(c);if(d!=c)'+bad,'if(c.display!=nil)'+bad+'return c;',[]),
+ ('packed','b:byte,s:string,n:int,xs:list of string,r:real','int','xs:="owned"::nil;n:=5;r:=real n;v:=first(byte 255,"abc",7,xs,r);if(v!=271)'+bad,'a:=int b;l:=len s;k:=len xs;x:=int r;return a+l+n+k+x;',[]),
+ ('prefix-eight',prefix+',s:string,n:int,a:array of byte,b:big,xs:list of string,c:ref Draw->Context,r:real,v:byte','int','a:=array[2]of byte;a[1]=byte 7;n:=7;b:=big n;r:=real n;xs:="owned"::nil;c:=ref Draw->Context(nil,nil,nil);v:=first(ctxt,argv,"abc",7,a,b,xs,c,r,byte 7);if(v!=39)'+bad,'if(c.display!=nil)'+bad+'l:=len s;x:=int a[1];y:=int b;k:=len xs;z:=int r;w:=int v;return l+n+x+y+k+z+w;',[]),
+ ('prefix-string',prefix+',s:string','int','n:=first(ctxt,argv,"abc");if(n!=3)'+bad,'return len s;',[]),
+ ('prefix-mixed',prefix+',s:string,n:int,xs:list of string','int','xs:="owned"::nil;n:=first(ctxt,argv,"abc",7,xs);if(n!=11)'+bad,'a:=len s;b:=len xs;return a+b+n;',[]),
+ ('prefix-arrays',prefix+',a:array of byte,b:array of int','int','a:=array[2]of byte;b:=array[2]of int;a[1]=byte 255;b[1]=7;n:=first(ctxt,argv,a,b);if(n!=262)'+bad,'x:=int a[1];y:=b[1];return x+y;',[]),
+ ('rebound','s:string','string','s:=first("owned");if(s!="owned!")'+bad,'s+="!";second();return s;',[('second','','','n:=0;while(n<2)n++;')]),
+ ('live-callee','s:string','string','s:=first("owned");if(s!="owned")'+bad,'second();if(len s!=5)'+bad+'return s;',[('second','','','a:="private"::nil;if(len a!=1)'+bad)]),
+ ('live-caller','xs:list of string','int','xs:="owned"::nil;a:=array[2]of int;a[1]=7;n:=first(xs);v:=a[1];if(n!=1 || v!=7 || len xs!=1)'+bad,'return len xs;',[]),
+ ('string-error','s:string','','first("abc");','if(len s!=3)'+bad+'z:=0;bad:=1/z;',[]),
+ ('bytes-error','a:array of byte','','a:=array[1]of byte;first(a);','n:=int a[1];',[])]
+ for name,args,result,body,helper,others in rows:
+  functions=[('first',args,result,helper)]+others
+  declarations=''.join(fn+':fn('+params+')'+(':'+ty if ty else'')+';'for fn,params,ty,_ in functions)
+  definitions=''.join(fn+'('+params+')'+(':'+ty if ty else'')+'{'+code+'}'for fn,params,ty,code in functions)
+  provider='implement Command;include "command.m";'+declarations+'init('+prefix+'){'+body+'}'+definitions
+  caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"abc"::nil;m->init(nil,argv);}'
+  yield 'managedarg-'+name,provider,caller,1 if name=='string-error'else 4 if name=='bytes-error'else 0

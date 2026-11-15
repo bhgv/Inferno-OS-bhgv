@@ -19,13 +19,13 @@ include "sh.m";
 implement Command;
 include "command.m";
 increment: fn(n: int): int;
-validate: fn(ctxt: ref Draw->Context, argv: list of string, expected: int): string;
+validate: fn(ctxt: ref Draw->Context, argv: list of string, expected: int, label: string): string;
 init(ctxt: ref Draw->Context, argv: list of string)
 {
     count := increment(2);
     if(count != 3){ z := 0; bad := 1/z; }
     if(ctxt == nil || ctxt.display != nil) return;
-    status := validate(ctxt, argv, 3);
+    status := validate(ctxt, argv, 3, "checked");
     if(status != "checked"){ z := 0; bad := 1/z; }
     saved := ctxt;
     display := ctxt.display;
@@ -59,11 +59,12 @@ increment(n: int): int
 {
     return n + 1;
 }
-validate(ctxt: ref Draw->Context, argv: list of string, expected: int): string
+validate(ctxt: ref Draw->Context, argv: list of string, expected: int, label: string): string
 {
     if(ctxt == nil || len argv != expected){ z := 0; bad := 1/z; }
     keep := argv;
-    return "checked";
+    if(len label != 7){ z := 0; bad := 1/z; }
+    return label;
 }
 ```
 
@@ -255,14 +256,14 @@ array initializers and other element types are still outside this profile.
 
 Local helper declarations belong to the implementation file, as `validate` above
 demonstrates. They are reached through ordinary FRAME/CALL/RET; only init is
-exported. A helper takes zero to eight scalar parameters, optionally preceded
-by `(ctxt: ref Draw->Context, argv: list of string)`. Scalars are byte/int/big/real.
+exported. A helper takes zero to eight numeric or selected managed parameters, optionally
+preceded by `(ctxt: ref Draw->Context, argv: list of string)`. Numeric parameters are byte/int/big/real.
 A helper returns void, byte/int/big/real, String, list of String, an ADT
 reference or a byte/int array. The optional prefix occupies mapped FP64/FP72; scalars start at FP64
 without it, or FP80 after it, each aligned to its own width. The collector traces caller, prepared and active callee frames;
 helper-local lists/strings/arrays and caller values survive nested calls.
 Branches cannot enter call setup or cross function boundaries. Recursive graphs,
-standalone managed parameter shapes, aggregate results and helper imports still refuse the
+ambiguous leading managed pairs, aggregate results and helper imports still refuse the
 whole file. These limits describe the selected profile, not Limbo itself.
 
 A managed result is written directly into a mapped caller root, using a full
@@ -297,3 +298,22 @@ exact class from stores; the binder checks an unmapped caller span of1/4/8/8
 bytes. The result address itself always occupies8 bytes. Nested
 `return helper(...)` forwards that address; every path to RET must assign the
 result. Equal widths do not make `big` and `real` interchangeable.
+
+Selected managed helper parameters are strings, lists of strings, byte/int
+arrays and Context references. They occupy mapped eight-byte cells. The reader
+derives required classes from callee operations and checks every caller source;
+MOVP and a GC bit cannot assert a pointee class. Even a void managed-input helper
+is proved before its caller. An unused input with an unknown class is refused.
+
+Two leading MOVPs retain the existing Context/list-prefix meaning. Consequently,
+two ordinary strings at the start of a signature are ambiguous and still refuse.
+Selected managed and numeric arguments may mix after the prefix; one leading
+managed parameter also works. The validate example passes label after expected.
+Reassigning a String parameter is local; modifying an array element is visible
+to the caller because both cells reference the same object.
+
+`return len value` works for strings, lists and arrays. A length-only array
+parameter needs the Array class; indexing additionally requires ByteArray or
+IntArray. Returning an array whose element class was not inferred is refused:
+size and GC maps do not replace element types. Use an explicit local to return
+a computed slice.

@@ -19,13 +19,13 @@ include "sh.m";
 implement Command;
 include "command.m";
 increment: fn(n: int): int;
-validate: fn(ctxt: ref Draw->Context, argv: list of string, expected: int): string;
+validate: fn(ctxt: ref Draw->Context, argv: list of string, expected: int, label: string): string;
 init(ctxt: ref Draw->Context, argv: list of string)
 {
     count := increment(2);
     if(count != 3){ z := 0; bad := 1/z; }
     if(ctxt == nil || ctxt.display != nil) return;
-    status := validate(ctxt, argv, 3);
+    status := validate(ctxt, argv, 3, "checked");
     if(status != "checked"){ z := 0; bad := 1/z; }
     saved := ctxt;
     display := ctxt.display;
@@ -59,11 +59,12 @@ increment(n: int): int
 {
     return n + 1;
 }
-validate(ctxt: ref Draw->Context, argv: list of string, expected: int): string
+validate(ctxt: ref Draw->Context, argv: list of string, expected: int, label: string): string
 {
     if(ctxt == nil || len argv != expected){ z := 0; bad := 1/z; }
     keep := argv;
-    return "checked";
+    if(len label != 7){ z := 0; bad := 1/z; }
+    return label;
 }
 ```
 
@@ -256,7 +257,7 @@ int Limbo, временный адрес — native64-указатель. Мас
 
 Объявления локальных функций помещаются в файл реализации, как `validate` выше.
 Они вызываются обычными FRAME/CALL/RET; экспортируется только init. Сейчас каждый
-helper принимает от нуля до восьми скалярных параметров byte/int/big/real, перед
+helper принимает от нуля до восьми параметров byte/int/big/real или выбранных managed-типов, перед
 которыми может стоять `(ctxt: ref Draw->Context, argv: list of string)`. Он
 возвращает void, byte/int/big/real, строку, список строк, ссылку ADT или массив byte/int. Префикс
 занимает корни FP64/FP72. Скаляры начинаются с FP64 без префикса или с FP80 после
@@ -264,7 +265,7 @@ helper принимает от нуля до восьми скалярных п�
 GC просматривает вызывающий, подготовленный и активный вызываемый кадры;
 локальные списки/строки/массивы helper и значения caller переживают вложенные
 вызовы. Переходы внутрь подготовки вызова и между телами функций запрещены.
-Рекурсивные графы, отдельные managed-параметры, агрегатные результаты и импорты helpers приводят
+Рекурсивные графы, неоднозначные первые пары managed-параметров, агрегатные результаты и импорты helpers приводят
 к отказу всего файла. Это ограничения выбранного профиля, а не самого Limbo.
 
 Managed-результат записывается прямо в корень caller с картой GC. Полный native-адрес
@@ -298,3 +299,21 @@ big и real имеют одинаковый размер, но разные пр
 Полный адрес результата занимает 8 байт независимо от ширины значения.
 Вложенный `return helper(...)` передаёт этот адрес дальше; каждый путь до RET
 должен записать результат. `big` и `real` не взаимозаменяемы.
+
+Managed-параметры helpers: строки, списки строк, массивы byte/int и выбранные
+ссылки Context. Они занимают маркируемые 8-байтовые ячейки. Reader выводит
+требуемый класс из операций callee, затем проверяет аргумент каждого caller;
+MOVP и карта GC сами по себе класс не задают. Даже void-helper с managed-входом
+проверяется раньше caller. Неиспользованный вход с неизвестным классом запрещён.
+
+Два первых MOVP в пакете сохраняют прежнее значение префикса Context/list.
+Поэтому две обычные строки в начале сигнатуры пока неоднозначны и отвергаются;
+после префикса выбранные managed- и числовые параметры можно смешивать. Один
+managed-параметр в начале также допускается. Пример validate выше передаёт label
+после expected. Параметр-строка присваивается локально; изменение элемента массива
+видно caller, поскольку обе ячейки ссылаются на один объект.
+
+`return len value` поддержан для строк, списков и массивов. Вызов с `len array`
+требует класс Array, а индексирование — конкретный ByteArray/IntArray. Возврат
+массива с невыведенным классом элементов запрещён: размер или карта GC не
+заменяют тип элементов. Для возврата среза используйте явную local-переменную.

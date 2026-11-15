@@ -177,7 +177,8 @@ def main():
     parser.add_argument('--limbo', type=Path, required=True)
     args = parser.parse_args()
     limbo = args.limbo.resolve()
-    refused = {"scalar": 0, "managed": 0}
+    profiles = (("scalar", "-64"), ("managed", "-64l"), ("command-library", "-64b"), ("command-client", "-64c"))
+    refused = {name: 0 for name, _ in profiles}
     with tempfile.TemporaryDirectory(prefix='awm-preflight-', dir=ROOT) as directory:
         work = Path(directory)
         check_startup_imports(limbo, work)
@@ -187,7 +188,7 @@ def main():
             result = compile_module(limbo, source, legacy, [])
             if result.returncode != 0 or not legacy.is_file() or legacy.stat().st_size == 0:
                 raise RuntimeError(f'{source}: ordinary compilation failed\n{result.stdout}')
-            for profile, option in (("scalar", "-64"), ("managed", "-64l")):
+            for profile, option in profiles:
                 target = work / (Path(source).stem + '.' + profile + '.dis64')
                 result = compile_module(limbo, source, target, [option])
                 if result.returncode == 0:
@@ -196,7 +197,7 @@ def main():
                     print(f'{source}: emitted {profile} Dis64 (compiler evidence only)')
                     continue
                 diagnostic = next((line for line in result.stdout.splitlines() if 'Dis64 ' in line), '')
-                if result.returncode < 0 or target.exists() or not diagnostic:
+                if result.returncode < 0 or (target.exists() and target.stat().st_size) or not diagnostic or "AddressSanitizer" in result.stdout or "runtime error:" in result.stdout:
                     raise RuntimeError(f'{source}: unexpected {profile} refusal\n{result.stdout}')
                 if profile == "scalar" and source == 'appl/wm/awm.b' and 'module load requires managed linkage' in diagnostic:
                     witness = re.search(r':(\d+): Dis64 scalar: module load requires managed linkage', diagnostic)
@@ -204,7 +205,7 @@ def main():
                         raise RuntimeError(f'{source}: missing load-site diagnostic\n{result.stdout}')
                 print(f'[{profile}] {diagnostic}')
                 refused[profile] += 1
-    print(f'PASS AWM compiler preflight: {len(STARTUP)} ordinary modules, {refused["scalar"]} scalar and {refused["managed"]} managed Dis64 refusals; no AWM execution claimed')
+    print(f'PASS AWM compiler preflight: {len(STARTUP)} ordinary modules, {refused["scalar"]} scalar and {refused["managed"]} managed, {refused["command-library"]} command-library and {refused["command-client"]} command-client Dis64 refusals; no AWM execution claimed')
 
 
 

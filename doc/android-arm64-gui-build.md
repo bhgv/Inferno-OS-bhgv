@@ -609,3 +609,16 @@ The matrix is333 source pairs and1308 main full-console roots per Linux target;
 this advances call/frame coverage, while the actual AWM sources still exceed the
 bounded profiles. It does not make an Android ARM64 GUI APK available.
 See dis64-inferno-scalar-result-report.md for controls and reproduction.
+
+## Managed local parameters (INFERNO-0200)
+
+The existing local call path now accepts inferred String/ListString/byte-array/
+int-array/Context arguments alongside numeric values. Callee uses establish the
+required class; mapped argument cells preserve ownership across calls and GC.
+The matrix is368 source pairs and1448 main full-console roots per Linux target.
+The AWM preflight now checks -64/-64l/-64b/-64c rather than only the older pair:
+all16 real startup sources still refuse each bounded profile. Current diagnostics
+point at general module data/imports/handlers and importing module shapes.
+Android/Bionic GUI startup and APK acceptance remain open. Detailed limitations,
+malformed-file controls and parameter-only GC omission are in
+dis64-inferno-managed-argument-report.md.
