@@ -29,7 +29,7 @@ def main():
    branches=[i for i,r in enumerate(code)if r[0]in('IJMP','IBEQW','IBNEW','IBEQL','IBNEL','IBEQC','IBNEC')]
    if branches:mutate('branch-binder',[(branches[0],dict(dest=binder))]);mutate('branch-call',[(branches[0],dict(dest=binder+1))])
   if a.control:
-   chosen={'defined':'string-undefined-return','classes':'list-wrong-class'}[a.control];rows=[r for r in rows if r[0]==chosen];assert rows
+   chosen={'defined':'branch-undefined-return','classes':'list-wrong-class'}[a.control];rows=[r for r in rows if r[0]==chosen];assert rows
    path='dis64-scalar-client.h'if a.control=='defined'else'dis64-client-local.h';text=(ROOT/'include'/path).read_text();old,new={'defined':('node->needload=library && v->returning;','node->needload=0;'),'classes':('v->localresult[i-1]=body.returnkind;','v->localresult[i-1]=Dis64ClientRoot;')}[a.control];assert text.count(old)==1;(w/path).write_text(text.replace(old,new))
    if path!='dis64-scalar-client.h':(w/'dis64-scalar-client.h').write_text((ROOT/'include/dis64-scalar-client.h').read_text())
   binary=w/'proof';cc=shlex.split(env.get('CC','cc'))+shlex.split(env.get('NATIVE64_CFLAGS','-O2 -g -fsanitize=undefined -fno-sanitize-recover=all'));subprocess.run(cc+['-I'+str(w),'-I'+str(ROOT/'include'),str(ROOT/'utils/tests/dis64-command-proof.c'),'-o',str(binary)],env=env,check=True)

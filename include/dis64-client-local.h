@@ -1,21 +1,39 @@
-/* Local calls derive scalar packet types and managed result classes. */
+/* Local calls derive exact parameter and result classes. */
 static int dis64clientbodyprove(Dis64ScalarClientView*,int,int);
+/* A result kind starts unknown; numeric classes never merge with references. */
+static unsigned int
+dis64clientresultkind(unsigned int a,unsigned int b)
+{
+ if(!a)return b;
+ return dis64clientisroot(a) && dis64clientisroot(b)?dis64clientmergekind(a,b):a==b?a:0;
+}
 static int
 dis64clientresultstore(const Dis64CallDecoded *d)
 {
- return (d->instruction.op==IMOVP || d->instruction.op==IHEADP || d->instruction.op==ITAIL) && UDST(d->instruction.mode)==(AFP|AIND) && d->instruction.destination==32;
+ unsigned int source,kind;int binary;
+ return UDST(d->instruction.mode)==(AFP|AIND) && d->instruction.destination==32 &&
+  (d->instruction.op==IMOVP || d->instruction.op==IHEADP || d->instruction.op==ITAIL || dis64clientoperation(d->instruction.op,&source,&kind,&binary));
 }
 static int
-dis64clientreturn(Dis64ScalarClientView *v,const Dis64CallDecoded *d,Dis64ClientSlot *slots,unsigned int count,unsigned int need[2])
+dis64clientreturn(Dis64ScalarClientView *v,const Dis64CallDecoded *d,Dis64ClientSlot *slots,unsigned int *count,unsigned int need[2])
 {
- const Dis64Instruction *in=&d->instruction;unsigned int kind;
- if(!v->returning || d->secondary || (in->mode&ARM)!=AXNON ||
-    !dis64clientrootoperand(slots,count,USRC(in->mode),in->source,in->op==IMOVP?Dis64ClientRoot:Dis64ClientListString,need))return 0;
- kind=in->op==IHEADP?Dis64ClientString:in->op==ITAIL?Dis64ClientListString:dis64clientrootkind(slots,count,USRC(in->mode),in->source);
- kind=dis64clientmergekind(v->returnkind,kind);if(!kind)return 0;v->returnkind=kind;return 1;
+ const Dis64Instruction *in=&d->instruction;unsigned int kind,source,mm=in->mode&ARM;int binary;
+ if(!v->returning || d->secondary)return 0;
+ if(dis64clientoperation(in->op,&source,&kind,&binary)){
+  if(!dis64clientbit(slots,count,v->frame,USRC(in->mode),in->source,source,need))return 0;
+  if(binary){
+   if(mm!=AXINF && mm!=AXIMM)return 0;
+   if(mm==AXIMM && (kind!=Dis64Int || in->middle < -32768 || in->middle > 32767))return 0;
+   if(!dis64clientbit(slots,count,v->frame,mm==AXIMM?AIMM:AFP,in->middle,kind,need))return 0;
+  }else if(mm!=AXNON)return 0;
+ }else{
+  if(mm!=AXNON || !dis64clientrootoperand(slots,*count,USRC(in->mode),in->source,in->op==IMOVP?Dis64ClientRoot:Dis64ClientListString,need))return 0;
+  kind=in->op==IHEADP?Dis64ClientString:in->op==ITAIL?Dis64ClientListString:dis64clientrootkind(slots,*count,USRC(in->mode),in->source);
+ }
+ kind=dis64clientresultkind(v->returnkind,kind);if(!kind)return 0;v->returnkind=kind;return 1;
 }
-/* Binder presence determines result arity; the destination is always a mapped
- * caller root, or the already checked inherited address in current FP32. */
+/* Binder presence determines result arity. Its destination is an exact caller
+ * scalar/root span, or the checked inherited address in current FP32. */
 static unsigned int
 dis64clientargkind(unsigned int op)
 {
@@ -53,7 +71,7 @@ dis64clientlocalend(const Dis64ScalarClientView *v,unsigned int pc)
  unsigned int prefix,argc,kinds[8],value;return dis64clientlocalscan(v,pc,&prefix,&argc,kinds,&value);
 }
 static int
-dis64clientlocalcall(Dis64ScalarClientView *v,unsigned int pc,Dis64ClientSlot *slots,unsigned int *count,unsigned int need[2],unsigned int *assigned)
+dis64clientlocalcall(Dis64ScalarClientView *v,unsigned int pc,Dis64ClientSlot *slots,unsigned int *count,unsigned int need[2],unsigned int give[2],unsigned int *assigned)
 {
  Dis64Instruction *frame,*call,*in;Dis64CallDecoded *d;unsigned int i,j,prefix,argc,kinds[8],value,end=dis64clientlocalscan(v,pc,&prefix,&argc,kinds,&value),kind,offset,width;
  if(!end || v->count-pc<=end)return 0;
@@ -78,9 +96,11 @@ dis64clientlocalcall(Dis64ScalarClientView *v,unsigned int pc,Dis64ClientSlot *s
   d=v->decoded+pc+1+prefix+argc;in=&d->instruction;kind=v->localresult[i];
   if(!kind || in->mode!=(SRC(AFP)|DST(AFP|AIND)) || in->destination!=40 || d->secondary!=32)return 0;
   if(in->op==ILEA){unsigned int bits[2]={0};
-   if(!dis64clientrootoperand(slots,*count,AFP,in->source,kind,bits))return 0;
+   if(dis64clientisroot(kind)){
+    if(!dis64clientrootoperand(slots,*count,AFP,in->source,kind,bits))return 0;
+   }else if(!dis64clientbit(slots,count,v->frame,AFP,in->source,kind,give))return 0;
   }else{
-   if(in->op!=IMOVL || in->source!=32 || !v->returning || !(kind=dis64clientmergekind(v->returnkind,kind)))return 0;
+   if(in->op!=IMOVL || in->source!=32 || !v->returning || !(kind=dis64clientresultkind(v->returnkind,kind)))return 0;
    v->returnkind=kind;*assigned=1;
   }
  }
@@ -126,7 +146,7 @@ dis64clientlocalprove(Dis64ScalarClientView *v)
    body=*v;body.prooftype=i?v->localtype[i-1]:0;body.frame=type.bytes;body.count=end-start;body.calls=body.localused=0;
    body.argprefix=i?v->localprefix[i-1]:2;body.argcount=i?v->localargc[i-1]:0;
    for(n=0;n<body.argcount;n++)body.argkinds[n]=v->localargs[i-1][n];
-   body.returning=i?v->localvalue[i-1]:0;body.returnkind=body.returning?Dis64ClientRoot:0;
+   body.returning=i?v->localvalue[i-1]:0;body.returnkind=0;
    for(j=0;j<body.count;j++){
     body.decoded[j]=v->decoded[start+j];
     if(dis64clientbranch(body.decoded[j].instruction.op)){
@@ -141,6 +161,20 @@ dis64clientlocalprove(Dis64ScalarClientView *v)
   }
   if(done==((1U<<(v->localcount+1))-1))return 1;
   if(!progress)break;
+ }
+ return 0;
+}
+
+/* Recover the proved local binder contract without trusting a wire annotation. */
+static unsigned int
+dis64clientlocalcontract(const Dis64ScalarClientView *v,unsigned int pc)
+{
+ unsigned int at,end,prefix,argc,kinds[8],value,i;
+ for(at=0;at<pc;at++)if(v->decoded[at].instruction.op==IFRAME){
+  end=dis64clientlocalscan(v,at,&prefix,&argc,kinds,&value);
+  if(!end || !value || at+1+prefix+argc!=pc)continue;
+  for(i=0;i<v->localcount;i++)if(v->decoded[at].instruction.source==v->localtype[i])
+   return dis64clientisroot(v->localresult[i])?24:dis64clientwidth(v->localresult[i]);
  }
  return 0;
 }

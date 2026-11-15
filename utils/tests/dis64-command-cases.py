@@ -34,6 +34,7 @@ def cases(pathlength=13):
  yield from localcases(pathlength)
  yield from resultcases(pathlength)
  yield from argumentcases(pathlength)
+ yield from scalarresultcases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -452,3 +453,37 @@ def argumentcases(pathlength=13):
   provider='implement Command;include "command.m";'+declarations+'init('+rootargs+'){'+body+'}'+definitions
   caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"abc"::nil;m->init(nil,argv);}'
   yield 'args-'+name,provider,caller,1 if name in('error','empty-error')else 0
+
+def scalarresultcases(pathlength=13):
+ bad='{z:=0;bad:=1/z;}'
+ rootargs='ctxt:ref Draw->Context,argv:list of string'
+ rows=[]
+ for kind,setup,value,check in [
+  ('byte','b:=byte 255;','b','n:=int r;if(n!=255)'+bad),
+  ('int','n:=-123456;','n','if(r!= -123456)'+bad),
+  ('big','n:=7;b:=big n;b<<=40;','b','expectedn:=7;e:=big expectedn;e<<=40;if(r!=e)'+bad),
+  ('real','n:=5;d:=4;b:=real n;q:=real d;b/=q;','b','expectedn:=5;expectedd:=4;e:=real expectedn;expectedq:=real expectedd;e/=expectedq;if(r!=e)'+bad)]:
+  rows.extend([
+   (kind, 'x:'+kind,kind,setup+'r:=first('+value+');'+check,'return x;',[]),
+   (kind+'-nested','x:'+kind,kind,setup+'r:=first('+value+');'+check,'return second(x);',[('second','x:'+kind,kind,'return x;')]),
+   (kind+'-prefix',rootargs+',x:'+kind,kind,setup+'r:=first(ctxt,argv,'+value+');'+check,'if(len argv!=2)'+bad+'return x;',[]),
+   (kind+'-branch','x:'+kind+',go:int',kind,setup+'r:=first('+value+',1);'+check,'if(go)return x;return x;',[]),
+   (kind+'-loop','x:'+kind,kind,setup+'i:=0;while(i<3){r:=first('+value+');'+check+'i++;}','return x;',[]),
+   (kind+'-caller-live','x:'+kind,kind,setup+'xs:="owned"::nil;r:=first('+value+');'+check+'if(len xs!=1)'+bad,'return x;',[])])
+ rows += [
+ ('int-immediate','','int','r:=first();if(r!=7)'+bad,'return 7;',[]),
+ ('byte-immediate','','byte','r:=first();n:=int r;if(n!=255)'+bad,'return byte 255;',[]),
+ ('int-computed','x:int','int','r:=first(7);if(r!=10)'+bad,'return x+3;',[]),
+ ('big-computed','x:big','big','n:=7;b:=big n;r:=first(b);e:=b+b;if(r!=e)'+bad,'return x+x;',[]),
+ ('real-computed','x:real','real','n:=7;b:=real n;r:=first(b);e:=b+b;if(r!=e)'+bad,'return x+x;',[]),
+ ('int-to-byte','x:int','byte','r:=first(511);n:=int r;if(n!=255)'+bad,'return byte x;',[]),
+ ('byte-to-int','x:byte','int','r:=first(byte 255);if(r!=255)'+bad,'return int x;',[]),
+ ('int-to-big','x:int','big','r:=first(7);n:=7;e:=big n;if(r!=e)'+bad,'return big x;',[]),
+ ('int-to-real','x:int','real','r:=first(7);n:=7;e:=real n;if(r!=e)'+bad,'return real x;',[])]
+ for name,args,result,body,helper,others in rows:
+  functions=[('first',args,result,helper)]+others
+  declarations=''.join(fn+':fn('+params+'):'+ty+';'for fn,params,ty,_ in functions)
+  definitions=''.join(fn+'('+params+'):'+ty+'{'+code+'}'for fn,params,ty,code in functions)
+  provider='implement Command;include "command.m";'+declarations+'init('+rootargs+'){'+body+'}'+definitions
+  caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;argv:="wm"::"abc"::nil;m->init(nil,argv);}'
+  yield 'scalarresult-'+name,provider,caller,0

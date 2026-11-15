@@ -21,7 +21,7 @@ dis64commandhelper(Decl *fn)
   if(n++==8 || (arg->ty->kind!=Tbyte && arg->ty->kind!=Tint && arg->ty->kind!=Tbig && arg->ty->kind!=Treal))return 0;
  }
  t=fn->ty->tof;
- return t->kind==Tnone || t->kind==Tstring || (t->kind==Tlist && t->tof->kind==Tstring) ||
+ return t->kind==Tnone || t->kind==Tbyte || t->kind==Tint || t->kind==Tbig || t->kind==Treal || t->kind==Tstring || (t->kind==Tlist && t->tof->kind==Tstring) ||
   (t->kind==Tref && t->tof->kind==Tadt) || (t->kind==Tarray && (t->tof->kind==Tbyte || t->tof->kind==Tint));
 }
 static int

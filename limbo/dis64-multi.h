@@ -75,9 +75,12 @@ static int
 typedclientbyte(Inst *in,Dis64TypedBody *p,unsigned int pc)
 {
  unsigned int sm,dm;long source,destination;int sk=in->op==ICVTWB?Tint:Tbyte,dk=in->op==ICVTBW?Tint:Tbyte,actual;
- if(in->mm!=Anone || in->branch || !typedclientbyteoperand(in->sm,&in->s,sk,p,&source,&sm) ||
-    !typedoperand(in->dm,&in->d,dk,0,0,p,&destination,&dm,&actual) || dm!=AFP)return typedfail(p,"client-byte-roles");
- p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,destination};return 1;
+ if(in->mm!=Anone || in->branch || !typedclientbyteoperand(in->sm,&in->s,sk,p,&source,&sm))return typedfail(p,"client-byte-roles");
+ if(in->dm==Afpind){
+  if(p->resultkind!=dk || in->d.reg!=16 || in->d.offset)return typedfail(p,"client-byte-result");
+  destination=32;dm=AFP|AIND;
+ }else if(!typedoperand(in->dm,&in->d,dk,0,0,p,&destination,&dm,&actual) || dm!=AFP)return typedfail(p,"client-byte-roles");
+ p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,destination};if(dm==(AFP|AIND))p->returns[pc]=1;return 1;
 }
 /* Reuse the existing reserved first tail cell; the scalar result uses the second. */
 static int
@@ -247,6 +250,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     i=dis64typedlower(fn,c->globals,c->instructions[0],c->count,stop,p);
     cost=p->frame.bytes+p->data.bytes+(p->frame.count+p->data.count)*sizeof(Dis64LayoutLeaf);
     if(cost>32*1024*1024-c->cost){typedfail(p,"multi-storage-budget");goto fail;}c->cost+=cost;
+    /* A successful scalar lowering may retain an immutable byte in MP.
+     * Command files serialize strings only, so replay through the byte folder. */
+    if(i && c->external>=2)for(pc=0;pc<p->count;pc++)
+        if((p->code[pc].op==IMOVB || p->code[pc].op==ICVTBW) && USRC(p->code[pc].mode)==AMP){i=0;typedfail(p,"unsupported-opcode");break;}
     if(i){c->state[index]=2;c->height[index]=1;return 1;}
     if(p->reason==nil || (strcmp(p->reason,"unsupported-opcode") && !(c->external>=2 && p->code && !p->frame.reason && !p->data.reason)))goto fail;
     p->reason=nil;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);

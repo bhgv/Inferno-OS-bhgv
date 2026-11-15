@@ -67,8 +67,9 @@ def decode(code, managed=False):
             secondary, at = OP.decode(code, at)
             destination, at = OP.decode(code, at)
         elif dm == 5:
-            if mm or (sm not in (1, 2) and not(managed and name=="IMOVP" and sm==0)):
+            if (mm and not managed) or (sm not in (1, 2) and not(managed and name=="IMOVP" and sm==0)):
                 raise ValueError('indirect role')
+            if mm: middle, at = OP.decode(code, at)
             source, at = OP.decode(code, at)
             destination, at = OP.decode(code, at)
             secondary, at = OP.decode(code, at)

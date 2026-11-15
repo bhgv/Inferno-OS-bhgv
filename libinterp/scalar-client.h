@@ -33,7 +33,7 @@ dis64clientconstruct(void *argument)
  for(i=0;i<v->count;i++){
   Dis64CallDecoded *d=v->decoded+i;if(!dis64runtimeinstruction(&d->instruction))return 0;
   dis64runtimeinst(m->prog+i,&d->instruction,m->prog);
-  if(roots && d->instruction.op==ILEA)m->prog[i].reg=v->localcount?24:8;
+  if(roots && d->instruction.op==ILEA)m->prog[i].reg=v->localcount?dis64clientlocalcontract(v,i):8;
   if(USRC(d->instruction.mode)==(AFP|AIND)){m->prog[i].s.i.f=d->instruction.source;m->prog[i].s.i.s=d->secondary;}
   if(UDST(d->instruction.mode)==(AFP|AIND)){m->prog[i].d.i.f=d->instruction.destination;m->prog[i].d.i.s=d->secondary;}
  }

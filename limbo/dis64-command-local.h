@@ -15,7 +15,7 @@ dis64commandlocalfile(Decl *globals,Decl **functions,int nf,Inst *instructions,l
   if(!(j?dis64commandhelper(functions[j]):dis64commandargs(functions[j])) || !functions[j]->pc || functions[j]->pc->pc!=(long)cursor ||
      !dis64typedcommand(functions[j],globals,functions,nf,instructions,count,count,body) || body->nexternal ||
      body->frame.bytes>4080 || body->first!=cursor || !filestringsplan(&literals,body,0))goto done;
-  for(i=0;i<body->nsites;i++)if(body->sites[i].contract && body->sites[i].contract!=24)goto done;
+  for(i=0;i<body->nsites;i++)if(body->sites[i].contract && body->sites[i].contract!=1 && body->sites[i].contract!=4 && body->sites[i].contract!=8 && body->sites[i].contract!=24)goto done;
   for(i=0;i<body->frame.count;i++){
    leaf=body->frame.leaves+i;
    if(leaf->kind!=Tbyte && leaf->kind!=Tint && leaf->kind!=Tbig && leaf->kind!=Treal && leaf->kind!=Tref && leaf->kind!=Tchan && leaf->kind!=Tarray && leaf->kind!=Tstring && leaf->kind!=Tlist && leaf->kind!=Tany && leaf->kind!=-1)goto done;

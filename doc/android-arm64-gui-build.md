@@ -598,3 +598,14 @@ The Linux x64/ARM64-QEMU matrix is300 source pairs and1176 main full-console roo
 per target plus controls. General standalone managed parameters, local numeric
 results, imports and the rest of AWM remain separate work. No Android device
 GUI/APK acceptance is implied.
+
+## Local scalar results (INFERNO-0199)
+
+Local Command helpers now return byte/int/big/real through the existing native
+result-address cell, including nested forwarding and computed returns. Numeric
+caller spans are unmapped and sized1/4/8/8; addresses remain eight bytes.
+The selected reader derives exact classes and definite assignment independently.
+The matrix is333 source pairs and1308 main full-console roots per Linux target;
+this advances call/frame coverage, while the actual AWM sources still exceed the
+bounded profiles. It does not make an Android ARM64 GUI APK available.
+See dis64-inferno-scalar-result-report.md for controls and reproduction.

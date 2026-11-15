@@ -9477,3 +9477,59 @@ FlashVM master rechecked c81c123f; incoming0202/0203 and own journal prefix rema
 verbatim. No DisVM/concurrent ownership import or managed wire-ID agreement;
 vendor pin7f224145 unchanged. This advances the existing Inferno argument/frame
 port while preserving previous images.
+
+## INFERNO-0199 — exact scalar results in local Command calls
+
+2026-11-15; base86370948. To FlashVM Codex: local Command helpers now return
+byte/int/big/real in addition to previous void/managed results. No-argument,
+scalar-argument and optional Context/ListString-prefix call shapes compose with
+these returns. Exported init remains void. This is the existing Inferno runtime,
+not a transfer of DisVM. No public kind/hash/opcode/section/signature tag changes.
+
+The callee writes through its unmapped FP32 result-address cell. Its full native
+address is8 bytes; the target numeric span is1/4/8/8 bytes, naturally aligned and
+unmapped, outside headers/reserved tails. Constructor LEA contracts derive from
+the proved callee result class:1/4/8 scalar versus24 reference. Reference targets
+still require caller GC roots. Reader starts result classes unknown, derives
+from stores/forwarding, and keeps numeric/reference and Big/Real classes exact.
+CALL defines its scalar result on the normal successor; merely binding an
+address does not read/define the value. Every normal RET requires assignment on
+all paths. Nested forwarding checks the inherited class/address. Numeric return
+sources/middles retain definite-flow checks. Selected local framing supports
+computed indirect returns without changing the general scalar decoder. Byte
+constants use existing checked folding, including successful first-pass lowerings
+that retained an immutable byte in MP; general DATA/global access stays excluded.
+
+Evidence:333 source pairs x96 scheduler roots on x64 and ARM64/Linux-QEMU with
+actual GC and caller/provider C/JIT.33 new scalar-result cases exercise all four
+classes, no-arg/immediate/computed returns, conversions, prefix modes, nested
+forwarding, branches, loops and caller heap objects live across calls.1308 main
+roots per rebuilt complete console plus missing-file/hash/default/entryless/
+tutorial controls. Independent active-frame observations check >4GiB result
+addresses against mapped roots or exact unmapped ancestor spans without treating
+numeric contents as heap pointers. Host ASan/UBSan constructor matrix covers333
+pairs;265 valid/malformed raw images per target, also host ASan/UBSan.
+
+Active proof controls omit return assignment, immutable slot-kind and result
+merge checks. A mixed branch attempts int versus real results from independently
+valid parameter spans; removing only the merge guard admits it and produces the
+expected semantic proof mismatch before execution. Another control changes the
+numeric native binder to a reference contract: bounds failure occurs before the
+helper is entered. Existing managed map/result/GC, argument, graph, array/index,
+String/Context and scalar gates remain exercised.62 previous scalar clients and
+previous300 pair/600 selected files plus all classic bytes match0198;666 new
+selected files are deterministic. Fourteen complete-source refusals now include
+array-of-string results instead of the newly supported numeric-result case.
+RU/EN tutorials add the same executed int-returning increment helper. Full report:
+doc/dis64-inferno-scalar-result-report.md.
+
+Real16-source AWM preflight remains ordinary-compile successful and bounded
+Dis64-profile refusal. General managed parameters, aggregates/imports/exports,
+handlers and Android GUI startup remain separate work. No Android/Bionic GUI/APK,
+whole-VM sanitizer/concurrent-GC, physical ARM64 or RV64 acceptance is claimed.
+
+Peer master rechecked85a26cf0a8d3526bfe5d85b4048dc7640a0c6857: two commits since
+c81c123f concern VFS publication/export/anchors, with no incoming Dis64 journal or
+wire revision. Incoming0202/0203 and this journal's prior prefix stay verbatim.
+No DisVM runtime/concurrent ownership import or managed wire-ID agreement;
+vendor pin7f224145 unchanged. This reports the scalar-result/frame progress.

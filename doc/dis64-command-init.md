@@ -18,9 +18,12 @@ include "sh.m";
 ```limbo
 implement Command;
 include "command.m";
+increment: fn(n: int): int;
 validate: fn(ctxt: ref Draw->Context, argv: list of string, expected: int): string;
 init(ctxt: ref Draw->Context, argv: list of string)
 {
+    count := increment(2);
+    if(count != 3){ z := 0; bad := 1/z; }
     if(ctxt == nil || ctxt.display != nil) return;
     status := validate(ctxt, argv, 3);
     if(status != "checked"){ z := 0; bad := 1/z; }
@@ -51,6 +54,10 @@ init(ctxt: ref Draw->Context, argv: list of string)
     }
     if(total != 11){ z := 0; bad := 1/z; }
     keep := saved;
+}
+increment(n: int): int
+{
+    return n + 1;
 }
 validate(ctxt: ref Draw->Context, argv: list of string, expected: int): string
 {
@@ -250,12 +257,12 @@ Local helper declarations belong to the implementation file, as `validate` above
 demonstrates. They are reached through ordinary FRAME/CALL/RET; only init is
 exported. A helper takes zero to eight scalar parameters, optionally preceded
 by `(ctxt: ref Draw->Context, argv: list of string)`. Scalars are byte/int/big/real.
-A helper returns void, String, list of String, an ADT reference or a byte/int
-array. The optional prefix occupies mapped FP64/FP72; scalars start at FP64
+A helper returns void, byte/int/big/real, String, list of String, an ADT
+reference or a byte/int array. The optional prefix occupies mapped FP64/FP72; scalars start at FP64
 without it, or FP80 after it, each aligned to its own width. The collector traces caller, prepared and active callee frames;
 helper-local lists/strings/arrays and caller values survive nested calls.
 Branches cannot enter call setup or cross function boundaries. Recursive graphs,
-standalone managed parameter shapes, scalar/aggregate results and helper imports still refuse the
+standalone managed parameter shapes, aggregate results and helper imports still refuse the
 whole file. These limits describe the selected profile, not Limbo itself.
 
 A managed result is written directly into a mapped caller root, using a full
@@ -264,7 +271,7 @@ values are released by the normal managed store. `return next(ctxt, argv)` can
 forward the checked address through a chain; the ancestor root stays traced.
 The reader derives result classes from the callee code and checks them against
 caller use. Every normal return must have assigned its result. Bare pointers,
-scalar slots, missing assignments and conflicting classes are rejected. Nil may
+scalar slots for managed results, missing assignments and conflicting classes are rejected. Nil may
 be returned without inventing a new wire type. Use an explicit local before
 returning a computed operation when it is outside the selected opcode set.
 
@@ -283,3 +290,10 @@ big and real share size, but retain distinct checked classes.
 Every call of a helper must use the same prefix, arity and scalar-kind sequence.
 Neither padding nor an unused local is an initialized parameter. The executable
 entry and exported Command.init keep their original signatures.
+
+Local helpers also return `byte`, `int`, `big`, and `real`. The `increment`
+example computes directly into its caller-owned result. The reader derives the
+exact class from stores; the binder checks an unmapped caller span of1/4/8/8
+bytes. The result address itself always occupies8 bytes. Nested
+`return helper(...)` forwards that address; every path to RET must assign the
+result. Equal widths do not make `big` and `real` interchangeable.

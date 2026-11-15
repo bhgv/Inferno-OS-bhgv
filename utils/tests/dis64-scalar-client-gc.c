@@ -12,7 +12,7 @@ static void
 clientlocalremember(Module *module,const uchar *data,unsigned int bytes)
 {
  Dis64ScalarClientView view;clientlocalcount=clientresultcount=0;
- if(dis64commandcheck(data,bytes,&view))for(unsigned int i=0;i<view.localcount;i++){clientlocaltypes[clientlocalcount]=module->type[view.localtype[i]];clientlocalvalues[clientlocalcount++]=view.localvalue[i];}
+ if(dis64commandcheck(data,bytes,&view))for(unsigned int i=0;i<view.localcount;i++){clientlocaltypes[clientlocalcount]=module->type[view.localtype[i]];clientlocalvalues[clientlocalcount++]=view.localresult[i];}
 }
 static void
 clientobserve(void *value)
@@ -39,7 +39,7 @@ static void
 clientcollect(Prog *process,Module *client,uchar *root)
 {
  Stkext *extent=(Stkext*)process->R.EX;uchar *top=process->R.SP,*fp;Type *type;Frame frame;
- void *value,*returnaddress=nil,*rootaddresses[1024];unsigned int i,j,bit,frames=0,naddresses=0,wantresult=0;USED(client);USED(root);
+ void *value,*returnaddress=nil,*rootaddresses[1024],*frameaddresses[128];Type *frametypes[128];unsigned int nframeaddresses=0,resultkind=0;unsigned int i,j,bit,frames=0,naddresses=0,wantresult=0;USED(client);USED(root);
  clientindexpause=0;
  if(process->R.M!=H && process->R.M!=nil){
   Module *m=process->R.M->m;uintptr pc=(uintptr)process->R.PC,base=(uintptr)m->prog;
@@ -67,8 +67,9 @@ clientcollect(Prog *process,Module *client,uchar *root)
    require(native64localtype(type) && (uintptr)type->size<=(uintptr)top-(uintptr)fp);
    if(fp==process->R.FP)for(i=0;i<clientlocalcount;i++)if(type==clientlocaltypes[i]){
     clientlocalpauses++;
-    if(clientlocalvalues[i]){wantresult=1;memmove(&returnaddress,fp+32,sizeof(returnaddress));}
+    if(clientlocalvalues[i]){wantresult=1;resultkind=clientlocalvalues[i];memmove(&returnaddress,fp+32,sizeof(returnaddress));}
    }
+   if(fp!=process->R.FP){require(nframeaddresses<128);frameaddresses[nframeaddresses]=fp;frametypes[nframeaddresses++]=type;}
    for(i=0;i<(unsigned int)type->np;i++)for(bit=0;bit<8;bit++)if(type->map[i]&(0x80>>bit)){
     if(fp!=process->R.FP){require(naddresses<1024);rootaddresses[naddresses++]=fp+64*i+8*bit;}
     memmove(&value,fp+64*i+8*bit,sizeof(value));clientobserve(value);
@@ -79,10 +80,23 @@ clientcollect(Prog *process,Module *client,uchar *root)
  }
  if(wantresult){
   require(returnaddress!=nil && returnaddress!=H);
-  for(j=0;j<naddresses && returnaddress!=rootaddresses[j];j++);
-  require(j<naddresses && (uintptr)returnaddress>0xffffffffULL);clientresultpauses++;
-  for(j=0;j<clientresultcount && returnaddress!=clientresulttargets[j];j++);
-  if(j==clientresultcount){require(clientresultcount<64);clientresulttargets[clientresultcount++]=returnaddress;}
+  require((uintptr)returnaddress>0xffffffffULL);clientresultpauses++;
+  if(dis64clientisroot(resultkind)){
+   for(j=0;j<naddresses && returnaddress!=rootaddresses[j];j++);require(j<naddresses);
+   for(j=0;j<clientresultcount && returnaddress!=clientresulttargets[j];j++);
+   if(j==clientresultcount){require(clientresultcount<64);clientresulttargets[clientresultcount++]=returnaddress;}
+  }else{
+   unsigned int width=dis64clientwidth(resultkind),offset,byte,found=0;
+   require(width==1 || width==4 || width==8);
+   for(j=0;j<nframeaddresses;j++){
+    uintptr base=(uintptr)frameaddresses[j],address=(uintptr)returnaddress;type=frametypes[j];
+    if(address<base+64 || address>base+type->size-16 || width>base+type->size-16-address)continue;
+    offset=address-base;if(offset%width)continue;
+    for(byte=offset;byte<offset+width;byte++)require(byte/64>=(unsigned int)type->np || !(type->map[byte/64]&(0x80>>((byte/8)%8))));
+    found=1;break;
+   }
+   require(found);
+  }
  }
  numericcollect(process);
  for(i=0;i<clientgraphcount;i++)if(numericowner(clientgraph[i])->magic!=MAGIC_A){
