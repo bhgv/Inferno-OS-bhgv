@@ -15,7 +15,7 @@ clientobserve(void *value)
  if(h->t==&Tmodlink){
   Modlink *link=value;clientobserve(link->MP);clientobserve(link->m->origmp);
  }else if(h->t==&Tarray){
-  Array *array=value;require(array->t->size==1 && array->t->np==0);clientobserve(array->root);
+  Array *array=value;require((array->t->size==1 || array->t->size==4) && array->t->np==0);clientobserve(array->root);
  }else if(h->t==&Tlist){
   list=value;clientobserve(list->tail);
   require(list->t==&Tptr);memmove(&head,list->data,sizeof(head));clientobserve(head);
@@ -35,14 +35,14 @@ clientcollect(Prog *process,Module *client,uchar *root)
   Module *m=process->R.M->m;uintptr pc=(uintptr)process->R.PC,base=(uintptr)m->prog;
   if(pc>base && pc<=base+m->nprog*sizeof(Inst) && (pc-base)%sizeof(Inst)==0){
    Inst *previous=process->R.PC-1;
-   if(previous->op==IINDB){
+   if((previous->op==IINDB || previous->op==IINDW)){
     Array *array;uchar *address;WORD index;
     require(USRC(previous->add)==AFP && (previous->add&ARM)==AXINF);
     memmove(&array,process->R.FP+previous->s.ind,sizeof(array));
     if(UDST(previous->add)==AIMM)memmove(&index,&previous->d,sizeof(index));
     else memmove(&index,process->R.FP+previous->d.ind,sizeof(index));
     memmove(&address,process->R.FP+previous->reg,sizeof(address));
-    require(array!=H && array!=nil && index>=0 && index<array->len && address==array->data+index);
+    require(array!=H && array!=nil && index>=0 && index<array->len && address==array->data+(previous->op==IINDB?1:4)*index);
     require(previous->reg==m->type[0]->size-16);
     clientindexpause=1;clientindexpauses++;
    }

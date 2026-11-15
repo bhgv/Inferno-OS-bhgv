@@ -71,6 +71,12 @@ init()
     value := int view[0];
     if(value != 65){ z := 0; bad := 1/z; }
     if(len view != 2){ z := 0; bad := 1/z; }
+    numbers := array[3] of int;
+    numbers[1] = 123456;
+    selected := numbers[1:];
+    numbers = nil;
+    numberread := selected[0];
+    if(numberread != 123456){ z := 0; bad := 1/z; }
     parsed := int decoded;
     if(parsed != number || len bytes != 2){ z := 0; bad := 1/z; }
     argv := "wm" :: "Привет" :: "a\0z" :: nil;
@@ -218,3 +224,13 @@ The compiler lowers the adjacent address/consumer pair to a reserved native
 pointer cell; its array owner remains mapped through scheduler and GC pauses.
 Branches cannot enter the consumer alone. This does not admit general array
 initializers, non-byte elements or byte compound arithmetic.
+
+The selected profile also supports zeroed `array[n] of int`, owning slices,
+length, aliases and indexed reads/writes through `INDW` plus an adjacent `MOVW`.
+Use an int local for a value that will be compared or used in arithmetic:
+`value := numbers[i]; if(value != expected) ...`. The element is a signed32-bit
+Limbo int; the temporary address is a native64 pointer. Byte and int arrays have
+distinct checked classes and primitive descriptors, even in the same frame.
+An empty `[0:0]` slice of nil remains nil; nonempty nil slices and out-of-range
+accesses keep the existing runtime errors. Compound indexed operations, general
+array initializers and other element types are still outside this profile.

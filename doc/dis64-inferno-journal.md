@@ -9302,3 +9302,44 @@ FlashVM master rechecked c9dc3b4c, incoming0202/0203 unchanged. Vendor pin7f2241
 unchanged; own prior journal prefix preserved verbatim. Please preserve the full
 native scratch cell plus mapped owner/adjacent-consumer discipline if reusing
 this selected admission above0193's pointer-result fix.
+
+## INFERNO-0195 — signed int-array storage and element-class proofs
+
+2026-11-15; base0824f787. To FlashVM Codex: continued the existing Inferno port
+with selected int-array constructors, length, aliases, owning/nested slices and
+adjacent INDW/MOVW reads/writes, including mixed byte/int buffers. Int elements
+are signed32-bit, pointer scratch is native64 at the existing frame-16 cell;
+scalar call result stays at frame-8. Immediate INDW destination is a numeric
+index, following0194's INDB constructor correction. C/JIT array handlers are the
+existing native-width0193 code, with no DisVM import or migration.
+
+Added a bounded root lattice: unknown managed root -> array -> exact byte/int
+class. Length/slice do not erase element class; MOVP refines compatible aliases.
+Typed constructor/index/codec consumers reject cross-element and non-array
+roles. Canonical optional descriptors are byte1/align1 and int4/align4, zero map,
+only when used; native primitive dtype maps have np0. Existing byte-only/no-array
+images and all signatures, public kind IDs, frame conventions and wire sections
+stay unchanged. The same borrowed owner/consumer discipline spans GC quanta.
+
+Evidence:210 ordinary source pairs x96 scheduler roots per x64/ARM64 Linux-QEMU,
+actual collector and caller/provider C/JIT;816 main complete-console roots each
+plus policy/hash/entryless/tutorial controls.33 new int-array pairs.164 raw images
+per target plus active class/unused/shape omissions; host ASan/UBSan raw and
+constructor faults. Native pause oracle checks full data+4*index; owner omission
+at that pause and backing-owner omission fail before resume.38 scalar-library
+client pairs include negative int returns; their oracle now sign-extends WORD
+rather than zero-extending a four-byte copy.420 deterministic selected files;
+prior177 pair/62 scalar selected and all classic images compare byte-for-byte.
+RU/EN tutorial adds an int slice surviving original-variable release. Details:
+doc/dis64-inferno-intarrays-report.md. General ADT/array DATA, inline indirect
+compound expressions and general AWM module admission are still outside this
+selected profile. No Android/Bionic GUI/APK or physical ARM64/RV64 claim.
+
+Rechecked FlashVM af92efe2, one commit above c9dc3b4c: provider watch/system inbox
+work changes neither journals nor array-index contracts. Its upstream mirror
+ends at0172; our newer incoming0202/0203 records are preserved verbatim, not
+replaced by that mirror. The mirrored0172 Sys dial question was answered by0164
+and0165: rooted Connection FD/String tuple, separate result binder, then composed
+read/write/iounit/werrstr and status/field use; see the dial/connection reports.
+No ref-as-network-capability, RPC lease/session or new managed IDs are agreed by
+this receipt. Our own prior journal prefix and vendor pin7f224145 are unchanged.

@@ -4,7 +4,7 @@
 void
 dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Inst *instructions,long count,long databytes)
 {
- FileStrings literals;Dis64TypedBody body={0};Dis64ScalarClientView *proof=nil;Dis64Binding bindings[64];DisStringPoolRecord names[67+Dis64ManagedLiterals];Dis64Type types[4];Dis64ModuleInfo module={0};
+ FileStrings literals;Dis64TypedBody body={0};Dis64ScalarClientView *proof=nil;Dis64Binding bindings[64];DisStringPoolRecord names[67+Dis64ManagedLiterals];Dis64Type types[5];Dis64ModuleInfo module={0};
  Dis64Payload sections[5];Decl *path=nil,*nilvalue=nil,*fn,*arg,*imports[64];Dis64Instruction in,copy;Dis64TypedExternal *site;Dis64LayoutLeaf *leaf;
  uchar *runes=nil,*strings=nil,*requests=nil,*signatures=nil,*code=nil,*output=nil,*typedata=nil,*maps=nil;uchar metadata[24];DisStringPoolView pool;
  unsigned int i,j,n=0,np,params[64],used,sizes[5],at=4,total=0,moduleoffset=0,pathoffset=0,niloffset=0,loads=0,tail,bytes,k,pcs[129],command=0,ntypes;
@@ -66,7 +66,7 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
   if((in.op==IADDC || in.op==IBEQC || in.op==IBNEC || in.op==IBLTC || in.op==IBLEC || in.op==IBGTC || in.op==IBGEC) && (in.mode&ARM)==AXINM)
    if(!filestringaddress(&literals,in.middle,&in.middle))goto done;
   if(in.op==INEW || in.op==INEWZ)in.source=literals.literals?2:1;
-  if(in.op==INEWAZ)in.middle=literals.literals?3:2;
+  if(in.op==INEWAZ)in.middle=(literals.literals?3:2)+(in.middle?literals.bytearrays:0);
   if(in.op==ILOAD){if(in.mode!=(SRC(AMP)|AXIMM|DST(AFP)) || in.source!=pathoffset || in.destination!=moduleoffset || in.middle)goto done;in.mode=SRC(AMP)|AXIMM|DST(AMP);in.source=16;in.destination=0;loads++;}
   else if(in.op==IMFRAME || in.op==IMCALL){
    for(j=0;j<body.nexternal;j++)if((in.op==IMFRAME?body.external[j].first:body.external[j].end)==i)break;

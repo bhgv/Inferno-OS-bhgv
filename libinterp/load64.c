@@ -151,7 +151,7 @@ dis64runtimeinst(Inst *target, const Dis64Instruction *source, Inst *program)
 	}else if(mode != AXXX)
 		target->s.imm = source->source;
 	mode = UDST(source->mode);
-	if(mode == AIMM && source->op == IINDB)
+	if(mode == AIMM && (source->op == IINDB || source->op == IINDW))
 		target->d.imm = source->destination;
 	else if(mode == AIMM)
 		target->d.ins = program+source->destination;

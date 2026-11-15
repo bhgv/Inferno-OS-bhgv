@@ -7,6 +7,21 @@ dis64clientrootkind(Dis64ClientSlot *slots,unsigned int count,unsigned int mode,
  if(mode==AFP)for(i=0;i<count;i++)if(slots[i].offset==(unsigned long)offset && dis64clientisroot(slots[i].kind))return slots[i].kind;
  return 0;
 }
+static int
+dis64clientarrayclass(unsigned int kind)
+{
+ return kind==Dis64ClientArray || kind==Dis64ClientByteArray || kind==Dis64ClientIntArray;
+}
+/* The root lattice refines unknown -> array -> exact element class. */
+static unsigned int
+dis64clientmergekind(unsigned int source,unsigned int destination)
+{
+ if(source==Dis64ClientRoot)return destination;
+ if(destination==Dis64ClientRoot)return source;
+ if(source==Dis64ClientArray && dis64clientarrayclass(destination))return destination;
+ if(destination==Dis64ClientArray && dis64clientarrayclass(source))return source;
+ return source==destination?source:0;
+}
 /* Codec roles are proof classes, not public signature kinds. */
 static int
 dis64clientcodec(unsigned int op,unsigned int *sk,unsigned int *dk)
@@ -24,10 +39,10 @@ static int
 dis64clientrootoperand(Dis64ClientSlot *slots,unsigned int count,unsigned int mode,long offset,unsigned int kind,unsigned int bits[2])
 {
  unsigned int i,actual=dis64clientrootkind(slots,count,mode,offset);
- if(!actual || (actual!=Dis64ClientRoot && kind!=Dis64ClientRoot && actual!=kind))return 0;
+ if(!actual || (actual!=Dis64ClientRoot && kind!=Dis64ClientRoot && actual!=kind && !dis64clientmergekind(actual,kind)))return 0;
  if(mode==AMP)return 1;
  for(i=0;i<count;i++)if(slots[i].offset==(unsigned long)offset){
-  if(actual==Dis64ClientRoot && kind!=Dis64ClientRoot)slots[i].kind=kind;
+  if((actual==Dis64ClientRoot || actual==Dis64ClientArray) && kind!=Dis64ClientRoot)slots[i].kind=dis64clientmergekind(actual,kind);
   bits[i/32]|=1U<<(i%32);return 1;
  }
  return 0;
@@ -49,7 +64,7 @@ dis64clientreferencecompare(Dis64ClientSlot *slots,unsigned int count,const Dis6
 }
 static int
 dis64clientmanagedroles(Dis64ClientSlot *slots,unsigned int *count,unsigned int frame,
- const Dis64Instruction *in,unsigned int need[2],unsigned int give[2])
+ const Dis64Instruction *in,unsigned int need[2],unsigned int give[2],const Dis64ScalarClientView *v)
 {
  unsigned int source,destination,sk=Dis64ClientRoot,dk=Dis64ClientRoot;
  if(dis64clientcodec(in->op,&sk,&dk)){
@@ -62,14 +77,14 @@ dis64clientmanagedroles(Dis64ClientSlot *slots,unsigned int *count,unsigned int 
  }
  if(in->op==INEWAZ)return (in->mode&ARM)==AXIMM && UDST(in->mode)==AFP &&
   dis64clientbit(slots,count,frame,USRC(in->mode),in->source,Dis64Int,need) &&
-  dis64clientrootoperand(slots,*count,AFP,in->destination,Dis64ClientByteArray,give);
+  dis64clientrootoperand(slots,*count,AFP,in->destination,(v->intarrays && in->middle==v->inttype)?Dis64ClientIntArray:Dis64ClientByteArray,give);
  if(in->op==ISLICEA){
   unsigned int mm=in->mode&ARM;
   return (mm==AXIMM || mm==AXINF) && (mm!=AXIMM || (in->middle>=-32768 && in->middle<=32767)) && UDST(in->mode)==AFP &&
    dis64clientbit(slots,count,frame,USRC(in->mode),in->source,Dis64Int,need) &&
    dis64clientbit(slots,count,frame,mm==AXIMM?AIMM:AFP,in->middle,Dis64Int,need) &&
-   dis64clientrootoperand(slots,*count,AFP,in->destination,Dis64ClientByteArray,need) &&
-   dis64clientrootoperand(slots,*count,AFP,in->destination,Dis64ClientByteArray,give);
+   dis64clientrootoperand(slots,*count,AFP,in->destination,Dis64ClientArray,need) &&
+   dis64clientrootoperand(slots,*count,AFP,in->destination,Dis64ClientArray,give);
  }
  if(in->op==IADDC || in->op==IINSC || in->op==ISLICEC){
   unsigned int mm=in->mode&ARM;int numeric=in->op!=IADDC;
@@ -110,9 +125,9 @@ dis64clientmanagedroles(Dis64ClientSlot *slots,unsigned int *count,unsigned int 
   source=dis64clientrootkind(slots,*count,USRC(in->mode),in->source);
   destination=dis64clientrootkind(slots,*count,AFP,in->destination);
   if(!source || !destination)return 0;
-  sk=dk=source==Dis64ClientRoot?destination:source;
+  sk=dk=dis64clientmergekind(source,destination);if(!sk)return 0;
  }else switch(in->op){
- case ILENA:sk=Dis64ClientByteArray;break;
+ case ILENA:sk=Dis64ClientArray;break;
  case ILENC:sk=Dis64ClientString;break;
  case ILENL:case ITAIL:sk=Dis64ClientListString;dk=Dis64ClientListString;break;
  case ICONSP:sk=Dis64ClientString;dk=Dis64ClientListString;break;

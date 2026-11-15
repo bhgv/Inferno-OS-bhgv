@@ -10,7 +10,7 @@ dis64clientconstruct(void *argument)
  unsigned int i,j,rune,roots=0,ascii;uchar *at;Heap*h;String*path;ulong bytes;
  b->module=m=mallocz(sizeof(*m),1);if(!m)return 0;m->ref=1;m->origmp=H;m->rt=DONTCOMPILE|Dis64ScalarClient;m->mptype=1;
  m->ntype=v->types.count;m->type=mallocz(m->ntype*sizeof(Type*),1);if(!m->type)return 0;
- for(i=0;i<(unsigned int)m->ntype;i++){if(!dis64typeget(&v->types,i,&type))return 0;if(i==0)for(j=0;j<type.mapbytes;j++)roots|=type.map[j];/* The proved all-zero byte map has no native pointer entries. */m->type[i]=dtype(freeheap,type.bytes,(uchar*)type.map,v->bytearrays && i==v->bytetype?0:type.mapbytes);if(!m->type[i])return 0;}
+ for(i=0;i<(unsigned int)m->ntype;i++){if(!dis64typeget(&v->types,i,&type))return 0;if(i==0)for(j=0;j<type.mapbytes;j++)roots|=type.map[j];/* The proved all-zero byte map has no native pointer entries. */m->type[i]=dtype(freeheap,type.bytes,(uchar*)type.map,((v->bytearrays && i==v->bytetype) || (v->intarrays && i==v->inttype))?0:type.mapbytes);if(!m->type[i])return 0;}
  m->origmp=H2D(uchar*,heapz(m->type[1]));ptradd(D2H(m->origmp));b->rooted=1;
  if(Tstring.ref<=0 || Tstring.ref==0x7fffffff || !disstringpoolget(&v->strings,1,&name))return 0;
  h=nheap(sizeof(String)+name.count);h->t=&Tstring;Tstring.ref++;path=H2D(String*,h);path->tmp=nil;path->len=path->max=name.count;

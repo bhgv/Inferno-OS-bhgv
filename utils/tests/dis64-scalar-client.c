@@ -39,7 +39,7 @@ int main(int argc,char**argv)
    require(!strcmp(worker.env->errstr,failure==5?exNegsize:failure==4?exBounds:failure==3?exNilref:failure==2?exInval:exZdiv));
    if(failure==2){value=0;memmove(&value,root+erroroffset,errorbytes);require(value==123);}
   }
-  else {if(worker.env->errstr[0] || R.FP!=root)fprintf(stderr,"client execution: error=%s jit=%d provider=%d grow=%d q=%d mode=%d pc=%p owner=%s dispc=%lu\n",worker.env->errstr,jit,pjit,grow,q,mode,(void*)R.PC,R.M->m->name,(unsigned long)(((uintptr)R.PC-(uintptr)R.M->m->prog)/sizeof(Inst)));require(!worker.env->errstr[0] && R.FP==root);value=0;if(result){memmove(&value,root+offset,result==Dis64Int?4:8);require(value==expected);}}
+  else {if(worker.env->errstr[0] || R.FP!=root)fprintf(stderr,"client execution: error=%s jit=%d provider=%d grow=%d q=%d mode=%d pc=%p owner=%s dispc=%lu\n",worker.env->errstr,jit,pjit,grow,q,mode,(void*)R.PC,R.M->m->name,(unsigned long)(((uintptr)R.PC-(uintptr)R.M->m->prog)/sizeof(Inst)));require(!worker.env->errstr[0] && R.FP==root);value=0;if(result){if(result==Dis64Int){WORD word;memmove(&word,root+offset,sizeof(word));value=(LONG)word;}else memmove(&value,root+offset,8);require(value==expected);}}
   namespaceend(p);clientempty();memmove(client,saved,clientfilebytes);
  }
  if(!failure)require(nativecalls && nativeaccepted && ccalls && bridgecalls);require(clientloads>0);return 0;

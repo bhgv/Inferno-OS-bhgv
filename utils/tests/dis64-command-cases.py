@@ -30,6 +30,7 @@ def cases(pathlength=13):
  yield from codeccases(pathlength)
  yield from arraycases(pathlength)
  yield from indexcases(pathlength)
+ yield from intarraycases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -277,3 +278,45 @@ def indexcases(pathlength=13):
   call='s:="wm";a:=array of byte s;n:=int a[0];a[1]=byte 77;s=string a;if(n!=119 || s!="wM")'+bad+'argv:=s::nil;m->init(nil,argv);keep:=argv;'
   caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;'+call+'}'
   yield 'index-'+name,prefix+body+'}',caller,failure
+
+def intarraycases(pathlength=13):
+ prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
+ bad='{z:=0;bad:=1/z;}'
+ rows=[
+ ('zero','a:=array[3]of int;n:=a[2];if(n!=0 || len a!=3)'+bad,0),
+ ('write','a:=array[3]of int;a[1]=123456;n:=a[1];if(n!=123456)'+bad,0),
+ ('negative-value','a:=array[2]of int;n:=-123456;a[0]=n;v:=a[0];if(v!=n)'+bad,0),
+ ('word-high','a:=array[2]of int;n:=268435455;n<<=3;n+=6;a[1]=n;v:=a[1];if(v!=n)'+bad,0),
+ ('word-min','a:=array[2]of int;n:=-268435456;n<<=3;a[0]=n;v:=a[0];if(v!=n)'+bad,0),
+ ('neighbors','a:=array[3]of int;a[0]=1;a[1]=65536;a[2]=-9;x:=a[0];y:=a[1];z:=a[2];if(x!=1 || y!=65536 || z!= -9)'+bad,0),
+ ('local-index','a:=array[3]of int;i:=1;n:=90;a[i]=n;v:=a[i];if(v!=90)'+bad,0),
+ ('read-loop','a:=array[4]of int;i:=0;while(i<4){n:=i+1;a[i]=n;i++;}sum:=0;i=0;while(i<len a){n:=a[i];sum+=n;i++;}if(sum!=10)'+bad,0),
+ ('alias','a:=array[3]of int;b:=a;a[1]=99;n:=b[1];if(n!=99 || a!=b)'+bad,0),
+ ('slice','a:=array[4]of int;b:=a[1:3];b[0]=123;n:=a[1];if(n!=123 || len b!=2)'+bad,0),
+ ('nested','a:=array[5]of int;b:=a[1:5];c:=b[1:3];a=nil;b=nil;c[1]=123;n:=c[1];if(n!=123)'+bad,0),
+ ('drop-source','a:=array[3]of int;b:=a[1:];a=nil;b[0]=90;n:=b[0];if(n!=90)'+bad,0),
+ ('inplace','a:=array[4]of int;a[2]=123;a=a[1:];n:=a[1];if(n!=123)'+bad,0),
+ ('empty','a:=array[0]of int;if(len a!=0)'+bad,0),
+ ('empty-slice','a:=array[2]of int;b:=a[1:1];a=nil;if(len b!=0)'+bad,0),
+ ('mixed','a:=array[2]of int;b:=array[2]of byte;a[1]=123456;b[1]=byte 90;n:=a[1];v:=int b[1];if(n!=123456 || v!=90)'+bad,0),
+ ('mixed-reverse','b:=array[2]of byte;a:=array[2]of int;b[0]=byte 65;a[0]=65536;n:=a[0];v:=int b[0];if(n!=65536 || v!=65)'+bad,0),
+ ('mixed-slice','a:=array[3]of int;b:=array[3]of byte;c:=a[1:];d:=b[1:];a=nil;b=nil;c[0]=65536;d[0]=byte 90;n:=c[0];v:=int d[0];if(n!=65536 || v!=90)'+bad,0),
+ ('bytes-codec','s:="abc";b:=array of byte s;a:=array[2]of int;a[1]=123;n:=int b[1];v:=a[1];if(n!=98 || v!=123)'+bad,0),
+ ('new-replace','a:=array[2]of int;a[1]=12;a=array[3]of int;n:=a[1];if(n!=0)'+bad,0),
+ ('context','a:=array[3]of int;a[1]=12;ctxt=ref Draw->Context(nil,nil,nil);n:=a[1];if(ctxt==nil || n!=12)'+bad,0),
+ ('negative-size','n:=-1;a:=array[n]of int;',5),
+ ('negative-index','a:=array[2]of int;i:=-1;n:=a[i];',4),
+ ('end-index','a:=array[2]of int;n:=a[2];',4),
+ ('empty-index','a:=array[0]of int;n:=a[0];',4),
+ ('nil-index','a:array of int;n:=a[0];',4),
+ ('write-negative','a:=array[2]of int;i:=-1;a[i]=7;',4),
+ ('write-end','a:=array[2]of int;a[2]=7;',4),
+ ('write-nil','a:array of int;a[0]=7;',4),
+ ('slice-negative','a:=array[2]of int;i:=-1;b:=a[i:];',4),
+ ('slice-end','a:=array[2]of int;b:=a[1:3];',4),
+ ('slice-nil','a:array of int;b:=a[0:0];if(b!=nil)'+bad,0),
+ ('slice-nil-nonempty','a:array of int;b:=a[0:1];',3)]
+ for name,body,failure in rows:
+  call='a:=array[2]of int;a[1]=123456;n:=a[1];if(n!=123456)'+bad+'argv:="wm"::nil;m->init(nil,argv);keep:=argv;'
+  caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;'+call+'}'
+  yield 'intarray-'+name,prefix+body+'}',caller,failure

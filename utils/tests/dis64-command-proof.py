@@ -35,7 +35,7 @@ def main():
   if a.control:
    path={'hash':'dis64-command-image.h','class':'dis64-client-managed.h','arguments':'dis64-scalar-client.h','export':'dis64-command-binding.h'}[a.control];s=(ROOT/'include'/path).read_text();old,newtext={
     'hash':('return !memcmp(a.signature.data,b.signature.data,a.signature.bytes);','return 1;'),
-    'class':('(actual!=Dis64ClientRoot && kind!=Dis64ClientRoot && actual!=kind)','0'),
+    'class':('(actual!=Dis64ClientRoot && kind!=Dis64ClientRoot && actual!=kind && !dis64clientmergekind(actual,kind))','0'),
     'arguments':('d->secondary!=64+8*j','0'),
     'export':('(b.entry || b.frame)','0')}[a.control];assert s.count(old)==1;(w/path).write_text(s.replace(old,newtext));
    if path!='dis64-scalar-client.h':(w/'dis64-scalar-client.h').write_text((ROOT/'include/dis64-scalar-client.h').read_text())

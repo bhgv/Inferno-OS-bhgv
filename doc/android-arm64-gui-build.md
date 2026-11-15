@@ -542,3 +542,16 @@ The rebuilt Linux x64 and ARM64/QEMU consoles each pass684 main ordinary Command
 roots;177 source pairs pass real-GC interpreter/JIT execution on each target.
 This closes0193's selected byte-index compiler boundary. General element types,
 managed AWM dependencies and Android device GUI/APK execution remain outstanding.
+
+## Selected int-array storage (INFERNO-0195)
+
+The selected Limbo file path now admits zeroed int arrays, length, owning slices
+and adjacent INDW/MOVW element reads/writes. Int elements remain signed32-bit;
+borrowed addresses remain native64. Byte/int arrays have separate proof classes
+and canonical checked primitive descriptors. Mixed buffers retain their own
+strides and GC owners. See the [report](dis64-inferno-intarrays-report.md).
+
+The source/GC matrix is210 pairs and the complete Linux x64/ARM64-QEMU consoles
+each execute816 main roots plus controls. This does not yet compile the general
+AWM startup graph: its16 ordinary modules still refuse the bounded Dis64
+profiles. Android device startup, GUI/input and APK acceptance remain open.

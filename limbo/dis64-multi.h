@@ -81,16 +81,16 @@ static int
 typedclientindex(Inst *in,Inst *use,Dis64TypedBody *p,unsigned int pc)
 {
  unsigned int sm,dm,um;long source,index,value;int actual,read;Addr *a;
- if(in->op!=IINDB || in->branch || in->mm!=Afp || !in->m.decl || in->m.offset ||
+ if((in->op!=IINDB && in->op!=IINDW) || in->branch || in->mm!=Afp || !in->m.decl || in->m.offset ||
     !typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual) || sm!=AFP ||
     !typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual) || (dm!=AFP && dm!=AIMM))return typedfail(p,"client-index-roles");
  if(!use || use->branch || use->mm!=Anone)return typedfail(p,"client-index-consumer");
  read=use->sm==Afpind;a=read?&use->s:&use->d;
  if(a->decl!=in->m.decl || a->reg!=in->m.reg || a->offset ||
-    (read?(use->op!=IMOVB && use->op!=ICVTBW):(use->op!=IMOVB && use->op!=ICVTWB) || use->dm!=Afpind))return typedfail(p,"client-index-address");
+    (in->op==IINDW?use->op!=IMOVW:(read?(use->op!=IMOVB && use->op!=ICVTBW):(use->op!=IMOVB && use->op!=ICVTWB))) || (!read && use->dm!=Afpind))return typedfail(p,"client-index-address");
  if(read){if(!typedoperand(use->dm,&use->d,use->op==IMOVB?Tbyte:Tint,0,0,p,&value,&um,&actual) || um!=AFP)return 0;}
  else if(!typedclientbyteoperand(use->sm,&use->s,use->op==IMOVB?Tbyte:Tint,p,&value,&um) || (um!=AFP && um!=AIMM))return 0;
- p->code[pc]=(Dis64Instruction){IINDB,SRC(AFP)|AXINF|DST(dm),p->frame.bytes,source,index};
+ p->code[pc]=(Dis64Instruction){in->op,SRC(AFP)|AXINF|DST(dm),p->frame.bytes,source,index};
  p->code[pc+1]=(Dis64Instruction){use->op,read?SRC(AFP|AIND)|DST(AFP):SRC(um)|DST(AFP|AIND),0,read?p->frame.bytes:value,read?value:p->frame.bytes};
  if(!p->contextfields){p->contextfields=allocmem(p->count*sizeof(long));memset(p->contextfields,0,p->count*sizeof(long));}
  return 1;
@@ -103,8 +103,8 @@ typedclientarray(Inst *in,Dis64TypedBody *p,unsigned int pc)
  if(in->branch || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) ||
     !typedoperand(in->dm,&in->d,Tarray,0,0,p,&destination,&dm,&actual) || dm!=AFP)return typedfail(p,"byte-array-roles");
  if(in->op==INEWA || in->op==INEWAZ){
-  if(in->mm!=Adesc || !d || !d->ty || d->ty->kind!=Tbyte || !d->desc || d->desc->id!=in->m.offset)return typedfail(p,"byte-array-descriptor");
-  middle=0;mm=AIMM;
+  if(in->mm!=Adesc || !d || !d->ty || (d->ty->kind!=Tbyte && d->ty->kind!=Tint) || !d->desc || d->desc->id!=in->m.offset)return typedfail(p,"byte-array-descriptor");
+  middle=d->ty->kind==Tint?1:0;mm=AIMM;
  }else if(!typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mm,&actual) || (mm!=AIMM && mm!=AFP))return typedfail(p,"byte-array-slice");
  p->code[pc]=(Dis64Instruction){in->op==INEWA?INEWAZ:in->op,SRC(sm)|(mm==AIMM?AXIMM:AXINF)|DST(dm),middle,source,destination};return 1;
 }
@@ -259,7 +259,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             pc=next;
         }else if(c->external>=2 && (in->op==INEWA || in->op==INEWAZ || in->op==ISLICEA)){
             if(!typedclientarray(in,p,pc-p->first))goto fail;pc++;
-        }else if(c->external>=2 && in->op==IINDB){
+        }else if(c->external>=2 && (in->op==IINDB || in->op==IINDW)){
             if(pc+1>=stop || !typedclientindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;
             inside[pc+1-p->first]=1;pc+=2;
         }else if(c->external>=2 && (in->op==IMOVB || in->op==ICVTBW || in->op==ICVTWB)){
