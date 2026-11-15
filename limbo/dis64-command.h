@@ -23,7 +23,7 @@ dis64clientencode(uchar *out,unsigned int *at,Dis64Instruction *in,long base,lon
 int
 dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long count,long databytes)
 {
- FileStrings literals;Dis64TypedBody body={0};Dis64ScalarClientView *proof=nil;Dis64Type types[3];Dis64ModuleInfo module={0};Dis64Payload sections[5];
+ FileStrings literals;Dis64TypedBody body={0};Dis64ScalarClientView *proof=nil;Dis64Type types[4];Dis64ModuleInfo module={0};Dis64Payload sections[5];
  DisStringPoolRecord names[4+Dis64ManagedLiterals];DisStringPoolView pool;Decl *fn;Dis64LayoutLeaf *leaf;Dis64Instruction in;
  uchar *code=nil,*output=nil,*typedata=nil,*strings=nil,*runes=nil,*maps=nil;uchar metadata[24],exports[36];
  unsigned int sizes[5],i,at=4,bytes,ntypes;char *failure="unsupported ordinary init library",*detail=nil;
@@ -50,6 +50,7 @@ dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long c
   if((in.op==IADDC || in.op==IBEQC || in.op==IBNEC || in.op==IBLTC || in.op==IBLEC || in.op==IBGTC || in.op==IBGEC) && (in.mode&ARM)==AXINM)
    if(!filestringaddress(&literals,in.middle,&in.middle))goto done;
   if(in.op==INEW || in.op==INEWZ)in.source=literals.literals?2:1;
+  if(in.op==INEWAZ)in.middle=literals.literals?3:2;
   if(!dis64clientencode(code,&at,&in,in.destination,body.contextfields?body.contextfields[i]:0,body.contextfields?body.contextfields[i]:0))goto done;
  }
  dis64put32(code,body.count);sizes[1]=at;

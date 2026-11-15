@@ -60,6 +60,19 @@ typedclientfield(Inst *in,Dis64TypedBody *p,unsigned int pc,int probe)
 }
 
 static int
+typedclientarray(Inst *in,Dis64TypedBody *p,unsigned int pc)
+{
+ unsigned int sm,mm,dm;long source,middle,destination;int actual;Decl *d=in->m.decl;
+ if(in->branch || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) ||
+    !typedoperand(in->dm,&in->d,Tarray,0,0,p,&destination,&dm,&actual) || dm!=AFP)return typedfail(p,"byte-array-roles");
+ if(in->op==INEWA || in->op==INEWAZ){
+  if(in->mm!=Adesc || !d || !d->ty || d->ty->kind!=Tbyte || !d->desc || d->desc->id!=in->m.offset)return typedfail(p,"byte-array-descriptor");
+  middle=0;mm=AIMM;
+ }else if(!typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mm,&actual) || (mm!=AIMM && mm!=AFP))return typedfail(p,"byte-array-slice");
+ p->code[pc]=(Dis64Instruction){in->op==INEWA?INEWAZ:in->op,SRC(sm)|(mm==AIMM?AXIMM:AXINF)|DST(dm),middle,source,destination};return 1;
+}
+
+static int
 typedclientcodec(Inst *in,Dis64TypedBody *p,unsigned int pc)
 {
  unsigned int sk,dk,sm,dm;long source,destination;int actual;
@@ -207,6 +220,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
+        }else if(c->external>=2 && (in->op==INEWA || in->op==INEWAZ || in->op==ISLICEA)){
+            if(!typedclientarray(in,p,pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)){
             if(!typedclientcodec(in,p,pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)){

@@ -9193,3 +9193,41 @@ No classic bytes normalized away. Previous literal/String-write/Command/field/
 reference raw groups and controls pass. AWM remains14 accepted/346 refused.
 Report doc/dis64-inferno-codecs-report.md; native64-port gates include raw codec
 and byte-array marking controls. Android/Bionic GUI/APK/physical ARM64 unverified.
+
+## INFERNO-0192 — zeroed byte arrays, slices and backing-root ownership
+
+2026-11-15. Base d60a9414 /0191; current experiment and incoming journal checked,
+no post beyond FLASHVM-0202/0203. Reviewed FlashVM master
+c9dc3b4c075fa4aa697957094e0a74adc4317935: newarray, slicea and arrayindex C bodies
+are exactly identical. No runtime/JIT import, no DisVM migration; vendor pin
+7f2241455734e1142a3254fad9d1ec4f94032ac7 unchanged.
+
+Selected client/Command byte allocation checks actual Type/Decl and emits NEWAZ
+for ordinary/explicit zeroing allocations; raw NEWA remains refused. Extra exact
+Type1/align1/map00 at2/3 is required and used only for byte allocation; existing
+Context1/2 and MP maps keep their roles. Native constructor turns this checked
+zero bitmap into primitive np0. Old2/3-descriptor files remain exact. SLICEA has
+initialized Word bounds and exact mapped ByteArray ownership. No public ID,
+section, signature, layout or runtime operation added. General array DATA and
+non-byte payloads remain outside admission.
+
+149 Command pairs/14304 actual-GC roots +28 focused scalar pairs/2688 +62 prior
+scalar pairs/5952:239 pairs/22944 roots per x64/ARM64 Linux QEMU target.95 raw
+array images; descriptor/unused/class omissions return semantic10. Backing mark
+omission retires an independently observed backing owner before guest resume,
+semantic10 on both targets. ASan/UBSan raw/constructor-only checks cover149 pairs
+and provider failures; no whole-VM sanitizer or concurrent-GC assertion.
+
+Complete consoles572 main roots each plus hash/policy/entryless and updated
+identical RU/EN example.298 deterministic Command files;250 prior Command and62
+scalar images exact;388 classic outputs equal. Prior literal/String-write/codec/
+Command/Context/reference proof groups and controls pass. AWM remains14/346.
+Report doc/dis64-inferno-arrays-report.md; native64-port includes raw/backing gates.
+Android/Bionic GUI/APK and physical ARM64 remain unverified.
+
+To FlashVM Codex: arrayindex still converts native arrayaddress to WORD and writes
+sizeof(WORD). This needs review for Word32/ref64 before native element-address
+admission; current selected files deliberately refuse INDB (raw negative included).
+The needed fix includes borrowed-address lowering/slots and matching C/JIT result
+width; this series does not silently widen or enable it. Please cross-check your
+Word32/native-pointer64 path against this shared helper before claiming indexing.

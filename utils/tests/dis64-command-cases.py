@@ -28,6 +28,7 @@ def cases(pathlength=13):
  yield from literalcases(pathlength)
  yield from stringwritecases(pathlength)
  yield from codeccases(pathlength)
+ yield from arraycases(pathlength)
 
 def fieldcases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
@@ -203,3 +204,37 @@ def codeccases(pathlength=13):
  for name,body in rows:
   caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;s:="42";n:=int s;s=string n;raw:=array of byte s;s=string raw;argv:=s::nil;m->init(nil,argv);keep:=argv;}'
   yield 'codecs-'+name,prefix+body+'}',caller,0
+
+
+def arraycases(pathlength=13):
+ prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
+ bad='{z:=0;bad:=1/z;}'
+ rows=[
+ ('new','n:=3;a:=array[n]of byte;s:=string a;if(len a!=3 || len s!=3)'+bad+'c:=s[1];if(c!=0)'+bad,0),
+ ('new-empty','n:=0;a:=array[n]of byte;if(a==nil || len a!=0)'+bad,0),
+ ('new-immediate','a:=array[4]of byte;s:=string a;if(len s!=4)'+bad,0),
+ ('new-replace','a:=array[5]of byte;alias:=a;n:=2;a=array[n]of byte;if(len a!=2 || len alias!=5 || a==alias)'+bad,0),
+ ('new-reuse','a:=array[5]of byte;n:=5;a=array[n]of byte;s:=string a;if(len s!=5)'+bad+'c:=s[4];if(c!=0)'+bad,0),
+ ('new-context','a:=array[3]of byte;ctxt=ref Draw->Context(nil,nil,nil);s:=string a;if(len s!=3 || ctxt==nil)'+bad,0),
+ ('new-loop','i:=0;while(i<4){a:=array[i]of byte;if(len a!=i)'+bad+'i++;}',0),
+ ('new-negative','n:=-1;a:=array[n]of byte;',5),
+ ('slice','s:="abcdef";a:=array of byte s;b:=a[1:4];t:=string b;if(t!="bcd" || len a!=6)'+bad,0),
+ ('slice-drop-root','s:="abcdef";a:=array of byte s;b:=a[1:4];a=nil;t:=string b;if(t!="bcd")'+bad,0),
+ ('slice-nested','s:="abcdef";a:=array of byte s;b:=a[1:5];c:=b[1:3];a=nil;b=nil;t:=string c;if(t!="cd")'+bad,0),
+ ('slice-inplace','s:="abcdef";a:=array of byte s;a=a[2:5];t:=string a;if(t!="cde")'+bad,0),
+ ('slice-alias','s:="abcdef";a:=array of byte s;alias:=a;a=a[2:5];t:=string a;u:=string alias;if(t!="cde" || u!="abcdef")'+bad,0),
+ ('slice-empty','s:="abc";a:=array of byte s;b:=a[1:1];a=nil;t:=string b;if(len b!=0 || len t!=0 || b==nil)'+bad,0),
+ ('slice-nil','a:array of byte;b:=a[0:0];if(b!=nil)'+bad,0),
+ ('slice-tail','s:="abcdef";a:=array of byte s;b:=a[2:];t:=string b;if(t!="cdef")'+bad,0),
+ ('slice-utf8','s:="a🚀z";a:=array of byte s;b:=a[1:5];t:=string b;if(t!="🚀" || len b!=4)'+bad,0),
+ ('slice-nul','s:="a\\0z";a:=array of byte s;b:=a[1:2];t:=string b;if(len t!=1)'+bad+'c:=t[0];if(c!=0)'+bad,0),
+ ('slice-new','a:=array[5]of byte;b:=a[1:4];a=nil;s:=string b;if(len b!=3 || len s!=3)'+bad,0),
+ ('slice-to-codec','s:="abcdef";a:=array of byte s;b:=a[1:4];s="new";b=array of byte s;t:=string a;u:=string b;if(t!="abcdef" || u!="new")'+bad,0),
+ ('slice-negative','s:="abc";a:=array of byte s;i:=-1;b:=a[i:2];',4),
+ ('slice-reverse','s:="abc";a:=array of byte s;i:=2;j:=1;b:=a[i:j];',4),
+ ('slice-end','s:="abc";a:=array of byte s;j:=4;b:=a[0:j];',4),
+ ('slice-nil-nonempty','a:array of byte;b:=a[0:1];',3)]
+ for name,body,failure in rows:
+  call='n:=2;buf:=array[n]of byte;part:=buf[1:];buf=nil;if(len part!=1)'+bad+'s:="wm";argv:=s::nil;m->init(nil,argv);keep:=part;'
+  caller='implement Client;include "command.m";Client:module{init:fn();};init(){m:=load Command "library.dis64";if(m==nil)return;'+call+'}'
+  yield 'arrays-'+name,prefix+body+'}',caller,failure

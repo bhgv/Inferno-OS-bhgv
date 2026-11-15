@@ -9,7 +9,7 @@ def sections(data):
   k,f,at,n=struct.unpack_from('>HHII',data,32+12*i);assert f==1 and k not in d;d[k]=data[at:at+n]
  return d
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map','mp-tail','codec-array'));p.add_argument('--literal-wire',choices=('empty','signed-runes'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map','mp-tail','codec-array','array-backing'));p.add_argument('--literal-wire',choices=('empty','signed-runes'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
  if a.literal_wire and(not a.materialize_only or a.case!=['literals-context']):p.error('--literal-wire requires --materialize-only --case literals-context')
  with tempfile.TemporaryDirectory(prefix='command-init-',dir=ROOT)as td:
   w=Path(td);env['TMPDIR']=str(w);(w/'command.m').write_text(CASES['INTERFACE']);(w/'library.m').write_text('Library:module{inc:fn(n:int):int;};')
@@ -30,6 +30,7 @@ def main():
   text=text.replace('observedispatch(m,jit);m->ss=', 'commandliteralcheck(&view,m->origmp);observedispatch(m,jit);m->ss=')
   if a.gc_control=='mp-tail':text=text.replace('clientproviderjit=cflag=pjit;','m->type[1]->mark=clientliteralmpmark;clientproviderjit=cflag=pjit;')
   if a.gc_control=='context-map':text=text.replace('commandcontextnomark=0','commandcontextnomark=1')
+  if a.gc_control=='array-backing':text=text.replace('Tarray.mark=markarray;','Tarray.mark=noptrs;')
   if a.gc_control=='codec-array':
    assert text.count('clientloads++;')==1;text=text.replace('clientloads++;','ml->m->type[0]->mark=clientcodecframemark;clientloads++;')
   if a.gc_control=='callee-frame':

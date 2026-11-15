@@ -507,3 +507,15 @@ execution and actual GC from constructor/raw proof checks. Updated
 [EN](dis64-command-init.md) / [RU](dis64-command-init.ru.md) examples convert a
 number through String and byte array before calling init. General arrays/DATA,
 Draw/Tk/full AWM and Android device GUI remain outside this result.
+
+## Zeroed byte-array allocation and slices (INFERNO-0192)
+
+Selected clients/Command libraries now construct zeroed byte arrays and owning
+slices using existing runtime/JIT. A checked primitive descriptor is separate
+from Context and MP and appears only when allocation requires it. Backing arrays
+survive source-variable release and GC, including nested slices. Details and
+actual x64/ARM64 Linux-QEMU evidence: [report](dis64-inferno-arrays-report.md).
+Updated [EN](dis64-command-init.md)/[RU](dis64-command-init.ru.md) examples keep a
+view after dropping the original buffer. Element indexing remains refused: the
+shared arrayindex helper's WORD-sized address result needs a coherent native
+borrowed-pointer port before Word32/ref64 execution. No Android GUI/APK claim.

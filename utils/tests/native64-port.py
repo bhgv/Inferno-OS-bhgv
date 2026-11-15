@@ -175,6 +175,12 @@ def main():
              '--case', 'literals-context', '--limbo', str(tools/'limbo')], build, env, logs/('client-literal-wire-'+value+'.log'))
     run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'codec-array', '--case', 'codecs-bytes-alias',
          '--limbo', str(tools/'limbo')], build, env, logs/'client-codec-array-gc-control.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'array-backing', '--case', 'arrays-slice-drop-root',
+         '--limbo', str(tools/'limbo')], build, env, logs/'client-array-backing-gc-control.log')
+    for control in (None, 'descriptor', 'unused', 'classes'):
+        command = [sys.executable, str(tests/'dis64-client-arrays-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('client-arrays-proof-'+str(control)+'.log'))
     for control in (None, 'classes'):
         command = [sys.executable, str(tests/'dis64-client-codecs-proof.py'), '--limbo', str(tools/'limbo')]
         if control: command += ['--control', control]

@@ -5,7 +5,7 @@ struct FileStrings {
  Decl *nilvalue,*emptyvalue,*decls[Dis64ManagedLiterals+1];
  Sym *values[Dis64ManagedLiterals+1];
  long offsets[Dis64ManagedLiterals+1],niloffset,emptyoffset;
- unsigned int count,literals;int path;
+ unsigned int count,literals,bytearrays;int path;
 };
 static int
 filestringscollect(FileStrings *p,Decl *globals,long bytes)
@@ -43,6 +43,7 @@ filestringsplan(FileStrings *p,const Dis64TypedBody *body,int client)
   }
   if(p->path<0)return 0;
  }
+ for(i=0;i<body->count;i++)if(body->code[i].op==INEWAZ)p->bytearrays=1;
  p->literals=p->count-client;return p->literals<=Dis64ManagedLiterals;
 }
 static int
@@ -76,7 +77,7 @@ filestringpool(const FileStrings *p,uchar *runes,DisStringPoolRecord *records,un
 static unsigned int
 filestringtypes(const FileStrings *p,Dis64Type *types,uchar *maps)
 {
- unsigned int i;for(i=0;i<3+p->literals;i++)maps[64+i/8]|=0x80U>>(i%8);maps[70]=0xe0;
+ unsigned int n=p->literals?3:2,i;for(i=0;i<3+p->literals;i++)maps[64+i/8]|=0x80U>>(i%8);maps[70]=0xe0;
  types[1]=(Dis64Type){24+8*p->literals,8,maps+64,(3+p->literals+7)/8};
- types[2]=(Dis64Type){24,8,maps+70,1};return p->literals?3:2;
+ types[2]=(Dis64Type){24,8,maps+70,1};if(p->bytearrays){maps[71]=0;types[n++]=(Dis64Type){1,1,maps+71,1};}return n;
 }

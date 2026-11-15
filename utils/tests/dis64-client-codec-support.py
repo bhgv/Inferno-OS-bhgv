@@ -19,7 +19,8 @@ Type Tbyte={1,0,0,1};char exType[]="type";
  support+='\n'+extract(heap,'void\nfreestring(')+'\n'+'\n'.join(extract(heap,sig)for sig in('void\nacheck(','void\nfreearray('))
  support+='\n'+extract((ROOT/'libinterp/runt.c').read_text(),'Array*\nmem2array(')
  support+='\n#undef malloc\n#define malloc(n) trackedallocate(n,0)\n'+extract(strings,'char*\nstring2c(')+'\n#undef malloc\n#define malloc(bytes) schedmalloc(bytes)\n'
+ support+='\n'+'\n'.join(extract(xec,sig)for sig in('static void\nnewarray(','OP(newaz)','static uchar*\narrayspan(','OP(slicea)'))
  names=('cvtcw','cvtcf','cvtwc','cvtlc','cvtfc','cvtca','cvtac')
  support+='\n'+'\n'.join(extract(strings,'OP('+n+')')for n in names)+'\n'+extract(xec,'OP(cvtcl)')+'\n'+extract(xec,'OP(lena)')+'\n'
- handlers='\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in names+('cvtcl','lena'))
+ handlers='\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in names+('cvtcl','lena','newaz','slicea'))
  return source+'\n'+support,handlers

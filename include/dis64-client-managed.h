@@ -36,7 +36,7 @@ static int
 dis64clientmanagedop(const Dis64Instruction *in)
 {
  unsigned int sk,dk;if(dis64clientcodec(in->op,&sk,&dk))return 1;
- switch(in->op){case ILENA:case IMOVP:return UDST(in->mode)==AFP;case INEW:case INEWZ:case IADDC:case IINSC:case ISLICEC:case IINDC:case IBEQC:case IBNEC:case IBLTC:case IBLEC:case IBGTC:case IBGEC:case ILENC:case ILENL:case ICONSP:case IHEADP:case ITAIL:return 1;}
+ switch(in->op){case ILENA:case IMOVP:return UDST(in->mode)==AFP;case INEWAZ:case ISLICEA:case INEW:case INEWZ:case IADDC:case IINSC:case ISLICEC:case IINDC:case IBEQC:case IBNEC:case IBLTC:case IBLEC:case IBGTC:case IBGEC:case ILENC:case ILENL:case ICONSP:case IHEADP:case ITAIL:return 1;}
  return (in->op==IBEQL || in->op==IBNEL) && in->mode==(SRC(AFP)|AXINM|DST(AIMM));
 }
 /* LONG numeric equality uses the same opcode/mode. A mapped root operand,
@@ -59,6 +59,17 @@ dis64clientmanagedroles(Dis64ClientSlot *slots,unsigned int *count,unsigned int 
   }else if(!dis64clientbit(slots,count,frame,USRC(in->mode),in->source,sk,need))return 0;
   return dis64clientisroot(dk)?dis64clientrootoperand(slots,*count,AFP,in->destination,dk,give):
    dis64clientbit(slots,count,frame,AFP,in->destination,dk,give);
+ }
+ if(in->op==INEWAZ)return (in->mode&ARM)==AXIMM && UDST(in->mode)==AFP &&
+  dis64clientbit(slots,count,frame,USRC(in->mode),in->source,Dis64Int,need) &&
+  dis64clientrootoperand(slots,*count,AFP,in->destination,Dis64ClientByteArray,give);
+ if(in->op==ISLICEA){
+  unsigned int mm=in->mode&ARM;
+  return (mm==AXIMM || mm==AXINF) && (mm!=AXIMM || (in->middle>=-32768 && in->middle<=32767)) && UDST(in->mode)==AFP &&
+   dis64clientbit(slots,count,frame,USRC(in->mode),in->source,Dis64Int,need) &&
+   dis64clientbit(slots,count,frame,mm==AXIMM?AIMM:AFP,in->middle,Dis64Int,need) &&
+   dis64clientrootoperand(slots,*count,AFP,in->destination,Dis64ClientByteArray,need) &&
+   dis64clientrootoperand(slots,*count,AFP,in->destination,Dis64ClientByteArray,give);
  }
  if(in->op==IADDC || in->op==IINSC || in->op==ISLICEC){
   unsigned int mm=in->mode&ARM;int numeric=in->op!=IADDC;

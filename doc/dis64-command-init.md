@@ -63,6 +63,11 @@ init()
     text := string number;
     bytes := array of byte text;
     decoded := string bytes;
+    capacity := 4;
+    buffer := array[capacity] of byte;
+    view := buffer[1:3];
+    buffer = nil;
+    if(len view != 2){ z := 0; bad := 1/z; }
     parsed := int decoded;
     if(parsed != number || len bytes != 2){ z := 0; bad := 1/z; }
     argv := "wm" :: "Привет" :: "a\0z" :: nil;
@@ -192,5 +197,13 @@ Numeric casts now use existing int/big/real String conversions. `array of byte s
 encodes UTF-8; `string bytes` decodes it. Lengths differ for non-ASCII text:
 characters in String, bytes in the array; embedded NUL is preserved. These arrays
 are owned runtime values with mapped roots, not a new general DATA initializer.
-Only byte-array conversion, length, copies and identity are admitted here;
-general array construction/indexing/slicing remains separate work.
+Byte-array conversion, length, copies, identity, zeroed construction and slices
+are admitted here; element indexing and other element types remain separate work.
+
+
+Selected byte arrays now support `array[n] of byte` and slices such as
+`buffer[1:3]`. This profile zeros new byte buffers. A slice retains its backing
+array after the original variable is set to nil; its bounds and length count
+bytes. An extra checked primitive descriptor is emitted only for constructors;
+it does not replace the Context descriptor. Element indexing/stores, general
+array payload initialization and other element types remain outside this profile.

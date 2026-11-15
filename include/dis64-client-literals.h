@@ -7,10 +7,13 @@
 static int
 dis64clientdatacheck(Dis64ScalarClientView *v)
 {
- Dis64Type mp,context;DisRuneView value;unsigned int i,j,map,total=0,base=v->imports.count+3;
+ Dis64Type mp,context,byte;DisRuneView value;unsigned int i,j,map,total=0,base=v->imports.count+3;
  if(v->strings.count<base || v->strings.count-base>Dis64ManagedLiterals)return 0;
  v->literals=v->strings.count-base;v->contexttype=v->literals?2:1;
- if(v->module.datatype!=1 || v->module.databytes!=24+8*v->literals || v->types.count!=(v->literals?3U:2U) ||
+ if(v->types.count!=v->contexttype+1 && v->types.count!=v->contexttype+2)return 0;
+ v->bytearrays=v->types.count==v->contexttype+2;v->bytetype=v->bytearrays?v->contexttype+1:0;
+ if(v->bytearrays && (!dis64typeget(&v->types,v->bytetype,&byte) || byte.bytes!=1 || byte.align!=1 || byte.mapbytes!=1 || byte.map[0]))return 0;
+ if(v->module.datatype!=1 || v->module.databytes!=24+8*v->literals ||
     !dis64typeget(&v->types,1,&mp) || mp.bytes!=v->module.databytes || mp.align!=8 || mp.mapbytes!=(3+v->literals+7)/8)return 0;
  for(i=0;i<mp.mapbytes;i++){
   map=0;for(j=0;j<8 && 8*i+j<3+v->literals;j++)map|=0x80U>>j;
@@ -28,10 +31,11 @@ dis64clientdatacheck(Dis64ScalarClientView *v)
 static int
 dis64clientliteraluses(Dis64ScalarClientView *v)
 {
- unsigned int i,j,seen=0,expected;Dis64Instruction *in;long index;
+ unsigned int i,j,seen=0,expected,arrays=0;Dis64Instruction *in;long index;
  for(i=0;i<v->count;i++){
   in=&v->decoded[i].instruction;
   if((in->op==INEW || in->op==INEWZ) && (unsigned long)in->source!=v->contexttype)return 0;
+  if(in->op==INEWAZ){if(!v->bytearrays || in->middle!=(long)v->bytetype)return 0;arrays++;}
   for(j=0;j<2;j++){
    long source=j?in->middle:in->source;
    if((j?(in->mode&ARM)!=AXINM:USRC(in->mode)!=AMP) || source<24)continue;
@@ -41,6 +45,6 @@ dis64clientliteraluses(Dis64ScalarClientView *v)
   }
  }
  expected=v->literals==32?0xffffffffU:(1U<<v->literals)-1;
- return seen==expected;
+ return seen==expected && !!arrays==v->bytearrays;
 }
 #endif

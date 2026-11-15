@@ -17,7 +17,7 @@ struct Dis64ScalarClientView {
  DisStringPoolView strings;
  Dis64Bindings imports;
  Dis64Section code,requests,names;
- unsigned int count,frame,calls,literals,contexttype;
+ unsigned int count,frame,calls,literals,contexttype,bytearrays,bytetype;
  Dis64CallDecoded decoded[Dis64ClientCode];
 };
 
@@ -123,7 +123,7 @@ dis64clientopen(const unsigned char *data,unsigned int bytes,Dis64ScalarClientVi
  }
  if(!dis64modulecheck(data+module.offset,module.bytes,&v.module) || v.module.profile!=1 || v.module.name!=0 ||
     v.module.entry || v.module.frametype || v.module.datatype!=1 ||
-    !dis64typescheck(data+types.offset,types.bytes,3,4096,&v.types) ||
+    !dis64typescheck(data+types.offset,types.bytes,4,4096,&v.types) ||
     !dis64typeget(&v.types,0,&frame) || !dis64typeget(&v.types,1,&mp) || frame.bytes<80 || frame.align!=8 ||
     mp.align!=8)return 0;
 
