@@ -183,3 +183,12 @@ styxend(Styxserver *server)
 	styxendsocket();
 	return nil;
 }
+
+/* EN/RU: This port has no borrowed native readiness-fd adapter yet.
+ * Этот port пока не поддерживает borrowed native readiness fd. */
+int
+styxnotifyfd(Styxserver *server, int fd)
+{
+    USED(server); USED(fd);
+    return -1;
+}

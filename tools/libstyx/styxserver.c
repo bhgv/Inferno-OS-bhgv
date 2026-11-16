@@ -58,6 +58,7 @@ struct Walkqid
 
 static int hash(Path);
 static void deletefids(Client *);
+static void cancelattach(Client *);
 
 static void
 styxfatal(char *fmt, ...)
@@ -134,6 +135,7 @@ freeclient(Client *c)
 	if(Debug)
 		fprint(2, "Freeing client at %lux\n", (ulong)c);
 	server = c->server;
+	cancelattach(c);
 	deletefids(c);
 	if(server->ops->freeclient)
 		server->ops->freeclient(c);
@@ -448,11 +450,6 @@ newfid(Client *c, u32int fid, Qid qid){
 	return f;
 }
 
-static void
-flushtag(int oldtag)
-{
-	USED(oldtag);
-}
 
 int
 eqqid(Qid a, Qid b)
@@ -672,6 +669,8 @@ newfile(Styxserver *server, Styxfile *parent, int isdir, Path qid, char *name, i
 	return file;
 }
 
+#include "attach.c"
+
 static void
 dispatch(Client *c)
 {
@@ -698,9 +697,14 @@ dispatch(Client *c)
 		return;
 	}
 	if(f.type == Tflush){
-		flushtag(f.oldtag);
+		if(c->attach != nil && c->attach->tag == f.oldtag)
+			cancelattach(c);
 		f.type = Rflush;
 		wr(c, &f);
+		return;
+	}
+	if(f.type != Tversion && c->attach != nil && c->attach->tag == f.tag){
+		c->state |= CDISC;
 		return;
 	}
 	ops = c->server->ops;
@@ -732,6 +736,12 @@ dispatch(Client *c)
 			for(i = 0; i < f.nwname; i++)
 				fprint(2, " %s", f.wname[i]);
 			fprint(2, "\n");
+		}
+		if(c->attach != nil && c->attach->fid == f.newfid){
+			f.type = Rerror;
+			f.ename = "fid reserved by pending attach";
+			wr(c, &f);
+			break;
 		}
 		nfp = findfid(c, f.newfid);
 		f.type = Rerror;
@@ -990,6 +1000,7 @@ dispatch(Client *c)
 			wr(c, &f);
 			break;
 		}
+		cancelattach(c);
 		deletefids(c);
 		c->msize = f.msize > MSGMAX ? MSGMAX : f.msize;
 		c->versioned = strcmp(f.version, VERSION9P) == 0 ||
@@ -1004,45 +1015,8 @@ dispatch(Client *c)
 		f.ename = "authentication not provided";
 		wr(c, &f);
 		break;
-	case	Tattach:
-		f.type = Rerror;
-		if(fp != nil)
-			f.ename = "fid in use";
-		else if(f.afid != NOFID)
-			f.ename = "authentication fid not supported";
-		else if(c->fids != nil &&
-			((f.uname[0] && strcmp(f.uname, c->uname) != 0) ||
-			(f.aname[0] && strcmp(f.aname, c->aname) != 0)))
-			f.ename = "connection identity already in use";
-		else{
-			char *uname, *aname;
-			Qid q;
-
-			uname = c->uname;
-			aname = c->aname;
-			c->uname = strdup(f.uname[0] ? f.uname : uname);
-			c->aname = strdup(f.aname[0] ? f.aname : aname);
-			if(c->uname == nil || c->aname == nil)
-				f.ename = Enomem;
-			else
-				f.ename = ops->attach != nil ? ops->attach(c->uname, c->aname) : nil;
-			if(f.ename != nil){
-				snprint(ebuf, sizeof(ebuf), "%s", f.ename);
-				f.ename = ebuf;
-				free(c->uname);
-				free(c->aname);
-				c->uname = uname;
-				c->aname = aname;
-			}else{
-				free(uname);
-				free(aname);
-				q = styxqid(Qroot, 1);
-				newfid(c, f.fid, q);
-				f.type = Rattach;
-				f.qid = q;
-			}
-		}
-		wr(c, &f);
+	case Tattach:
+		beginattach(c, &f);
 		break;
 	}
 }

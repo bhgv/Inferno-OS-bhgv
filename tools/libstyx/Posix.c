@@ -14,6 +14,7 @@ typedef struct Fdset Fdset;
 struct Fdset
 {
 	fd_set infds, outfds, excfds, r_infds, r_outfds, r_excfds;
+	int notifyfd; /* Borrowed native mailbox readiness fd, never closed here. */
 };
 
 int
@@ -97,6 +98,7 @@ styxinitwait(Styxserver *server)
 	FD_ZERO(&fs->outfds);
 	FD_ZERO(&fs->excfds);
 	FD_SET(server->connfd, &fs->infds);
+	fs->notifyfd = -1;
 }
 
 int
@@ -191,4 +193,23 @@ styxend(Styxserver *server)
 	server->priv = nil;
 	styxendsocket();
 	return nil;
+}
+
+/* EN/RU: Register borrowed native readiness input on the socket owner;0/-1.
+ * Зарегистрировать borrowed native readiness fd на socket-owner;0/-1. */
+int
+styxnotifyfd(Styxserver *server, int fd)
+{
+    Fdset *fs;
+    if(server == nil || server->priv == nil || fd < -1 || fd >= FD_SETSIZE)
+        return -1;
+    fs = server->priv;
+    if(fd >= 0 && fd != fs->notifyfd && FD_ISSET(fd, &fs->infds))
+        return -1;
+    if(fs->notifyfd >= 0)
+        FD_CLR(fs->notifyfd, &fs->infds);
+    fs->notifyfd = fd;
+    if(fd >= 0)
+        FD_SET(fd, &fs->infds);
+    return 0;
 }

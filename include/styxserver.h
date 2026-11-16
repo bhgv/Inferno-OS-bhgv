@@ -18,6 +18,7 @@ typedef struct Styxops Styxops;
 typedef struct Styxfile Styxfile;
 typedef struct Client Client;
 typedef struct Fid Fid;
+typedef struct StyxAttach StyxAttach;
 
 struct Styxserver
 {
@@ -45,6 +46,7 @@ struct Client
 	uint		msize;	/* negotiated full-message bound */
 	int		versioned;	/* negative rejects unsupported sessions */
 	Fid		*fids;
+	StyxAttach *attach;	/* staged/pending attach, owned by dispatcher */
 	Fid		*current;	/* borrowed only during one dispatch */
 	char		*uname;	/* uid */
 	char		*aname;	/* attach name */
@@ -105,3 +107,21 @@ void styxsetowner(char*);
  * No automatic cloning: unopened walk clones start empty. Rebuild all consumers. */
 void *styxgetaux(Styxserver *server);
 int styxsetaux(Styxserver *server, void *aux);
+
+/* Native owner-thread extension, no wire changes. Defer only inside attach callback.
+ * Returned request is caller-owned; release with styxattachfree after retirement.
+ * release(aux) runs once on success/error/flush/reset/disconnect, before freeclient.
+ * Cleanup must not reenter dispatch/teardown or wait for external work.
+ * These calls are serialized on the socket owner; worker threads signal a native
+ * mailbox/fd instead of touching Client or request pointers. Rebuild consumers.
+ * Native owner-thread API; defer только внутри attach callback, свой request.
+ * release(aux) один раз при завершении/отмене; worker сообщает через mailbox/fd. */
+StyxAttach *styxdeferattach(Styxserver*, void *aux, void (*release)(void*));
+Client *styxattachclient(StyxAttach*); /* Borrow live pending client, nil after retirement. */
+int styxattachreply(StyxAttach*, char *error); /* 1 consumed/attempted,0 retired/staged; nil Rattach. */
+void styxattachfree(StyxAttach*); /* Drop caller ref; reply error before abandoning live work. */
+
+/* POSIX borrowed readiness fd: owner registers fd or -1 to remove;0/-1.
+ * Caller drains and closes it after unregister/end. Other ports return -1.
+ * POSIX borrowed fd готовности; owner регистрирует, сам читает и закрывает. */
+int styxnotifyfd(Styxserver*, int fd);
