@@ -19,13 +19,19 @@ def main():
    base.replace('m=load Library "library.dis64";','m=load Library "other.dis64";'),base.replace('first:=m->id(a0);','first:=m->id(a0+3);'),
    base.replace('init:fn();','init:fn(n:int);').replace('init(){','init(n:int){'),
    base.replace('Client:module{init:fn();};','Client:module{init:fn();helper:fn();};')+'helper(){}',
-   base.replace('};init(){','};g:int;init(){').replace('a0:=7;','a0:=7;g=a0;'),
-   base.replace('last:=m->id(a0);','last:=m->id(a0);s:="another constant";a0=len s;')]
+   base.replace('};init(){','};g:int;init(){').replace('a0:=7;','a0:=7;g=a0;')]
   for i,body in enumerate(negative):
    source.write_text(body);image.unlink(missing_ok=True);r=subprocess.run(command+['-64c','-o',str(image),str(source)],env=env,capture_output=True,text=True)
    assert r.returncode and ('Dis64 client:'in r.stderr or'Dis64 calls:'in r.stderr)and(not image.exists()or not image.stat().st_size),(i,r.returncode,r.stderr)
    assert 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,r.stderr
+  # Owned literal/String-length admission was added after the original scalar
+  # client boundary. Keep it as positive compatibility evidence, not a refusal.
+  body=base.replace('last:=m->id(a0);','last:=m->id(a0);s:="another constant";a0=len s;')
+  source.write_text(body);subprocess.run(command+['-64c','-o',str(image),str(source)],env=env,check=True,capture_output=True)
+  literal=image.read_bytes();subprocess.run(command+['-64c','-i','-o',str(image),str(source)],env=env,check=True,capture_output=True);assert image.read_bytes()==literal
+  if a.baseline:
+   old=w/'literal-old.dis64';subprocess.run([str(a.baseline.resolve()),'-I',str(w),'-64c','-o',str(old),str(source)],env=env,check=True,capture_output=True);assert old.read_bytes()==literal
   interface.write_text('Library:module{f:fn('+','.join('a'+str(i)+':int'for i in range(64))+'):int;};');source.write_text('implement Client;include "library.m";Client:module{init:fn();};init(){m:=load Library "'+('p'*1023)+'";r:=m->f('+','.join(str(i)for i in range(64))+');}')
   subprocess.run(command+['-64c','-o',str(image),str(source)],env=env,check=True,capture_output=True);parts=P['sections'](image.read_bytes());rows=P['NS']['bindings']({'imports':parts[5],'strings':parts[7]});assert rows==[('Library','f',1,(1,)*64)]
-  print('PASS importing writer: 17 classic sources checked'+(', prior compiler bytes matched'if a.baseline else'')+', deterministic file, ten source refusals,64 parameters and1023-byte path',flush=True)
+  print('PASS importing writer: 17 classic sources checked'+(', prior compiler bytes matched'if a.baseline else'')+', deterministic files, owned literal accepted, nine source refusals,64 parameters and1023-byte path',flush=True)
 if __name__=='__main__':main()

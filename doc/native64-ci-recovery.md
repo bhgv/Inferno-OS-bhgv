@@ -108,3 +108,49 @@ refuses them in each of the four selected Dis64 profiles. General module data,
 import/export shapes and exception tables remain compiler/loader work. These CI
 repairs do not establish AWM, Android GUI/APK or physical-device acceptance.
 No FlashVM code, vendor pin or coordination journal is changed.
+
+## Second recovery batch: compiler dispatch and active image controls
+
+At a54e7e7, CI confirms the paired console workflow on x64/native ARM64/QEMU
+RV64, the Android ARM64 native-link workflow, and actual ELF32 interpreter/JIT
+acceptance. The sanitizer matrix passes47/51 jobs. Three remaining failure
+families are reproduced and corrected:
+
+* The channels fixture supplies actual String allocators, so it must remove the
+  scalar fixture's refusing newstring/newrunes seams before adding those bodies.
+  Both WORD layouts and four semantic controls pass locally.
+* The compiler's one-export importing-client restriction inadvertently covered
+  standalone scalar call files with several exported local functions. Scope it
+  to files with import tables. Independent scalar-file proof still applies;
+  importing clients retain the one-export restriction. All28 previous source
+  programs pass deterministic output and an independent raw oracle,18 damaged
+  images refuse, and the full console executes56 C/JIT roots plus28 entryless
+  library refusals. Classic output for all28 programs equals the previous
+  compiler byte-for-byte. The real AWM16-source frontier stays refused.
+* The whole-image omission controls were not being compiled: the shared runtime
+  now reaches the production image header through scalar-client/library/chain
+  includes before the old local shadow. Include the controlled header first and
+  require a test variant marker. Every mutation must match exactly one current
+  production predicate. Update the executable-profile mutation for the library-
+  aware predicate. All five entry/profile/publication/map/budget controls now hit
+  their exact semantic failures, with no malformed guest execution.
+* The importing-writer boundary still expected an owned String literal to refuse,
+  although literal/length support was already accepted. Retain its original
+  source as a positive deterministic/prior-byte compatibility check. The other
+  nine unsupported source shapes, including extra importing exports, still
+  refuse. No producer admission rule is relaxed by changing this expectation.
+
+The channels and whole-image gates also pass locally with ASan+UBSan and
+detect_leaks=0. The independent DAG gate passes94 raw cases and all six active
+controls. The scalar writer IR gate passes its positive/proof omission controls.
+
+Reproduce the restored source pipeline using a freshly bootstrapped compiler:
+
+```sh
+python3 utils/tests/dis64-source-calls.py --limbo /path/to/new/limbo \
+  --baseline /path/to/previous/limbo
+python3 utils/tests/dis64-source-call-boot.py --limbo /path/to/new/limbo \
+  --root /path/to/built-tree --emu /path/to/built-tree/emu/Linux/o.emu-g
+python3 utils/tests/dis64-call-goldens.py
+python3 utils/tests/native64-channels.py --limbo /path/to/new/limbo
+```

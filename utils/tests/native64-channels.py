@@ -56,6 +56,8 @@ def unit(control):
     support = runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))
     fn = support['function']
     prefix = (ROOT/'libinterp/tests/dis64-runtime.c').read_text().split('IMPLEMENTATION')[0]
+    for signature in ('String*\nnewstring(', 'String*\nnewrunes('):
+        prefix = prefix.replace(fn(prefix, signature), '', 1)
     prefix = '#include <stdarg.h>\n'+prefix
     prefix = prefix.replace('static void\nrequire(', 'static void trackedfree(void*); // Control-stop cleanup of fixture allocations.\nstatic void\nrequire(', 1)
     prefix = prefix.replace('abort();', 'for(int i=0;i<RuntimeBlocks;i++) if(blocks[i].pointer!=NULL) trackedfree(blocks[i].pointer);\n\t\texit(10);', 1)

@@ -173,20 +173,33 @@ def main():
         elif arch == 'riscv64': command += ['-DDIS64_TEST_RISCV64=1', '-DDIS64_TEST_COMPILER="comp-riscv64.c"']
         elif arch != 'amd64': raise RuntimeError('Unsupported target '+arch)
         command += ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
-        source = work/'calls.c'; source.write_text(unit())
-        # The common runtime now includes inference before main: keep its nested image include private too.
-        (work/'dis64-call-infer.h').write_text((ROOT/'include/dis64-call-infer.h').read_text())
+        source = work/'calls.c'
+        text = unit()
+        marker = '#include "dis64-scalar-client.h"'
+        if text.count(marker) != 1:
+            raise RuntimeError('Image override include marker drift')
+        # Load the local header before any production sibling header can resolve
+        # its quoted include relative to include/. The guard then applies to the
+        # entire shared loader closure, not just this fixture's final include.
+        text = text.replace(marker, '#include "dis64-call-image.h"\n'
+            '#ifndef DIS64_CALL_IMAGE_TEST_VARIANT\n#error image override was bypassed\n#endif\n'+marker, 1)
+        source.write_text(text)
         header = (ROOT/'include/dis64-call-image.h').read_text()
-        for mode in ('normal', 'entry', 'profile', 'publication', 'map', 'budget'):
+        changes = {
+            'entry': ('image.code = data+code.offset;', 'image.module.frametype = 0;\n\timage.code = data+code.offset;'),
+            'profile': ('image.module.profile != (unsigned int)(library?0:1) ||', '0 ||'),
+            'map': ('if(type.map[j] != 0)', 'if(0 && type.map[j] != 0)'),
+            'budget': ('types.bytes, Dis64LocalFunctions, objectlimit', 'types.bytes, 65536, objectlimit'),
+            'publication': ('if(!dis64boundcallcheck(', '*result = image;\n\tif(!dis64boundcallcheck('),
+        }
+        for variant, mode in enumerate(('normal', 'entry', 'profile', 'publication', 'map', 'budget')):
             changed = header
-            if mode == 'entry':
-                changed = changed.replace('image.code = data+code.offset;', 'image.module.frametype = 0;\n\timage.code = data+code.offset;', 1)
-            if mode == 'profile': changed = changed.replace('image.module.profile != 1 ||', '0 ||', 1)
-            if mode == 'map': changed = changed.replace('if(type.map[j] != 0)', 'if(0 && type.map[j] != 0)', 1)
-            if mode == 'budget': changed = changed.replace('types.bytes, Dis64LocalFunctions, objectlimit', 'types.bytes, 65536, objectlimit', 1)
-            if mode == 'publication': changed = changed.replace('if(!dis64boundcallcheck(', '*result = image;\n\tif(!dis64boundcallcheck(', 1)
-            if mode != 'normal' and changed == header: raise RuntimeError('Image control drift')
-            (work/'dis64-call-image.h').write_text(changed)
+            if mode != 'normal':
+                old, new = changes[mode]
+                if header.count(old) != 1:
+                    raise RuntimeError('Image control drift: '+mode)
+                changed = header.replace(old, new, 1)
+            (work/'dis64-call-image.h').write_text('#define DIS64_CALL_IMAGE_TEST_VARIANT '+str(variant)+'\n'+changed)
             binary = work/mode
             subprocess.run(command+[str(source), str(ROOT/'libinterp/dec.c'), '-Wl,--wrap=free', '-lm', '-o', str(binary)], env=env, check=True)
             result = subprocess.run(runner+[str(binary), str(work/'cases.bin')], env=env, capture_output=True, text=True, timeout=90)
