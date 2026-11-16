@@ -114,6 +114,31 @@ def verify(data,record):
             mm=mode&0xc0
             assert m==(legacy['m'] if mm==0x40 else offsets['frame' if mm==0x80 else 'data'][legacy['m']][0])
         else: assert m==0
+    tables=record.get('tables',[])
+    if tables:
+        initial=READ['legacy_instructions'](data,with_types=True,with_data=True,with_arrays=True)[3]
+        seen=set()
+        for table in tables:
+            pc=table['pc'];op=table['op'];goto=op==3;big=op==159
+            assert op in (3,14,159) and pc not in seen and 0<=pc<len(record['code']);seen.add(pc)
+            old=code[first+pc];assert old['op']==op and old['mode']&7==0
+            base=old['d'][0]-(4 if goto else 0)
+            assert table['offset']==offsets['data'][base][0]
+            count=len(table['rows']);oldcount=initial[base]['low']
+            assert oldcount==count or goto and oldcount==count+1
+            header=8 if big else 4;stride=4 if goto else 24 if big else 12
+            previous=None
+            for index,(low,high,target) in enumerate(table['rows']):
+                assert low<=high and (previous is None or previous<low) and 0<=target<len(record['code'])
+                previous=high;at=base+header+stride*index
+                if not goto:
+                    mask=(1<<(64 if big else 32))-1;maximum=mask>>1
+                    cell=initial[at];assert (cell['high']<<32)|cell['low']==low&mask
+                    cell=initial[at+(8 if big else 4)]
+                    assert (cell['high']<<32)|cell['low']==(high if high==maximum else high+1)&mask
+                assert initial[at+(0 if goto else 16 if big else 8)]['low']==first+target
+            assert table['fallback']==-1 if goto else initial[base+header+stride*count]['low']==first+table['fallback']
+        assert seen=={pc for pc,step in enumerate(record['code']) if step[0] in (3,14,159)}
 
 
 def generate(limbo,work,env=None):

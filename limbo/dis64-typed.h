@@ -13,10 +13,14 @@ struct Dis64TypedExternal {
     Decl *callee;
 };
 typedef struct Dis64TypedBody Dis64TypedBody;
+typedef struct Dis64TypedTable Dis64TypedTable;
+struct Dis64TypedTable {unsigned int pc,offset;int op;Case *table;};
 struct Dis64TypedBody {
 	Dis64Instruction *code;
 	Dis64TypedSite *sites;
 	unsigned int nsites;
+    Dis64TypedTable *tables;
+    unsigned int ntables;
     Dis64TypedExternal *external;
     unsigned int nexternal;
 	unsigned char *returns;

@@ -14,6 +14,33 @@ static int hostorder(const void *a,const void *b) {return order((void*)a,(void*)
 void infqsort(void *p,long n,long size,int (*compare)(void*,void*)) {order=compare;qsort(p,n,size,hostorder);}
 Desc *descriptors;
 
+static void tabletests(void)
+{
+    Type word={0},fn={0},tabletype={0};Decl arg={0},function={0},global={0};
+    Desc frame={0},data={0};Inst code[4]={{0}},outside={0};Case table={0};Label label={0};
+    Node low={0},high={0},init={0};Sym name={0};Dis64TypedBody p={0};unsigned i;
+    word.kind=Tint;word.size=word.align=4;fn.kind=Tfn;fn.tof=&word;fn.ids=&arg;
+    arg.store=Darg;arg.ty=&word;arg.offset=32;function.ty=&fn;function.desc=&frame;function.pc=code;
+    frame.size=40;data.size=24;descriptors=&data;
+    name.name=".case_test";name.len=10;global.sym=&name;global.store=Dglobal;global.ty=&tabletype;global.init=&init;
+    init.op=Oname;init.decl=&global;tabletype.kind=Tcase;tabletype.size=20;tabletype.align=4;tabletype.cse=&table;
+    low.op=high.op=Oconst;low.val=high.val=1;label.start=&low;label.stop=&high;label.inst=code+1;
+    table.nlab=1;table.labs=&label;table.iwild=code+3;
+    for(i=0;i<4;i++){code[i].pc=i;code[i].op=IRET;code[i].sm=code[i].mm=code[i].dm=Anone;code[i].next=i<3?code+i+1:nil;}
+    code[0].op=ICASE;code[0].sm=Afp;code[0].s.reg=32;code[0].dm=Amp;code[0].d.decl=&global;
+    code[1].op=IMOVW;code[1].sm=Aimm;code[1].s.offset=7;code[1].dm=Afpind;code[1].d.reg=16;
+    assert(!dis64typedlower(&function,&global,code,4,4,&p) && strcmp(p.reason,"undefined-result")==0);dis64typedfree(&p); /* TABLE_RESULT */
+    table.iwild=code+1;
+    assert(dis64typedlower(&function,&global,code,4,4,&p) && p.ntables==1);dis64typedfree(&p);
+    outside.pc=4;table.iwild=&outside;
+    assert(!dis64typedlower(&function,&global,code,4,4,&p) && strcmp(p.reason,"table-default-owner")==0);dis64typedfree(&p);
+    table.iwild=code+1;label.inst=&outside;
+    assert(!dis64typedlower(&function,&global,code,4,4,&p) && strcmp(p.reason,"table-row-owner-or-order")==0);dis64typedfree(&p); /* TABLE_OWNER */
+    label.inst=code+1;name.name="public";
+    assert(!dis64typedlower(&function,&global,code,4,4,&p) && strcmp(p.reason,"table-shape")==0);dis64typedfree(&p);
+    assert(!owners);
+}
+
 int main(void)
 {
 	Type word={0},string={0},reference={0},none={0},fn={0};
@@ -75,5 +102,6 @@ int main(void)
 	assert(dis64typedlower(&function,globals,code,103,103,&p));assert(p.first==100 && p.code[0].destination==2);dis64typedfree(&p);
 	assert(!dis64typedlower(&function,globals,code,65537,103,&p));dis64typedfree(&p);
 	assert(owners==0 && p.code==nil && p.reason==nil);
+    tabletests();
 	return 0;
 }

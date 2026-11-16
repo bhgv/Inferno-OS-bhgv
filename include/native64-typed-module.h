@@ -8,6 +8,13 @@ typedef struct Native64ModuleSpec Native64ModuleSpec;
 typedef struct Native64ModuleImport Native64ModuleImport;
 typedef struct Native64ModuleTable Native64ModuleTable;
 typedef struct Native64ModuleOwner Native64ModuleOwner;
+typedef struct Native64ModuleCaseRow Native64ModuleCaseRow;
+typedef struct Native64ModuleCase Native64ModuleCase;
+struct Native64ModuleCaseRow {vlong low,high;unsigned int target;}; /* Inclusive source bounds. */
+struct Native64ModuleCase {
+    unsigned int pc,offset,op,count,fallback; /* Local function PCs, native MP base. */
+    const Native64ModuleCaseRow *rows;
+};
 struct Native64ModuleOwner {Module *module;int rooted;Native64ModuleOwner *self;};
 struct Native64ModuleSite {
     unsigned int first,end,target,contract,inherited;
@@ -27,7 +34,9 @@ struct Native64ModuleFunction {
     unsigned int mapbytes;
     const Native64ModuleSite *sites;
     unsigned int nsites;
+    const Native64ModuleCase *cases;unsigned int ncases;
 };
+
 struct Native64ModuleInit {unsigned int offset,width;uvlong bits;};
 struct Native64ModuleSpec {
     const char *name,*path;
@@ -39,6 +48,7 @@ struct Native64ModuleSpec {
     unsigned int ninitial;
     const Native64ModuleTable *tables;unsigned int ntables;
 };
+#include "native64-typed-tables.h"
 
 static int
 native64modulename(const char *s)
@@ -105,6 +115,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         for(at=v->offset;at<v->offset+v->width;at++){bit=at/8;if(s->datamap[bit/8]&(0x80>>(bit%8)))return 0;}
         end=v->offset+v->width;
     }
+    if(!native64moduletablescheck(s))return 0;
     *instructions=code;*exports=links;*scratch=maxsites;*imports=nimports;return 1;
 }
 
@@ -170,6 +181,7 @@ native64modulemake(void *arg)
         else if(v->width==4){UWORD x=v->bits;memmove(m->origmp+v->offset,&x,4);}
         else memmove(m->origmp+v->offset,&v->bits,8);
     }
+    native64moduletablesapply(s,m->origmp,b->offsets);
     if(s->entry!=~0U){m->entry=m->prog+b->offsets[s->entry];m->entryt=m->type[s->entry+1];}
     m->cstep=native64typedlea8step;
     if(b->jit && !compile(m,m->nprog,nil))error(exCompile);

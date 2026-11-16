@@ -256,7 +256,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         if((p->code[pc].op==IMOVB || p->code[pc].op==ICVTBW) && USRC(p->code[pc].mode)==AMP){i=0;typedfail(p,"unsupported-opcode");break;}
     if(i){c->state[index]=2;c->height[index]=1;return 1;}
     if(p->reason==nil || (strcmp(p->reason,"unsupported-opcode") && !(c->external>=2 && p->code && !p->frame.reason && !p->data.reason)))goto fail;
-    p->reason=nil;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
+    p->reason=nil;p->ntables=0;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
     p->sites=allocmem((p->count/2+1)*sizeof(*p->sites));
     if(c->external)p->external=allocmem((p->count/2+1)*sizeof(*p->external));
     inside=allocmem(p->count);memset(inside,0,p->count);
@@ -306,6 +306,13 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     for(pc=p->first;pc<stop;pc++){
         in=c->instructions[pc];
         if(in->op!=ICALL && in->op!=IMCALL && in->branch!=nil && inside[in->branch->pc-p->first]){typedfail(p,"multi-setup-branch");goto fail;}
+    }
+    for(i=0;i<p->ntables;i++){
+        Dis64TypedTable *t=p->tables+i;unsigned int j,target;
+        for(j=0;j<(unsigned int)t->table->nlab+(t->op!=IGOTO);j++){
+            target=(j<(unsigned int)t->table->nlab?t->table->labs[j].inst:t->table->iwild)->pc-p->first;
+            if(inside[target]){typedfail(p,"multi-table-setup-branch");goto fail;}
+        }
     }
     if((c->external<2 && !p->nsites && !p->nexternal) || !typedresults(p))goto fail;
     free(inside);p->tail=c->external?4:3;c->state[index]=2;c->height[index]=h;return 1;

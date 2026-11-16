@@ -39,6 +39,34 @@ typedoperand(int mode, Addr *a, int kind, int immediate, int middle,
 }
 
 static int
+typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out)
+{
+    Decl *d=in->d.decl;Case *c;Label *l;unsigned int base,sm,i,rows=0;long value;int actual,kind;
+    kind=in->op==ICASE?Tcase:in->op==ICASEL?Tcasel:Tgoto;
+    if(p->tables==nil || p->ntables==256 || in->dm!=Amp || in->mm!=Anone || in->branch!=nil || d==nil || d->store!=Dglobal ||
+       d->sym==nil || d->sym->name==nil || d->sym->name[0]!='.' || d->init==nil || d->init->op!=Oname || d->init->decl!=d ||
+       d->ty==nil || d->ty->kind!=kind || (c=d->ty->cse)==nil ||
+       in->d.reg!=d->offset+(in->op==IGOTO?4:0) || c->nlab<0 || c->nlab>4096 ||
+       (c->nlab && c->labs==nil) || (in->op==IGOTO && !c->nlab) ||
+       !dis64layoutaddress(&p->data,d->offset,4,0,&base))return typedfail(p,"table-shape");
+    if(in->op!=IGOTO && (c->iwild==nil || c->iwild->pc<p->first || c->iwild->pc>=stop))return typedfail(p,"table-default-owner");
+    for(i=0;i<p->ntables;i++)rows+=p->tables[i].table->nlab;
+    if((unsigned int)c->nlab>65536-rows)return typedfail(p,"table-row-budget");
+    for(i=0;i<(unsigned int)c->nlab;i++){
+        l=c->labs+i;
+        if(l->start==nil || l->stop==nil || l->start->op!=Oconst || l->stop->op!=Oconst ||
+           l->start->val>l->stop->val || l->inst==nil || l->inst->pc<p->first || l->inst->pc>=stop ||
+           (i && c->labs[i-1].stop->val>=l->start->val) ||
+           (in->op!=ICASEL && (l->start->val<(-2147483647LL-1) || l->stop->val>2147483647LL)) ||
+           (in->op==IGOTO && (l->start->val!=l->stop->val || (i && l->start->val!=c->labs[i-1].start->val+1))))
+            return typedfail(p,"table-row-owner-or-order");
+    }
+    if(!typedoperand(in->sm,&in->s,in->op==ICASEL?Tbig:Tint,0,0,p,&value,&sm,&actual))return 0;
+    p->tables[p->ntables++]=(Dis64TypedTable){in->pc-p->first,base,in->op,c};
+    *out=(Dis64Instruction){in->op,SRC(sm)|DST(AMP),0,value,base+(in->op==IGOTO?4:0)};return 1;
+}
+
+static int
 typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out, unsigned char *result)
 {
 	unsigned int sm,mm=AXXX,dm;
@@ -46,6 +74,7 @@ typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out,
 	int binary=0,branch=0,immediate=1;
 	memset(out,0,sizeof(*out)); out->op=in->op;
 	switch(in->op){
+	case ICASE:case ICASEL:case IGOTO:return typedtable(in,stop,p,out);
 	case IRET: case INOP:
 		if(in->sm!=Anone || in->mm!=Anone || in->dm!=Anone || in->branch!=nil) return typedfail(p,"terminal-operands");
 		out->mode=SRC(AXXX)|DST(AXXX); return 1;
@@ -124,6 +153,17 @@ typedresults(Dis64TypedBody *p)
 	while(head<tail){
 		pc=queue[head++];flow=(p->returns[pc] && p->returns[pc]<=32)?3:state[pc];n=0;
 		if(p->code[pc].op==IRET) continue;
+        if(p->code[pc].op==ICASE || p->code[pc].op==ICASEL || p->code[pc].op==IGOTO){
+            Dis64TypedTable *t=nil;unsigned int j,target;
+            for(j=0;j<p->ntables;j++)if(p->tables[j].pc==pc){t=p->tables+j;break;}
+            if(t==nil){ok=typedfail(p,"missing-table-flow");break;}
+            for(j=0;j<(unsigned int)t->table->nlab+(t->op!=IGOTO);j++){
+                target=(j<(unsigned int)t->table->nlab?t->table->labs[j].inst:t->table->iwild)->pc-p->first;
+                joined=state[target]?state[target]&flow:flow;
+                if(joined!=state[target]){state[target]=joined;queue[tail++]=target;}
+            }
+            continue;
+        }
 		if(p->code[pc].op==IJMP)edge[n++]=p->code[pc].destination;
 		else{
 			if(p->code[pc].op==IBEQW || p->code[pc].op==IBNEW || p->code[pc].op==IBLTW || p->code[pc].op==IBLEW || p->code[pc].op==IBGTW || p->code[pc].op==IBGEW ||
@@ -163,6 +203,7 @@ dis64typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsign
 	if(!dis64layoutstorage(fn->ty->ids,fn->locals,fn->desc,1,&p->frame) ||
 	   !dis64layoutstorage(globals,nil,descriptors,0,&p->data)) return typedfail(p,"storage-layout");
 	p->count=stop-p->first; p->code=allocmem(p->count*sizeof(*p->code));
+    p->tables=allocmem((p->count<256?p->count:256)*sizeof(*p->tables));
 	p->returns=allocmem(p->count);memset(p->returns,0,p->count);
 	for(in=input;in!=nil;in=in->next){
 		if(in->op==INOOP || in->pc<p->first || in->pc>=stop) continue;
@@ -297,7 +338,7 @@ dis64typedlocal(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsig
 void
 dis64typedfree(Dis64TypedBody *p)
 {
-	free(p->contextfields);free(p->external);free(p->sites);free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
+	free(p->tables);free(p->contextfields);free(p->external);free(p->sites);free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
 }
 
 static void
@@ -415,6 +456,20 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 		fprint(2,",\"first\":%ud,\"accepted\":%s",p.first,p.reason==nil?"true":"false");
 		if(p.reason!=nil) fprint(2,",\"reason\":\"%s\",\"pc\":%ud",p.reason,p.badpc);
 		else{
+            if(p.ntables){
+                unsigned int k;Dis64TypedTable *t;Label *l;
+                fprint(2,",\"tables\":[");
+                for(i=0;i<p.ntables;i++){
+                    t=p.tables+i;
+                    fprint(2,"%s{\"pc\":%ud,\"offset\":%ud,\"op\":%d,\"fallback\":%ld,\"rows\":[",i?",":"",t->pc,t->offset,t->op,t->op==IGOTO?-1L:t->table->iwild->pc-p.first);
+                    for(k=0;k<(unsigned int)t->table->nlab;k++){
+                        l=t->table->labs+k;
+                        fprint(2,"%s[%lld,%lld,%ld]",k?",":"",l->start->val,l->stop->val,l->inst->pc-p.first);
+                    }
+                    fprint(2,"]}");
+                }
+                fprint(2,"]");
+            }
             if((multi!=nil && strcmp(multi,"1")==0) || (external!=nil && strcmp(external,"1")==0)){
                 fprint(2,",\"signature\":%ud,\"export_name\":",(unsigned int)sign(fn));typedexportname(fn);
             }

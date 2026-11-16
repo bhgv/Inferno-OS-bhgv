@@ -504,3 +504,39 @@ Dis64 source/file admission. Opaque tables still retain old code coordinates;
 compound array elements/multidimensional initializers remain refused here.
 No classic ABI, wire ID or shared FlashVM schema is changed. New target results
 remain pending until their jobs finish.
+
+## Execute numeric tables from checked Limbo bodies
+
+The 1be2c4e paired-console matrix and classic32 job passed; its typed ARM64,
+RV64 and Android ARM64/Bionic jobs also passed. The Android GUI native-link
+job passed as a link check, not an AWM execution claim.
+
+Lower compiler-owned ICASE/ICASEL/IGOTO with typed source storage and local
+row/default ownership. Include table edges in definite-result analysis, reset
+table metadata on multi-call replay and reject entries into call preparation.
+Optional diagnostics retain their existing body schema plus table metadata;
+ordinary bytes are unchanged and an independent classic reader checks bounds,
+targets and maps.
+
+Add private table metadata to the trusted module constructor. Validate complete
+MP spans/maps, count/row budgets, matching instructions, call-island exclusion
+and initializer/table overlap before allocation. Relocate local targets using
+the new function offsets and retain Dis ordinals for the existing leaf JIT.
+No native-PC narrowing, new wire ID or general file admission is introduced.
+
+Four actual Limbo functions execute 2280 interpreter/JIT module-call roots,
+including sparse ranges, dense computed goto, signed minima/maxima, stack
+growth and three quanta. A private prefix shifts the functions relative to the
+classic file, so unchanged PCs cannot accidentally pass. The x64 gate sees 696
+C table operations and zero C table fallbacks in JIT mode. All 20 metadata
+refusals occur before allocation, and all 39 constructor allocation positions
+roll back. Active row-owner and target-relocation omissions must fail their
+semantic assertions. The complete new gate passes ASan+UBSan, detect_leaks=0.
+
+Existing typed body/multi/external IR controls and module-construction controls
+pass. All 1024 distinct accepted source/flag pairs in the Command producer
+retain exact outputs against the preceding compiler; its 772 deterministic
+files and existing source refusals still pass. The startup typed-body report
+finds 15 accepted bodies and 345 whole-body refusals. This is not general AWM
+admission. The expanded eight-gate typed matrix and full port driver now require
+the table gate. See doc/native64-typed-tables.ru.md for reproduction and limits.
