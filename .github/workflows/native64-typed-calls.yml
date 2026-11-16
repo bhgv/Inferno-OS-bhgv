@@ -1,0 +1,80 @@
+name: Native64 source-derived module calls
+on:
+  push:
+    branches: [experiment]
+    paths:
+      - '.github/workflows/native64-typed-calls.yml'
+      - 'makemk.sh'
+      - 'mkfiles/**'
+      - 'Linux/**'
+      - 'limbo/**'
+      - 'module/**'
+      - 'include/**'
+      - 'libinterp/**'
+      - 'emu/port/**'
+      - 'utils/tests/native64-local-calls.*'
+      - 'utils/tests/native64-typed*'
+      - 'utils/tests/dis64-typed*'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native64-typed-calls-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  calls:
+    name: Typed module calls ${{ matrix.arch }}
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            host: ubuntu-22.04
+            compiler: gcc
+            runner: ''
+            flags: '-O2 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'
+          - arch: arm64
+            host: ubuntu-22.04-arm
+            compiler: gcc
+            runner: ''
+            flags: '-O2 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'
+          - arch: riscv64
+            host: ubuntu-22.04
+            compiler: riscv64-linux-gnu-gcc
+            runner: 'qemu-riscv64 -R 0x10000000000 -L /usr/riscv64-linux-gnu'
+            flags: '-O2 -g -DNDEBUG -fno-strict-aliasing'
+    env:
+      NATIVE64_ARCH: ${{ matrix.arch }}
+      NATIVE64_RUNNER: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap native compiler and target tools
+        run: |
+          if [ "$NATIVE64_ARCH" = arm64 ]; then
+            test "$(uname -m)" = aarch64
+          fi
+          if [ "$NATIVE64_ARCH" = riscv64 ]; then
+            sudo apt-get -o Acquire::Retries=3 update
+            sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user
+          fi
+          MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+      - name: Execute source-derived typed calls and active refusal controls
+        env:
+          CC: ${{ matrix.compiler }}
+          NATIVE64_CFLAGS: ${{ matrix.flags }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/typed-call-logs"
+          for gate in local multi module external imports; do
+            python3 "utils/tests/native64-typed-$gate.py" --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+              | tee "$RUNNER_TEMP/typed-call-logs/$gate.log"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: typed-module-calls-${{ matrix.arch }}
+          path: ${{ runner.temp }}/typed-call-logs
+          if-no-files-found: warn
+          retention-days: 14

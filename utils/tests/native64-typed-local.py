@@ -20,6 +20,7 @@ def main():
         source=runpy.run_path(str(ROOT/'utils/tests/native64-local-calls.py'))['unit']()
         source=source[:source.index('/* Keep scalar file admission separate')]
         extract=runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))['function']
+        source=source.replace(extract(source,'int\nnative64typedlea8step('),'',1)
         source+='\n#include "native64-local-bind.h"\n'+extract((ROOT/'libinterp/xec.c').read_text(),'int\nnative64typedlea8step(')+'\n'+extract((ROOT/'libinterp/xec.c').read_text(),'OP(movb)')+'\n'
         source+='\n#line 1 "native64-typed-local.c"\n'+(ROOT/'utils/tests/native64-typed-local.c').read_text()
         file=work/'typed.c';file.write_text(source)

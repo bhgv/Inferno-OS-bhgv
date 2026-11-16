@@ -17,6 +17,9 @@ def main():
         runpy.run_path(str(ROOT/'utils/tests/dis64-typed-module.py'))['generate'](args.limbo.resolve(),work)
         support=runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'));extract=support['function'];xec=(ROOT/'libinterp/xec.c').read_text();link=(ROOT/'libinterp/link.c').read_text()
         source=runpy.run_path(str(ROOT/'utils/tests/native64-local-calls.py'))['unit']().split('/* Keep scalar file admission separate')[0]
+        # Replace scalar refusing/root seams before adding owning module support.
+        for signature in ('void\nptradd(', 'void\nptrdel(', 'int\nnative64typedlea8step('):
+            source=source.replace(extract(source,signature),'',1)
         stub='void\ndestroylinks(Module *module)\n{\n\trequire(module->ext == nil);\n}'
         assert source.count(stub)==1;source=source.replace(stub,extract(link,'void\ndestroylinks('))
         source+='''

@@ -315,3 +315,40 @@ their active controls and all38 literal/scalar-import programs on each of x64,
 native ARM64 and RV64/QEMU. This includes3648 scheduler roots per target with
 actual collection. The broader paired workflow and subsequent expanded library
 matrix remain separate results, not inferred from these individual gates.
+
+## Source-derived typed module calls
+
+The next full-port boundary composes typed local/multiple/module/external/import
+fixtures from the shared scalar runtime. That runtime now supplies explicit
+refusing typed-result and root-registration seams. Replace those seams before
+adding the actual typed result binder and observed root services; leaving both
+bodies caused duplicate definitions before any owning gate could execute.
+Scalar-only fixtures retain their refusing services. No production binder,
+calling layout, source admission rule or 32-bit build path changes.
+
+All five source-derived native fixtures pass locally with -O2 -DNDEBUG and
+UBSan:384 local continuations,480 multiple-call cases,960 whole-module cases,
+912 external-body cases and960 three-module owned-import cases, totaling3696
+C/RX combinations. Their17 semantic omission controls pass, including exact
+classic hash binding, module owner identity, copied import metadata, mapped
+slots, constructor rollback and local result ownership. These fixtures consume
+source-derived trusted native metadata; this is not general serialized Dis64
+module admission or an AWM execution result.
+
+A targeted three-architecture workflow now bootstraps the native compiler and
+executes those five complete gates with all their controls. ARM64 runs natively;
+RV64 uses the configured cross compiler and QEMU sysroot. Native targets retain
+UBSan; RV64 does not require an unavailable target sanitizer runtime. The full
+port workflow keeps its existing broader gates.
+
+A separate local replay passes131 raw-proof invocations across nine catalog,
+flow, state, CFG, operand, initialization and bound numeric/return/call families,
+including all their active omission controls. The result-kind control needed a
+more precise marker: conversions introduced a second identical destination-slot
+check. Mutate only the result-consumption check immediately before StateRead;
+retain the independent conversion check. Every mutation must still match once
+and fail its existing semantic predicate. No production proof predicate changes.
+
+The owned-import gate also passes locally with ASan+UBSan, including all960
+three-module executions and its three active controls. LeakSanitizer is disabled
+for the sandbox's ptrace restriction; this is not leak or whole-VM evidence.
