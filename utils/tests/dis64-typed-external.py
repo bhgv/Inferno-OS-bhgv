@@ -15,8 +15,8 @@ SOURCE+='loop_count(p:Multi,n:int):int{total:=0;while(n>0){a:=p->relay_count(n);
 SOURCE+='loader():Multi{return load Multi "trusted/Multi";}'
 BRANCHES=MODULE['MULTI']['BRANCHES'];ROOTS=MODULE['MULTI']['ROOTS']
 
-def compile_source(limbo,work,source):
-    (work/'provider.m').write_text(INTERFACE)
+def compile_source(limbo,work,source,interface=None):
+    (work/'provider.m').write_text(INTERFACE if interface is None else interface)
     file=work/'external.b';file.write_text(source);ordinary=work/'ordinary.dis';traced=work/'external.dis'
     env=dict(os.environ)
     for key in ('LIMBO_DIS64_TYPED','LIMBO_DIS64_TYPED_MULTI','LIMBO_DIS64_TYPED_TAIL','LIMBO_DIS64_TYPED_LOCAL','LIMBO_DIS64_TYPED_EXTERNAL'):env.pop(key,None)

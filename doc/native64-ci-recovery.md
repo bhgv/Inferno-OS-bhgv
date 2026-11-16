@@ -602,3 +602,35 @@ The standalone external/import fixtures also link the actual stringcmp now
 required by the private callback. Their complete regressions pass 912 external
 and 960 three-module owned-import cases with all existing active omission
 controls; multiple-call regression passes 480 cases and 1728 binding refusals.
+
+
+## Executable MP module roots into owned String tables
+
+The preceding String-table four-target matrix, paired console and classic32
+compatibility completed successfully. Preserve parallel libstyx changes while
+extending coverage of the existing trusted-module runtime: independent Limbo
+consumer bodies bind/rebind/self-bind/clear a global module root in MP and
+call source String-table providers through production linkmod/MFRAME/MCALL/RET.
+All three imported sites use AMP, including inherited result forwarding. Four corrupted compiler reports are
+refused by the independent classic oracle. The loader-free consumer's private ldt is derived from an independent .m LOAD
+probe; this is not new general file admission or full AWM execution.
+
+The new gate passes 3264 C/JIT module-graph roots, quanta 1/3/1000, grown
+stacks, ASCII/Rune/Unicode/NUL/nil, provider replacement and nil-call failure.
+It verifies exact results/refcounts, independent original/active/idle MP,
+cloning an already bound module root, and complete teardown including the
+faulting frame's argument. All 51 consumer construction allocation failures
+preserve REG and ownership; four metadata refusals allocate nothing. Active
+module-map and bound-module clone-retain omissions must fail semantically.
+The complete gate passes ASan+UBSan/NDEBUG (detect_leaks=0).
+
+Require string-imports as the tenth gate in the four-target typed-call matrix
+and full port driver. Reuse the independent external-call oracle with an
+optional interface argument; its existing default and source semantics stay
+unchanged. See doc/native64-typed-string-imports.ru.md for reproduction and
+precise boundaries.
+
+The existing owned-import source generator still passes all 18 bodies, 34
+sites and 23 requests with the default interface, including its prior four
+corrupt-report controls. Workflow duplicate-map, shell syntax and Python
+syntax checks pass.

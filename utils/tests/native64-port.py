@@ -375,6 +375,8 @@ def main():
         build, env, logs/'typed-source-tables.log')
     run([sys.executable, str(tests/'native64-typed-string-tables.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'typed-source-string-tables.log')
+    run([sys.executable, str(tests/'native64-typed-string-imports.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-string-imports.log')
     run([sys.executable, str(tests/'native64-typed-module.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'typed-module-exports-mcall.log')
     run([sys.executable, str(tests/'native64-typed-external.py'), '--limbo', str(tools/'limbo')],
