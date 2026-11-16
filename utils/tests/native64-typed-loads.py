@@ -117,9 +117,11 @@ def main():
         checks=[('s->load==nil || s->load==(Modlink*(*)(Module*,WORD,char*))H','0','case=0'),
                 ('if((map[bit/8] & (0x80>>(bit%8)))==0)return 0;',';','case=5')]
         runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''))
+        extract=runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))['function']
+        target=extract(production,'static int\nnative64modulecheck(')
         for before,after,diagnostic in checks:
-            assert production.count(before)==1
-            (work/'native64-typed-module.h').write_text(production.replace(before,after))
+            assert target.count(before)==1
+            (work/'native64-typed-module.h').write_text(production.replace(target,target.replace(before,after,1),1))
             subprocess.run(command,check=True)
             result=subprocess.run(runner+[str(binary)],capture_output=True,text=True,timeout=180)
             assert result.returncode==10 and ('LOAD metadata guard omitted: '+diagnostic)in result.stderr and 'Sanitizer'not in result.stderr and 'runtime error:'not in result.stderr,result.stderr

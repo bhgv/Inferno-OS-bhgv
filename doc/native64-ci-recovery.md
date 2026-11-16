@@ -826,3 +826,13 @@ passes: eight generated-frame ownership cases, 89616 collector epochs and
 4802820 checks, plus compiled nil/literal/reload, paired images, exact
 named seeds and both active publication/classification omission controls.
 The actual Android/Bionic follow-up result remains a separate CI receipt.
+
+### Scope LOAD omission controls to their owning validator
+
+The 336b19a typed matrix stopped on all four targets after the real 6528-root
+LOAD gate and callback omission control passed. The root-map control counted
+a guard string across the whole module header; the new independent list
+validator intentionally contains the same guard. Scope both LOAD mutations
+to native64modulecheck, assert exactly one occurrence there, and preserve
+all expected diagnostics and sanitizer exclusions. Local full LOAD gate
+passes both metadata controls and the pin-transfer control after this fix.
