@@ -134,6 +134,19 @@ long kwrite(int fd,void *buffer,long count)
 }
 void seterror(char *text,...){USED(text);require(0);}
 
+/* Bind the RX observer to this live caller, never a retired prior test's map. */
+static void
+fixedobserve(Module *module)
+{
+    rxbegin=rxend=0;
+    if(module->jit != nil){
+        require(module->jit->code != nil && module->jit->size > 0);
+        rxbegin=(uintptr)module->jit->code;
+        require(module->jit->size <= (uintptr)-1-rxbegin);
+        rxend=rxbegin+module->jit->size;
+    }
+}
+
 static void
 fixedexecute(const SysFixedCase *test, int jit, int conversion)
 {
@@ -157,7 +170,7 @@ fixedexecute(const SysFixedCase *test, int jit, int conversion)
     require(caller->m->ldt[0][test->imports].name == nil);
     if(caller->m->ntype == 3 && caller->m->type[2] != &Tbyte){fprintf(stderr,"Sys byte primitive descriptor predicate\n");exit(22);}
     frame=caller->m->entryt;require(frame->size == (caller->m->ntype == 3 ? 128 : 112));caller->m->ss=4096;
-    if(jit && caller->m->jit != nil){rxbegin=(uintptr)caller->m->jit->code;rxend=rxbegin+caller->m->jit->size;}
+    fixedobserve(caller->m);
     process.exval=H;process.state=Pready;process.quanta=1;process.R.M=caller;process.R.PC=caller->prog;
     entry=mallocz(frame->size,1);require(entry != nil);entry->t=frame;R.s=&entry;
     newstack(&process);free(entry);initmem(frame,process.R.FP);ptrdel(D2H(caller));managedprocess=&process;

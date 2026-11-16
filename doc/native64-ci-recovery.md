@@ -27,6 +27,11 @@ memory defect. Compiler lowering, Dis64 wire and calling layouts remain unchange
   undefined-behavior control mandatory on the native host with UBSan, clearly
   named `host-ubsan` in its log. Positive tag and version-reader execution, plus
   the version-reader semantic omission control, remain on the selected target.
+* After these repairs, RV64 reached the fixed-Sys GC gate and exposed a stale
+  test observer: dial/Connection execution retained the previous fixed caller's
+  retired RX address range. Bind/reset the observer for every live caller, with
+  checked mapping bounds. The existing fast-entry membership predicate remains
+  active. Reuse of the same mmap address had hidden this defect on x64.
 
 ## Local Linux x64 validation
 
@@ -90,6 +95,11 @@ literal bytes, overflow and unmapped-page refusal. `--noexec-control` removes on
 PROT_EXEC and requires a semantic permission failure before attempting execution.
 Both checks pass locally and are also selected with `CC='cc -m32'` in CI. The
 full ELF32 interpreter/JIT smoke must pass independently of this focused test.
+
+CI run 43812828469 at commit98e2f69b passed the actual ELF32 build, both focused
+page-publication checks and ordinary Dis execution with JIT off/on. The 386 Type
+helper test also passes locally after installing its isolated Unicorn dependency:
+84 dense/sparse/large-map, executed-initializer, canary and failure checks.
 
 ## Remaining AWM frontier
 

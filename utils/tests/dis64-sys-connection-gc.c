@@ -22,6 +22,7 @@ connectionexecute(const ConnectionCase *test,int jit,int failure)
     numericdrain();before=live;sys=groupmodule();dis64bootmanaged=1;dis64bootprovider="$Sys";
     caller=prepare64sysstring("connection",test->image,test->bytes,jit);
     if(caller==nil){fprintf(stderr,"Sys connection owning predicate\n");exit(25);}
+    fixedobserve(caller->m);
     require((caller->m->entryt->size==144 || caller->m->entryt->size==160) && caller->m->entryt->np==3 && caller->m->entryt->map[1]==0xdf && caller->m->entryt->map[2]==(caller->m->entryt->size==160?0x20:0));
 #ifdef DIS64_TEST_OMIT_OPEN_RESULT
     if(caller->m->entryt->size==160)caller->m->entryt->mark=connectionomitmap;

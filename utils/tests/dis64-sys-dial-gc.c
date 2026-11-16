@@ -22,6 +22,7 @@ dialexecute(const DialCase *test,int jit,int failure,int failcall)
     numericdrain();before=live;sys=groupmodule();
     dis64bootmanaged=1;dis64bootprovider="$Sys";
     caller=prepare64sysstring("dial",test->image,test->bytes,jit);require(caller!=nil && caller->m->cstep==native64diallea8step);
+    fixedobserve(caller->m);
     require(caller->m->entryt->size==112 && caller->m->entryt->map[1]==0xdc);
     caller->m->ss=4096;process.exval=H;process.state=Pready;process.quanta=1;process.R.M=caller;process.R.PC=caller->prog;
     entry=mallocz(112,1);require(entry!=nil);entry->t=caller->m->entryt;R.s=&entry;
