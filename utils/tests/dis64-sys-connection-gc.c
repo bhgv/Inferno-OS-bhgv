@@ -30,13 +30,13 @@ connectionexecute(const ConnectionCase *test,int jit,int failure)
     process.exval=H;process.state=Pready;process.quanta=1;process.R.M=caller;process.R.PC=caller->prog;
     entry=mallocz(caller->m->entryt->size,1);require(entry!=nil);entry->t=caller->m->entryt;R.s=&entry;
     newstack(&process);free(entry);initmem(caller->m->entryt,process.R.FP);ptrdel(D2H(caller));managedprocess=&process;
-    initialfp=process.R.FP;dialnext=100;dialcalls=0;groupreleases=0;cachereleases=cacheacquires=0;
+    initialfp=process.R.FP;groupvictim=1;dialnext=100;dialcalls=0;groupreleases=0;cachereleases=cacheacquires=0;
     for(step=0;step<2048;step++){
         uchar *callerfp=process.R.FP;
         pc=process.R.PC;
         if(pc->op==IEXIT)break;
         if((failure==5 || failure==6) && pc->op==ILEA && pc+1<caller->prog+caller->m->nprog &&
-           !strcmp(caller->m->ldt[0][(pc+1)->reg].name,failure==5?"open":"mount")){
+           (failure==5?(!strcmp(caller->m->ldt[0][(pc+1)->reg].name,"open") || !strcmp(caller->m->ldt[0][(pc+1)->reg].name,"create")):!strcmp(caller->m->ldt[0][(pc+1)->reg].name,"mount"))){
             Frame *pending;Type *type;uchar beforebind[8],afterbind[8],map;long offset=pc->s.ind;
             memmove(&pending,callerfp+40,sizeof(pending));type=pending->t;
             if(type==nil)type=((Stkext*)process.R.EX)->reg.TR;
@@ -69,7 +69,7 @@ connectionexecute(const ConnectionCase *test,int jit,int failure)
             groupkind=kind==14?6:kind;fixedexpected=event;
             request=(DialEvent){event->text,event->other?event->other:""};dialevent=&request;
             memmove(preserved,callerfp+132,4);
-            if(failure==4 && kind==10){
+            if(failure==4 && (kind==10 || kind==11)){
                 Sys_FD *fd;int balance=fdopened-fdclosed;
                 literalpoolfail=literalpoolcalls+1;
                 require(!kprotect(execute,&process) && !strcmp(message,exHeap));literalpoolfail=0;
@@ -82,7 +82,7 @@ connectionexecute(const ConnectionCase *test,int jit,int failure)
                 memmove(&value,callerfp+80,4);memmove(&result,callerfp+88,sizeof(result));require(value==event->status);
                 if(value<0)require(result.dfd==H && result.cfd==H && result.dir==H);
                 else require(result.dfd!=H && result.cfd!=H && result.dir!=H);
-            }else if(kind==10){
+            }else if(kind==10 || kind==11){
                 Sys_FD *fd;memmove(&fd,callerfp+144,sizeof(fd));require(event->status<0?fd==H:fd!=H && fd->fd==event->status);
             }else{
                 memmove(&value,callerfp+128,4);if(value!=event->status)fprintf(stderr,"connection result %s jit=%d method=%s actual=%d expected=%d\n",test->name,jit,event->method,value,event->status);require(value==event->status);
@@ -132,12 +132,12 @@ connectiontests(void)
     Module *sys;Modlink *caller;unsigned int i;int before,start,poolstart,attempts,pools,failure;
     for(i=0;i<nelem(connection_cases);i++){connectionexecute(connection_cases+i,0,0);connectionexecute(connection_cases+i,1,0);}
     for(i=1;i<=3;i++){connectionexecute(connection_cases,0,i);connectionexecute(connection_cases,1,i);}
-    for(i=0;i<nelem(connection_cases);i++)if(!strcmp(connection_cases[i].name,"mount-open")){
+    for(i=0;i<nelem(connection_cases);i++)if(!strcmp(connection_cases[i].name,"mount-open") || !strcmp(connection_cases[i].name,"mount-create")){
         connectionexecute(connection_cases+i,0,4);connectionexecute(connection_cases+i,1,4);
         connectionexecute(connection_cases+i,0,5);connectionexecute(connection_cases+i,1,5);
         connectionexecute(connection_cases+i,0,6);connectionexecute(connection_cases+i,1,6);
     }
-    printf("PASS guest mount native guards: C/JIT open result address and mount callee map; no ret-slot write before refusal\n");
+    printf("PASS guest mount native guards: C/JIT open/create result address and mount callee map; no ret-slot write before refusal\n");
     numericdrain();sys=groupmodule();dis64bootmanaged=1;dis64bootprovider="$Sys";before=live;
     for(i=0;i<nelem(connection_bad);i++){
         start=allocations;poolstart=literalpoolcalls;
@@ -168,7 +168,7 @@ connectiontests(void)
     }
     for(i=0;i<nelem(connection_cases);i++)if(!strncmp(connection_cases[i].name,"mount-",6))
         connectionconstructcheck(sys,connection_cases+i);
-    printf("PASS guest mount constructors: %u source cases, %u native/%u heap rollback refusals; two live open-result allocation failures\n",mountctorcases,mountctornative,mountctorheap);
+    printf("PASS guest mount constructors: %u source cases, %u native/%u heap rollback refusals; four live open/create-result allocation failures\n",mountctorcases,mountctornative,mountctorheap);
     unload(sys);numericdrain();dis64bootmanaged=0;dis64bootprovider=nil;
     printf("PASS Sys connection: %u C/JIT/GC cases, status guards, FD fields, short/error reads, UTF/string/byte flow, durable Words; 6 live-Connection allocation unwinds; %u pre-allocation refusals, %d native/%d heap constructor rollback refusals\n",2*(unsigned int)nelem(connection_cases),(unsigned int)nelem(connection_bad),attempts,pools);
 }

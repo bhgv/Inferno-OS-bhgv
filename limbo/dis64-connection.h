@@ -19,18 +19,18 @@ dis64connectionemit(Dis64ManagedCompilePlan *p,unsigned int op,unsigned int mode
 static int
 dis64connectionshape(Decl *entry,Decl *globals,Decl *ldts,Inst *input,long count,long databytes,Dis64ManagedCompilePlan *p)
 {
-    Decl *methods[8],*method,*field,*g,*path=nil,*nilvalue=nil,*empty=nil,*literals[Dis64ManagedLiterals];
+    Decl *methods[12],*method,*field,*g,*path=nil,*nilvalue=nil,*empty=nil,*literals[Dis64ManagedLiterals];
     Inst *in,*scan;long module=-1,frame=-1,tuple=-1,result=-1,fd=-1,locals[2]={-1,-1};
     long array=-1,string=-1,temp=-1,pcs[12*Dis64ManagedCalls+1],target[Dis64ClockInstructions];
     long source,dest,middle,constant,kind=-1;unsigned int i,j,n=0,imports=0,phase=0,parameter=0,calls=0,ret=0,hasdial=0,extra=0,called=0;
     uvlong seen=0;
     if(entry==nil || entry->pc==nil || entry->pc->pc || entry->ty->ids || entry->ty->tof->kind!=Tnone || entry->ty->varargs ||
        entry->desc==nil || count<7 || count>12*Dis64ManagedCalls+1 || input==nil || input->op!=ILOAD ||
-       ldts==nil || ldts->next || ldts->init==nil || ldts->init->val<1 || ldts->init->val>8 || ldts->init->decl==nil)return 0;
+       ldts==nil || ldts->next || ldts->init==nil || ldts->init->val<1 || ldts->init->val>12 || ldts->init->decl==nil)return 0;
     for(method=ldts->init->decl->ty->ids;method;method=method->next){
-        if(imports==8 || method->dot==nil || strcmp(method->dot->sym->name,"Sys") || method->ty->kind!=Tfn || method->ty->varargs || method->ty->polys)return 0;
+        if(imports==12 || method->dot==nil || strcmp(method->dot->sym->name,"Sys") || method->ty->kind!=Tfn || method->ty->varargs || method->ty->polys)return 0;
         kind=!strcmp(method->sym->name,"mount")?15:!strcmp(method->sym->name,"dial")?14:dis64sysfixedkind(method->sym->name);
-        if(kind!=14 && kind!=12 && kind!=13 && kind!=9 && kind!=0 && kind!=15 && kind!=6 && kind!=10)return 0;
+        if(kind!=14 && kind!=12 && kind!=13 && kind!=9 && kind!=0 && kind!=15 && kind!=6 && kind!=10 && kind!=11 && kind!=1 && kind!=2 && kind!=7)return 0;
         for(j=0;j<imports;j++)if(p->nativekind[j]==kind)return 0;
         if(kind==14){
             field=method->ty->tof->ids;
@@ -40,7 +40,7 @@ dis64connectionshape(Decl *entry,Decl *globals,Decl *ldts,Inst *input,long count
             field=method->ty->ids;for(j=0;j<2;j++,field=field->next)if(field==nil || field->ty->kind!=Tstring)return 0;
             if(field)return 0;hasdial=1;
         }else{
-            if(kind==10){if(!dis64sysfdtype(method->ty->tof))return 0;p->connectionfd=1;}
+            if((kind==10 || kind==11)){if(!dis64sysfdtype(method->ty->tof))return 0;p->connectionfd=1;}
             else if(method->ty->tof->kind!=Tint)return 0;
             field=method->ty->ids;
             for(j=0;j<dis64connectionargs(kind);j++,field=field->next){
@@ -102,7 +102,7 @@ dis64connectionshape(Decl *entry,Decl *globals,Decl *ldts,Inst *input,long count
                     }else if(in->s.reg==string)source=120;
                     else if(tuple>=0 && in->s.reg==tuple+12)source=104;
                     else return 0;
-                    dest=kind==14 || kind==6?64+8*parameter:64;
+                    dest=kind==14 || kind==6 || kind==7?64+8*parameter:64;
                     EMIT(IMOVP,SRC(in->sm==Amp?AMP:AFP)|DST(AFP),0,source,dest);
                     EMIT(IMOVP,SRC(AFP)|DST(AFP|AIND),dis64connectionoffset(kind,parameter),dest,40);
                 }else if(dis64connectionfd(kind,parameter) || ((kind==12 || kind==13) && parameter==1)){
@@ -123,20 +123,20 @@ dis64connectionshape(Decl *entry,Decl *globals,Decl *ldts,Inst *input,long count
             }
             if(in->op!=ILEA || in->sm!=Afp || in->dm!=Afpind || in->mm!=Anone || in->d.reg!=frame || in->d.offset!=16)return 0;
             if(kind==14){if(in->s.reg<32 || in->s.reg>entry->desc->size-16 || in->s.reg%4 || (tuple>=0 && tuple!=in->s.reg))return 0;result=in->s.reg;}
-            else if(kind==10){
+            else if((kind==10 || kind==11)){
                 if(!dis64clockslot(in->s.reg,entry->desc->size) || in->s.reg==module || in->s.reg==frame || (fd>=0 && fd!=in->s.reg) || (tuple>=0 && in->s.reg>=tuple && in->s.reg<tuple+16))return 0;
                 result=in->s.reg;
             }else{
                 if(in->s.reg<32 || in->s.reg%4 || in->s.reg>entry->desc->size-4 || in->s.reg==module || in->s.reg==frame || in->s.reg==fd || (tuple>=0 && in->s.reg>=tuple && in->s.reg<tuple+16))return 0;
                 result=dis64connectionword(in->s.reg,tuple,locals,1);if(result<0 || result==80)return 0;
             }
-            EMIT(ILEA,SRC(AFP)|DST(AFP|AIND),32,kind==14?80:kind==10?144:128,40);phase=2;continue;
+            EMIT(ILEA,SRC(AFP)|DST(AFP|AIND),32,kind==14?80:(kind==10 || kind==11)?144:128,40);phase=2;continue;
         }
         if(phase==2){
             if(in->op!=IMCALL || in->sm!=Afp || in->dm!=Afp || in->mm!=Aoff || in->s.reg!=frame || in->d.reg!=module || in->m.decl==nil)return 0;
             for(j=0;j<imports && in->m.decl->iface!=methods[j];j++);if(j==imports || p->nativekind[j]!=kind)return 0;
             EMIT(IMCALL,SRC(AFP)|AXIMM|DST(AMP),j,40,0);
-            if(kind==14)tuple=result;else if(kind==10)fd=result;else{EMIT(IMOVW,SRC(AFP)|DST(AFP),0,128,result);}
+            if(kind==14)tuple=result;else if((kind==10 || kind==11))fd=result;else{EMIT(IMOVW,SRC(AFP)|DST(AFP),0,128,result);}
             called|=1U<<j;calls++;phase=0;continue;
         }
         if(in->op==IRET){

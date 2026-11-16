@@ -20,15 +20,19 @@ def main():
                 images=lambda row:[value for value in row if isinstance(value,bytes)]
                 if images(left)!=images(right):raise RuntimeError((family,i,'old Dis64 bytes changed'))
             old+=len(new)
-        for label,body,_,_,_ in mount['CASES']['programs']():
+        programs=mount['CASES']['programs']()
+        for index,(label,body,_,_,_) in enumerate(programs):
             text='sys:=load Sys Sys->PATH;'+body
             first=base['compile_source'](a.limbo,work,text)
             if first!=base['compile_source'](a.limbo,work,text):raise RuntimeError(label+' nondeterministic')
-            base['compile_source'](a.baseline,work,text,accepted=False)
+            if index<9:
+                if first!=base['compile_source'](a.baseline,work,text):raise RuntimeError(label+' prior mount bytes changed')
+                old+=1
+            else:base['compile_source'](a.baseline,work,text,accepted=False)
             classic=base['compile_source'](a.limbo,work,text,flag='-i')
             if classic!=base['compile_source'](a.baseline,work,text,flag='-i'):raise RuntimeError(label+' classic bytes changed')
         mount['compiler_refusals'](a.limbo,work)
-    print('PASS mount producer:',old,'prior Sys images equal; 9 deterministic new sources, baseline refusals, classic bytes equal; 4 well-typed source refusals')
+    print('PASS mount producer:',old,'prior Sys images equal; 6 deterministic new sources, baseline refusals, classic bytes equal; 4 well-typed source refusals')
 
 
 if __name__=='__main__':main()

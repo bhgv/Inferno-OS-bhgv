@@ -8,12 +8,13 @@
 #include <netinet/in.h>
 
 typedef struct View View;
-struct View { int bob; int changed; };
+struct View { int bob; int changed; int created; int evercreated; ulong length; char data[64]; };
 static Styxserver server;
 static int stopping, closed, released;
 static char *guestuser; /* Optional synthetic routing user, never authentication. */
 #define Dataqid 0xfedcba9876543210ULL
 #define Ctlqid 0xfedcba9876543211ULL
+#define Createdqid 0xfedcba9876543212ULL
 
 /* Borrow only the current client's native fixture state.
  * Заимствовать native-состояние только текущего клиента. */
@@ -69,6 +70,8 @@ walk(Qid *q, char *name)
 		*q = styxqid(Qroot, 1);
 	else if(strcmp(name, current) == 0)
 		*q = styxqid(Dataqid, 0);
+	else if(strcmp(name, "created") == 0 && view()->created)
+		*q = styxqid(Createdqid, 0);
 	else if(strcmp(name, "ctl") == 0 && !view()->bob)
 		*q = styxqid(Ctlqid, 0);
 	else
@@ -76,14 +79,34 @@ walk(Qid *q, char *name)
 	return nil;
 }
 
-/* Only the fixture control endpoint can be opened for writing.
- * Только тестовый управляющий endpoint разрешено открыть для записи. */
+/* Fixed data stays read-only; the synthetic created file supports read/write.
+ * Исходные данные доступны для чтения; созданный файл допускает чтение и запись. */
 static char*
 openfile(Qid *q, int mode)
 {
+	if(q->path == Createdqid)
+		return mode == OREAD || mode == OWRITE || mode == ORDWR ? nil : Eperm;
 	if(q->path == Ctlqid)
 		return !view()->bob && mode == OWRITE ? nil : Eperm;
 	return mode == OREAD ? nil : Eperm;
+}
+
+/* One synthetic file per connection; never reuse its Qid after unlink. */
+static char*
+createfile(Qid *q, char *name, int perm, int mode)
+{
+    if(q->path != Qroot || view()->bob || view()->evercreated || strcmp(name, "created") || perm != 0640 || mode != ORDWR)
+        return Eperm;
+    view()->created = view()->evercreated = 1;
+    *q = styxqid(Createdqid, 0);
+    return nil;
+}
+static char*
+removefile(Qid q)
+{
+    if(q.path != Createdqid || !view()->created)return Enonexist;
+    view()->created = 0;
+    return nil;
 }
 
 /* Supply current one-node stat attributes without constructing a tree snapshot.
@@ -98,6 +121,7 @@ statfile(Qid q, Dir *d)
 	d->uid = styxclient(&server)->uname;
 	d->gid = "fixture";
 	d->muid = "";
+	if(q.path == Createdqid){d->name = "created";d->mode = 0640;d->length = view()->length;}
 	return nil;
 }
 
@@ -120,6 +144,12 @@ readfile(Qid q, char *buf, ulong *n, vlong offset)
 		*n = convD2M(&d, (uchar*)buf, *n);
 		return nil;
 	}
+	if(q.path == Createdqid){
+		if(offset < 0)return Ebadarg;
+		if((uvlong)offset >= view()->length)*n = 0;
+		else{if(*n > view()->length-offset)*n = view()->length-offset;memmove(buf, view()->data+offset, *n);}
+		return nil;
+	}
 	if(q.path != Dataqid || offset < 0)
 		return Ebadarg;
 	*n = styxreadstr(offset, buf, *n, view()->changed ? "changed" : "initial");
@@ -131,6 +161,12 @@ readfile(Qid q, char *buf, ulong *n, vlong offset)
 static char*
 writefile(Qid q, char *buf, ulong *n, vlong offset)
 {
+	if(q.path == Createdqid){
+		if(offset < 0 || (uvlong)offset > sizeof(view()->data) || *n > sizeof(view()->data)-(uvlong)offset)return Ebadarg;
+		memmove(view()->data+offset, buf, *n);
+		if((uvlong)offset+*n > view()->length)view()->length = offset+*n;
+		return nil;
+	}
 	if(q.path != Ctlqid || view()->bob || offset != 0)
 		return Eperm;
 	if(*n == 6 && memcmp(buf, "change", 6) == 0)
@@ -168,11 +204,13 @@ main(int argc, char **argv)
 	ops.attach = attach;
 	ops.walk = walk;
 	ops.open = openfile;
+	ops.create = createfile;
+	ops.remove = removefile;
 	ops.read = readfile;
 	ops.write = writefile;
 	ops.stat = statfile;
 	ops.close = closefile;
-	error = styxinit(&server, &ops, "0", 0555, 0);
+	error = styxinit(&server, &ops, "0", guestuser ? 0777 : 0555, 0);
 	if(error != nil){
 		fprint(2, "%s\n", error);
 		return 1;

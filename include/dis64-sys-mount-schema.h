@@ -19,12 +19,13 @@ static unsigned int
 dis64connectionoffset(unsigned int kind,unsigned int argument)
 {
     static const unsigned int mount[]={64,72,80,88,96};
-    return kind==15?mount[argument]:64+8*argument;
+    /* Create packs its two Words at72/76; preserve prior profile bytes. */
+    return kind==15?mount[argument]:kind==11?dis64sysfixedoffset(kind,argument):64+8*argument;
 }
 static int
 dis64connectionstring(unsigned int kind,unsigned int argument)
 {
-    return kind==14 || kind==0 || kind==6 || (kind==10 && !argument) || (kind==15 && (argument==2 || argument==4));
+    return kind==14 || kind<3 || kind==6 || (kind==7 && argument<2) || ((kind==10 || kind==11) && !argument) || (kind==15 && (argument==2 || argument==4));
 }
 static int
 dis64connectionfd(unsigned int kind,unsigned int argument)

@@ -14,7 +14,7 @@ dis64sysdialtable(const unsigned char *data,unsigned int bytes,unsigned int expo
     Dis64Binding b;unsigned char signature[72];unsigned int used,n,i,count,at=4,seen=0;int kind;
     (void)types;(void)instructions;(void)parameters;(void)context;
     if(exports || bytes<4 || !dis64sysstringname(pool,0,"$Sys"))return 0;
-    count=dis64u32(data);if(!count || count>8 || count>limit)return 0;
+    count=dis64u32(data);if(!count || count>12 || count>limit)return 0;
     for(i=0;i<count;i++){
         if(at>bytes || !dis64bindingrecord(data+at,bytes-at,0,&b,&used) || b.module || b.symbol!=(i?3+i:1))return 0;
         kind=dis64connectionkind(pool,b.symbol);if(kind<0 || (seen&(1U<<kind)))return 0;

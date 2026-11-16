@@ -1752,12 +1752,12 @@ static Modlink*
 prepare64sysdial(char *path,const uchar *image,ulong bytes,int jit)
 {
     Dis64NumericLoad load={0};Dis64ManagedFileCaller file={0};
-    LimboNative64Entry specification[8];const Link *entry;Module *owner=nil,*sys=nil;Modlink *caller=nil;Type *frame;unsigned int i,size,map;int kind;
+    LimboNative64Entry specification[12];const Link *entry;Module *owner=nil,*sys=nil;Modlink *caller=nil;Type *frame;unsigned int i,size,map;int kind;
     if(!dis64storageimagecheckrecords(image,bytes,&dis64numericlimits,&load.image,dis64sysstringcode,dis64sysdialtable,nil) || !dis64sysdialview(&load.image,&file.literals))return nil;
     file.count=load.image.imports.count;file.path="$Sys";
     for(i=0;i<file.count;i++){
         kind=dis64connectionkind(&load.image.strings,i?3+i:1);if(kind<0)return nil;
-        size=kind==15?104:kind==14?80:dis64sysfixedframe(kind);map=kind==15?0xe8:kind==10?0x80:kind==6 || kind==14 || kind>=12?0xc0:0x80;
+        size=kind==15?104:kind==14?80:dis64sysfixedframe(kind);map=kind==15?0xe8:kind==10?0x80:kind==6 || kind==7 || kind==14 || kind>=12?0xc0:0x80;
         entry=native64sysexport(kind==15?"mount":kind==14?"dial":dis64sysfixednames[kind],&owner);
         if(entry==nil || (sys!=nil && owner!=sys) || (frame=entry->frame)==nil || frame->size!=size || frame->np!=2 || frame->map[0] || frame->map[1]!=map)return nil;
         sys=owner;specification[i]=(LimboNative64Entry){entry->name,nil,entry->sig,size,2,frame->map};file.entries[i]=&specification[i];

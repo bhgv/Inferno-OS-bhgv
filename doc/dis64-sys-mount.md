@@ -34,6 +34,8 @@ The output file must be inside the selected emu root. Use `-c 0` for the C inter
 
 `load Sys Sys->PATH` compiles to LOAD with path `$Sys`. The interface hash and C frame come from `sys.m` and Limbo generation. Mount receives the transport FD, nil auth-FD, target, flags and spec. The wire protocol remains base 9P2000; native pointers and ADTs are not transmitted.
 
-An open FD retains its channel after unmount; replacement or program retirement closes it. The current profile allows one separate open result, including replacement, alongside Connection fields. GC tracks the FD root separately from numeric results. Linear calls and early returns, up to32 calls and8 selected Sys methods, are supported. Multiple independent FDs, arbitrary ADTs/aliases, loops and general sh/AWM remain separate work.
+An open FD retains its channel after unmount; replacement or program retirement closes it. The current profile allows one separate open result, including replacement, alongside Connection fields. GC tracks the FD root separately from numeric results. Linear calls and early returns, up to32 calls and12 selected Sys methods, are supported. Multiple independent FDs, arbitrary ADTs/aliases, loops and general sh/AWM remain separate work.
 
 The tutorial compiles and executes in C/JIT on x64 and ARM64/QEMU over real TCP, including fragmented version replies. This establishes guest mount in emu, not Android GUI/APK startup.
+
+[File creation, removal and namespace example](dis64-sys-files.md).

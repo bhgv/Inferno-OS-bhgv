@@ -18,6 +18,19 @@ def refusals(rows):
     decode=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['decode']
     indirect=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['indirect']
     for name,image,_,_ in rows:
+        if name=='mount-twelve-imports':
+            code=decode(section(image,2));raw=[r[-1]for r in code];names=CONN['imports'](image)
+            active=None
+            for i,r in enumerate(code):
+                if r[0]=='IMFRAME':active=names[r[3]]
+                if active not in ('create','remove','chdir','bind'):continue
+                if r[0] in ('IMOVP','IMOVW','ILEA') and r[4]==40:
+                    for offset in (32,64,68,72,76,80,88,96):
+                        if offset==r[5]:continue
+                        parts=list(raw);parts[i]=indirect(r[0],r[2],40,offset)
+                        yield replace(image,2,RAW['W'](len(parts))+b''.join(parts))
+                if r[0]=='IMCALL':active=None
+            continue
         if name not in ('mount-only','mount-open','mount-origin'):continue
         code=decode(section(image,2));raw=[r[-1]for r in code];names=CONN['imports'](image)
         groups=[]
@@ -97,15 +110,15 @@ def main():
     parser.add_argument('--runner',default='');a=parser.parse_args()
     boot=runpy.run_path(str(ROOT/'utils/tests/native64-scalar-boot.py'))
     proxy=runpy.run_path(str(ROOT/'tools/libstyx/tests/mount-native64.py'))['fragmented_version']
-    root=a.root.resolve();command=shlex.split(a.runner)+[str(a.emu.resolve()),'-v','-r',str(root)];count=0
+    root=a.root.resolve();(root/'alternate').mkdir(exist_ok=True);command=shlex.split(a.runner)+[str(a.emu.resolve()),'-v','-r',str(root)];count=0
     with tempfile.TemporaryDirectory(prefix='guest-mount-',dir=root)as directory:
         work=Path(directory);image=work/'guest.dis64';compiler_refusals(a.limbo,work)
         tutorials=[re.findall(r'```limbo\n(.*?)```',(ROOT/('doc/dis64-sys-mount'+lang+'.md')).read_text(),re.S)for lang in ('','.ru')]
         if len(tutorials[0])!=1 or tutorials[0]!=tutorials[1]:raise RuntimeError('RU/EN tutorial mismatch')
-        for mode in ('mount','read','write','replace','missing','remount','tutorial'):
+        for mode in ('mount','read','write','replace','missing','remount','tutorial','create','chdir','bind','tutorial-files'):
             for jit in (0,1):
                 for fragment in (False,True):
-                    handles={'mount':0,'read':1,'write':1,'replace':2,'missing':0,'remount':0,'tutorial':1}[mode]
+                    handles={'mount':0,'read':1,'write':1,'replace':2,'missing':0,'remount':0,'tutorial':1,'create':2,'chdir':1,'bind':1,'tutorial-files':2}[mode]
                     server=subprocess.Popen([str(a.server.resolve()),str(handles+1),'2',pwd.getpwuid(os.getuid()).pw_name],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
                     try:
                         with selectors.DefaultSelector()as ready:
@@ -120,9 +133,20 @@ def main():
                                 if mode!='missing':body+='if(r<0)return;text:=string b[:r];r=sys->werrstr(text);'
                             if mode in ('write','replace'):
                                 body+=('fd='if mode=='replace'else'fd:=')+'sys->open("/mnt/ctl",Sys->OWRITE);'+('b='if mode=='replace'else'b:=')+'array of byte "change";r=sys->write(fd,b,len b);'
+                            if mode=='create':
+                                body=body.replace('Sys->MREPL','Sys->MCREATE')
+                                body+='fd:=sys->create("/mnt/created",Sys->ORDWR,8r640);b:=array of byte "created-data";r=sys->write(fd,b,len b);fd=sys->open("/mnt/created",Sys->OREAD);r=sys->remove("/mnt/created");b=array[32]of byte;r=sys->read(fd,b,len b);'
+                            if mode=='chdir':
+                                body+='r=sys->chdir("/mnt");fd:=sys->open("first",Sys->OREAD);b:=array[16]of byte;r=sys->read(fd,b,len b);r=sys->chdir("/");'
+                            if mode=='bind':
+                                body+='r=sys->bind("/mnt","/alternate",Sys->MREPL);fd:=sys->open("/alternate/first",Sys->OREAD);b:=array[16]of byte;r=sys->read(fd,b,len b);r=sys->unmount(nil,"/alternate");'
                             body+='r=sys->unmount(nil,"/mnt");'
                             if mode=='remount':body+='r=sys->mount(c.dfd,nil,"/mnt",0,"");r=sys->unmount(nil,"/mnt");'
                             if mode=='tutorial':body=re.search(r'init\(\)\s*\{(.*)\}\s*$',tutorials[0][0],re.S).group(1).replace('tcp!127.0.0.1!5640','tcp!127.0.0.1!'+str(clientport))
+                            if mode=='tutorial-files':
+                                examples=[re.findall(r'```limbo\n(.*?)```',(ROOT/('doc/dis64-sys-files'+lang+'.md')).read_text(),re.S)for lang in ('','.ru')]
+                                if len(examples[0])!=1 or examples[0]!=examples[1]:raise RuntimeError('file tutorial RU/EN mismatch')
+                                body=re.search(r'init\(\)\s*\{(.*)\}\s*$',examples[0][0],re.S).group(1).replace('tcp!127.0.0.1!5640','tcp!127.0.0.1!'+str(clientport))
                             image.write_bytes(BASE['compile_source'](a.limbo,work,body))
                             output=boot['execute'](command+['-c',str(jit),'-d','/'+str(image.relative_to(root)),'-P','$Sys','-X','dis64-managed-trial'])
                             if f'native64 scalar module SysText: jit={jit}, exit=""'not in output or boot['RETIRED']not in output or 'panic:'in output or 'faults:'in output:raise RuntimeError(output)
@@ -131,13 +155,19 @@ def main():
                             raise RuntimeError((mode,seen))
                         if mode in ('read','replace','tutorial')and 116 not in seen:raise RuntimeError('missing Tread')
                         if mode in ('write','replace')and 118 not in seen:raise RuntimeError('missing Twrite')
-                        if mode!='missing' and any(packet[4]==107 for packet in responses):raise RuntimeError('unexpected remote Rerror')
-                        if mode in ('read','replace','tutorial'):
+                        errors=[p[9:]for p in responses if p[4]==107]
+                        if mode in ('create','tutorial-files'):
+                            if errors!=[b'file does not exist']:raise RuntimeError(('create lookup errors',errors,seen))
+                        elif mode!='missing' and errors:raise RuntimeError(('unexpected remote Rerror',mode,errors,seen))
+                        if mode in ('read','replace','tutorial','create','chdir','bind','tutorial-files'):
                             reads=[packet[11:] for packet in responses if packet[4]==117]
-                            if reads!=[b'initial']:raise RuntimeError('remote read payload mismatch: '+repr(reads))
+                            if reads!=[b'created-data'if mode in ('create','tutorial-files')else b'initial']:raise RuntimeError('remote read payload mismatch: '+repr(reads))
                         if mode in ('write','replace'):
                             counts=[struct.unpack_from('<I',packet,7)[0]for packet in responses if packet[4]==119]
                             if counts!=[6]:raise RuntimeError('remote write acknowledgement mismatch')
+                        if mode in ('create','tutorial-files'):
+                            if seen.count(114)!=1 or seen.count(122)!=1 or seen.count(118)!=1 or seen.count(116)!=1:raise RuntimeError(('missing file operation',seen))
+                            if [struct.unpack_from('<I',p,7)[0]for p in responses if p[4]==119]!=[12]:raise RuntimeError('create write count')
                         stop(server,port,handles+1,2);count+=1
                     finally:
                         if server.poll()is None:server.terminate();server.communicate(timeout=5)

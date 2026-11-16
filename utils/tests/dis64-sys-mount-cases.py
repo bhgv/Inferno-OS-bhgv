@@ -18,4 +18,10 @@ def programs():
         ('mount-remount',dial+mount+unmount+mount.replace('r:=','r=')+unmount,events+end+[events[1]]+end,0,False),
         ('mount-origin',dial.replace('if(status<0)return;','')+mount.replace('if(r<0)return;','')+opening+unmount,events+reads+end,0,False),
         ('mount-flags-word',dial+'r:=status;r=sys->mount(c.dfd,nil,"/mounted",r,"");'+unmount,events+end,0,False),
+        ('mount-create',dial+mount+'fd:=sys->create("/mounted/new",Sys->ORDWR,8r640);b:=array of byte "new";r=sys->write(fd,b,len b);'+unmount,events+[('create','/mounted/new',2,0o640,151),('write','new',151,3,3)]+end,0,False),
+        ('mount-create-failure',dial+mount+'fd:=sys->create("/mounted/new",Sys->OWRITE,8r600);b:=array[8]of byte;r=sys->read(fd,b,len b);'+unmount,events+[('create','/mounted/new',1,0o600,-1),('read','',-1,8,-1)]+end,0,False),
+        ('mount-remove',dial+mount+'r=sys->remove("/mounted/old");'+unmount,events+[('remove','/mounted/old',0,0,-1)]+end,0,False),
+        ('mount-chdir',dial+mount+'r=sys->chdir("/mounted");r=sys->chdir("/");'+unmount,events+[('chdir','/mounted',0,0,-1),('chdir','/',0,0,-1)]+end,0,False),
+        ('mount-bind',dial+mount+'r=sys->bind("/mounted","/other",Sys->MBEFORE);r=sys->unmount(nil,"/other");'+unmount,events+[('bind','/mounted',1,0,0,'/other'),('unmount','',0,0,0,'/other')]+end,0,False),
+        ('mount-twelve-imports',dial+mount+'fd:=sys->create("/mounted/new",Sys->ORDWR,8r640);b:=array of byte "new";r=sys->write(fd,b,len b);fd=sys->open("/mounted/data",0);b=array[16]of byte;r=sys->read(fd,b,len b);r=sys->iounit(fd);r=sys->werrstr("done");r=sys->bind("/mounted","/other",0);r=sys->chdir("/ok");r=sys->remove("/victim");'+unmount,events+[('create','/mounted/new',2,0o640,151),('write','new',151,3,3),('open','/mounted/data',0,0,150),('read','data',150,16,4),('iounit','',150,0,4096),('werrstr','done',0,0,0),('bind','/mounted',0,0,0,'/other'),('chdir','/ok',0,0,0),('remove','/victim',0,0,0)]+end,0,False),
     ]
