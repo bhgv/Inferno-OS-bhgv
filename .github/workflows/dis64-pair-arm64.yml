@@ -140,6 +140,7 @@ jobs:
         run: |
           set -o pipefail
           python3 utils/tests/awm-native64-preflight.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --report "$RUNNER_TEMP/awm-preflight.json" \
             | tee "$RUNNER_TEMP/awm-preflight.log"
       - name: Build with classic mk and boot the paired console
         if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
@@ -222,4 +223,5 @@ jobs:
           path: |
             ${{ runner.temp }}/native64-pair/port-logs
             ${{ runner.temp }}/awm-preflight.log
+            ${{ runner.temp }}/awm-preflight.json
           if-no-files-found: warn

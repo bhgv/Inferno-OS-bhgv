@@ -4,7 +4,7 @@ static void clientloadstep(void){
  void*destination=R.d;Modlink*ml;actual_iload();memmove(&ml,destination,sizeof(ml));require(!nlinkpins);
  if(ml!=H){require(ml!=nil);observedispatch(ml->m,clientproviderjit && !dontcompile);clientloads++;}
 }
-static void clientempty(void){require(!live && !modules && !nlinkpins && !worker.nerr && !fileopen && fileopens==filecloses && Tstring.ref==1 && Tlist.ref==1 && Tptr.ref==1);}
+static void clientempty(void){require(!live && !modules && !nlinkpins && !worker.nerr && !fileopen && fileopens==filecloses && Tstring.ref==1 && Tlist.ref==1 && Tptr.ref==1);/* All modules are retired; cached RX entry addresses no longer belong to a live sidecar. */memset(nativeobservations,0,sizeof(nativeobservations));}
 int main(int argc,char**argv)
 {
  static uchar client[1048576],saved[1048576],provider[1048576];Dis64ScalarClientView view;Module*m;Prog*p;uchar*root;uvlong expected,value;unsigned int result,offset=0,erroroffset=0,errorbytes=0;int failure,jit,pjit,grow,q,mode,steps,done,total,fault,guarded=0,materialize=0;

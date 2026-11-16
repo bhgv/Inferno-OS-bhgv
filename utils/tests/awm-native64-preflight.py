@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Compile the AWM startup slice and report the current Dis64 compiler barriers."""
 import argparse
+import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -88,8 +90,14 @@ def check_startup_imports(limbo, work):
     awm_paths = set()
     counts = {'builtin': 0, 'file': 0, 'self': 0}
     outside = set()
+    groups = []
     for source, code in assemblies.items():
         for path, ordinal, imports in assembly_imports(code):
+            group = {'source': source, 'path': path, 'ordinal': int(ordinal),
+                     'symbols': [{'name': name, 'legacy_hash': f'{signature:08x}'}
+                                 for name, signature in imports],
+                     'legacy_names_hashes_match': False}
+            groups.append(group)
             if path == '$self':
                 exports = file_exports[source]
                 kind = 'self'
@@ -111,11 +119,17 @@ def check_startup_imports(limbo, work):
                 kind = 'file'
             else:
                 outside.add(path)
+                group['kind'] = 'outside-slice'
                 continue
             for name, signature in imports:
                 if exports.get(name) != signature:
                     raise RuntimeError(f'{source}: {path}->{name} does not match provider exports')
             counts[kind] += 1
+            group.update(kind=kind, legacy_names_hashes_match=True)
+            if kind == 'file':
+                group['provider'] = FILE_PROVIDERS[path]
+            elif kind == 'self':
+                group['provider'] = source
             if source == 'appl/wm/awm.b':
                 awm_paths.add(path)
                 symbols = ', '.join(name for name, _ in imports)
@@ -125,6 +139,7 @@ def check_startup_imports(limbo, work):
     print(f'PASS AWM startup slice: {counts["builtin"]} builtin, {counts["file"]} file and {counts["self"]} self import groups')
     if outside:
         print('Static LOAD paths outside the startup slice: ' + ', '.join(sorted(outside)))
+    return {'groups': groups, 'verified_counts': counts, 'outside_paths': sorted(outside)}
 
 
 def check_string_frames(limbo, work):
@@ -175,19 +190,29 @@ int main(void)
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--limbo', type=Path, required=True)
+    parser.add_argument('--report', type=Path, help='write compiler barriers and static LOAD dependencies as JSON')
     args = parser.parse_args()
     limbo = args.limbo.resolve()
     profiles = (("scalar", "-64"), ("managed", "-64l"), ("command-library", "-64b"), ("command-client", "-64c"))
     refused = {name: 0 for name, _ in profiles}
+    report = {'schema': 'inferno-awm-preflight-v1',
+              'scope': 'Compiler and static LOAD name/hash checks only; no runtime or Android acceptance.',
+              'compiler_sha256': hashlib.sha256(limbo.read_bytes()).hexdigest(),
+              'modules': [], 'execution_tested': False}
     with tempfile.TemporaryDirectory(prefix='awm-preflight-', dir=ROOT) as directory:
         work = Path(directory)
-        check_startup_imports(limbo, work)
+        report['static_imports'] = check_startup_imports(limbo, work)
         check_string_frames(limbo, work)
         for source in STARTUP:
             legacy = work / (Path(source).stem + '.dis')
             result = compile_module(limbo, source, legacy, [])
             if result.returncode != 0 or not legacy.is_file() or legacy.stat().st_size == 0:
                 raise RuntimeError(f'{source}: ordinary compilation failed\n{result.stdout}')
+            module = {'source': source, 'source_sha256': hashlib.sha256((ROOT/source).read_bytes()).hexdigest(),
+                      'classic': {'bytes': legacy.stat().st_size,
+                                  'sha256': hashlib.sha256(legacy.read_bytes()).hexdigest()},
+                      'profiles': {}}
+            report['modules'].append(module)
             for profile, option in profiles:
                 target = work / (Path(source).stem + '.' + profile + '.dis64')
                 result = compile_module(limbo, source, target, [option])
@@ -195,6 +220,8 @@ def main():
                     if not target.is_file() or target.stat().st_size == 0:
                         raise RuntimeError(f'{source}: {profile} compiler omitted its output')
                     print(f'{source}: emitted {profile} Dis64 (compiler evidence only)')
+                    module['profiles'][profile] = {'option': option, 'emitted': True,
+                                                  'bytes': target.stat().st_size}
                     continue
                 diagnostic = next((line for line in result.stdout.splitlines() if 'Dis64 ' in line), '')
                 if result.returncode < 0 or (target.exists() and target.stat().st_size) or not diagnostic or "AddressSanitizer" in result.stdout or "runtime error:" in result.stdout:
@@ -204,7 +231,12 @@ def main():
                     if not witness or 'load ' not in (ROOT/source).read_text().splitlines()[int(witness[1])-1]:
                         raise RuntimeError(f'{source}: missing load-site diagnostic\n{result.stdout}')
                 print(f'[{profile}] {diagnostic}')
+                module['profiles'][profile] = {'option': option, 'emitted': False,
+                                              'diagnostic': diagnostic}
                 refused[profile] += 1
+    report['refused'] = refused
+    if args.report:
+        args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')
     print(f'PASS AWM compiler preflight: {len(STARTUP)} ordinary modules, {refused["scalar"]} scalar and {refused["managed"]} managed, {refused["command-library"]} command-library and {refused["command-client"]} command-client Dis64 refusals; no AWM execution claimed')
 
 

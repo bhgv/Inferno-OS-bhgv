@@ -179,3 +179,44 @@ drift predicate before peer parsing. Both complete gates and all nine controls
 pass against the original0517104 peer checkout. Hashes confirm that the corpus,
 peer readers and published reports remain unchanged. No shared wire/ABI ID,
 vendor revision, FlashVM source or coordination journal is changed.
+
+## Deeper client gates and reproducible AWM evidence
+
+The restored source path reaches the managed-client collector gate. Its optional
+codec detection used the shared Tbyte declaration, which is now also present in
+scalar-only fixtures. Select codec hooks by the actual production freearray
+function instead. All12 managed source pairs pass with actual collector epochs;
+both frame/list omission controls still fail at their owning retention predicate.
+The11 local/import source pairs exercise codec ownership and actual collector
+quanta too; a Command literal/context case passes96 scheduler roots with real GC.
+
+Move the RX observation reset from optional GC instrumentation to clientempty,
+after the assertion that all modules and owners are retired. The ordinary scalar
+fixture needs this lifetime boundary as well: RV64's full matrix reaches the
+empty-client route-count assertion after repeated RX address reuse. Cross-target
+confirmation of this reset remains a CI requirement, rather than a claimed local
+RV64 execution.
+
+Cache compiled C fixtures within one scalar-client invocation only when the
+complete generated interface bytes and selected export ordinal are identical.
+Compiler flags and C source stay fixed within that invocation. Every guest pair
+is still compiled, decoded and executed in its own fresh process, with all fault,
+mode, stack-growth and quanta loops intact. Local UBSan checks retain17 ordinary,
+15 CFG,18 numeric,12 managed/GC and11 local/GC pairs. They require14,1,3,1 and3 C
+fixture compilations respectively. This reduces repeated compiler work without
+removing guest executions. A separate compatibility replay compares all772
+Command producer files under classic and selected flags against the prior
+compiler and finds byte-identical output.
+
+The optional AWM preflight JSON records compiler/source hashes, classic artifact
+hashes, all64 refusal diagnostics and55 verified static LOAD groups (29 builtin,
+23 file,3 self). It explicitly sets execution_tested=false. The quick paired CI
+uploads it alongside the existing text log. Its default stdout and refusal
+behavior remain unchanged; none of the16 AWM startup modules is admitted yet.
+Obsolete PR revisions can now cancel their full/ASan workflows; branch acceptance
+runs retain their existing noncancelling behavior.
+
+The2516759 revision passes the paired/source-call boots on all three targets,
+classic32 and Android ARM64 GUI native link. The full scalar matrix is still a
+separate acceptance requirement. A clean local UBSan reproduction was restarted
+with these test corrections; no whole-port or Android AWM runtime pass is claimed.

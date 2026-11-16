@@ -16,13 +16,15 @@ def instrument(source,control=None):
  at=source.index('static Prog *observed;');source=source[:at]+collector+'\n'+arena+'\n'+source[at:]
  source=source.replace('Type Tlist={1,freelist,markheap,sizeof(List)};','Type Tlist={1,freelist,marklist,sizeof(List)};')
  source=source.replace('Tstring.free=freeheap;','Tstring.free=freeheap;Tstring.mark=noptrs;numericpoolinit();')
- if 'Type Tbyte={1,0,0,1};'in source:
+ # Tbyte is also present in scalar-only fixtures. Array ownership hooks belong
+ # only to the codec fixture that actually includes the production destructor.
+ if 'void\nfreearray('in source:
   source=source.replace('Tstring.free=freeheap;', 'Tstring.free=freestring;Tarray.free=freearray;Tarray.mark=markarray;Tarray.size=sizeof(Array);')
   source=source.replace('Tptr.ref==1);','Tptr.ref==1 && Tarray.ref==1 && Tbyte.ref==1);')
  at=source.index('/* Both caller CODE and provider CODE');source=source[:at]+(ROOT/'utils/tests/dis64-scalar-client-gc.c').read_text()+'\n'+source[at:]
  source=source.replace('clientloads++;','clientlocalremember(ml->m,providerfile,providerfilebytes);clientloads++;')
  source=source.replace('observedispatch(m,jit);m->ss=','clientlocalremember(m,clientfile,clientfilebytes);observedispatch(m,jit);m->ss=')
- source=source.replace('clientempty(void){','clientempty(void){clientlocalcount=clientresultcount=0;memset(nativeobservations,0,sizeof(nativeobservations));for(int slot=1;slot<GcSlots;slot++)require(numericblock(slot)->magic==MAGIC_F);')
+ source=source.replace('clientempty(void){','clientempty(void){clientlocalcount=clientresultcount=0;for(int slot=1;slot<GcSlots;slot++)require(numericblock(slot)->magic==MAGIC_F);')
  head,tail=source.rsplit('done=kprotect(executeprocess,p);if(!done)break;',1);source=head+'done=kprotect(executeprocess,p);if(!done)break;clientcollect(p,m,root);'+tail
  if control=='frame':source=source.replace('clientproviderjit=cflag=pjit;', 'm->type[0]->mark=noptrs;clientproviderjit=cflag=pjit;')
  if control=='list':source=source.replace('clientproviderjit=cflag=pjit;', 'Tlist.mark=noptrs;clientproviderjit=cflag=pjit;')

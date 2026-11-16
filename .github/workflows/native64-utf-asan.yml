@@ -100,6 +100,9 @@ on:
       - 'utils/tests/native64-loader-mode.c'
       - 'utils/tests/native64-loader-mode.py'
   workflow_dispatch:
+concurrency:
+  group: native64-utf-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:

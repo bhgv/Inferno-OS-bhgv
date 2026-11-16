@@ -75,6 +75,7 @@ def main():
   runner=shlex.split(env.get('NATIVE64_RUNNER',''))
   rows=[r for r in (runpy.run_path(str(ROOT/('utils/tests/dis64-scalar-client-local-cases.py'if a.local else'utils/tests/dis64-scalar-client-managed-cases.py'if a.managed else'utils/tests/dis64-scalar-client-numeric-cases.py'if a.numeric else'utils/tests/dis64-scalar-client-cases.py')))['cases']()if a.cfg or a.numeric or a.managed or a.local else(r+(False,)for r in cases()))if not a.case or r[0]in a.case]
   if not rows:p.error('no cases selected in this source family')
+  binaries={}
   for name,text,fn,kind,args,values,expected,failure,callertext,guarded in rows:
    b=w/'library.b';b.write_text(text);m=w/'library.m';m.write_text(NS['declarations'](text));provider=w/(name+'-library.dis64');caller=w/(name+'-client.dis64');c=w/'client.b';c.write_text(callertext)
    subprocess.run([str(a.limbo.resolve()),'-64b','-o',str(provider),str(b)],env=env,check=True,capture_output=True)
@@ -82,8 +83,15 @@ def main():
    parts=sections(caller.read_bytes());records=NS['bindings']({'imports':parts[5],'strings':parts[7]});assert records==([('Library','inc',1,(1,)),('Library','wide',2,(2,))]if name=='multiple-exports'else[('Library',fn,1 if a.cfg else kind,tuple(args))])
    decoded=S['CALLS'].decode(parts[2],managed=a.local);
    if not(a.cfg or a.numeric or a.managed or a.local):assert [r[0]for r in decoded].count('ILOAD')==2 and [r[0]for r in decoded].count('IMCALL')==(3 if name=='multiple-exports'else 2)
-   header=w/'library.h';header.write_bytes(subprocess.check_output([str(a.limbo.resolve()),'-H','-R','-M','Library',str(m)],env=env));binary=w/name
-   subprocess.run(cc+['-DNAMESPACE_HEADER="library.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_'+fn,str(source),str(ROOT/'libinterp/dec.c'),'-Wl,--wrap=free','-lm','-o',str(binary)],env=env,check=True)
+   header=w/'library.h';metadata=subprocess.check_output([str(a.limbo.resolve()),'-H','-R','-M','Library',str(m)],env=env);header.write_bytes(metadata)
+   # The C fixture depends on the exact generated interface and selected ordinal,
+   # not the guest body. Each image still runs in a fresh process with all owning
+   # checks; reuse only identical compiled host/target fixture executables.
+   identity=(metadata,fn);binary=binaries.get(identity)
+   if binary is None:
+    binary=w/('runtime-'+str(len(binaries)))
+    subprocess.run(cc+['-DNAMESPACE_HEADER="library.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_'+fn,str(source),str(ROOT/'libinterp/dec.c'),'-Wl,--wrap=free','-lm','-o',str(binary)],env=env,check=True)
+    binaries[identity]=binary
    r=subprocess.run(runner+[str(binary),str(caller),str(provider),str(kind),str(expected),str(failure)]+(['guarded']if guarded else[])+(['materialize']if a.materialize_only else[]),env=env,capture_output=True,text=True,timeout=120)
    if a.local_contract_control:
     assert r.returncode==10 and 'client execution: error=bounds'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
@@ -94,4 +102,5 @@ def main():
    assert not r.returncode,(name,r.returncode,r.stderr)
    print('PASS '+('file client construction/retirement:'if a.materialize_only else'file client -> ILOAD -> namespace library -> MCALL:'),arch,name,flush=True)
   print('PASS scalar importing client pipeline:',arch,len(rows),'source pairs'+('; actual collector epochs between quanta'if a.gc else''),flush=True)
+  print('C fixture builds:',len(binaries),'exact interface/ordinal variants; every guest case executes in a fresh process',flush=True)
 if __name__=='__main__':main()
