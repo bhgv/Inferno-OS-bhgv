@@ -999,3 +999,16 @@ aliases passes the same matrix and controls. These are host receipts;
 actual ARM64/Bionic target CI is separate. Preceding dd7ad03 pair tests have
 ARM64/RV64 target success; Android's compiler-unit allocator link failure is
 addressed by cb102a4, whose later target receipt remains separate.
+
+
+## Scope imported-module root omission after IRAISE
+
+The 3d18a1a typed matrix stops on all four targets in the String MP import
+mutation harness, after its 3264 functional cases and constructor refusals pass.
+IRAISE added a second identical root-bit predicate in native64modulecheck;
+the old global text-count assertion can no longer identify the import guard.
+Match the complete site->moduleoffset root check and remove only its condition,
+preserving bit calculation and every LOAD/IRAISE/pair guard. The repaired
+String MP import gate passes local x64 ASan+UBSan/NDEBUG, detect_leaks=0,
+including both semantic omission controls. The complete twenty-gate host
+sequence is being checked as a separate regression pass.

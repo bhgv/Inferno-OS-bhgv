@@ -93,8 +93,8 @@ def main():
         # Both omissions must fail semantic predicates before any unsafe teardown.
         extract=runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))['function']
         production=(ROOT/'include/native64-typed-module.h').read_text()
-        before='if(!(map[bit/8]&(0x80>>(bit%8))))return 0;';assert production.count(before)==1
-        (work/'native64-typed-module.h').write_text(production.replace(before,';'))
+        before='bit=site->moduleoffset/8;if(!(map[bit/8]&(0x80>>(bit%8))))return 0;';assert production.count(before)==1
+        (work/'native64-typed-module.h').write_text(production.replace(before,'bit=site->moduleoffset/8;',1))
         subprocess.run(command,check=True)
         runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''))
         result=subprocess.run(runner+[str(binary)],capture_output=True,text=True,timeout=180)
