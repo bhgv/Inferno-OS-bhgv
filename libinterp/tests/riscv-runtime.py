@@ -101,6 +101,9 @@ void
 error(char *s)
 { if(errdepth)longjmp(errorframes[--errdepth],1); fprintf(stderr,"unexpected VM error: %s\n",s); abort(); }
 REG R;
+/* Compiler identity inputs only: this host gate never executes allocation leaves. */
+int mutator,nprop;Type Tptr={1};
+List *cons(ulong bytes,void *owner){USED(bytes);USED(owner);check(0);return nil;}
 void (*optab[256])(void);
 void (*dec[256])(void);
 int cflag;

@@ -540,3 +540,27 @@ files and existing source refusals still pass. The startup typed-body report
 finds 15 accepted bodies and 345 whole-body refusals. This is not general AWM
 admission. The expanded eight-gate typed matrix and full port driver now require
 the table gate. See doc/native64-typed-tables.ru.md for reproduction and limits.
+
+## RV64 numeric tables without C fallback
+
+The first numeric-table matrix passed Android ARM64/Bionic but exposed an
+RV64 backend coverage gap: results were correct through C, while the new gate
+correctly rejected the absence of a native table path. Retain that requirement
+and add explicit RV64 ICASE/ICASEL/IGOTO leaf generation instead of skipping it.
+
+The owning compiler passes Modlink.compiled's offset to rvtableemit explicitly;
+RvLayout and original RV32/raw rvemit selection stay unchanged. Full-width
+pointer/span checks precede byte-safe packed-cell reads. Numeric case uses
+binary search; goto validates its signed index/count. Only a complete checked
+program instruction span is published to REG.PC. RV64I computes stride products
+without M; selected M targets may use MUL. Code publication is staged and
+capacity refusals do not write output.
+
+The independent Unicorn oracle passes 18648 native/layout cases, covering
+WORD32/64, RV64I/M, high pointers, compact/distant fields, instruction strides
+1/40/2047, packed cells, malformed counts/addresses/targets, immutable data/REG
+on refusal, callee-saved registers and code-capacity boundaries. Actual runtime
+publication/dispatch checks pass 81 predicates; all 12 existing cache variants
+pass after supplying the compiler's current borrowed GC/allocator identities
+to their host fixtures. RV64 CI now requires these host proofs before its
+actual QEMU module-call gate. New target results remain pending.

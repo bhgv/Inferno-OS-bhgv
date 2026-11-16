@@ -460,6 +460,8 @@ rvprogramscale(RvBuf *b, int stride)
 
 /* Return instruction count, or 0 for unsupported/invalid/overflow. out==0
  * performs the same bounded sizing pass without touching memory. */
+#include "riscv-tables.h"
+
 static int
 rvemit(u32int *out, int cap, RvLayout *abi, int op)
 {

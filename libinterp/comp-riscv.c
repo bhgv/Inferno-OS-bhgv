@@ -8,6 +8,13 @@
 #define RVXLEN 32 // Default register width for the original embedded backend.
 #endif
 #include "riscv-emit.h"
+static int
+rvcompileemit(u32int *out,int cap,RvLayout *abi,int op)
+{
+    if(RVXLEN==64 && (op==ICASE || op==ICASEL || op==IGOTO))
+        return rvtableemit(out,cap,abi,op,O(Modlink,compiled));
+    return rvemit(out,cap,abi,op);
+}
 #ifdef RV_CODE_PAGES
 #include "leaf-code.h"
 #endif
@@ -102,7 +109,7 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 		if((uintptr)j->entry[op] != cursor)
 #endif
 			return 0;
-		n = rvemit(expected, RvMax, abi, op);
+		n = rvcompileemit(expected, RvMax, abi, op);
 		if(n <= 0)
 			return 0;
 		bytes = (uintptr)n*sizeof(u32int);
@@ -118,7 +125,7 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 		if(j->dispatch[op] == nil)
 			continue;
 		if((uintptr)j->dispatch[op] != cursor ||
-		   (j->entry[op] == nil && rvemit(nil, RvMax, abi, op) > 0))
+		   (j->entry[op] == nil && rvcompileemit(nil, RvMax, abi, op) > 0))
 			return 0;
 		n = rvbridgeemit(expected, RvMax, (uvlong)(uintptr)cjitexec, op, (uvlong)(uintptr)raw[op]);
 		if(n <= 0)
@@ -137,7 +144,7 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 		if(j->dispatch[op] == nil)
 			return 0;
 #else
-		if(j->entry[op] == nil && rvemit(nil, RvMax, abi, op) > 0)
+		if(j->entry[op] == nil && rvcompileemit(nil, RvMax, abi, op) > 0)
 			return 0;
 #endif
 	}
@@ -246,7 +253,7 @@ rvcompile(void *arg)
 	for(i = 0; i < size; i++){
 		op = ((uchar*)m->prog)[(uintptr)i*sizeof(Inst)+O(Inst, op)];
 		if(count[op] == 0) {
-			used = rvemit(nil, RvMax, &abi, op);
+			used = rvcompileemit(nil, RvMax, &abi, op);
 			if(used < 0)
 				return 0;
 			count[op] = used == 0 ? -1 : used;
@@ -286,7 +293,7 @@ rvcompile(void *arg)
 		if(count[op] <= 0)
 			continue;
 		fn[op] = (int(*)(REG*))code;
-		used = rvemit(code, count[op], &abi, op);
+		used = rvcompileemit(code, count[op], &abi, op);
 		if(used != count[op])
 			goto bad;
 		code += used;

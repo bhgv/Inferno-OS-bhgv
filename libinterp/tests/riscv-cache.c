@@ -13,6 +13,7 @@ extern void hostfree(void*) __asm__("free"); // Host release without the compile
 static int checks, live, allocations, flushes; // Active observations, including cached-refusal side effects.
 static int failafter = -1; // Successful allocations permitted before a deliberate failure.
 static int failflush; // Embedded cache-publication failure injection.
+int mutator,nprop;Type Tptr={1}; // Borrowed compiler identity inputs, never exercised by host code.
 
 
 /* Keep address/UB checks without unavailable process-inspection leak scanning. */
@@ -33,6 +34,7 @@ check(int condition)
 	}
 	checks++;
 }
+List *cons(ulong bytes,void *owner){USED(bytes);USED(owner);check(0);return nil;}
 
 
 /* Cache tests never execute emitted RV instructions; preserve the executor identity only. */
