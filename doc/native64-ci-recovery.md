@@ -744,3 +744,32 @@ separately reported target. Add command-files as the thirteenth typed gate
 and raise both job budgets to 35 minutes (previous x64 duration 23m55s).
 No public managed ABI, new wire IDs, general AWM admission or 32-bit path
 changes. See doc/native64-typed-command-files.ru.md for scope and reproduction.
+
+## String/List file calls from checked consumers
+
+The explicit native installer now selects the existing -64m trial per table,
+with exact generated String.m classic hash and 72-byte np=2/map0080 checks.
+The copied owner carries a separate reader mask. The managed reader shares
+namespace/signing policy with scalar I/O; the builder proves every provider
+body before constructing owned Types/Inst/ext and a fresh pinned linkmod.
+No file bytes select their own native route; no new wire IDs or public ABI.
+
+The new managed-files gate runs 4320 C/JIT roots over two independently
+compiled/named providers and five checked consumer bodies. It checks managed
+results, real String/List refcounts, namespace policies, stack/quanta, poisoned
+input buffers and full retirement. Thirteen installer refusals, each builder
+allocation/pin failure, requested subsets and unused-body refusal preserve
+REG/owners. Hash/map/selector omissions fail semantic controls. Add this as
+the fourteenth gate to both typed CI loops and the full native port driver,
+with 40-minute job budgets (was 35). The full new gate passes local x64
+ASan+UBSan/NDEBUG with detect_leaks=0; this is not whole-VM GUI validation.
+
+For d9bc675, ARM64/RV64 typed jobs, classic32 and Android GUI link pass.
+Android typed now links strtoull but stops before the first VM predicate:
+static Bionic fclose frees a private libc allocation through --wrap=free.
+Reuse the established dis64-command.py linker policy: detect __BIONIC__ from
+target macros, resolve __real_free=free, and keep the strict Inferno free_
+allocation seam. Apply it to scalar, Command and managed file gates. Do not
+silently allow foreign frees in trackedfree. The actual Bionic rerun is
+reported separately; host alias/link simulation alone does not prove it.
+See doc/native64-typed-managed-files.ru.md for the finite scope and commands.

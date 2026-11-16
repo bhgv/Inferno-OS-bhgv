@@ -1650,6 +1650,59 @@ dis64managedfileconstruct(void *argument)
 	return 1;
 }
 
+/* Complete managed-library proof precedes native object allocation. Request
+ * ordinals are kept separate from export order and legacy consistency hashes. */
+typedef struct Dis64ManagedLibraryBuild Dis64ManagedLibraryBuild;
+struct Dis64ManagedLibraryBuild {
+ Dis64ManagedFileLoad file;
+ Import requests[3];
+ Modlink *link;
+};
+static int
+dis64managedlibraryconstruct(void *argument)
+{
+ Dis64ManagedLibraryBuild *build=argument;Module *module;
+ if(!dis64managedfileconstruct(&build->file))return 0;
+ module=build->file.load.module;build->file.load.module=nil;
+ build->link=linkmod(module,build->requests,1); /* Consumes the input Module ref on every outcome. */
+ if(build->link==H){build->link=nil;return 0;}
+ ptradd(D2H(build->link));return 1; /* No fallible work after successful pin acquisition. */
+}
+
+/* Native-only explicit trial service; caller owns namespace/signing policy. */
+Modlink*
+prepare64managedlibrarylink(char *path,uchar *image,ulong bytes,int jit,
+ const uchar *requests,ulong requestbytes,const uchar *strings,ulong stringbytes)
+{
+ static const Dis64ManagedSchema schema={Dis64TrialVersion,Dis64TrialString,Dis64TrialList};
+ Dis64ManagedLibraryBuild build={0};DisStringPoolView pool;Dis64Bindings bindings;
+ Dis64Binding imported,matched;Dis64ManagedSignature signature;uint i,j,at=4,used,kind;int ok;
+ if(!dis64launchmode() || heapmonitor!=nil || !dis64runtimemodel() || path==nil || path==H ||
+    image==nil || image==H || bytes>Dis64RuntimeBytes || (uintptr)image>(uintptr)-1-bytes ||
+    requests==nil || requests==H || strings==nil || strings==H || requestbytes>Dis64LocalBytes || stringbytes>Dis64LocalBytes ||
+    (uintptr)requests>(uintptr)-1-requestbytes || (uintptr)strings>(uintptr)-1-stringbytes || (jit!=0 && jit!=1) ||
+    !disstringpoolcheck(strings,stringbytes,65536,&pool) ||
+    !dis64managedtable(requests,requestbytes,0,&pool,nil,0,2,1,&bindings,&schema))return nil;
+ build.file.count=dis64managedfileview(image,bytes,&build.file.load.image,build.file.selected,build.file.entries,&build.file.catalog);
+ if(!build.file.count || !disstringpoolget(&build.file.load.image.strings,build.file.load.image.module.name,&build.file.load.name))return nil;
+ for(i=0;i<bindings.count;i++){
+  if(!dis64bindingrecord(requests+at,requestbytes-at,0,&imported,&used) || !dis64managedget(&bindings,i,&schema,&imported,&signature))return nil;
+  kind=signature.argument==LimboNative64String?0:1;
+  for(j=0;j<build.file.count;j++){
+   if(dis64managedpair(requests+at,used,build.file.selected[j].signature.data-16,16+Dis64ManagedSignatureBytes,&schema,
+      &pool,&build.file.load.image.strings,build.file.load.image.module.name,&build.file.catalog.shapes[kind],
+      &build.file.load.image.types,build.file.load.image.code.count,&matched))break;
+  }
+  if(j==build.file.count)return nil;
+  build.requests[i].name=(char*)build.file.catalog.specs[kind].name;
+  build.requests[i].sig=build.file.catalog.specs[kind].legacy_signature;at+=used;
+ }
+ build.file.load.path=path;build.file.load.jit=jit;build.file.load.indirect=1;
+ ok=kprotect(dis64managedlibraryconstruct,&build);
+ if(!ok){if(build.link!=nil)destroy(build.link);else if(build.file.load.module!=nil)unload(build.file.load.module);}
+ free64storage(build.file.load.lease);return ok?build.link:nil;
+}
+
 /* The ordinary parser owns signing, namespace metadata and cache publication. */
 Module*
 prepare64managedfile(char *path, uchar *image, ulong bytes, int jit)
@@ -2153,5 +2206,13 @@ prepare64siblings(char *path, uchar *image, ulong bytes, int jit)
 	lease = nil;
 	module = dis64numericbuild(path, image, bytes, jit, &lease, nil, 0, 2, nil);
 	return module == nil ? nil : dis64rootlink(module, lease, 0, nil, nil);
+}
+#endif
+
+#if !defined(DIS_NATIVE64_MANAGED_FILES) || !defined(DIS_NATIVE64_SCALAR_BOOT) || !defined(DIS64_PILOT_LOADER)
+Modlink*
+prepare64managedlibrarylink(char *path,uchar *image,ulong bytes,int jit,const uchar *requests,ulong requestbytes,const uchar *strings,ulong stringbytes)
+{
+ USED(path);USED(image);USED(bytes);USED(jit);USED(requests);USED(requestbytes);USED(strings);USED(stringbytes);return nil;
 }
 #endif

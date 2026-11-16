@@ -603,9 +603,12 @@ typedef struct Native64TypedImportRequest Native64TypedImportRequest;
 struct Native64TypedImportRequest {
  Native64ImportRequest request;
  const uint *hashes; uint count; // Independent .m classic hashes in exact structural ordinal order.
+ uint managed; // Native-only opt-in to the existing String/List trial; zero keeps scalar/Command routing.
 };
-extern int install64typedimports(Module*, const Native64TypedImportRequest*, uint, int); // Keep checked ldt; validate scalar/fixed Command shape and order before atomic ownership.
+extern int install64typedimports(Module*, const Native64TypedImportRequest*, uint, int); // Keep checked ldt; validate selected scalar/Command/String-List shape and order before atomic ownership.
 extern Modlink* read64calllibrary(char*, int, const uchar*, ulong, const uchar*, ulong, int);
+extern Modlink* read64managedlibrary(char*, int, const uchar*, ulong, const uchar*, ulong, int);
+extern Modlink* prepare64managedlibrarylink(char*, uchar*, ulong, int, const uchar*, ulong, const uchar*, ulong);
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 extern Modlink* read64pair(char*, char*); // Read and root the explicitly linked startup module.
 #ifdef DIS_NATIVE64_MANAGED_FILES

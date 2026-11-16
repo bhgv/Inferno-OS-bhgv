@@ -137,6 +137,10 @@ done1:
 #if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
 #include "dis64-call-library.h"
 #include "dis64-command-binding.h"
+#ifdef DIS_NATIVE64_MANAGED_FILES
+#include "dis64-managed-signature.h"
+#include "string-native64.h"
+#endif
 typedef struct Dis64LibraryRead Dis64LibraryRead;
 struct Dis64LibraryRead {
  char *path;
@@ -144,7 +148,7 @@ struct Dis64LibraryRead {
  ulong requestbytes,stringbytes,bytes;
  uchar *image;
  Dir *dir;
- int fd,jit;
+ int fd,jit,managed;
  Modlink *link;
 };
 
@@ -180,6 +184,11 @@ read64libraryadmit(void *argument)
  if(mustbesigned(read->path,read->image,read->bytes,read->dir)){
   kwerrstr("security violation: not signed");return 0;
  }
+#ifdef DIS_NATIVE64_MANAGED_FILES
+ if(read->managed)read->link=prepare64managedlibrarylink(read->path,read->image,read->bytes,read->jit && !dontcompile,
+  read->requests,read->requestbytes,read->strings,read->stringbytes);
+ else
+#endif
  read->link=prepare64calllibrarylink(read->path,read->image,read->bytes,read->jit && !dontcompile,
   read->requests,read->requestbytes,read->strings,read->stringbytes);
  return read->link!=nil;
@@ -189,12 +198,17 @@ read64libraryadmit(void *argument)
 /* Return one reference and one external GC pin, with exclusion held on return.
  * Caller-owned native path/request buffers must stay immutable/live across I/O.
  * This explicit bridge grants no guest ILOAD capability or cache provenance. */
-Modlink*
-read64calllibrary(char *path,int jit,const uchar *requests,ulong requestbytes,
- const uchar *strings,ulong stringbytes,int sync)
+static Modlink*
+read64librarymode(char *path,int jit,const uchar *requests,ulong requestbytes,
+ const uchar *strings,ulong stringbytes,int sync,int managed)
 {
 #if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
  Dis64LibraryRead read={0};DisStringPoolView pool;Dis64Bindings bindings;unsigned int n;int ok;
+#ifndef DIS_NATIVE64_MANAGED_FILES
+ if(managed)return nil;
+#else
+ static const Dis64ManagedSchema schema={Dis64TrialVersion,Dis64TrialString,Dis64TrialList};
+#endif
  if(!dis64launchmode() || (jit!=0 && jit!=1) || (sync!=0 && sync!=1) ||
     path==nil || path==H || requests==nil || requests==H || strings==nil || strings==H ||
     requestbytes>Dis64LocalBytes || stringbytes>Dis64LocalBytes ||
@@ -204,11 +218,17 @@ read64calllibrary(char *path,int jit,const uchar *requests,ulong requestbytes,
  for(n=0;n<1024 && path[n];n++);
  if(!n || n==1024 || path[0]=='$' ||
     !disstringpoolcheck(strings,stringbytes,65536,&pool) ||
-    !dis64clientbindingscheck(requests,requestbytes,0,&pool,0,0,Dis64LocalFunctions,Dis64LocalParameters,&bindings)){
+    !(managed?
+#ifdef DIS_NATIVE64_MANAGED_FILES
+      dis64managedtable(requests,requestbytes,0,&pool,0,0,2,1,&bindings,&schema)
+#else
+      0
+#endif
+      :dis64clientbindingscheck(requests,requestbytes,0,&pool,0,0,Dis64LocalFunctions,Dis64LocalParameters,&bindings))){
   kwerrstr("invalid Dis64 scalar library path or interface");return nil;
  }
  read.path=path;read.requests=requests;read.requestbytes=requestbytes;read.strings=strings;
- read.stringbytes=stringbytes;read.jit=jit;read.fd=-1;
+ read.stringbytes=stringbytes;read.jit=jit;read.fd=-1;read.managed=managed;
  if(sync)release();
  ok=kprotect(read64libraryimage,&read);
  if(sync)acquire();
@@ -218,9 +238,21 @@ read64calllibrary(char *path,int jit,const uchar *requests,ulong requestbytes,
  free(read.dir);free(read.image);
  return ok?read.link:nil;
 #else
- USED(path);USED(jit);USED(requests);USED(requestbytes);USED(strings);USED(stringbytes);USED(sync);
+ USED(path);USED(jit);USED(requests);USED(requestbytes);USED(strings);USED(stringbytes);USED(sync);USED(managed);
  kwerrstr("Dis64 scalar library namespace bridge is disabled");return nil;
 #endif
+}
+
+
+Modlink*
+read64calllibrary(char *path,int jit,const uchar *requests,ulong requestbytes,const uchar *strings,ulong stringbytes,int sync)
+{
+ return read64librarymode(path,jit,requests,requestbytes,strings,stringbytes,sync,0);
+}
+Modlink*
+read64managedlibrary(char *path,int jit,const uchar *requests,ulong requestbytes,const uchar *strings,ulong stringbytes,int sync)
+{
+ return read64librarymode(path,jit,requests,requestbytes,strings,stringbytes,sync,1);
 }
 
 
@@ -237,6 +269,7 @@ read64ownedimport(Module *module,WORD index,char *path)
  Native64ImportRequest *table;
  if(owner==nil || index<0 || (uint)index>=owner->count)error(exModule);
  table=owner->tables+index;
+ if(owner->managed & ((uvlong)1<<index))return read64managedlibrary(path,owner->jit,table->imports,table->importbytes,table->strings,table->stringbytes,1);
  return read64calllibrary(path,(module->rt&Dis64ScalarClient)?!!cflag:owner->jit,table->imports,table->importbytes,
   table->strings,table->stringbytes,1);
 #else
@@ -316,6 +349,39 @@ match64typedname(const DisStringPoolView *pool,uint symbol,const char *name)
 }
 #endif
 
+#if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
+/* The selector is native-owned; trial bytes never select their own reader. */
+static int
+check64typedrequests(const Native64ImportRequest *request,int managed,const DisStringPoolView *pool,Dis64Bindings *out)
+{
+ if(managed){
+#ifdef DIS_NATIVE64_MANAGED_FILES
+  static const Dis64ManagedSchema schema={Dis64TrialVersion,Dis64TrialString,Dis64TrialList};
+  return dis64managedtable(request->imports,request->importbytes,0,pool,nil,0,2,1,out,&schema);
+#else
+  return 0;
+#endif
+ }
+ return dis64clientbindingscheck(request->imports,request->importbytes,0,pool,0,0,64,64,out);
+}
+static int
+get64typedbinding(const Dis64Bindings *bindings,uint index,int managed,Dis64Binding *binding,uint *canonical)
+{
+ *canonical=0;
+ if(managed){
+#ifdef DIS_NATIVE64_MANAGED_FILES
+  static const Dis64ManagedSchema schema={Dis64TrialVersion,Dis64TrialString,Dis64TrialList};Dis64ManagedSignature signature;
+  if(!dis64managedget(bindings,index,&schema,binding,&signature))return 0;
+  *canonical=signature.argument==LimboNative64String?LIMBO_NATIVE64_SIGNATURE_String_unquoted:LIMBO_NATIVE64_SIGNATURE_String_quoted;
+  return 1;
+#else
+  return 0;
+#endif
+ }
+ return dis64clientbindingget(bindings,index,binding);
+}
+#endif
+
 /* Structural file requests plus independent .m hashes join an existing checked
  * ldt. Nothing is published until every table/name/hash/prototype frame agrees. */
 int
@@ -324,7 +390,7 @@ install64typedimports(Module *module,const Native64TypedImportRequest *tables,ui
 #if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
  Native64ImportRequest requests[64];Dis64ImportOwner *owner;Module *cached;DisStringPoolView pool;
  Dis64Bindings bindings;Dis64Binding binding;const Native64TypedImportRequest *entry;
- ulong bytes=sizeof(*owner);uint i,j,k,total=0,base,frame,width,hash;Type *type;Import *ldt;
+ ulong bytes=sizeof(*owner);uvlong managedtables=0;uint i,j,k,total=0,base,frame,width,hash,canonical;Type *type;Import *ldt;
  if(sizeof(void*)!=8 || sizeof(WORD)!=4 || sizeof(uint)!=4 || !dis64launchmode() ||
     module==nil || module==H || module->ref!=1 || module->compiled ||
     module->cstep!=native64typedlea8step || module->native64imports!=nil || module->native64importload!=read64ownedimport ||
@@ -333,32 +399,36 @@ install64typedimports(Module *module,const Native64TypedImportRequest *tables,ui
  for(cached=modules;cached!=nil;cached=cached->link)if(cached==module)return 0;
  for(i=0;i<count;i++){
   entry=tables+i;requests[i]=entry->request;
-  if(!entry->count || entry->count>64 || entry->count>4096-total || entry->hashes==nil || entry->hashes==(void*)H ||
+  if(entry->managed>1 || !entry->count || entry->count>64 || entry->count>4096-total || entry->hashes==nil || entry->hashes==(void*)H ||
      (uintptr)entry->hashes>(uintptr)-1-entry->count*4 ||
      requests[i].imports==nil || requests[i].imports==(void*)H || requests[i].strings==nil || requests[i].strings==(void*)H ||
      requests[i].importbytes>Dis64LocalBytes || requests[i].stringbytes>Dis64LocalBytes ||
      (uintptr)requests[i].imports>(uintptr)-1-requests[i].importbytes || (uintptr)requests[i].strings>(uintptr)-1-requests[i].stringbytes ||
      requests[i].importbytes+requests[i].stringbytes>8*Dis64LocalBytes-bytes ||
      !disstringpoolcheck(requests[i].strings,requests[i].stringbytes,65536,&pool) ||
-     !dis64clientbindingscheck(requests[i].imports,requests[i].importbytes,0,&pool,0,0,64,64,&bindings) || bindings.count!=entry->count)return 0;
+     !check64typedrequests(requests+i,entry->managed,&pool,&bindings) || bindings.count!=entry->count)return 0;
   ldt=module->ldt[i];if(ldt==nil || ldt==H)return 0;
   for(j=0;j<entry->count;j++){
-   if(!dis64clientbindingget(&bindings,j,&binding) || !match64typedname(&pool,binding.symbol,ldt[j].name))return 0;
+   if(!get64typedbinding(&bindings,j,entry->managed,&binding,&canonical) || !match64typedname(&pool,binding.symbol,ldt[j].name))return 0;
    memmove(&hash,entry->hashes+j,4);if(memcmp(&hash,&ldt[j].sig,4))return 0;
-   if(dis64commandsignature(&binding.signature) && hash!=dis64u32(binding.signature.data+4))return 0;
+   if(entry->managed){if(hash!=canonical)return 0;}
+   else if(dis64commandsignature(&binding.signature) && hash!=dis64u32(binding.signature.data+4))return 0;
   }
   if(ldt[entry->count].name!=nil)return 0;
-  bytes+=requests[i].importbytes+requests[i].stringbytes;total+=entry->count;
+  bytes+=requests[i].importbytes+requests[i].stringbytes;total+=entry->count;if(entry->managed)managedtables|=(uvlong)1<<i;
  }
  if(module->ldt[count]!=nil || total>=(uint)module->ntype)return 0;
  base=module->ntype-total;
  for(i=0;i<count;i++){
+  entry=tables+i;
   if(!disstringpoolcheck(requests[i].strings,requests[i].stringbytes,65536,&pool) ||
-     !dis64clientbindingscheck(requests[i].imports,requests[i].importbytes,0,&pool,0,0,64,64,&bindings))return 0;
+     !check64typedrequests(requests+i,entry->managed,&pool,&bindings))return 0;
   for(j=0;j<bindings.count;j++){
-   if(!dis64clientbindingget(&bindings,j,&binding))return 0;
+   if(!get64typedbinding(&bindings,j,entry->managed,&binding,&canonical))return 0;
    type=module->type[base++];
-   if(dis64commandsignature(&binding.signature)){
+   if(entry->managed){
+    if(type==nil || type==H || type->ref<=0 || type->size!=72 || type->np!=2 || type->map[0] || type->map[1]!=0x80)return 0;
+   }else if(dis64commandsignature(&binding.signature)){
     if(type==nil || type==H || type->ref<=0 || type->size!=80 || type->np!=2 || type->map[0] || type->map[1]!=0xc0)return 0;
    }else{
     frame=64;
@@ -372,7 +442,7 @@ install64typedimports(Module *module,const Native64TypedImportRequest *tables,ui
   }
  }
  owner=copy64importrequests(requests,count,jit,bytes);if(owner==nil)return 0;
- module->native64imports=owner;return 1;
+ owner->managed=managedtables;module->native64imports=owner;return 1;
 #else
  USED(module);USED(tables);USED(count);USED(jit);return 0;
 #endif

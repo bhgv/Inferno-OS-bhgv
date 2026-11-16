@@ -9,6 +9,7 @@ typedef struct Dis64ImportOwner Dis64ImportOwner;
 struct Dis64ImportOwner {
  uint count;
  int jit;
+ uvlong managed; // Native-owned table selectors; no bit comes from serialized bytes.
  Native64ImportRequest tables[64];
 };
 #endif

@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Run checked source LOAD through owned .m installation and real file admission."""
-import argparse,json,os,runpy,shlex,subprocess,tempfile
+import argparse,json,os,re,runpy,shlex,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 NS=runpy.run_path(str(ROOT/'utils/tests/dis64-library-namespace.py'))
 EXT=runpy.run_path(str(ROOT/'utils/tests/dis64-typed-external.py'))
+
+def releaseflags(cc):
+    # Bionic's Inferno objects use the strict free_ seam. Static libc's FILE
+    # buffers call libc free too and must not enter the VM allocation ledger.
+    macros=subprocess.run(cc+['-dM','-E','-include','sys/cdefs.h','-x','c','-'],input=b'',capture_output=True,check=True).stdout
+    return ['-Wl,--defsym=__real_free=free'] if re.search(rb'^#define __BIONIC__\b',macros,re.M) else ['-Wl,--wrap=free']
 
 def generate(limbo,work,kind):
     scalar={1:'int',2:'big',3:'real'}[kind]
@@ -80,7 +86,7 @@ def main():
         if arch in ('arm64','riscv64'):cc+=['-DDIS64_TEST_'+arch.upper()+'=1','-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
         elif arch!='amd64':p.error(arch)
         cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(work)]+['-I'+str(ROOT/x)for x in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
-        binary=work/'test';command=cc+[str(file),str(ROOT/'libinterp/dec.c'),'-Wl,--wrap=free','-lm','-o',str(binary)]
+        binary=work/'test';command=cc+[str(file),str(ROOT/'libinterp/dec.c')]+releaseflags(cc)+['-lm','-o',str(binary)]
         for kind in (1,2,3):
             image=generate(a.limbo.resolve(),work,kind);subprocess.run(command,check=True)
             result=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary),str(image)],capture_output=True,text=True,timeout=180)

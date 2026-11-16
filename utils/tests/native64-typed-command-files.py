@@ -86,7 +86,7 @@ def main():
         if arch in ('arm64','riscv64'):cc+=['-DDIS64_TEST_'+arch.upper()+'=1','-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
         elif arch!='amd64':p.error(arch)
         cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(work)]+['-I'+str(ROOT/x)for x in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
-        binary=work/'test';command=cc+[str(src),str(ROOT/'libinterp/dec.c'),'-Wl,--wrap=free','-lm','-o',str(binary)]
+        binary=work/'test';command=cc+[str(src),str(ROOT/'libinterp/dec.c')]+FILES['releaseflags'](cc)+['-lm','-o',str(binary)]
         for implementation,fault in (('Command',False),('Wm',False),('Wm',True)):
             image=generate(a.limbo.resolve(),work,implementation,fault);subprocess.run(command,check=True)
             r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary),str(image)],capture_output=True,text=True,timeout=180)
