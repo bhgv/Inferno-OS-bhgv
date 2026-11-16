@@ -14,12 +14,40 @@ run(ctxt:ref Draw->Context,argv:list of string){calls++;p->init(ctxt,argv);p->in
 clear(){p=nil;}
 '''
 
-def generate(limbo,work,implementation,fault):
+ARGV_SOURCE='implement Launch;include "provider.m";\nLaunch:module{open:fn(path:string);run:fn(ctxt:ref Draw->Context,argv:list of string);ready:fn():int;clear:fn();};\np:Command;prepared:list of string;calls:int=17;\nopen(path:string){p=load Command path;}\nrun(ctxt:ref Draw->Context,args:list of string){calls++;if(args==nil)args="-l"::nil;else args="sh"::"-c"::"$*"::args;prepared=args;p->init(ctxt,args);p->init(ctxt,args);}\nready():int{if(p==nil)return 0;return 1;}\nclear(){prepared=nil;p=nil;}\n'
+
+def verify_nilbranches(data,row,imports):
+    """Prove exact pointer widening/swapping, then reuse the classic relocation oracle."""
+    codes=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES
+    classic=EXT['BASE']['READ']['legacy_instructions'](data)[1]
+    normal=json.loads(json.dumps(row));maps={space:{leaf[0]+i:(leaf[1]+i,leaf[4]) for leaf in row[space]['leaves']for i in range(leaf[2])}for space in ('frame','data')}
+    count=0;nil=next(g[1]for g in row['globals']if g[0]=='nil')
+    for i,old in enumerate(classic[row['first']:row['first']+len(row['code'])]):
+        if old['op']not in (codes['IBEQW'],codes['IBNEW']):continue
+        sm=old['mode']>>3&7;mm=1 if old['mode']&192==128 else 0 if old['mode']&192==192 else -1
+        if sm not in (0,1)or mm not in (0,1):continue
+        a,ak=maps['frame'if sm else'data'][old['s'][0]];b,bk=maps['frame'if mm else'data'][old['m']]
+        if ak not in (10,11,20)and bk not in (10,11,20):continue
+        assert (ak in (10,11)and bk==20)or(ak==20 and bk in (10,11))
+        left,right,mode=a,b,sm
+        if ak==20:left,right,mode=b,a,mm
+        assert right==nil
+        for space,offset in (('frame'if mode else'data',left),('data',right)):
+            assert offset%8==0 and row[space]['map'][offset//64]&(128>>(offset//8%8))
+        expected=[codes['IBEQL']if old['op']==codes['IBEQW']else codes['IBNEL'],(mode<<3)|192|2,left,right,old['d'][0]-row['first'],0]
+        assert row['code'][i]==expected,(row['name'],i,row['code'][i],expected)
+        normal['code'][i]=[old['op'],old['mode'],a,b,old['d'][0]-row['first'],0];count+=1
+    EXT['verify'](data,normal,imports,loads=True)
+    return count
+
+def generate(limbo,work,implementation,fault,argv=False):
     # Keep the scalar namespace fixture's unused compatibility header independent.
     FILES['generate'](limbo,work,1)
     (work/'command.m').write_text(INTERFACE);(work/'provider.m').write_text(INTERFACE)
     bad='{z:=0;one:=1;v:=one/z;}'
     body='alias:=ctxt;ctxt=nil;keep:=alias;if(len argv!=2)'+bad+'a:=hd argv;tail:=tl argv;b:=hd tail;if(len a!=3 || len b!=2)'+bad+'local:=a::argv;argv=nil;copy:=tl local;again:=hd copy;if(len local!=3 || len copy!=2 || len again!=3)'+bad
+    if argv:
+        body='alias:=ctxt;ctxt=nil;keep:=alias;if(len argv!=1 && len argv!=5)'+bad+'a:=hd argv;if(len a!=2)'+bad+'if(len argv==5){xs:=tl argv;b:=hd xs;xs=tl xs;c:=hd xs;xs=tl xs;d:=hd xs;xs=tl xs;e:=hd xs;if(len b!=2 || len c!=2 || len d!=3 || len e!=2)'+bad+'}'
     provider='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'+(bad if fault else body)+'}'
     provider=CMD['CASES']['implementation'](provider,implementation)
     src=work/'wm.b';src.write_text(provider);image=work/'wm.dis64'
@@ -31,10 +59,21 @@ def generate(limbo,work,implementation,fault):
     result=subprocess.run([str(limbo),'-64c','-I',str(work),'-I',str(ROOT/'module'),'-o',str(trial),str(src)],capture_output=True,text=True)
     assert not result.returncode,result.stderr
     parts=CMD['SECTIONS'](trial.read_bytes());requests,names=parts[5],parts[7]
-    data,rows=EXT['compile_source'](limbo,work,SOURCE,interface=INTERFACE,loads=True)
-    assert len(rows)==3 and all(r['accepted']for r in rows),[(r['name'],r.get('reason'))for r in rows]
+    startup_source=ARGV_SOURCE
+    if argv and implementation!='Command':
+        startup_source=startup_source.replace('if(args==nil)args="-l"::nil;else args="sh"::"-c"::"$*"::args;', 'if(nil!=args)args="sh"::"-c"::"$*"::args;else args="-l"::nil;')
+        startup_source=startup_source.replace('if(p==nil)return 0;return 1;', 'if(nil!=p)return 1;return 0;')
+    data,rows=EXT['compile_source'](limbo,work,startup_source if argv else SOURCE,interface=INTERFACE,loads=True)
+    assert len(rows)==(4 if argv else 3) and all(r['accepted']for r in rows),[(r['name'],r.get('reason'))for r in rows]
     imports=EXT['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];assert len(imports)==1 and len(imports[0])==1;imports=imports[0]
-    for r in rows:EXT['verify'](data,r,imports,loads=True)
+    if argv:
+        assert sum(verify_nilbranches(data,r,imports)for r in rows)==2
+        damaged=json.loads(json.dumps(next(r for r in rows if r['name']=='ready')));damaged['code'][0][0]=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES['IBEQW']
+        try:verify_nilbranches(data,damaged,imports)
+        except AssertionError:pass
+        else:raise AssertionError('narrow pointer comparison escaped oracle')
+    else:
+        for r in rows:EXT['verify'](data,r,imports,loads=True)
     signature=imports[0]['signature'];assert imports[0]['name']=='init'
     assert NS['C'].BASE.Reader(requests).word()==1 and int.from_bytes(requests[16:20],'big')==0xface0186 and int.from_bytes(requests[20:24],'big')==signature
     header=subprocess.check_output([str(limbo),'-H','-M','Command','-I',str(ROOT/'module'),str(work/'command.m')],text=True)
@@ -55,12 +94,30 @@ def generate(limbo,work,implementation,fault):
     for r in rows:
         n=r['name'];e=exports[n];assert e['pc']==r['first'];sites=r.get('externals',[])
         lines.append('{'+json.dumps(n)+f',{e["signature"]}U,1,command_code_{n},{len(r["code"])},{r["frame"]["bytes"]},command_map_{n},{len(r["frame"]["map"])},'+(f'command_sites_{n}'if sites else'nil')+f',{len(sites)}'+'},')
-    lines+=['};'];r=rows[0];g={v[0]:v[1]for v in r['globals']};assert set(g)=={'p','nil','calls'}
-    array('command_data_map',r['data']['map']);lines += ['static const Native64ModuleInit command_initial[]={{'+str(g['calls'])+',4,17}};','static const Native64ModuleSpec command_spec={"Launch","trusted/Launch",command_functions,3,~0U,'+f'{r["data"]["bytes"]},command_data_map,{len(r["data"]["map"])},command_initial,1,command_tables,1,nil,nil,0,read64ownedimport'+'};']
+    lines+=['};'];r=rows[0];g={v[0]:v[1]for v in r['globals']};assert {'p','nil','calls'}<=set(g) if argv else set(g)=={'p','nil','calls'}
+    literals=[]
+    if argv:
+        initial=EXT['BASE']['READ']['legacy_instructions'](data,with_types=True,with_data=True)[3]
+        for old,cell in sorted(initial.items()):
+            if cell['kind']!='string':continue
+            leaf=next(l for l in r['data']['leaves']if l[0]==old);assert leaf[2:]==[4,8,13]
+            text=bytes(cell['bytes']);array('command_literal_'+str(old),text);literals.append((leaf[1],text,'command_literal_'+str(old)))
+        assert {text for _,text,_ in literals}=={b'-l',b'sh',b'-c',b'$*'}
+        lines+=['static const Native64ModuleString command_strings[]={']+['{'+f'{offset},{len(text)},{name}'+'},'for offset,text,name in literals]+['};']
+    array('command_data_map',r['data']['map']);lines += ['static const Native64ModuleInit command_initial[]={{'+str(g['calls'])+',4,17}};','static const Native64ModuleSpec command_spec={"Launch","trusted/Launch",command_functions,'+str(len(rows))+',~0U,'+f'{r["data"]["bytes"]},command_data_map,{len(r["data"]["map"])},command_initial,1,command_tables,1,'+('c2string,command_strings,'+str(len(literals))if argv else'nil,nil,0')+',read64ownedimport'+'};']
     for i,r in enumerate(rows):lines.append(f'static const uint command_{r["name"]}={i};')
+    if not argv:lines+=['static const uint command_ready=~0U;']
+    lines += [f'static const uint command_argv={int(argv)},command_prepared_offset={g.get("prepared",0)};']
+    if argv:
+        opcodes=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES
+        publication=[i for i,x in enumerate(next(row for row in rows if row['name']=='run')['code'])if x[0]==opcodes['IMOVP']and x[1]&7==0 and x[4]==g['prepared']]
+        assert len(publication)==1
+        lines += ['static const uint command_publish_index='+str(publication[0])+';']
+    if argv:lines+=['static const uint command_literal_offsets[]={'+','.join(str(offset)for offset,_,_ in literals)+'};','static const char *command_literal_text[]={'+','.join(json.dumps(text.decode())for _,text,_ in literals)+'};']
+    else:lines+=['static const uint command_literal_offsets[]={0};','static const char *command_literal_text[]={""};']
     lines += [f'static const uint command_provider_offset={g["p"]},command_calls_offset={g["calls"]},command_fault={int(fault)};']
     (work/'typed-command-files.h').write_text('\n'.join(lines)+'\n')
-    print('PASS Command file source:',implementation,'fault'if fault else'consume','three checked bodies, independent existing Command bytes/.m hash and mapped 80-byte import frame',flush=True)
+    print('PASS Command file source:',implementation,'fault'if fault else'consume',str(len(rows))+' checked bodies, independent existing Command bytes/.m hash and mapped 80-byte import frame',flush=True)
     return image
 
 def unit():
@@ -72,13 +129,19 @@ def unit():
     source+=extract(heap,'void\nfreelist(')+'\n#define movp actual_movp\n'
     for sig in ('List*\ncons(','static List*\nlisthead(','OP(consp)','OP(headp)','OP(tail)','OP(lenl)'):source+=extract(xec,sig)+'\n'
     source+='\n#undef movp\n'+extract(strings,'OP(lenc)')+'\n'
+    source=source.replace(extract(source,'String*\nc2string('),extract(strings,'String*\nc2string('),1)
+    source+='\n#undef T\n'+'\n'.join(line for line in (ROOT/'lib9/rune.c').read_text().splitlines()if not line.startswith('#include'))+'\n#undef T\n'
     start=source.index(' optab[IMOVW]=countmovw;');end=source.index(' require(prepare64calls(',start);handlers=source[start:end]
     return source+'\n#line 1 "native64-typed-command-files.c"\n'+(ROOT/'utils/tests/native64-typed-command-files.c').read_text().replace(' COMMAND_HANDLERS',handlers)
 
-def main():
+def main(argv=False):
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',type=Path,required=True);a=p.parse_args()
     if not __debug__:p.error('source/file oracles require assertions')
     CMD['witnesses']()
+    if argv:
+        text=(ROOT/'appl/cmd/emuinit.b').read_text()
+        assert 'args = "-l" :: nil;'in text and 'return (mod, "sh" :: "-c" :: "$*" :: args);'in text and 'mod->init(nil, args);'in text
+        print('PASS actual emuinit argv and Limbo init source witnesses',flush=True)
     with tempfile.TemporaryDirectory(prefix='typed-command-files-',dir=ROOT)as td:
         work=Path(td);src=work/'test.c';source=unit();src.write_text(source)
         cc=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('NATIVE64_CFLAGS','-O2 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
@@ -87,8 +150,15 @@ def main():
         elif arch!='amd64':p.error(arch)
         cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(work)]+['-I'+str(ROOT/x)for x in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
         binary=work/'test';command=cc+[str(src),str(ROOT/'libinterp/dec.c')]+FILES['releaseflags'](cc)+['-lm','-o',str(binary)]
+        if argv:
+            bad='implement Bad;R:adt{n:int;};P:module{f:fn();};Bad:module{nested:fn(x:list of list of string):int;arr:fn(x:array of byte):int;refnil:fn(x:ref R):int;mods:fn(a:P,b:P):int;};nested(x:list of list of string):int{if(x==nil)return 1;return 0;}arr(x:array of byte):int{if(x==nil)return 1;return 0;}refnil(x:ref R):int{if(x==nil)return 1;return 0;}mods(a:P,b:P):int{if(a==b)return 1;return 0;}'
+            _,refused=EXT['compile_source'](a.limbo.resolve(),work,bad,interface='',loads=True)
+            assert len(refused)==4 and all(not row['accepted']and row['reason']=='load-nil-roles'for row in refused)
+            _,old=EXT['compile_source'](a.limbo.resolve(),work,ARGV_SOURCE,interface=INTERFACE,loads=False)
+            assert all(not row['accepted']for row in old if row['name']in('run','ready'))
+            print('PASS startup nil boundary: four nested/array/ref/module-pair refusals, external-only mode remains closed',flush=True)
         for implementation,fault in (('Command',False),('Wm',False),('Wm',True)):
-            image=generate(a.limbo.resolve(),work,implementation,fault);subprocess.run(command,check=True)
+            image=generate(a.limbo.resolve(),work,implementation,fault,argv=argv);subprocess.run(command,check=True)
             r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary),str(image)],capture_output=True,text=True,timeout=180)
             assert not r.returncode and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
             for line in r.stdout.splitlines():
@@ -109,4 +179,12 @@ def main():
                 assert r.returncode==10 and 'Command file predicate: argv head retain omitted'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
                 print('PASS Command active control:',arch,'argv head retain',flush=True)
                 src.write_text(source)
+                if argv:
+                    header=work/'typed-command-files.h';original=header.read_text();match=re.search(r'static const Native64TypedStep command_code_run\[\]=\{(.*?)\};',original,re.S);assert match
+                    rows=match[1].strip().splitlines();index=int(re.search(r'command_publish_index=(\d+);',original)[1]);step=list(map(int,rows[index].strip('{},').split(',')));assert step[1]>>3&7==1 and step[1]&7==0
+                    step[1]=(step[1]&~7)|1;step[4]=step[2];rows[index]='{'+','.join(map(str,step))+'},'
+                    header.write_text(original[:match.start(1)]+'\n'+'\n'.join(rows)+'\n'+original[match.end(1):]);subprocess.run(command,check=True)
+                    r=subprocess.run(runner+[str(binary),str(image)],capture_output=True,text=True,timeout=180)
+                    assert r.returncode==10 and 'Command file predicate: argv MP publication'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
+                    print('PASS startup active control:',arch,'prepared argv MP publication',flush=True);header.write_text(original)
 if __name__=='__main__':main()

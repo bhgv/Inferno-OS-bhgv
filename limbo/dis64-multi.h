@@ -201,6 +201,29 @@ typedclientcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(sm)|(mm==AMP?AXINM:AXINF)|DST(AIMM),middle,source,in->branch->pc-p->first};return 1;
 }
 
+/* Checked native startup needs direct list-of-String and Module nil tests.
+ * Nil is the compiler's readonly Tany MP root; no aggregate dereference or
+ * comparison of unrelated reference classes is admitted by this route. */
+static int
+typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
+{
+ Addr *value=&in->s,*empty=&in->m;int vm=in->sm,nm=in->mm,kind,actual;
+ unsigned int sm,mm;long source,middle;
+ if(value->decl && value->decl->ty && value->decl->ty->kind==Tany){
+  value=&in->m;empty=&in->s;vm=in->mm;nm=in->sm;
+ }
+ if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
+    !value->decl || !value->decl->ty ||
+    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value)) ||
+    !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
+    !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=value->decl->ty->kind ||
+    !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany ||
+    in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop ||
+    in->d.offset!=in->branch->pc)return typedfail(p,"load-nil-roles");
+ p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,
+  SRC(sm)|AXINM|DST(AIMM),middle,source,in->branch->pc-p->first};return 1;
+}
+
 static int typedmultibody(TypedMulti*,unsigned int,unsigned int);
 
 static int
@@ -275,7 +298,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     if(i && c->external>=2)for(pc=0;pc<p->count;pc++)
         if((p->code[pc].op==IMOVB || p->code[pc].op==ICVTBW) && USRC(p->code[pc].mode)==AMP){i=0;typedfail(p,"unsupported-opcode");break;}
     if(i){c->state[index]=2;c->height[index]=1;return 1;}
-    if(p->reason==nil || (strcmp(p->reason,"unsupported-opcode") && !(c->external>=2 && p->code && !p->frame.reason && !p->data.reason)))goto fail;
+    if(p->reason==nil || (strcmp(p->reason,"unsupported-opcode") && !((c->external>=2 || c->loads) && p->code && !p->frame.reason && !p->data.reason)))goto fail;
     p->reason=nil;p->ntables=0;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
     p->sites=allocmem((p->count/2+1)*sizeof(*p->sites));
     if(c->external)p->external=allocmem((p->count/2+1)*sizeof(*p->external));
@@ -303,10 +326,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->external>=2 && in->op==IMOVP && (in->sm==Afpind || in->dm==Afpind)){
             if(!typedclientfield(in,p,pc-p->first,0))goto fail;pc++;
-        }else if(c->external>=2 && (in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) &&
+        }else if((c->external>=2 || c->loads) && (in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) &&
           ((in->s.decl && in->s.decl->ty && typedclientreferencekind(in->s.decl->ty->kind)) ||
            (in->m.decl && in->m.decl->ty && typedclientreferencekind(in->m.decl->ty->kind)))){
-            if(!typedclientcompare(in,p,pc-p->first,stop))goto fail;pc++;
+            if(!(c->loads?typedloadcompare(in,p,pc-p->first,stop):typedclientcompare(in,p,pc-p->first,stop)))goto fail;pc++;
         }else if(c->external>=2 && (in->op==INEW || in->op==INEWZ)){
             if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){

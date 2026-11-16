@@ -836,3 +836,34 @@ validator intentionally contains the same guard. Scope both LOAD mutations
 to native64modulecheck, assert exactly one occurrence there, and preserve
 all expected diagnostics and sanitizer exclusions. Local full LOAD gate
 passes both metadata controls and the pin-transfer control after this fix.
+
+## Checked startup argv and native nil branches
+
+The explicit checked-LOAD route now admits equality/inequality between a
+direct list-of-String or Module cell and the compiler's readonly nil MP
+root. Prove declaration/base/element/layout class and lower to complete
+reference-width IBEQL/IBNEL, with either operand order and FP/MP sources.
+Fallback replays opcode-type failures only with intact selected layouts;
+all remaining roles/spans still pass their existing validators. Existing
+file profiles, classic bytes, public managed ABI and wire IDs are unchanged.
+
+The new argv gate constructs the actual emuinit -l/sh/-c/$* list shapes in
+four checked consumer bodies and invokes source Command/Wm.init explicitly.
+Its 3888 C/JIT roots include fresh loads, module nil probes, repeated argv
+publication/replacement, tail identity, mapped Context and exact literals.
+Wm variants reverse nil operand/order and branch polarity. The independent
+oracle verifies exact pointer widening and rejects a narrow corrupt report.
+Production c2string/Rune helpers construct owned literal Strings; poisoned
+input and 26/27 allocation failures preserve REG and retire all owners.
+Keep previous Command controls and add a safe self-move omission that must
+fail the prepared-list MP observer. Add argv as typed gate sixteen.
+
+Android GUI/managed-GC workflow 43953979432 for c67a9c4 now succeeds, confirming
+the duplicate-service closure repair on actual ARM64/Bionic. This is distinct
+from full AWM/APK execution and from the new argv target matrix.
+
+The complete argv gate passes local x64 ASan+UBSan/NDEBUG, detect_leaks=0,
+including safe MP-publication omission and original three Command controls.
+The original 3888 Command/9072 list/6528 LOAD gates retain their controls and
+pass, as does fresh full console/paired boot. Four well-typed nested/array/
+ref/module-pair comparisons refuse the new nil route. Target CI follows.

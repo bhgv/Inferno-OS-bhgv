@@ -83,3 +83,5 @@ emuinit готовит списки `"-l" :: nil` и `"sh" :: "-c" :: "$*" :: ar
 Свежий AWM preflight по-прежнему компилирует 16 classic startup-модулей и
 фиксирует отказ всех четырёх experimental file profiles на полном графе.
 Это подтверждает сохранение границы допуска, а не исполнение AWM.
+
+Следующий участок: [startup argv, nil branches и явный Command.init](native64-typed-argv.ru.md).
