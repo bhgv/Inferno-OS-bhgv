@@ -55,13 +55,16 @@ def unit(codecs=False):
   s,extra=runpy.run_path(str(ROOT/'utils/tests/dis64-client-codec-support.py'))['instrument'](s,extract);handlers+=extra
  return s+'\n'+(ROOT/'utils/tests/dis64-scalar-client.c').read_text().replace(' CLIENT_HANDLERS',handlers)
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--cfg',action='store_true');p.add_argument('--numeric',action='store_true');p.add_argument('--managed',action='store_true');p.add_argument('--local',action='store_true');p.add_argument('--local-contract-control',action='store_true');p.add_argument('--gc',action='store_true');p.add_argument('--gc-control',choices=('frame','list'));p.add_argument('--case',action='append',choices=[r[0]for r in cases()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-cases.py'))['cases']()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-numeric-cases.py'))['cases']()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-managed-cases.py'))['cases']()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-local-cases.py'))['cases']()]);a=p.parse_args();
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--cfg',action='store_true');p.add_argument('--numeric',action='store_true');p.add_argument('--managed',action='store_true');p.add_argument('--local',action='store_true');p.add_argument('--local-contract-control',action='store_true');p.add_argument('--gc',action='store_true');p.add_argument('--gc-control',choices=('frame','list'));p.add_argument('--route-control',choices=('leaf','bridge'));p.add_argument('--case',action='append',choices=[r[0]for r in cases()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-cases.py'))['cases']()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-numeric-cases.py'))['cases']()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-managed-cases.py'))['cases']()]+[r[0]for r in runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-local-cases.py'))['cases']()]);a=p.parse_args();
  if a.local_contract_control and not a.local:p.error('--local-contract-control requires --local')
+ if a.route_control and(a.cfg or a.numeric or a.managed or a.local or a.materialize_only or a.case!=['single']):p.error('--route-control requires the ordinary --case single execution')
  if sum((a.cfg,a.numeric,a.managed,a.local))>1:p.error('select one source family')
  if a.gc_control and(not a.managed or a.materialize_only):p.error('--gc-control requires managed execution')
  env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
  with tempfile.TemporaryDirectory(prefix='scalar-client-',dir=ROOT)as td:
   w=Path(td);env['TMPDIR']=str(w);source=w/'test.c';text=unit(codecs=a.local);
+  if a.route_control:
+   counter='nativeaccepted'if a.route_control=='leaf'else'bridgecalls';marker=counter+'++;';assert text.count(marker)==1;text=text.replace(marker,';',1)
   if a.local:a.gc=True
   if a.gc or a.gc_control:text=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-gc.py'))['instrument'](text,a.gc_control)
   if a.local:text=text.replace('require(clientloads>0);return 0;','require(clientloads>0);require(clientownpauses>0);return 0;')
@@ -93,6 +96,10 @@ def main():
     subprocess.run(cc+['-DNAMESPACE_HEADER="library.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_'+fn,str(source),str(ROOT/'libinterp/dec.c'),'-Wl,--wrap=free','-lm','-o',str(binary)],env=env,check=True)
     binaries[identity]=binary
    r=subprocess.run(runner+[str(binary),str(caller),str(provider),str(kind),str(expected),str(failure)]+(['guarded']if guarded else[])+(['materialize']if a.materialize_only else[]),env=env,capture_output=True,text=True,timeout=120)
+   if a.route_control:
+    predicate='nativecalls && nativeaccepted'if a.route_control=='leaf'else'ccalls && bridgecalls'
+    assert r.returncode==10 and predicate in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
+    print('PASS client dispatch observation omission:',arch,a.route_control,flush=True);return
    if a.local_contract_control:
     assert r.returncode==10 and 'client execution: error=bounds'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr)
     print('PASS local/import result contract omission:',arch,name,flush=True);return

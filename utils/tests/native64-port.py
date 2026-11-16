@@ -132,6 +132,9 @@ def main():
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'scalar-client-boot.log')
     for script in ('dis64-scalar-client-producer.py', 'dis64-scalar-client-proof.py', 'dis64-scalar-client.py'):
         run([sys.executable, str(tests/script), '--limbo', str(tools/'limbo')], build, env, logs/(script+'.log'))
+    for control in ('leaf', 'bridge'):
+        run([sys.executable, str(tests/'dis64-scalar-client.py'), '--limbo', str(tools/'limbo'),
+             '--case', 'single', '--route-control', control], build, env, logs/('scalar-client-route-'+control+'.log'))
     for control in ('initialized', 'result', 'map'):
         run([sys.executable, str(tests/'dis64-scalar-client-proof.py'), '--limbo', str(tools/'limbo'), '--control', control],
             build, env, logs/('scalar-client-proof-'+control+'.log'))

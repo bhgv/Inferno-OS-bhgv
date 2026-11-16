@@ -192,10 +192,9 @@ quanta too; a Command literal/context case passes96 scheduler roots with real GC
 
 Move the RX observation reset from optional GC instrumentation to clientempty,
 after the assertion that all modules and owners are retired. The ordinary scalar
-fixture needs this lifetime boundary as well: RV64's full matrix reaches the
-empty-client route-count assertion after repeated RX address reuse. Cross-target
-confirmation of this reset remains a CI requirement, rather than a claimed local
-RV64 execution.
+fixture needs this lifetime boundary as well. It is independent of the RV64
+empty-client route-count mismatch described below. Cross-target confirmation
+remains a CI requirement, rather than a claimed local RV64 execution.
 
 Cache compiled C fixtures within one scalar-client invocation only when the
 complete generated interface bytes and selected export ordinal are identical.
@@ -220,3 +219,26 @@ The2516759 revision passes the paired/source-call boots on all three targets,
 classic32 and Android ARM64 GUI native link. The full scalar matrix is still a
 separate acceptance requirement. A clean local UBSan reproduction was restarted
 with these test corrections; no whole-port or Android AWM runtime pass is claimed.
+
+
+## Backend-specific empty-client routing
+
+Inspection of the RV64 emitter explains the empty client's final route-count
+failure: its source uses complete C tails for module/frame/return operations,
+while its ILEA entry aliases the complete dispatch entry. It has no separately
+observed raw leaf that could increment nativecalls/nativeaccepted. AMD64 has
+additional native frame/module/return leaves, so its identical source satisfies
+the old blanket assertion. This is a test expectation mismatch, not evidence
+that RV64 failed to execute the guest or needs the JIT disabled.
+
+Record whether either loaded file actually publishes a separate raw leaf before
+installing observation wrappers. Successful cases must always execute both C
+handlers and complete JIT tails. When a raw leaf exists, they must also call and
+accept it; otherwise both raw-leaf counters must stay zero. Already wrapped
+entries do not fabricate raw-leaf availability. Preserve every result, refusal,
+rollback, C/JIT combination and quanta check. The single-word guest publishes an
+actual MOVW leaf on every backend: new leaf/bridge omission controls remove one
+observation counter increment and must fail the exact owning route predicate.
+Both controls and the unchanged empty/single source cases pass with host UBSan;
+all three targets run the controls in the full console workflow. RV64 execution
+of this latest correction remains for CI to confirm.
