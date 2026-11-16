@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[2]
 CMD=runpy.run_path(str(ROOT/'utils/tests/native64-typed-command-files.py'))
 EXT=CMD['EXT'];NS=CMD['NS'];MAN=runpy.run_path(str(ROOT/'utils/tests/dis64-managed-module.py'))
 
-def generate(limbo,work,module,pack,unpack,reverse):
+def generate(limbo,work,module,pack,unpack,reverse,lists=False):
     CMD['generate'](limbo,work,'Command',False)
     interface=MAN['interface'](limbo,work,module,pack,unpack)
     (work/'provider.m').write_text(interface)
@@ -18,8 +18,20 @@ def generate(limbo,work,module,pack,unpack,reverse):
     trial=MAN['compile_file'](limbo,work,probe,'-64l',work/'probe.dis64')
     parts=CMD['CMD']['SECTIONS'](trial);requests,names=parts[5],parts[7]
     source='implement Use;include "provider.m";Use:module{open:fn(path:string);round:fn(s:string):string;split:fn(s:string):list of string;join:fn(xs:list of string):string;clear:fn();};p:'+module+';calls:int=17;open(path:string){p=load '+module+' path;}round(s:string):string{calls++;xs:=p->'+pack+'(s);return p->'+unpack+'(xs);}split(s:string):list of string{calls++;return p->'+pack+'(s);}join(xs:list of string):string{calls++;return p->'+unpack+'(xs);}clear(){p=nil;}'
+    if lists:
+        source=source.replace('xs:=p->'+pack+'(s);return p->'+unpack+'(xs);',
+            'local:=s::nil;text:=hd local;tail:=tl local;local=tail;xs:=p->'+pack+'(text);return p->'+unpack+'(xs);')
+        source=source.replace('return p->'+pack+'(s);',
+            'xs:=p->'+pack+'(s);text:=hd xs;tail:=tl xs;result:=text::tail;return result;')
+        source=source.replace('join(xs:list of string):string{calls++;return p->'+unpack+'(xs);}',
+            'join(xs:list of string):string{calls++;tail:=tl xs;text:=hd xs;copy:=text::tail;item:=hd copy;ys:=p->'+pack+'(item);return p->'+unpack+'(ys);}')
+        source=source.replace('clear:fn();','head:fn(xs:list of string):string;rest:fn(xs:list of string):list of string;clear:fn();')
+        source+='head(xs:list of string):string{calls++;return hd xs;}rest(xs:list of string):list of string{calls++;return tl xs;}'
+        old,refused=EXT['compile_source'](limbo,work,source,interface=interface,loads=False)
+        assert all(not r['accepted'] for r in refused if r['name'] in ('round','split','join'))
+        print('PASS list selection boundary: old external mode still refuses all three list bodies',flush=True)
     data,rows=EXT['compile_source'](limbo,work,source,interface=interface,loads=True)
-    assert len(rows)==5 and all(r['accepted']for r in rows),[(r['name'],r.get('reason'))for r in rows]
+    assert len(rows)==(7 if lists else 5) and all(r['accepted']for r in rows),[(r['name'],r.get('reason'))for r in rows]
     imports=EXT['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];assert len(imports)==1;imports=imports[0]
     for r in rows:EXT['verify'](data,r,imports,loads=True)
     symbols=MAN['import_symbols'](trial,module,pack,unpack);assert len(imports)==2
@@ -40,11 +52,13 @@ def generate(limbo,work,module,pack,unpack,reverse):
         n=r['name'];e=exports[n];sites=r.get('externals',[]);assert e['pc']==r['first']
         lines.append('{'+json.dumps(n)+f',{e["signature"]}U,1,managed_code_{n},{len(r["code"])},{r["frame"]["bytes"]},managed_map_{n},{len(r["frame"]["map"])},'+(f'managed_sites_{n}'if sites else'nil')+f',{len(sites)}'+'},')
     lines+=['};'];r=rows[0];g={a[0]:a[1]for a in r['globals']};assert set(g)=={'p','nil','calls'}
-    array('managed_data_map',r['data']['map']);lines+=['static const Native64ModuleInit managed_initial[]={{'+str(g['calls'])+',4,17}};','static const Native64ModuleSpec managed_spec={"Use","trusted/Use",managed_functions,5,~0U,'+f'{r["data"]["bytes"]},managed_data_map,{len(r["data"]["map"])},managed_initial,1,managed_mt,1,nil,nil,0,read64ownedimport'+'};']
+    array('managed_data_map',r['data']['map']);lines+=['static const Native64ModuleInit managed_initial[]={{'+str(g['calls'])+',4,17}};','static const Native64ModuleSpec managed_spec={"Use","trusted/Use",managed_functions,'+str(len(rows))+',~0U,'+f'{r["data"]["bytes"]},managed_data_map,{len(r["data"]["map"])},managed_initial,1,managed_mt,1,nil,nil,0,read64ownedimport'+'};']
     for i,r in enumerate(rows):lines.append(f'static const uint managed_{r["name"]}={i};')
+    if not lists:lines+=['static const uint managed_head=~0U,managed_rest=~0U;']
+    lines += [f'static const uint managed_lists={int(lists)};']
     lines += [f'static const uint managed_provider_offset={g["p"]},managed_calls_offset={g["calls"]};']
     (work/'typed-managed-files.h').write_text('\n'.join(lines)+'\n')
-    print('PASS managed checked source:',module,pack,unpack,'independent trial records, classic hashes, 72-byte mapped frames, five checked bodies',flush=True)
+    print('PASS managed checked source:',module,pack,unpack,'independent trial records, classic hashes, 72-byte mapped frames,',len(rows),'checked bodies',flush=True)
     return image
 
 def unit():
@@ -65,9 +79,10 @@ def unit():
     start=source.index(' optab[IMOVW]=countmovw;');end=source.index(' require(prepare64calls(',start)
     return source+'\n#line 1 "native64-typed-managed-files.c"\n'+(ROOT/'utils/tests/native64-typed-managed-files.c').read_text().replace(' MANAGED_HANDLERS',source[start:end])
 
-def main():
+def main(lists=False):
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',type=Path,required=True);a=p.parse_args()
     if not __debug__:p.error('independent source/file oracles require assertions')
+    if lists:CMD['CMD']['witnesses']()
     with tempfile.TemporaryDirectory(prefix='typed-managed-files-',dir=ROOT)as td:
         w=Path(td);src=w/'test.c';source=unit();src.write_text(source)
         arch=os.environ.get('NATIVE64_ARCH','amd64');cc=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('NATIVE64_CFLAGS','-O2 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
@@ -75,8 +90,14 @@ def main():
         elif arch!='amd64':p.error(arch)
         cc+=['-DDIS_NATIVE64_MANAGED_FILES=1','-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
         command=cc+[str(src),str(ROOT/'libinterp/dec.c')]+CMD['FILES']['releaseflags'](cc)+['-lm','-o',str(w/'test')]
+        if lists:
+            bad='implement Bad;Bad:module{bad_tail:fn(xs:list of list of string):list of list of string;bad_cons:fn(s:int):list of int;};bad_tail(xs:list of list of string):list of list of string{return tl xs;}bad_cons(s:int):list of int{xs:=s::nil;return xs;}'
+            _,refused=EXT['compile_source'](a.limbo.resolve(),w,bad,interface='',loads=True)
+            assert len(refused)==2 and all(not r['accepted'] for r in refused)
+            assert next(r for r in refused if r['name']=='bad_tail')['reason']=='load-list-element-class'
+            print('PASS checked list source boundary: nested reference lists and scalar cons refused',flush=True)
         for args in [('Box','pack','unpack',False),('Other','zpack','ahead',True)]:
-            image=generate(a.limbo.resolve(),w,*args);subprocess.run(command,check=True)
+            image=generate(a.limbo.resolve(),w,*args,lists=lists);subprocess.run(command,check=True)
             r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(w/'test'),str(image)],capture_output=True,text=True,timeout=180)
             assert not r.returncode and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
             for line in r.stdout.splitlines():
@@ -98,6 +119,26 @@ def main():
                     r=subprocess.run(runner+[str(w/'test'),str(image)]+(['install-only']if installonly else[]),capture_output=True,text=True,timeout=180)
                     assert r.returncode==10 and diagnostic in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
                     print('PASS managed active control:',arch,diagnostic,flush=True)
+                if lists:
+                    extract=NS['S']['FILES']['FILES']['function'];src.write_text(source)
+                    header=(ROOT/'include/native64-typed-module.h').read_text();body=extract(header,'static int\nnative64modulelists(')
+                    old='if((map[bit/8] & (0x80>>(bit%8)))==0)return 0;';assert body.count(old)==1
+                    controlled=w/'native64-typed-module.h';controlled.write_text(header.replace(body,body.replace(old,';',1),1))
+                    subprocess.run(command,check=True)
+                    r=subprocess.run(runner+[str(w/'test'),str(image),'list-only'],capture_output=True,text=True,timeout=180)
+                    assert r.returncode==10 and 'list constructor guard omitted: case=7'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
+                    print('PASS list active control:',arch,'native root map join',flush=True);controlled.unlink()
+                    body=extract(source,'OP(consp)');assert body.count('h->ref++;')==1
+                    src.write_text(source.replace(body,body.replace('h->ref++;',';',1),1));subprocess.run(command,check=True)
+                    r=subprocess.run(runner+[str(w/'test'),str(image)],capture_output=True,text=True,timeout=180)
+                    assert r.returncode==10 and 'managed file predicate: source cons head retain'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
+                    print('PASS list active control:',arch,'source cons head retain',flush=True)
+                    body=extract(source,'OP(tail)');assert body.count('movp();')==1
+                    src.write_text(source.replace(body,body.replace('movp();','memmove(R.d,R.s,sizeof(void*));',1),1));subprocess.run(command,check=True)
+                    r=subprocess.run(runner+[str(w/'test'),str(image)],capture_output=True,text=True,timeout=180)
+                    assert r.returncode==10 and 'managed file predicate: source tail retain'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
+                    print('PASS list active control:',arch,'source nonempty tail retain',flush=True)
+
                 src.write_text(source)
 
         # Disabled entry points refuse hostile pointer sentinels without inspection.

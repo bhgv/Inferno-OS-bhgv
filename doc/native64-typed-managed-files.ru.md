@@ -81,3 +81,5 @@ GUI-сборка и classic32 также прошли. Android typed job теп�
 оставшихся тел реального графа emuinit/sh/AWM. Полный графический AWM пока
 не исполнялся. Совместимый публичный managed ABI остаётся отдельной работой
 с FlashVM; текущие частные trial-формы его не назначают.
+
+Следующий участок: [cons/head/tail внутри checked потребителя](native64-typed-lists.ru.md).

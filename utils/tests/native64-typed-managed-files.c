@@ -1,5 +1,51 @@
 #include "typed-managed-files.h"
 static void managedcheck(int ok,const char *why){if(!ok){fprintf(stderr,"managed file predicate: %s\n",why);exit(10);}}
+/* Observe retain immediately, before a missing retain can cause a later UAF. */
+static void listconsp(void)
+{
+ void *value;Heap *head;ulong ref=0;
+ memmove(&value,R.s,sizeof(value));head=value==H?nil:D2H(value);if(head)ref=head->ref;
+ actual_consp();
+ if(head)managedcheck(head->ref==ref+1,"source cons head retain");
+}
+static void listtail(void)
+{
+ List *value,*tail=H;void *previous;ulong ref=0;
+ memmove(&value,R.s,sizeof(value));memmove(&previous,R.d,sizeof(previous));
+ if(value!=H){tail=value->tail;if(tail!=H)ref=D2H(tail)->ref;}
+ actual_tail();
+ if(tail!=H && previous==H)managedcheck(D2H(tail)->ref==ref+1,"source tail retain");
+}
+static void listpreflight(void)
+{
+ Native64ModuleSpec spec=managed_spec;Native64ModuleFunction functions[nelem(managed_functions)];Native64ModuleOwner owner={0};
+ Native64TypedStep code[256],*step;uchar map[128];const Native64ModuleFunction *original=managed_functions+managed_round;
+ REG saved=R;Inst probe,untouched;uint i,j,cons=~0U,head=~0U,tail=~0U,bit;int before;
+ require(original->count<=nelem(code) && original->mapbytes<=sizeof(map));
+ for(j=0;j<original->count;j++){
+  if(original->code[j].op==ICONSP)cons=j;if(original->code[j].op==IHEADP)head=j;if(original->code[j].op==ITAIL)tail=j;
+ }
+ require(cons!=~0U && head!=~0U && tail!=~0U);
+ for(i=0;i<12;i++){
+  memmove(functions,managed_functions,sizeof(functions));memmove(code,original->code,original->count*sizeof(*code));memmove(map,original->map,original->mapbytes);
+  spec.functions=functions;functions[managed_round].code=code;functions[managed_round].map=map;step=code+cons;
+  if(i==0)step->mode=SRC(AIMM)|DST(UDST(step->mode));
+  if(i==1)step->mode=SRC(USRC(step->mode))|DST(AIMM);
+  if(i==2)step->s++;if(i==3)step->s=original->bytes-4;if(i==4)step->m=1;
+  if(i==5)step->mode|=AXIMM;if(i==6){step->returned=24;step->mode=SRC(USRC(step->mode))|DST(AFP|AIND);step->d=32;}
+  if(i==7){require(USRC(step->mode)==AFP);bit=step->s/8;map[bit/8]&=~(0x80>>(bit%8));}
+  if(i==8){require(UDST(step->mode)==AFP);bit=step->d/8;map[bit/8]&=~(0x80>>(bit%8));}
+  if(i==9){step=code+head;step->returned=8;step->mode=SRC(USRC(step->mode))|DST(AFP|AIND);step->d=32;}
+  if(i==10){step=code+tail;step->returned=24;step->mode=SRC(USRC(step->mode))|DST(AFP|AIND);step->d=40;}
+  if(i==11){step=code+head;step->mode=SRC(AFP|AIND)|DST(UDST(step->mode));}
+  if(i!=7 && i!=8){memset(&probe,0xa5,sizeof(probe));untouched=probe;
+   require(!native64typedcode(&probe,1,step,1,original->bytes,spec.databytes) && !memcmp(&probe,&untouched,sizeof(probe)));}
+  before=allocations;
+  if(native64typedmodule(&spec,0,&owner)){fprintf(stderr,"list constructor guard omitted: case=%u\n",i);exit(10);}
+  require(!owner.module && !owner.rooted && allocations==before && !live && !nlinkpins && !memcmp(&saved,&R,sizeof(R)));
+ }
+ printf("PASS checked list metadata: 12 preallocation role/width/map/middle/result refusals and unchanged REG\n");
+}
 static Modlink *managedinstance(Module *m,uint method)
 {
  Import request[3]={{0}};Modlink *ml;request[0].name="open";request[1].name=(char*)managed_functions[method].name;
@@ -52,7 +98,10 @@ static void managedrun(int pjit,int cjit,int grow,int quantum,int input,uint met
  Native64ModuleOwner owner={0};Native64TypedImportRequest table=managed_tables[0];Module *cm,*outer;Modlink *consumer,*provider;
  uchar request[128],names[4096],*root,firstbyte;uint hash[2],i;String *path,*seed=H;List *node=H;void *arg=H,*result;Prog *process;WORD calls;
  uvlong guard=0xf0e1d2c3b4a59687ULL,after;int opens,admits,ctors,pins,steps,done;
- int skip=mode==8,iofail=(mode>0 && mode<6)||mode==7;const char *expected=iofail?exModule:!skip && method==managed_join && input==3?exNilref:"";
+ int skip=mode==8,iofail=(mode>0 && mode<6)||mode==7;
+ int listarg=method==managed_join || method==managed_head || method==managed_rest;
+ int usesprovider=method!=managed_head && method!=managed_rest;
+ const char *expected=!skip && listarg && input==3 && (managed_lists || !iofail)?exNilref:iofail && usesprovider?exModule:"";
  require(sizeof(managed_requests)<=sizeof(request) && sizeof(managed_names)<=sizeof(names));
  memmove(request,managed_requests,sizeof(managed_requests));memmove(names,managed_names,sizeof(managed_names));memmove(hash,managed_hashes,sizeof(hash));table.request.imports=request;table.request.strings=names;table.hashes=hash;
  require(native64typedmodule(&managed_spec,cjit,&owner));cm=owner.module;require(install64typedimports(cm,&table,1,pjit));
@@ -61,8 +110,8 @@ static void managedrun(int pjit,int cjit,int grow,int quantum,int input,uint met
  starting=outer;started=nil;require(kprotect(start,nil));process=started;rootenvironment(process);root=process->R.FP;
  path=newstring(13);memmove(path->Sascii,"library.dis64",14);memmove(root+64,&consumer,sizeof(consumer));memmove(root+104,&path,sizeof(path));
  if(input==1){seed=newrunes(3);seed->Srune[0]=0x4e16;seed->Srune[1]=0;seed->Srune[2]=0x1f680;}
- else if(input==0){seed=newstring(3);memmove(seed->Sascii,"x\0y",3);}
- if(method==managed_join){if(input!=3){R.s=&seed;R.d=&node;actual_consp();arg=node;}}
+ else if(input==0 || input==4){seed=newstring(3);memmove(seed->Sascii,"x\0y",3);}
+ if(listarg){if(input!=3){R.s=&seed;R.d=&node;actual_consp();if(input==4){R.s=&seed;actual_consp();}arg=node;}}
  else{arg=seed;if(seed!=H)D2H(seed)->ref++;}
  memmove(root+72,&arg,sizeof(arg));memset(root+112,0xa5,8);memmove(root+120,&guard,8);
  firstbyte=((uchar*)filesource)[0];namespacefault=mode==1?1:mode==3?5:mode==7?9:0;admissionrequired=mode==2;librarypinfail=mode==5;dontcompile=mode==6;
@@ -75,8 +124,9 @@ static void managedrun(int pjit,int cjit,int grow,int quantum,int input,uint met
   require(R.FP==root);memmove(&result,root+80,sizeof(result));
   if(skip)require(result==H);
   else if(method==managed_split){List *xs=result;require(xs!=H && xs->tail==H && *(String**)xs->data==seed && D2H(xs)->ref==1);}
-  else require(result==seed);
-  if(seed!=H)managedcheck(D2H(seed)->ref==(skip?2:3),"String retain across mapped frames");
+  else require(result==(method==managed_rest?(input==4?node->tail:H):(void*)seed));
+  if(!skip && method==managed_rest && input==4)require(D2H(node->tail)->ref==2);
+  if(seed!=H)managedcheck(D2H(seed)->ref==((input==4?3:2)+(skip || method==managed_rest?0:1)),"String retain across mapped frames");
  }
  memmove(&calls,consumer->MP+managed_calls_offset,4);require(calls==(skip?17:18));
  memmove(&calls,cm->origmp+managed_calls_offset,4);require(calls==17 && *(void**)(cm->origmp+managed_provider_offset)==H);
@@ -146,12 +196,12 @@ int main(int argc,char **argv)
   require(native64typedmodule(&managed_spec,0,&owner));require(!install64typedimports(owner.module,managed_tables,1,0) && !owner.module->native64imports);
   require(native64typedmoduleclear(&owner) && !live && !nlinkpins);printf("PASS managed default profile: no install, namespace or constructor work\n");return 0;
  }
- require(dis64selectlaunch("dis64-calls"));managedpreflight();if(argc==3)return 0;managedproof();managedconstruction();
- optab[ILOAD]=actual_iload;optab[IMOVP]=actual_movp;optab[ICONSP]=actual_consp;optab[IHEADP]=actual_headp;optab[ITAIL]=actual_tail;optab[ILENL]=actual_lenl;optab[ILENC]=actual_lenc;
+ require(dis64selectlaunch("dis64-calls"));managedpreflight();if(managed_lists)listpreflight();if(argc==3)return 0;managedproof();managedconstruction();
+ optab[ILOAD]=actual_iload;optab[IMOVP]=actual_movp;optab[ICONSP]=managed_lists?listconsp:actual_consp;optab[IHEADP]=actual_headp;optab[ITAIL]=managed_lists?listtail:actual_tail;optab[ILENL]=actual_lenl;optab[ILENC]=actual_lenc;
  MANAGED_HANDLERS
- for(p=0;p<2;p++)for(c=0;c<2;c++)for(g=0;g<2;g++)for(q=0;q<3;q++)for(method=0;method<5;method++)if(method==managed_round || method==managed_split || method==managed_join)
- for(v=0;v<(method==managed_join?4:3);v++)for(mode=0;mode<9;mode++){
+ for(p=0;p<2;p++)for(c=0;c<2;c++)for(g=0;g<2;g++)for(q=0;q<3;q++)for(method=0;method<nelem(managed_functions);method++)if(method==managed_round || method==managed_split || method==managed_join || method==managed_head || method==managed_rest)
+ for(v=0;v<(method==managed_join || method==managed_head || method==managed_rest?(managed_lists?5:4):3);v++)for(mode=0;mode<9;mode++){
   managedrun(p,c,g,quantum[q],v,method,mode);cases++;
  }
- printf("PASS checked LOAD -> managed file calls: %d C/JIT roots, String/List results, ASCII/Rune/NUL/nil, namespace faults, fresh reloads and complete retirement\n",cases);return 0;
+ printf("PASS checked LOAD -> managed file calls: %d C/JIT roots, String/List results, ASCII/Rune/NUL/nil, namespace faults, fresh reloads and complete retirement\n",cases);if(managed_lists)printf("PASS checked source list composition: cons/head/tail, local result roots, import round-trips and retain observations\n");return 0;
 }

@@ -76,6 +76,26 @@ native64modulemap(unsigned int bytes,const uchar *map,unsigned int n,int frame)
     return 1;
 }
 
+/* Compiler-proved List/String roles still require actual native root cells.
+ * The transient result pointer is checked by the existing result binder. */
+static int
+native64modulelists(const Native64ModuleSpec *spec,const Native64ModuleFunction *fn)
+{
+ unsigned int i,k,bit,mode;long offset;const uchar *map;Inst probe;const Native64TypedStep *step;
+ for(i=0;i<fn->count;i++){
+  step=fn->code+i;
+  if(step->op!=ICONSP && step->op!=IHEADP && step->op!=ITAIL)continue;
+  if(!native64typedcode(&probe,1,step,1,fn->bytes,spec->databytes))return 0;
+  for(k=0;k<2;k++){
+   if(k && step->returned)continue;
+   mode=k?UDST(step->mode):USRC(step->mode);offset=k?step->d:step->s;
+   map=mode==AFP?fn->map:spec->datamap;bit=offset/8;
+   if((map[bit/8] & (0x80>>(bit%8)))==0)return 0;
+  }
+ }
+ return 1;
+}
+
 /* Immutable readable checked-compiler metadata, not untrusted file inputs. */
 static int
 native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsigned int *exports,unsigned int *scratch,unsigned int *imports)
@@ -103,6 +123,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
            !native64modulemap(f->bytes,f->map,f->mapbytes,1) || f->bytes>32*1024*1024-total ||
            f->nsites>f->count/2 || (f->nsites && f->sites==nil))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
+        if(!native64modulelists(s,f))return 0;
         for(j=0;j<f->count;j++)if(f->code[j].op==ILOAD){
             unsigned int modes[2],offsets[2],k;
             step=f->code+j;

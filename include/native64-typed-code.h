@@ -30,6 +30,13 @@ native64typedcodeoperand(unsigned int mode,long offset,unsigned int fpbytes,unsi
 	return (unsigned long)offset<(mode==AFP?fpbytes:mpbytes) && (mode!=AFP || offset>=64);
 }
 
+static int
+native64typedrootoperand(unsigned int mode,long offset,unsigned int fpbytes,unsigned int mpbytes)
+{
+ return (mode==AFP || mode==AMP) && native64typedcodeoperand(mode,offset,fpbytes,mpbytes) &&
+  offset%8==0 && 8<=(mode==AFP?fpbytes:mpbytes)-offset;
+}
+
 /* Input, layouts and semantic operand roles were proved by the compiler and
  * remain immutable. This bridge checks native encoding and local branch ownership.
  * Output must be disjoint from input. Refusal leaves all output bytes untouched.
@@ -46,6 +53,12 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 		s=steps+i;sm=USRC(s->mode);dm=UDST(s->mode);mm=s->mode&ARM;
 		if(s->mode>255 || s->op>255)return 0;
 		switch(s->op){
+		case ICONSP:case IHEADP:case ITAIL:
+            if(mm!=AXNON || s->m || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes))return 0;
+            if(s->returned){
+                if(s->op==ICONSP || s->returned!=24 || dm!=(AFP|AIND) || s->d!=32)return 0;
+            }else if(!native64typedrootoperand(dm,s->d,fpbytes,mpbytes))return 0;
+            continue;
 		case ILOAD:
             if((sm!=AFP && sm!=AMP) || (dm!=AFP && dm!=AMP) || mm!=AXIMM || s->m<0 || s->m>=64 ||
                s->returned || !native64typedcodeoperand(sm,s->s,fpbytes,mpbytes) ||

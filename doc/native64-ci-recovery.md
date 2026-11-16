@@ -773,3 +773,37 @@ allocation seam. Apply it to scalar, Command and managed file gates. Do not
 silently allow foreign frees in trackedfree. The actual Bionic rerun is
 reported separately; host alias/link simulation alone does not prove it.
 See doc/native64-typed-managed-files.ru.md for the finite scope and commands.
+
+## Checked consumer String/List primitives
+
+Extend only explicit checked-LOAD lowering with cons/head/tail on direct
+list-of-String cells, proving the declaration element class and exact cell
+base. Old external-only diagnostics and all file profile policies retain
+their refusal boundaries. The native typed encoding bridge checks complete
+8-byte direct spans/no-middle and the existing mapped result=24 contract;
+cons cannot store through a result pointer. Module construction joins every
+new direct operand to its actual FP/MP map before allocation. No wire IDs.
+
+The fifteenth typed gate (lists) composes seven complete checked functions
+with independently compiled Box/Other file providers: 9072 C/JIT roots over
+ASCII/Rune/NUL/nil, nonempty retained tail aliases, stack growth, quanta and
+nine namespace policies. Direct head/tail returns and local cons/head/tail
+round-trips use real primitive/refcount/destructor code. Twelve metadata
+refusals preserve REG/output bytes and allocate nothing. Root-map, cons-head
+and nonempty-tail retain omissions fail semantic observations before UAF;
+all previous installer/file rollback and hash/map/selector controls remain.
+Keep the original 4320-root managed-files gate as a separate regression.
+
+Previous source 5a4f66e has successful typed jobs on x64, ARM64, RV64 and
+Android ARM64/Bionic. The static Bionic
+free_ linker correction is therefore observed on the real target runtime.
+Fresh AWM preflight still compiles all sixteen classic startup modules and
+refuses the complete graph in all four experimental file profiles. No AWM
+execution or public managed ABI is claimed. See native64-typed-lists.ru.md.
+
+The complete new 9072-root list gate passes locally under x64 ASan+UBSan/
+NDEBUG with detect_leaks=0, including all six active omission controls.
+The original 4320-root managed gate and 960 owned-import cases with their
+controls pass, as do fresh full console/paired boot and AWM preflight.
+New target CI receipts follow publication; these are bounded fixture and
+console results, not a whole-VM sanitizer or physical Android AWM claim.

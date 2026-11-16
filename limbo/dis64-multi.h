@@ -26,6 +26,26 @@ typedclientlist(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
  *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,destination};return 1;
 }
 
+/* Native checked-LOAD diagnostics admit only list of string here. A map bit
+ * alone cannot distinguish List/String or prove the element class. */
+static int
+typedloadlisttype(Addr *a)
+{
+ Type *t;
+ return a->decl && (t=a->decl->ty) && t->kind==Tlist && t->tof && t->tof->kind==Tstring &&
+  a->reg==a->decl->offset;
+}
+static int
+typedloadlist(Inst *in,Decl *fn,Dis64TypedBody *p,Dis64Instruction *out)
+{
+ Type *result=fn->ty->tof;
+ if((in->op!=ICONSP && !typedloadlisttype(&in->s)) ||
+    (in->op!=IHEADP && (in->dm==Afpind?
+      (result->kind!=Tlist || !result->tof || result->tof->kind!=Tstring):!typedloadlisttype(&in->d))))
+  return typedfail(p,"load-list-element-class");
+ return typedclientlist(in,p,out);
+}
+
 /* Fixed Draw.Context geometry from trusted .m declarations, not a guessed C size. */
 static int
 typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
@@ -289,8 +309,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedclientcompare(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->external>=2 && (in->op==INEW || in->op==INEWZ)){
             if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;pc++;
-        }else if(c->external>=2 && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
-            if(!typedclientlist(in,p,p->code+pc-p->first))goto fail;
+        }else if((c->external>=2 || c->loads) && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
+            if(!(c->loads?typedloadlist(in,fn,p,p->code+pc-p->first):typedclientlist(in,p,p->code+pc-p->first)))goto fail;
             if(UDST(p->code[pc-p->first].mode)==(AFP|AIND))p->returns[pc-p->first]=1;pc++;
         }else if((c->external==2 || c->loads) && in->op==ILOAD){
             long source,destination;unsigned int sm,dm;int actual;
