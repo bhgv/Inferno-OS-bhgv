@@ -49,7 +49,7 @@ dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long c
  DisStringPoolRecord names[4+Dis64ManagedLiterals];DisStringPoolView pool;Decl *fn;Dis64LayoutLeaf *leaf;Dis64Instruction in;
  uchar *code=nil,*output=nil,*typedata=nil,*strings=nil,*runes=nil,*maps=nil;uchar metadata[24],exports[36];
  unsigned int sizes[5],i,at=4,bytes,ntypes;char *failure="unsupported ordinary init library",*detail=nil;
- if(strcmp(impdecl->sym->name,"Command") || nf<1 || !dis64commandshape(functions[0]))return 0;
+ if(nf<1 || !dis64commandshape(functions[0]))return 0;
  if(nf>1)return dis64commandlocalfile(globals,functions,nf,instructions,count,databytes);
  fn=functions[0];
  if(nf!=1 || fn->pc->pc || count<1 || count>128 || !filestringscollect(&literals,globals,databytes))goto done;
@@ -64,6 +64,7 @@ dis64commandfile(Decl *globals,Decl **functions,int nf,Inst *instructions,long c
  {char *texts[]={"Command","command.dis64","Command","init"};unsigned int j,n;
   for(i=0;i<4;i++){n=strlen(texts[i]);dis64put32(runes+i*(4+4*1023),n);for(j=0;j<n;j++)dis64put32(runes+i*(4+4*1023)+4+4*j,texts[i][j]);names[i]=(DisStringPoolRecord){runes+i*(4+4*1023),4+4*n};}
  }
+ if(!callfilename(impdecl->sym,runes,names))goto done;
  if(!filestringpool(&literals,runes,names,4))goto done;
  failure="unsupported init operand encoding";
  for(i=0;i<body.count;i++){

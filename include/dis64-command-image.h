@@ -1,4 +1,4 @@
-/* Entryless Command with an outgoing import table and a separate init export. */
+/* Entryless Command implementation with outgoing imports and a separate init export. */
 static int
 dis64commandimportcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClientView *out)
 {
@@ -13,7 +13,7 @@ dis64commandimportcheck(const unsigned char *data,unsigned int bytes,Dis64Scalar
  if(!dis64modulecheck(data+module.offset,module.bytes,&v.module) || v.module.profile || v.module.name || v.module.datatype!=1 ||
     !dis64typescheck(data+types.offset,types.bytes,13,4096,&v.types) || !dis64typeget(&v.types,0,&frame) || !dis64typeget(&v.types,1,&mp) ||
     frame.bytes<96 || frame.align!=8 || mp.align!=8 ||
-    !disstringpoolcheck(data+v.names.offset,v.names.bytes,65536,&v.strings) || !dis64commandname(&v.strings,0,"Command") ||
+    !disstringpoolcheck(data+v.names.offset,v.names.bytes,65536,&v.strings) ||
     !dis64clientbindingscheck(data+v.requests.offset,v.requests.bytes,0,&v.strings,0,0,64,64,&v.imports) || !v.imports.count ||
     v.requests.bytes>Dis64LocalBytes || v.names.bytes>Dis64LocalBytes || !dis64clientdatacheck(&v) || v.code.bytes<4)return 0;
  for(i=0;i<v.imports.count+4;i++){
@@ -32,7 +32,7 @@ dis64commandimportcheck(const unsigned char *data,unsigned int bytes,Dis64Scalar
  if(!v.count || v.count>Dis64ClientCode || !(v.localcount?dis64clientlocalprove(&v):dis64clientprove(&v,1)))return 0;
  *out=v;return 1;
 }
-/* Fixed, entryless ordinary Command.init library, with the existing client MP. */
+/* Fixed Command.init interface; the implementation name is independent. */
 static int
 dis64commandcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClientView *out)
 {
@@ -47,7 +47,7 @@ dis64commandcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClient
  if(!dis64modulecheck(data+module.offset,module.bytes,&v.module) || v.module.profile || v.module.name || v.module.datatype!=1 ||
     !dis64typescheck(data+types.offset,types.bytes,13,4096,&v.types) || !dis64typeget(&v.types,0,&frame) || !dis64typeget(&v.types,1,&mp) ||
     frame.bytes<96 || frame.align!=8 || mp.align!=8 ||
-    !disstringpoolcheck(data+v.names.offset,v.names.bytes,65536,&v.strings) || !dis64commandname(&v.strings,0,"Command") ||
+    !disstringpoolcheck(data+v.names.offset,v.names.bytes,65536,&v.strings) ||
     !dis64clientbindingscheck(data+v.requests.offset,v.requests.bytes,1,&v.strings,&v.types,0,1,2,&v.imports) ||
     !dis64clientbindingget(&v.imports,0,&b) || !dis64commandsignature(&b.signature) || !dis64clientdatacheck(&v) || v.code.bytes<4)return 0;
  for(i=0;i<4;i++){
@@ -57,7 +57,8 @@ dis64commandcheck(const unsigned char *data,unsigned int bytes,Dis64ScalarClient
  v.frame=frame.bytes;v.count=dis64u32(data+v.code.offset);if(!v.count || v.count>Dis64ClientCode || !(v.localcount?dis64clientlocalprove(&v):dis64clientprove(&v,1)))return 0;
  *out=v;return 1;
 }
-/* Full signature bytes, module identity and fixed export coordinates must match. */
+/* Match the fixed request interface and complete signature bytes, not the
+ * implementation label: e.g. load Command may select a module named Wm. */
 static int
 dis64commandmatch(const Dis64ScalarClientView *v,const unsigned char *requests,unsigned int requestbytes,
  const unsigned char *names,unsigned int namebytes)

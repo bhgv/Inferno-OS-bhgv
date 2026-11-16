@@ -1,5 +1,15 @@
 """Ordinary .m Command.init calls: source files own both code bodies."""
 INTERFACE='include "sys.m";include "draw.m";include "sh.m";'
+
+def implementation(source,name):
+ """Keep the Command interface while changing only the provider implementation."""
+ if not name or not name.isascii() or not(name[0].isalpha()or name[0]=='_')or not all(c.isalnum()or c=='_'for c in name)or len(name)>255:raise ValueError('bounded ASCII module identifier required')
+ if name=='Command':return source
+ prefix='implement Command;';include='include "command.m";'
+ if not source.startswith(prefix)or source.count(include)!=1:raise ValueError('unexpected Command source boundary')
+ declaration=name+':module{init:fn(ctxt:ref Draw->Context,argv:list of string);};'
+ return source.replace(prefix,'implement '+name+';',1).replace(include,include+declaration,1)
+
 def cases(pathlength=13):
  prefix='implement Command;include "command.m";init(ctxt:ref Draw->Context,argv:list of string){'
  check='if(ctxt!=nil){z:=0;bad:=1/z;}if(len argv!=2){z:=0;bad:=1/z;}'

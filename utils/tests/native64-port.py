@@ -220,6 +220,8 @@ def main():
         command = [sys.executable, str(tests/'dis64-client-literals-proof.py'), '--limbo', str(tools/'limbo')]
         if control: command += ['--control', control]
         run(command, build, env, logs/('client-literals-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-command-alias.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'command-alias-boot.log')
     run([sys.executable, str(tests/'dis64-command-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'command-init-boot.log')
     run([sys.executable, str(tests/'dis64-command.py'), '--chain', '--limbo', str(tools/'limbo')],

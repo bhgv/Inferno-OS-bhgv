@@ -9,7 +9,9 @@ def sections(data):
   k,f,at,n=struct.unpack_from('>HHII',data,32+12*i);assert f==1 and k not in d;d[k]=data[at:at+n]
  return d
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--chain',action='store_true');p.add_argument('--chain-owner-control',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map','mp-tail','codec-array','array-backing','index-owner','local-frame','local-result','local-argument'));p.add_argument('--literal-wire',choices=('empty','signed-runes'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--local-result-map-control',action='store_true');p.add_argument('--scalar-result-map-control',action='store_true');p.add_argument('--case',action='append');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--materialize-only',action='store_true');p.add_argument('--chain',action='store_true');p.add_argument('--chain-owner-control',action='store_true');p.add_argument('--gc-control',choices=('callee-frame','context-map','mp-tail','codec-array','array-backing','index-owner','local-frame','local-result','local-argument'));p.add_argument('--literal-wire',choices=('empty','signed-runes'));p.add_argument('--reference-width-control',action='store_true');p.add_argument('--field-offset-control',choices=('source','destination'));p.add_argument('--local-result-map-control',action='store_true');p.add_argument('--scalar-result-map-control',action='store_true');p.add_argument('--case',action='append');p.add_argument('--implementation',default='Command');a=p.parse_args();env=dict(os.environ);arch=env.get('NATIVE64_ARCH','amd64')
+ try:CASES['implementation']('implement Command;include "command.m";',a.implementation)
+ except ValueError as error:p.error(str(error))
  if a.chain_owner_control and not a.chain:p.error('--chain-owner-control requires --chain')
  if a.literal_wire and(not a.materialize_only or a.case!=['literals-context']):p.error('--literal-wire requires --materialize-only --case literals-context')
  with tempfile.TemporaryDirectory(prefix='command-init-',dir=ROOT)as td:
@@ -83,6 +85,7 @@ def main():
   rows=[r for r in (CASES['chaincases']()if a.chain else CASES['cases']())if not a.case or r[0]in a.case];assert rows
   for row in rows:
    name,provider,caller,failure=row[:4]
+   provider=CASES['implementation'](provider,a.implementation)
    if a.chain:
     (w/'library.m').write_text(row[5]);(w/'dependency.b').write_text(row[4]);r=subprocess.run([str(a.limbo.resolve()),'-64b','-I',str(ROOT/'module'),'-I',str(w),'-o',str(w/'dependency.dis64'),str(w/'dependency.b')],env=env,capture_output=True,text=True);assert not r.returncode,(name,r.stderr)
    for filename,text,flag in [('command',provider,'-64b'),('client',caller,'-64c')]:
@@ -108,5 +111,6 @@ def main():
    if name.startswith('importhelper-')and not(a.gc_control or a.materialize_only):
     observed=re.search(r'import-helper-observations=(\d+)',r.stderr);assert observed and int(observed[1])>0,(name,r.stderr)
    print('PASS ordinary .m init -> file LOAD -> managed MCALL/RET:',arch,name,flush=True)
+  if a.implementation!='Command':print('PASS implementation label:',a.implementation,'; requested interface: Command',flush=True)
   print('PASS ordinary init pipeline:',arch,len(rows),'pairs; actual GC'+('; constructor-only'if a.materialize_only else'; semantic borrowed import owner omission'if a.chain_owner_control else'; semantic scalar-result map omission'if a.scalar_result_map_control else'; semantic managed-result map omission'if a.local_result_map_control else'; semantic '+a.gc_control+' omission'if a.gc_control else'; semantic '+a.field_offset_control+' offset omission'if a.field_offset_control else'; semantic reference width omission'if a.reference_width_control else';96 scheduler roots per pair'),flush=True)
 if __name__=='__main__':main()

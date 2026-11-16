@@ -28,6 +28,7 @@ dis64commandlocalfile(Decl *globals,Decl **functions,int nf,Inst *instructions,l
  {char *texts[]={"Command","command.dis64","Command","init"};
   for(i=0;i<4;i++){n=strlen(texts[i]);dis64put32(runes+i*(4+4*1023),n);for(k=0;k<n;k++)dis64put32(runes+i*(4+4*1023)+4+4*k,texts[i][k]);names[i]=(DisStringPoolRecord){runes+i*(4+4*1023),4+4*n};}
  }
+ if(!callfilename(impdecl->sym,runes,names))goto done;
  if(!filestringpool(&literals,runes,names,4))goto done;
  ntypes=filestringtypes(&literals,types,maps);
  for(j=0;j<(unsigned int)nf;j++){

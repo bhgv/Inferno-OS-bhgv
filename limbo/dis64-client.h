@@ -174,6 +174,6 @@ dis64clientfile(Decl *entry,Decl *globals,Decl *ldts,Decl **functions,int nf,Ins
 void
 dis64commandimportfile(Decl *globals,Decl *ldts,Decl **functions,int nf,Inst *instructions,long count,long databytes)
 {
- if(nf<1 || strcmp(impdecl->sym->name,"Command")){error(impdecl->src.start,"Dis64 command: unsupported importing module");return;}
+ if(nf<1){error(impdecl->src.start,"Dis64 command: unsupported importing module");return;}
  dis64clientfilemode(functions[0],globals,ldts,functions,nf,instructions,count,databytes,1);
 }

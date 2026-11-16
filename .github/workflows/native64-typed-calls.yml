@@ -16,6 +16,8 @@ on:
       - 'utils/tests/native64-local-calls.*'
       - 'utils/tests/native64-typed*'
       - 'utils/tests/dis64-typed*'
+      - 'utils/tests/dis64-command*'
+      - 'appl/cmd/sh/sh.y'
       - 'utils/tests/awm-native64-*'
       - 'utils/tests/dis64-layout.py'
       - 'utils/tests/native64-callsites.py'
@@ -69,6 +71,21 @@ jobs:
             sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user
           fi
           MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+      - name: Check Limbo Command interface aliases and managed calls
+        env:
+          CC: ${{ matrix.compiler }}
+          NATIVE64_CFLAGS: ${{ matrix.flags }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/typed-call-logs"
+          python3 utils/tests/dis64-command-alias.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias.log"
+          python3 utils/tests/dis64-command.py --limbo "$RUNNER_TEMP/host-tools/limbo" --implementation Wm \
+            --case consume-two --case callee-cons --case source-context --case load-no-init --case explicit-init-error --case local-once 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias-gc.log"
+          python3 utils/tests/dis64-command.py --limbo "$RUNNER_TEMP/host-tools/limbo" --implementation Wm --chain \
+            --case chain-scalar --case chain-owned --case chain-command 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias-chain.log"
       - name: Construct and clone real AWM startup data
         env:
           CC: ${{ matrix.compiler }}
@@ -128,6 +145,19 @@ jobs:
             > "$RUNNER_TEMP/bionic-probe.c"
           "$clang" -O2 -static "$RUNNER_TEMP/bionic-probe.c" -o "$RUNNER_TEMP/bionic-probe"
           qemu-aarch64 "$RUNNER_TEMP/bionic-probe"
+      - name: Check Limbo Command interface aliases and managed calls against Bionic
+        run: |
+          set -o pipefail
+          export CC="$RUNNER_TEMP/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang -I$GITHUB_WORKSPACE/Android/arm64/include -I$GITHUB_WORKSPACE/Android/arm/include"
+          mkdir -p "$RUNNER_TEMP/typed-call-logs"
+          python3 utils/tests/dis64-command-alias.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias.log"
+          python3 utils/tests/dis64-command.py --limbo "$RUNNER_TEMP/host-tools/limbo" --implementation Wm \
+            --case consume-two --case callee-cons --case source-context --case load-no-init --case explicit-init-error --case local-once 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias-gc.log"
+          python3 utils/tests/dis64-command.py --limbo "$RUNNER_TEMP/host-tools/limbo" --implementation Wm --chain \
+            --case chain-scalar --case chain-owned --case chain-command 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias-chain.log"
       - name: Construct and clone real AWM startup data against ARM64 Bionic
         run: |
           set -o pipefail

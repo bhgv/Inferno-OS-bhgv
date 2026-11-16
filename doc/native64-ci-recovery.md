@@ -424,3 +424,42 @@ opaque tables remain unrelocated. No AWM instruction, general Dis64 module
 admission or Android GUI/APK result is claimed. The four-target workflow now
 requires these data gates too. See doc/awm-native64-data.ru.md for exact scope,
 reproduction and the remaining route to AWM.
+
+## Limbo launches a differently named Command implementation
+
+The startup route is already explicit in appl/cmd: emuinit loads
+/dis/wm/awm.dis as Command and calls mod->init(nil,args); sh.b/sh.y perform the
+same separate LOAD and init call with their draw context. The host starts the
+first Limbo module through disinit/schedmod. No C-side AWM init hook is needed.
+
+The fixed Command file producer and raw image checker incorrectly also required
+the implementation label to be Command. Preserve the actual implementation name
+in the existing Module/Strings record and admit any bounded valid label under
+the same private fixed-shape policy. Requests still name Command, exports still
+name init, all signature bytes must match and all body/map/entry/ownership checks
+remain. Enforce the single-public-export boundary before selecting the local
+Command writer, preventing unrecorded public exports. No wire ID or classic ABI
+changes; the full Wm/sh/emuinit sources remain outside general file admission.
+
+The new alias gate checks the real appl/cmd witnesses and real Wm.init hash
+0x4244b354 against the caller's module/sh.m import. Finite Command, Wm and
+Application implementations pass243 raw image/match/refusal cases and54 full
+OS interpreter/JIT roots, including an explicit Limbo Emuinit caller, local
+helpers, nested imports, no-auto-init, explicit init failure, wrong argument
+type/missing file and default/entryless startup refusals. A long255-byte label
+passes;256 bytes emits no selected payload. Extra public exports refuse. The
+Russian launcher tutorial is compiled and booted by the same gate.
+
+All772 existing Command source files retain exact classic and selected bytes
+against the previous compiler. The producer boundary,41 ordinary raw cases,
+240 importing-library raw cases and all six omission controls pass. Wm-named
+providers also pass six direct and three nested managed file-call families
+(864 scheduler roots); nested ownership passes ASan+UBSan with detect_leaks=0.
+The243-case raw alias gate passes ASan+UBSan too. A clean classic-mk full x64
+console/pair boot was built with the updated compiler/loader for these tests.
+AWM preflight still refuses every startup source in all four selected profiles.
+
+The paired-console matrix now runs the full Limbo caller/alias gate on all
+three architectures. The typed/Bionic matrix runs the raw gate and actual
+managed Wm-named file-call families. Target results on this new revision remain
+pending. See doc/dis64-command-alias.ru.md for architecture and reproduction.

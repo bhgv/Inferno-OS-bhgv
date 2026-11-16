@@ -57,6 +57,8 @@ on:
       - 'utils/tests/awm-native64-preflight.py'
       - 'utils/tests/dis64-pair-boot.py'
       - 'utils/tests/dis64-source-call*.py'
+      - 'utils/tests/dis64-command*'
+      - 'appl/cmd/sh/sh.y'
       - 'utils/tests/dis64-source-calls.c'
       - 'utils/tests/dis64-typed*.c'
       - 'utils/tests/dis64-typed*-unit.py'
@@ -161,6 +163,17 @@ jobs:
           python3 utils/tests/dis64-source-call-boot.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
             --root "$RUNNER_TEMP/native64-pair" --emu "$RUNNER_TEMP/native64-pair/emu/Linux/o.emu-g" \
             --runner "$NATIVE64_RUNNER" | tee "$RUNNER_TEMP/native64-pair/port-logs/source-call-boot.log"
+      - name: Boot Limbo callers through differently named Command implementations
+        run: |
+          set -o pipefail
+          flags='-O2 -g -DNDEBUG -fno-strict-aliasing'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" \
+            python3 utils/tests/dis64-command-alias.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+              --root "$RUNNER_TEMP/native64-pair" --emu "$RUNNER_TEMP/native64-pair/emu/Linux/o.emu-g" \
+              --runner "$NATIVE64_RUNNER" 2>&1 | tee "$RUNNER_TEMP/native64-pair/port-logs/command-alias-boot.log"
       - name: Check release compiler predicates and managed library execution on each target
         run: |
           set -o pipefail
