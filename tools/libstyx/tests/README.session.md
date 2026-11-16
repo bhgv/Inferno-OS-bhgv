@@ -21,6 +21,8 @@ Covered behavior:
 - Failed attach restores library-owned identity and publishes no fid. Existing
   live fids prevent switching the connection's user or attach name. Backend
   callbacks own rollback of any private state they change while refusing attach.
+- Backend newclient failure marks the client for immediate disconnect, and
+  freeclient releases any partial backend state without serving requests.
 - Disconnect closes handles before releasing the client backend; current-client
   state does not retain freed clients. Malformed frames leave the dispatch loop
   and release the client immediately.

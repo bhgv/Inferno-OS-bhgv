@@ -119,8 +119,8 @@ newclient(Styxserver *server, int fd)
 	c->aname = strdup("");
 	c->next = server->clients;
 	server->clients = c;
-	if(server->ops->newclient)
-		server->ops->newclient(c);
+	if(server->ops->newclient != nil && server->ops->newclient(c) != nil)
+		c->state |= CDISC;
 	return c;
 }
 

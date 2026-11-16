@@ -111,6 +111,15 @@ closefile(Qid q, int mode)
 	return nil;
 }
 
+/* A rejected native client may own partial state that still needs release.
+ * Отклонённый native-клиент может владеть частичным состоянием для освобождения. */
+static char*
+rejectclient(Client *c)
+{
+	c->u = &server;
+	return Eperm;
+}
+
 /* Release the backend only after all fids have been clunked.
  * Освободить backend только после закрытия всех fid. */
 static char*
@@ -252,6 +261,11 @@ main(void)
 	styxprocess(&server);
 	check(server.curc == nil, "dangling current client");
 	check(closed == 2 && freed == 2 && server.clients == nil, "disconnect lifetime");
+	ops.newclient = rejectclient;
+	a = newclient(&server, -1);
+	check(a->state&CDISC, "backend rejection ignored");
+	styxprocess(&server);
+	check(server.clients == nil && freed == 3 && closed == 2, "rejected client leaked");
 	print("Styx session boundaries: passed\n");
 	return 0;
 }
