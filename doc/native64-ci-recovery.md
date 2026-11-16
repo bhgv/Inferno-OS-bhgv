@@ -941,3 +941,34 @@ boot also pass. These are bounded local receipts; full AWM is still pending.
 At this stage the preceding ba8cd67 CI has successful classic32, paired
 console, Android GUI/GC, RV64 typed and Android ARM64/Bionic typed receipts;
 its x64/ARM64 typed jobs and this change's target receipts are separate.
+
+
+## Checked startup String raise
+
+Admit IRAISE only in checked LOAD lowering, with a direct mapped String
+source. Treat it as a terminal CFG edge while requiring both pair fields on
+every ordinary RET. Keep scalar/external-only and handler-bearing source
+boundaries closed. Native metadata validates operand roles, full span and
+root bit before allocation. Wire formats and classic32 code are unchanged.
+
+The nineteenth gate raises uses production iraise, string2c and unhandled
+exception cleanup. Cover nil LOAD and replacement of a prior Module by nil,
+process exval publication, retained String lifetime, exact error text and REG
+preservation. Test 3888 baseline C/JIT cases, 432 partial-pair/root faults and
+864 extra nil/replacement cases across three providers. Nine metadata
+refusals allocate nothing; 33/34 constructor failures verify C/JIT rollback.
+Active controls remove the mapped-source guard, exception retain and
+unhandled release; compiler IR control removes the terminal raise edge.
+
+The primary source path is emuinit -> /dis/wm/awm.dis -> mod->init(nil,args).
+Shell is only the fallback after failed direct loading. Full AWM execution
+is still pending. A fresh report of actual emuinit currently refuses init
+(multi-callee), loadmod (multi-call), getenv (external-argument) and unquoted
+(unsupported-opcode); these are distinct from the bounded raise gate.
+
+The full raise gate passes local x64 ASan+UBSan/NDEBUG, detect_leaks=0,
+including all new and inherited omission controls. Prior pairs and module
+960 cases with controls and a fresh console/paired boot pass. A host closure
+with Android headers and allocator aliases verifies link compatibility;
+actual new target receipts remain separate. Handler diagnostics/catch-resume
+branches are explicitly outside this unhandled fixture.

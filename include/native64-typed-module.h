@@ -126,6 +126,13 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
         if(!native64modulelists(s,f))return 0;
         if(f->resultcontract && f->resultcontract!=48)return 0;
+        for(j=0;j<f->count;j++)if(f->code[j].op==IRAISE){
+            step=f->code+j;at=USRC(step->mode);
+            if(UDST(step->mode)!=AXXX || (step->mode&ARM)!=AXNON || step->m || step->d || step->returned ||
+               !native64typedrootoperand(at,step->s,f->bytes,s->databytes))return 0;
+            map=at==AFP?f->map:s->datamap;bit=step->s/8;
+            if(!(map[bit/8]&(0x80>>(bit%8))))return 0;
+        }
         for(j=0;j<f->count;j++)if(f->code[j].returned==40 || f->code[j].returned==56){
             if(f->resultcontract!=48 || f->code[j].op!=IMOVP)return 0;
         }

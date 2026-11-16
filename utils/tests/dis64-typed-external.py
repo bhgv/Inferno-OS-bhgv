@@ -14,6 +14,7 @@ SOURCE+='fresh_int(p:Multi,n:int):int{a:=p->relay_forward(n);b:=p->chain_forward
 SOURCE+='loop_count(p:Multi,n:int):int{total:=0;while(n>0){a:=p->relay_count(n);total+=a;n--;}return total;}'
 SOURCE+='loader():Multi{return load Multi "trusted/Multi";}'
 BRANCHES=MODULE['MULTI']['BRANCHES'];ROOTS=MODULE['MULTI']['ROOTS']
+RAISE=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES['IRAISE']
 
 def compile_source(limbo,work,source,interface=None,loads=False):
     (work/'provider.m').write_text(INTERFACE if interface is None else interface)
@@ -86,6 +87,10 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert address in (0,1)
                 leaves=r['frame'if address else'data']['leaves']
                 assert any(leaf[1]==offset and leaf[3]==8 and leaf[4]==kind for leaf in leaves)
+        if op==RAISE:
+            assert loads and mode in(3,11)and m==d==returned==0
+            address=mode>>3&7;leaves=r['frame'if address else'data']['leaves']
+            assert any(leaf[1]==s and leaf[3:]==[8,13]for leaf in leaves)
         if r.get('result_pair'):
             assert r['result_pair']==[11,10]and r['result']==[14,16]
             if o['op']==41 and o['mode']&7==5:

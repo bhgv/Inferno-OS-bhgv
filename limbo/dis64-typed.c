@@ -98,6 +98,16 @@ typedpairtype(Type *t)
 }
 
 static int
+typedraise(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
+{
+ unsigned int sm;long source;int actual;
+ if(in->mm!=Anone || in->dm!=Anone || in->branch!=nil ||
+    !typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) || actual!=Tstring)
+  return typedfail(p,"raise-string-roles");
+ *out=(Dis64Instruction){IRAISE,SRC(sm)|DST(AXXX),0,source,0};return 1;
+}
+
+static int
 typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out, unsigned char *result)
 {
 	unsigned int sm,mm=AXXX,dm;
@@ -189,7 +199,7 @@ typedresults(Dis64TypedBody *p)
         if(p->resultpair){if(p->returns[pc]==8)flow|=2;if(p->returns[pc]==16)flow|=4;if(p->returns[pc]==32)flow=7;}
         else if(p->returns[pc] && p->returns[pc]<=32)flow=3;
         n=0;
-		if(p->code[pc].op==IRET) continue;
+		if(p->code[pc].op==IRET || p->code[pc].op==IRAISE) continue;
         if(p->code[pc].op==ICASE || p->code[pc].op==ICASEL || p->code[pc].op==IGOTO || p->code[pc].op==ICASEC){
             Dis64TypedTable *t=nil;unsigned int j,target;
             for(j=0;j<p->ntables;j++)if(p->tables[j].pc==pc){t=p->tables+j;break;}
@@ -218,7 +228,7 @@ typedresults(Dis64TypedBody *p)
 }
 
 static int
-typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned int stop, Dis64TypedBody *p,int pairs)
+typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned int stop, Dis64TypedBody *p,int loads)
 {
 	Inst *in;
 	unsigned int at=0;
@@ -233,7 +243,7 @@ typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned in
 	case Tbyte:p->resultbytes=1;break;
 	case Tint:case Tfix:p->resultbytes=4;break;
 	case Tbig:case Treal:case Tstring:case Tref:case Tarray:case Tlist:case Tchan:case Tmodule:p->resultbytes=8;break;
-	case Ttuple:if(!pairs || !typedpairtype(fn->ty->tof))return typedfail(p,"aggregate-result");p->resultbytes=16;p->resultpair=1;break;
+	case Ttuple:if(!loads || !typedpairtype(fn->ty->tof))return typedfail(p,"aggregate-result");p->resultbytes=16;p->resultpair=1;break;
 	default:return typedfail(p,"aggregate-result");
 	}
 	p->first=fn->pc->pc;
@@ -247,7 +257,8 @@ typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned in
 		if(in->op==INOOP || in->pc<p->first || in->pc>=stop) continue;
 		p->badpc=in->pc;
 		if(at>=p->count || in->pc!=p->first+at) return typedfail(p,"instruction-order");
-		if(!typedinst(in,stop,p,p->code+at,p->returns+at)) return 0;
+		if(in->op==IRAISE && loads){if(!typedraise(in,p,p->code+at))return 0;}
+		else if(!typedinst(in,stop,p,p->code+at,p->returns+at)) return 0;
 		at++;
 	}
 	if(at!=p->count) return typedfail(p,"instruction-count");

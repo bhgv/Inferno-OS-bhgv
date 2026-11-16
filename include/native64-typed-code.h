@@ -53,6 +53,10 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 		s=steps+i;sm=USRC(s->mode);dm=UDST(s->mode);mm=s->mode&ARM;
 		if(s->mode>255 || s->op>255)return 0;
 		switch(s->op){
+		case IRAISE:
+            if(dm!=AXXX || mm!=AXNON || s->m || s->d || s->returned ||
+               !native64typedrootoperand(sm,s->s,fpbytes,mpbytes))return 0;
+            continue;
 		case ICONSP:case IHEADP:case ITAIL:
             if(mm!=AXNON || s->m || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes))return 0;
             if(s->returned){

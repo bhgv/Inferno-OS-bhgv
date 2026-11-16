@@ -358,6 +358,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if((c->external>=2 || c->loads) && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
             if(!(c->loads?typedloadlist(in,fn,p,p->code+pc-p->first):typedclientlist(in,p,p->code+pc-p->first)))goto fail;
             if(UDST(p->code[pc-p->first].mode)==(AFP|AIND))p->returns[pc-p->first]=1;pc++;
+        }else if(c->loads && in->op==IRAISE){
+            if(!typedraise(in,p,p->code+pc-p->first))goto fail;pc++;
         }else if((c->external==2 || c->loads) && in->op==ILOAD){
             long source,destination;unsigned int sm,dm;int actual;
             if(in->mm!=Aldt || in->m.decl==nil || in->m.decl->offset<0 || in->m.decl->offset>63 ||
