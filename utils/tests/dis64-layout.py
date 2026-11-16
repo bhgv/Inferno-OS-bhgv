@@ -80,7 +80,7 @@ def main():
             end += 1
         structure = native[native.index('typedef struct Native64SourceLayout'):start]
         wrapper = work/'bank.c'
-        wrapper.write_text('#include "limbo.h"\n#include "dis64-layout.h"\n#include <assert.h>\n'+structure+native[start:end]+r'''
+        wrapper.write_text('#undef NDEBUG\n#include "limbo.h"\n#include "dis64-layout.h"\n#include <assert.h>\n'+structure+native[start:end]+r'''
 int layoutbanktest(void)
 {
     Native64SourceLayout bank={0};

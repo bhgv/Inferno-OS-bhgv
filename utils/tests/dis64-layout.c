@@ -1,3 +1,5 @@
+/* Fixture predicates must remain active with release-mode production flags. */
+#undef NDEBUG
 #include "limbo.h"
 #include "dis64-layout.h"
 #include <assert.h>

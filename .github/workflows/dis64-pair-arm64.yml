@@ -57,6 +57,10 @@ on:
       - 'utils/tests/awm-native64-preflight.py'
       - 'utils/tests/dis64-pair-boot.py'
       - 'utils/tests/dis64-source-call*.py'
+      - 'utils/tests/dis64-source-calls.c'
+      - 'utils/tests/dis64-typed*.c'
+      - 'utils/tests/dis64-typed*-unit.py'
+      - 'utils/tests/dis64-client-literal-scalar.py'
       - 'utils/tests/native64-port.py'
   workflow_dispatch:
 permissions:
@@ -154,6 +158,19 @@ jobs:
           python3 utils/tests/dis64-source-call-boot.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
             --root "$RUNNER_TEMP/native64-pair" --emu "$RUNNER_TEMP/native64-pair/emu/Linux/o.emu-g" \
             --runner "$NATIVE64_RUNNER" | tee "$RUNNER_TEMP/native64-pair/port-logs/source-call-boot.log"
+      - name: Check release-mode compiler predicates and managed literals on each target
+        run: |
+          set -o pipefail
+          flags='-O2 -g -DNDEBUG -fno-strict-aliasing'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          export CC="$TARGET_CC" NATIVE64_CFLAGS="$flags"
+          for gate in dis64-source-calls-unit dis64-typed-tail-unit dis64-typed-local-unit dis64-typed-external-unit dis64-typed-multi-unit; do
+            python3 "utils/tests/$gate.py" | tee "$RUNNER_TEMP/native64-pair/port-logs/$gate.log"
+          done
+          python3 utils/tests/dis64-client-literal-scalar.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/client-literal-scalar.log"
       - name: Check the selected native Sys registration
         run: |
           set -o pipefail

@@ -242,3 +242,30 @@ observation counter increment and must fail the exact owning route predicate.
 Both controls and the unchanged empty/single source cases pass with host UBSan;
 all three targets run the controls in the full console workflow. RV64 execution
 of this latest correction remains for CI to confirm.
+
+## Release-mode compiler predicates and RV64 literal execution
+
+The full58e18df matrix confirms the repaired empty-client RV64 route and reaches
+new gates. x64/ARM64 stop at the writer-IR omission control because NDEBUG also
+removed the fixture's assert expressions, including calls into the writer.
+Keep production translation units under the selected release flags, but undefine
+NDEBUG inside the shared typed/layout test translation units before including
+assert.h. The generated native-layout wrapper does the same. This restores the
+actual positive assertions and semantic omission checks in every composed
+writer/tail/local/external/multi fixture without changing production builds.
+
+Under -O2 -DNDEBUG with UBSan, the writer and all three controls, four typed-IR
+unit families and their controls, the typed-body C gate, and all376 typed AWM
+banks now pass locally. The ordinary classic outputs remain unchanged. The
+library raw proof separately passes74 cases and all three active controls with
+ASan+UBSan (local detect_leaks=0, not leak evidence).
+
+RV64 reaches the literal/scalar-import gate but its Python selector omitted the
+existing RV64 compiler option. Select comp-riscv64.c with the same target header
+and runner contract as other client gates. The unchanged38 literal/String/byte
+and int-array sources execute3648 C/JIT/GC scheduler roots locally on x64. Their
+RV64 execution is deliberately required in the quick three-target console
+workflow, together with release-mode writer and typed-IR omission controls. The
+full matrix still owns broader runtime acceptance; these changes neither admit
+AWM modules nor establish an Android GUI runtime. The 32-bit source/build paths
+are unchanged.
