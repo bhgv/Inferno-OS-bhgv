@@ -38,6 +38,20 @@ static void tabletests(void)
     assert(!dis64typedlower(&function,&global,code,4,4,&p) && strcmp(p.reason,"table-row-owner-or-order")==0);dis64typedfree(&p); /* TABLE_OWNER */
     label.inst=code+1;name.name="public";
     assert(!dis64typedlower(&function,&global,code,4,4,&p) && strcmp(p.reason,"table-shape")==0);dis64typedfree(&p);
+    {
+        Type string={0},list={0};Decl a={0},b={0};Sym sa={0},sb={0};uchar dm[]={0x60},fm[]={0,0x80};
+        name.name=".case_test";string.kind=Tstring;string.size=string.align=4;list=string;list.kind=Tlist;
+        arg.ty=&string;frame.map=fm;frame.nmap=2;data.map=dm;data.nmap=1;tabletype.kind=Tcasec;
+        sa.name="a";sa.len=1;sb.name="z";sb.len=1;a.sym=&sa;b.sym=&sb;low.decl=&a;high.decl=&b;low.ty=high.ty=&string;
+        code[0].op=ICASEC;
+        assert(dis64typedlower(&function,&global,code,4,4,&p) && p.ntables==1 && p.tables[0].op==ICASEC);dis64typedfree(&p);
+        table.iwild=code+3;
+        assert(!dis64typedlower(&function,&global,code,4,4,&p) && strcmp(p.reason,"undefined-result")==0);dis64typedfree(&p);
+        table.iwild=code+1;sa.name="zz";sa.len=2;
+        assert(!dis64typedlower(&function,&global,code,4,4,&p) && strcmp(p.reason,"string-table-row-owner-or-order")==0);dis64typedfree(&p);
+        sa.name="a";sa.len=1;arg.ty=&list;
+        assert(!dis64typedlower(&function,&global,code,4,4,&p) && strcmp(p.reason,"opcode-type")==0);dis64typedfree(&p);
+    }
     assert(!owners);
 }
 

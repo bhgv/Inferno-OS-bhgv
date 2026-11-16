@@ -564,3 +564,41 @@ publication/dispatch checks pass 81 predicates; all 12 existing cache variants
 pass after supplying the compiler's current borrowed GC/allocator identities
 to their host fixtures. RV64 CI now requires these host proofs before its
 actual QEMU module-call gate. New target results remain pending.
+
+
+## Owned String tables in checked LP64 modules
+
+The preceding numeric-table matrix is green on x64, ARM64, Android
+ARM64/Bionic and RV64. Add ICASEC metadata and ordinary String initializers
+to the private trusted constructor. Preserve Word32 count/targets and
+pointer64 roots; adopt each factory result into pinned MP immediately.
+Validate UTF-8, exact root maps, singleton/range ordering, local targets,
+call-island boundaries and table/literal overlap before allocation. Exact
+same-function aliases construct one owner per slot. No new wire IDs or raw
+file admission; existing 32-bit paths remain in place.
+
+String search uses a private C predecode callback with actual stringcmp;
+C/JIT neighbours and calls are supported, but this is not native String-search
+JIT. Refusal preserves complete REG. The test passes 1728 module-call roots,
+16 metadata refusals and all 69 allocation failures, two MP clones, exact
+aliases, poisoned borrowed metadata and four runtime-error REG snapshots.
+Active UTF-8 and clone-retain omissions fail semantically. The complete gate
+passes ASan+UBSan with NDEBUG (detect_leaks=0). Add it to the now nine-gate
+four-target typed matrix and full port driver.
+
+The source-only startup report now accepts 16 complete bodies and refuses
+344, including newly accepted sh->redirstr; no full AWM instructions execute.
+See doc/native64-typed-string-tables.ru.md for layout, reproduction and limits.
+
+The clean complete console rebuild and paired boot pass with the enlarged
+private Module. Actual Limbo Command/Wm/Application launchers pass 243 raw
+checks and 54 full-VM C/JIT roots. All 16 startup MP images still construct,
+clone and retire. The existing Command producer passes 772 deterministic
+files/refusal controls; all 1024 distinct accepted source/flag pairs match the
+preceding compiler byte for byte. Numeric-table runtime (2280 roots) and
+compiler boundary/mutation checks also remain green.
+
+The standalone external/import fixtures also link the actual stringcmp now
+required by the private callback. Their complete regressions pass 912 external
+and 960 three-module owned-import cases with all existing active omission
+controls; multiple-call regression passes 480 cases and 1728 binding refusals.

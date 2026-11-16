@@ -119,8 +119,8 @@ def verify(data,record):
         initial=READ['legacy_instructions'](data,with_types=True,with_data=True,with_arrays=True)[3]
         seen=set()
         for table in tables:
-            pc=table['pc'];op=table['op'];goto=op==3;big=op==159
-            assert op in (3,14,159) and pc not in seen and 0<=pc<len(record['code']);seen.add(pc)
+            pc=table['pc'];op=table['op'];goto=op==3;big=op==159;text=op==144
+            assert op in (3,14,144,159) and pc not in seen and 0<=pc<len(record['code']);seen.add(pc)
             old=code[first+pc];assert old['op']==op and old['mode']&7==0
             base=old['d'][0]-(4 if goto else 0)
             assert table['offset']==offsets['data'][base][0]
@@ -129,16 +129,20 @@ def verify(data,record):
             header=8 if big else 4;stride=4 if goto else 24 if big else 12
             previous=None
             for index,(low,high,target) in enumerate(table['rows']):
-                assert low<=high and (previous is None or previous<low) and 0<=target<len(record['code'])
-                previous=high;at=base+header+stride*index
-                if not goto:
+                assert (high is None and text or low<=high) and (previous is None or previous<low) and 0<=target<len(record['code'])
+                previous=low if high is None else high;at=base+header+stride*index
+                if text:
+                    assert bytes(initial[at]['bytes'])==low.encode('utf-8')
+                    if high is None:assert at+4 not in initial
+                    else:assert bytes(initial[at+4]['bytes'])==high.encode('utf-8')
+                elif not goto:
                     mask=(1<<(64 if big else 32))-1;maximum=mask>>1
                     cell=initial[at];assert (cell['high']<<32)|cell['low']==low&mask
                     cell=initial[at+(8 if big else 4)]
                     assert (cell['high']<<32)|cell['low']==(high if high==maximum else high+1)&mask
                 assert initial[at+(0 if goto else 16 if big else 8)]['low']==first+target
             assert table['fallback']==-1 if goto else initial[base+header+stride*count]['low']==first+table['fallback']
-        assert seen=={pc for pc,step in enumerate(record['code']) if step[0] in (3,14,159)}
+        assert seen=={pc for pc,step in enumerate(record['code']) if step[0] in (3,14,144,159)}
 
 
 def generate(limbo,work,env=None):

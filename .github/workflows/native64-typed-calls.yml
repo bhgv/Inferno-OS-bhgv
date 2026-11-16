@@ -125,7 +125,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/typed-call-logs"
-          for gate in tables calls tail local multi module external imports; do
+          for gate in tables string-tables calls tail local multi module external imports; do
             python3 "utils/tests/native64-typed-$gate.py" --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
               | tee "$RUNNER_TEMP/typed-call-logs/$gate.log"
           done
@@ -200,7 +200,7 @@ jobs:
           set -o pipefail
           export CC="$RUNNER_TEMP/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang -I$GITHUB_WORKSPACE/Android/arm64/include -I$GITHUB_WORKSPACE/Android/arm/include"
           mkdir -p "$RUNNER_TEMP/typed-call-logs"
-          for gate in tables calls tail local multi module external imports; do
+          for gate in tables string-tables calls tail local multi module external imports; do
             python3 "utils/tests/native64-typed-$gate.py" --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
               | tee "$RUNNER_TEMP/typed-call-logs/$gate.log"
           done

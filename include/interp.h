@@ -342,6 +342,7 @@ struct Module
 	void (*native64sysframesfree)(Module*); // Trusted nonthrowing teardown before Type retirement.
 	void* native64imports; // Owned structural requests; never a serialized native pointer.
 	Modlink* (*native64importload)(Module*, WORD, char*); // Trusted installer only; returns a pinned instance or nil.
+    int (*native64casec)(void); // Private checked-module mixed-width String table step; never a file flag.
 };
 
 struct Modl

@@ -33,6 +33,7 @@ Array*arraycpy(Array*a){USED(a);require(0);return nil;}
     source+=extract(xec,'int\nnative64typedlea8step(')+'\n'
     for sig in ('static int\nmoduleentry(','OP(mframe)','OP(mcall)','OP(movb)'):source+=extract(xec,sig)+'\n'
     source+=extract(link,'static int\nlinkm(')+'\n'+extract((ROOT/'libinterp/heap.c').read_text(),'void\nnewmp(')+'\n'
+    source+=extract((ROOT/'libinterp/string.c').read_text(),'int\nstringcmp(')+'\n'
     return source
 
 def main():

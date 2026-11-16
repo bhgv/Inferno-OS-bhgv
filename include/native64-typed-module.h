@@ -10,7 +10,10 @@ typedef struct Native64ModuleTable Native64ModuleTable;
 typedef struct Native64ModuleOwner Native64ModuleOwner;
 typedef struct Native64ModuleCaseRow Native64ModuleCaseRow;
 typedef struct Native64ModuleCase Native64ModuleCase;
-struct Native64ModuleCaseRow {vlong low,high;unsigned int target;}; /* Inclusive source bounds. */
+struct Native64ModuleCaseRow {
+    vlong low,high;unsigned int target; /* Inclusive numeric source bounds. */
+    const uchar *start,*stop;unsigned int nstart,nstop; /* Explicit UTF-8 bytes; nil stop is a singleton. */
+};
 struct Native64ModuleCase {
     unsigned int pc,offset,op,count,fallback; /* Local function PCs, native MP base. */
     const Native64ModuleCaseRow *rows;
@@ -38,6 +41,8 @@ struct Native64ModuleFunction {
 };
 
 struct Native64ModuleInit {unsigned int offset,width;uvlong bits;};
+typedef struct Native64ModuleString Native64ModuleString;
+struct Native64ModuleString {unsigned int offset,bytes;const uchar *text;};
 struct Native64ModuleSpec {
     const char *name,*path;
     const Native64ModuleFunction *functions;
@@ -47,6 +52,8 @@ struct Native64ModuleSpec {
     const Native64ModuleInit *initial;
     unsigned int ninitial;
     const Native64ModuleTable *tables;unsigned int ntables;
+    String *(*string)(char*,int); /* Trusted owner's real length-aware String constructor. */
+    const Native64ModuleString *strings;unsigned int nstrings;
 };
 #include "native64-typed-tables.h"
 
@@ -182,6 +189,13 @@ native64modulemake(void *arg)
         else memmove(m->origmp+v->offset,&v->bits,8);
     }
     native64moduletablesapply(s,m->origmp,b->offsets);
+    for(i=0;i<s->nstrings;i++){
+        String *text=s->string((char*)s->strings[i].text,s->strings[i].bytes);
+        if(text==nil || text==H)error(exInval);
+        memmove(m->origmp+s->strings[i].offset,&text,sizeof(text));
+    }
+    for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].ncases;j++)
+        if(s->functions[i].cases[j].op==ICASEC)m->native64casec=native64modulecasecstep;
     if(s->entry!=~0U){m->entry=m->prog+b->offsets[s->entry];m->entryt=m->type[s->entry+1];}
     m->cstep=native64typedlea8step;
     if(b->jit && !compile(m,m->nprog,nil))error(exCompile);

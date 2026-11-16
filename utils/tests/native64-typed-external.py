@@ -38,6 +38,7 @@ Array*arraycpy(Array*a){USED(a);require(0);return nil;}
         source+=extract(xec,'int\nnative64typedlea8step(')+'\n'
         for sig in ('static int\nmoduleentry(','OP(mframe)','OP(mcall)','OP(movb)'):source+=extract(xec,sig)+'\n'
         source+=extract(link,'static int\nlinkm(')+'\n'+extract((ROOT/'libinterp/heap.c').read_text(),'void\nnewmp(')+'\n'
+        source+=extract((ROOT/'libinterp/string.c').read_text(),'int\nstringcmp(')+'\n'
         source+='\n#include "native64-typed-multi.h"\n#define main moduleoldmain\n#line 1 "native64-typed-module.c"\n'+(ROOT/'utils/tests/native64-typed-module.c').read_text()+'\n#undef main\n#line 1 "native64-typed-external.c"\n'+(ROOT/'utils/tests/native64-typed-external.c').read_text();file=work/'module.c';file.write_text(source)
         command=shlex.split(env.get('CC','cc'))+shlex.split(env.get('NATIVE64_CFLAGS','-O2 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
         if arch=='arm64':command+=['-DDIS64_TEST_ARM64=1','-DDIS64_TEST_COMPILER="comp-arm64.c"']

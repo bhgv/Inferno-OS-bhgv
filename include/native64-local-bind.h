@@ -21,8 +21,13 @@ native64localbind(void)
     VmFetch fetched;Inst instruction;Frame *pending;Type *caller,*callee;Stkext *extent;
     uintptr base,start,top,target,at,bit;unsigned int width,reference,contract;
     void *address,*destination;
-    if(!vmfetch(&fetched) || fetched.op!=ILEA)return 0;
+    if(!vmfetch(&fetched))return 0;
     if(fetched.module->cstep!=native64typedlea8step)return 0;
+    if(fetched.op==ICASEC && fetched.module->native64casec!=nil){
+        if(fetched.module->native64casec==(int(*)(void))H)error(exCompile);
+        return fetched.module->native64casec();
+    }
+    if(fetched.op!=ILEA)return 0;
     memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;width=contract&15;reference=!!(contract&16);
     if(!native64model() || instruction.add!=(SRC(AFP)|DST(AFP|AIND)) || instruction.d.i.f!=40 || instruction.d.i.s!=32 ||
        (contract&~31) || (width!=1 && width!=4 && width!=8) || (reference && width!=8) || R.FP==nil || R.FP==H)error(exBounds);
