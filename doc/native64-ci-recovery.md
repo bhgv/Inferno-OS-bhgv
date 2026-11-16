@@ -972,3 +972,30 @@ including all new and inherited omission controls. Prior pairs and module
 with Android headers and allocator aliases verifies link compatibility;
 actual new target receipts remain separate. Handler diagnostics/catch-resume
 branches are explicitly outside this unhandled fixture.
+
+
+## Actual primary emuinit loadmod source branch
+
+The twentieth gate primary extracts the primary loadmod prefix verbatim from
+appl/cmd/emuinit.b: original argv/default -l, LOAD /dis/wm/awm.dis and paired
+Module/argv return. A selected wrapper invokes mod->init(nil,args) explicitly.
+Terminate the excluded variadic Sys diagnostic/fallback suffix with fail:error;
+this does not claim execution of the full helper, getenv, Arg or real AWM body.
+
+A controlled Command/Wm file payload traverses the real owned namespace path.
+Check the exact path in both callback and kopen, preserve nonempty argv identity,
+observe default -l and nil Context before C consumer MCALL, and distinguish
+failed LOAD from a failing explicit provider init. Three providers exercise
+1296 C/JIT roots with reloads, quanta, stack growth and nine namespace policies.
+Constructor allocation failures preserve REG and retire all owners. Classic
+oracles corrupt the path, pair field and target; native mutation controls
+change the path literal and Context argument and must fail before provider use.
+No file profile/wire/public ABI or classic32 changes.
+
+The complete primary gate passes local x64 ASan+UBSan/NDEBUG with
+LSan disabled: 1296 cases, both active controls, 21 C / 22 JIT constructor
+allocation refusals. A static host run using Android headers and allocator
+aliases passes the same matrix and controls. These are host receipts;
+actual ARM64/Bionic target CI is separate. Preceding dd7ad03 pair tests have
+ARM64/RV64 target success; Android's compiler-unit allocator link failure is
+addressed by cb102a4, whose later target receipt remains separate.
