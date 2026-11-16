@@ -119,6 +119,10 @@ int styxsetaux(Styxserver *server, void *aux);
  * mailbox/fd instead of touching Client or request pointers. Rebuild consumers.
  * Native owner-thread API; defer только внутри attach callback, свой request.
  * release(aux) один раз при завершении/отмене; worker сообщает через mailbox/fd. */
+/* EN/RU: Socket-owner root selection, pending NULL uses current attach;0/-1, no authority grant.
+ * Выбор root на socket-owner; pending NULL — текущий attach;0/-1, без выдачи authority. */
+int styxattachroot(Styxserver *server, StyxAttach *pending, Qid qid);
+
 StyxAttach *styxdeferattach(Styxserver*, void *aux, void (*release)(void*));
 Client *styxattachclient(StyxAttach*); /* Borrow live pending client, nil after retirement. */
 int styxattachreply(StyxAttach*, char *error); /* 1 consumed/attempted,0 retired/staged; nil Rattach. */

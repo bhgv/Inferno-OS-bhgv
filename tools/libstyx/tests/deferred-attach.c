@@ -11,6 +11,7 @@
 static Styxserver server; /* Isolated socket owner, no managed execution. */
 static StyxAttach *pending; /* Caller-owned handle, can outlive the client. */
 static uchar reply[MSGMAX]; /* Copied real-codec reply. */
+static int rootdefer; /* New oracle selects synchronous or deferred explicit file root. */
 static int nreply, released, reject; /* Native oracle counters and admission control. */
 
 
@@ -89,6 +90,69 @@ request(Client *client, Fcall *call)
         return 0;
     check(convM2S(reply, nreply, &out) == nreply && out.tag == call->tag, "reply tag/codec");
     return out.type;
+}
+
+
+/* EN/RU: Explicit file root may be selected during callback or later on the owner.
+ * Явный file root можно выбрать в callback либо позднее на owner. */
+static char*
+admitroot(char *uname, char *aname)
+{
+    USED(uname); USED(aname);
+    if(rootdefer){
+        pending = styxdeferattach(&server, nil, release);
+        check(pending != nil, "root defer");
+    }else{
+        check(!styxattachroot(&server, nil, styxqid(0x100000042ULL, 0)), "synchronous file root");
+    }
+    return nil;
+}
+
+
+/* EN/RU: Real codec/fid checks for file attach, zero walk clone, forbidden descendant and late setter.
+ * Real codec/fid проверки file attach, zero walk clone, forbidden descendant и late setter. */
+static void
+rootcases(void)
+{
+    Client *client;
+    Fcall call, out;
+    int mode;
+    server.ops->attach = admitroot;
+    for(mode = 0; mode < 2; mode++){
+        rootdefer = mode;
+        client = newclient(&server, -1);
+        client->versioned = 1;
+        client->msize = 1024;
+        memset(&call, 0, sizeof(call));
+        call.type = Tattach;
+        call.tag = 50;
+        call.fid = 1;
+        call.afid = NOFID;
+        call.uname = "inferno";
+        call.aname = "single-file";
+        check(request(client, &call) == (mode ? 0 : Rattach), "root attach admission");
+        if(mode){
+            check(!styxattachroot(&server, pending, styxqid(0x100000042ULL, 0)) &&
+                  styxattachreply(pending, nil), "deferred file root");
+            check(styxattachroot(&server, pending, styxqid(1, 1)) == -1, "inactive root setter");
+            styxattachfree(pending);
+        }
+        check(convM2S(reply, nreply, &out) == nreply && out.type == Rattach &&
+              out.qid.path == 0x100000042ULL && !(out.qid.type & QTDIR) &&
+              !(findfid(client, 1)->qid.type & QTDIR), "64-bit root codec/fid type");
+        call.type = Twalk;
+        call.tag++;
+        call.newfid = 2;
+        call.nwname = 0;
+        check(request(client, &call) == Rwalk && findfid(client, 2) != nil, "file root clone");
+        call.newfid = 3;
+        call.nwname = 1;
+        call.wname[0] = "hidden";
+        check(request(client, &call) == Rerror && findfid(client, 3) == nil, "file root descendants");
+        freeclient(client);
+    }
+    server.curc = nil;
+    check(styxattachroot(&server, nil, styxqid(1, 0)) == -1, "root outside attach");
 }
 
 
@@ -171,6 +235,7 @@ main(void)
     styxattachfree(old);
     server.curc = nil;
     check(styxdeferattach(&server, nil, nil) == nil, "defer outside callback");
+    rootcases();
     print("PASS native deferred attach, tags, flush, reset and disconnected lifetime\n");
     return 0;
 }

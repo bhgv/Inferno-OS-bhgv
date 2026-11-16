@@ -13,6 +13,7 @@ struct StyxAttach
     void *aux; /* Adopted native release context after successful defer. */
     void (*release)(void*); /* Consumes aux exactly once on transaction retirement. */
     u32int fid; /* Reserved attach fid; no Fid allocated before successful reply. */
+    Qid root; /* Explicit native selected attach root, default directory Qroot. */
     ushort tag; /* Original wire transaction tag. */
     int references; /* One dispatcher ref plus at most one caller ref. */
     int deferred; /* Caller adopted its request handle. */
@@ -77,6 +78,31 @@ styxattachclient(StyxAttach *request)
 }
 
 
+/* EN/RU: Select root Qid on socket owner; NULL pending means current attach callback.
+ * Reject inactive/foreign/auth roots and cached-node type conflicts; no wire reply or authority grant.
+ * Выбрать root Qid на socket owner; NULL pending — текущий attach callback;0/-1 success/failure. */
+int
+styxattachroot(Styxserver *server, StyxAttach *pending, Qid qid)
+{
+    Styxfile *cached;
+    if(server == nil)
+        return -1;
+    if(pending == nil){
+        pending = server->curc != nil ? server->curc->attach : nil;
+        if(pending != nil && pending->waiting)
+            return -1;
+    }
+    if(pending == nil || pending->client == nil || pending->client->server != server ||
+       (qid.type & QTAUTH))
+        return -1;
+    cached = styxfindfile(server, qid.path);
+    if(cached != nil && ((cached->d.qid.type ^ qid.type) & QTDIR))
+        return -1;
+    pending->root = qid;
+    return 0;
+}
+
+
 /* EN/RU: Complete once with original tag; nil error commits identity and fid.
  * Завершить один раз с исходным tag; nil error фиксирует identity и fid. */
 int
@@ -97,7 +123,7 @@ styxattachreply(StyxAttach *request, char *error)
         client->uname = request->uname;
         client->aname = request->aname;
         request->uname = request->aname = nil;
-        reply.qid = styxqid(Qroot, 1);
+        reply.qid = request->root;
         newfid(client, request->fid, reply.qid);
         reply.type = Rattach;
     }
@@ -133,6 +159,7 @@ beginattach(Client *client, Fcall *call)
             wr(client, call);
             return;
         }
+        request->root = styxqid(Qroot, 1);
         request->references = 1;
         request->client = client;
         request->fid = call->fid;
