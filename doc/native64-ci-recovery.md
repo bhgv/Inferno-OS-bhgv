@@ -807,3 +807,22 @@ The original 4320-root managed gate and 960 owned-import cases with their
 controls pass, as do fresh full console/paired boot and AWM preflight.
 New target CI receipts follow publication; these are bounded fixture and
 console results, not a whole-VM sanitizer or physical Android AWM claim.
+
+### Managed collector fixture composition after the library service
+
+The separate Android GUI workflow for 5a4f66e failed while compiling its
+managed GC fixture, before managed execution: prepare64managedlibrarylink
+was defined twice. The base numeric closure includes load64.c's disabled
+service because SCALAR_BOOT is absent; the managed fixture then appends the
+real MANAGED_FILES block without that outer boot guard. Remove only the
+exact inherited disabled-service block in this managed composition and
+require one matching block before replacement. Keep the real implementation
+and all collector/error/ownership assertions. Do not enable unrelated boot
+features or remove production fallback definitions. This is independent of
+the successful four-target typed-call matrix and its Bionic free_ correction.
+
+After the composition fix, local O3/NDEBUG nonrecovering UBSan managed GC
+passes: eight generated-frame ownership cases, 89616 collector epochs and
+4802820 checks, plus compiled nil/literal/reload, paired images, exact
+named seeds and both active publication/classification omission controls.
+The actual Android/Bionic follow-up result remains a separate CI receipt.

@@ -51,6 +51,12 @@ def unit(calls=False, managed=False):
         source += '#include "dis64-managed-signature.h"\n'
         source += '#include "dis64-managed-trial.h"\n'
         load64 = (ROOT/'libinterp/load64.c').read_text()
+        # The numeric base includes the disabled service when SCALAR_BOOT is
+        # absent. This managed composition appends its real implementation;
+        # retain exactly one definition without enabling unrelated boot code.
+        disabled = load64[load64.rindex('#if !defined(DIS_NATIVE64_MANAGED_FILES)'):]
+        if source.count(disabled) != 1: raise RuntimeError('managed service stub closure drift')
+        source = source.replace(disabled, '', 1)
         link = (ROOT/'libinterp/link.c').read_text()
         source = source.replace(extract(source, 'void\ndestroylinks('), extract(link, 'void\ndestroylinks('), 1)
         source += '\n#define malloc(n) trackedallocate(n,0)\n'+extract(link, 'static void\nnewlink(')+'\n'+extract(link, 'void\nmlink(')+'\n#undef malloc\n'
