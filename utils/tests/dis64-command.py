@@ -81,7 +81,9 @@ def main():
   elif arch=='riscv64':cc+=['-DDIS64_TEST_RISCV64=1','-DDIS64_TEST_COMPILER="comp-riscv64.c"']
   elif arch!='amd64':raise ValueError(arch)
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="library.h"','-DNAMESPACE_ORDINAL=0']+['-I'+str(x)for x in [w]+[ROOT/x for x in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]]
-  binary=w/'test';subprocess.run(cc+[str(source),str(ROOT/'libinterp/dec.c'),'-Wl,--wrap=free','-lm','-o',str(binary)],env=env,check=True)
+  # Exercise Inferno conversion semantics too. Android/arm64 lib9.h maps these
+  # calls to private symbols, so a standalone fixture must link their owners.
+  binary=w/'test';subprocess.run(cc+[str(source),str(ROOT/'libinterp/dec.c'),str(ROOT/'lib9/strtoll.c'),str(ROOT/'lib9/strtoull.c'),'-Wl,--wrap=free','-lm','-o',str(binary)],env=env,check=True)
   rows=[r for r in (CASES['chaincases']()if a.chain else CASES['cases']())if not a.case or r[0]in a.case];assert rows
   for row in rows:
    name,provider,caller,failure=row[:4]
