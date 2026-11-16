@@ -19,6 +19,7 @@ typedef struct Styxfile Styxfile;
 typedef struct Client Client;
 typedef struct Fid Fid;
 typedef struct StyxAttach StyxAttach;
+typedef struct StyxRead StyxRead; /* Owned owner-thread deferred byte read. */
 
 struct Styxserver
 {
@@ -47,6 +48,8 @@ struct Client
 	int		versioned;	/* negative rejects unsupported sessions */
 	Fid		*fids;
 	StyxAttach *attach;	/* staged/pending attach, owned by dispatcher */
+	StyxRead *reads; /* Owned pending byte reads, at most128 per client. */
+	StyxRead *reading; /* Borrowed stack stage only during read callback. */
 	Fid		*current;	/* borrowed only during one dispatch */
 	char		*uname;	/* uid */
 	char		*aname;	/* attach name */
@@ -125,3 +128,34 @@ void styxattachfree(StyxAttach*); /* Drop caller ref; reply error before abandon
  * Caller drains and closes it after unregister/end. Other ports return -1.
  * POSIX borrowed fd готовности; owner регистрирует, сам читает и закрывает. */
 int styxnotifyfd(Styxserver*, int fd);
+
+/* Native owner-thread byte-read extension, no new wire messages. Defer only during
+ * read callback, once per non-directory/nonzero read and at most one per fid.
+ * Set *n=0 and return nil on success. Returned request is caller-owned; NULL
+ * leaves aux caller-owned. At most128 pending reads per client. No buffers retained.
+ * Worker threads pass copied data through native mailboxes/fds, never request pointers.
+ * Native byte-read extension; только read callback, *n=0/nil при успехе, свой request.
+ * Worker передаёт copied data через mailbox/fd; request доступен только owner-thread. */
+StyxRead *styxdeferread(Styxserver*, void *aux, void (*release)(void*));
+
+/* Borrow pending client/fid aux and exact capacity/offset only on native socket owner.
+ * Client/aux become nil on retirement; zero limit then distinguishes inactivity.
+ * Заимствовать client/fid aux, capacity/offset на owner; после retirement nil/zero. */
+Client *styxreadclient(StyxRead*);
+void *styxreadaux(StyxRead*);
+ulong styxreadlimit(StyxRead*);
+vlong styxreadoffset(StyxRead*);
+
+/* Complete once; borrowed bytes copied during send, nil error means Rread.
+ * Invalid count/buffer leaves request pending and returns0; inactive/staged returns0.
+ * Return1 consumes live transaction/attempts response, not peer acknowledgement.
+ * release(aux) runs once after detachment, before fid/client cleanup; never wait or
+ * reenter dispatch/teardown. It may free the caller request ref. Flush/reset/disconnect
+ * cancel without late replies; fid retirement sends Rerror before its clunk reply.
+ * Завершить один раз; bytes borrowed до возврата.1 attempt,0 inactive/invalid/staged.
+ * release(aux) один раз после detach до fid/client cleanup; без ожидания/reentry. */
+int styxreadreply(StyxRead*, void *bytes, ulong count, char *error);
+
+/* Consume caller ref on owner; freeing a live handle alone does not answer/cancel it.
+ * Поглотить caller ref на owner; само освобождение не отвечает/не отменяет запрос. */
+void styxreadfree(StyxRead*);

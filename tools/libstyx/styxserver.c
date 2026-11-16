@@ -59,6 +59,9 @@ struct Walkqid
 static int hash(Path);
 static void deletefids(Client *);
 static void cancelattach(Client *);
+static void cancelreads(Client *, Fid *);
+static int readtag(Client *, ushort);
+static void flushread(Client *, ushort);
 
 static void
 styxfatal(char *fmt, ...)
@@ -136,6 +139,7 @@ freeclient(Client *c)
 		fprint(2, "Freeing client at %lux\n", (ulong)c);
 	server = c->server;
 	cancelattach(c);
+	cancelreads(c, nil);
 	deletefids(c);
 	if(server->ops->freeclient)
 		server->ops->freeclient(c);
@@ -391,8 +395,9 @@ findfid(Client *c, u32int fid)
 static void
 deletefid(Client *c, Fid *d)
 {
-	/* TODO: end any outstanding reads on this fid */
 	Fid **f;
+
+	cancelreads(c, d);
 
 	for(f = &c->fids; *f; f = &(*f)->next)
 		if(*f == d){
@@ -670,6 +675,7 @@ newfile(Styxserver *server, Styxfile *parent, int isdir, Path qid, char *name, i
 }
 
 #include "attach.c"
+#include "read.c"
 
 static void
 dispatch(Client *c)
@@ -696,15 +702,16 @@ dispatch(Client *c)
 		wr(c, &f);
 		return;
 	}
+	if(f.type != Tversion && ((c->attach != nil && c->attach->tag == f.tag) || readtag(c, f.tag))){
+		c->state |= CDISC;
+		return;
+	}
 	if(f.type == Tflush){
 		if(c->attach != nil && c->attach->tag == f.oldtag)
 			cancelattach(c);
+		flushread(c, f.oldtag);
 		f.type = Rflush;
 		wr(c, &f);
-		return;
-	}
-	if(f.type != Tversion && c->attach != nil && c->attach->tag == f.tag){
-		c->state |= CDISC;
 		return;
 	}
 	ops = c->server->ops;
@@ -880,9 +887,12 @@ dispatch(Client *c)
 					f.type = Rread;
 				}
 			}
-		}else if(ops->read != nil &&
-			(f.ename = ops->read(fp->qid, c->data, &count, f.offset)) == nil)
-			f.type = Rread;
+		}else if(ops->read != nil){
+			if(callbackread(c, fp, &f, &count, isdir))
+				break;
+			if(f.ename == nil)
+				f.type = Rread;
+		}
 		if(f.type == Rread){
 			if(count > f.count){
 				f.type = Rerror;
@@ -1001,6 +1011,7 @@ dispatch(Client *c)
 			break;
 		}
 		cancelattach(c);
+		cancelreads(c, nil);
 		deletefids(c);
 		c->msize = f.msize > MSGMAX ? MSGMAX : f.msize;
 		c->versioned = strcmp(f.version, VERSION9P) == 0 ||
