@@ -257,11 +257,12 @@ sremove(Styxserver *server, Styxfile *f)
 			*p = f->next;
 			break;
 		}
-	for(p = &f->parent->child; *p; p = &(*p)->sibling)
-		if(*p == f){
-			*p = f->sibling;
-			break;
-		}
+	if(f->parent != nil)
+		for(p = &f->parent->child; *p; p = &(*p)->sibling)
+			if(*p == f){
+				*p = f->sibling;
+				break;
+			}
 	styxfree(f->d.name);
 	styxfree(f->d.uid);
 	styxfree(f->d.gid);
@@ -520,6 +521,10 @@ devwalk(Client *c, Styxfile *file, Fid *fp, Fid *nfp, char **name, int nname, ch
 				qid = p != nil ? p->d.qid : nfp->qid;
 				goto Accept;
 			}
+			if(!server->needfile){
+				*err = e;
+				goto Done;
+			}
 		}
 
 		if(p != nil)
@@ -547,6 +552,7 @@ Done:
 	return wq;
 }
 
+/* Emit whole live directory records; an undersized buffer must not look like EOF. */
 static long
 devdirread(Fid *fp, Styxfile *file, char *d, long n)
 {
@@ -554,28 +560,40 @@ devdirread(Fid *fp, Styxfile *file, char *d, long n)
 	Styxfile *f;
 	int i;
 
-	struct{
-		Dir d;
-		char slop[100];	/* TO DO */
-	}dir;
-
 	f = file->child;
-	for(i = 0; i < fp->dri; i++)
-		if(f == 0)
-			return 0;
-		else
-			f = f->sibling;
-	for(m = 0; m < n; fp->dri++){
-		if(f == nil)
-			break;
-		dir.d = f->d;
-		dsz = convD2M(&dir.d, (uchar*)d, n-m);
+	for(i = 0; i < fp->dri && f != nil; i++)
+		f = f->sibling;
+	for(m = 0; m < n && f != nil; fp->dri++){
+		dsz = sizeD2M(&f->d);
+		if(dsz > n-m)
+			return m != 0 ? m : -1;
+		if(convD2M(&f->d, (uchar*)d, n-m) != dsz)
+			return -1;
 		m += dsz;
 		d += dsz;
 		f = f->sibling;
 	}
-
 	return m;
+}
+
+/* Provider directory data must contain only complete stat records. */
+static int
+validdir(char *data, ulong n)
+{
+	uint size;
+	uchar *p;
+
+	p = (uchar*)data;
+	while(n != 0){
+		if(n < BIT16SZ)
+			return 0;
+		size = GBIT16(p)+BIT16SZ;
+		if(size > n || statcheck(p, size) < 0)
+			return 0;
+		p += size;
+		n -= size;
+	}
+	return 1;
 }
 
 static char*
@@ -651,7 +669,8 @@ run(Client *c)
 {
 	Fcall f;
 	Fid *fp, *nfp;
-	int i, open, mode;
+	int i, open, mode, isdir;
+	long dircount;
 	ulong count;
 	char ebuf[EMSGLEN];
 	Walkqid *wq;
@@ -822,36 +841,40 @@ run(Client *c)
 		if(c->msize != 0 && f.count > c->msize-IOHDRSZ)
 			f.count = c->msize-IOHDRSZ;
 		count = f.count;
-		if(fp->qid.type&QTDIR || (file != nil && file->d.qid.type&QTDIR)){
-			f.type = Rread;
-			if(file == nil){
-				f.ename = Eperm;
-				if(ops->read && (f.ename = ops->read(fp->qid, c->data, &count, fp->dri)) == nil){
-					f.data = c->data;
-				}
-				else
-					f.type = Rerror;
+		isdir = (fp->qid.type&QTDIR) || (file != nil && (file->d.qid.type&QTDIR));
+		f.type = Rerror;
+		f.ename = Eperm;
+		if(isdir && file != nil && (c->server->needfile || ops->read == nil)){
+			if(f.offset == 0){
+				fp->dri = 0;
+				fp->offset = 0;
 			}
+			if(f.offset != fp->offset)
+				f.ename = "invalid directory offset";
 			else{
-				f.count = devdirread(fp, file, c->data, f.count);
-				f.data = c->data;
-			}		
-		}else{
-			f.ename = Eperm;
-			f.type = Rerror;
-			if(ops->read && (f.ename = ops->read(fp->qid, c->data, &count, f.offset)) == nil){
-				f.type = Rread;
-				f.data = c->data;			
+				dircount = devdirread(fp, file, c->data, f.count);
+				if(dircount < 0)
+					f.ename = "directory entry exceeds read capacity";
+				else{
+					count = dircount;
+					fp->offset += count;
+					f.type = Rread;
+				}
 			}
-		}
+		}else if(ops->read != nil &&
+			(f.ename = ops->read(fp->qid, c->data, &count, f.offset)) == nil)
+			f.type = Rread;
 		if(f.type == Rread){
-			if(fp->qid.type&QTDIR && file != nil)
-				count = f.count;
 			if(count > f.count){
 				f.type = Rerror;
 				f.ename = "invalid read count";
-			}else
+			}else if(isdir && !validdir(c->data, count)){
+				f.type = Rerror;
+				f.ename = "invalid directory records";
+			}else{
 				f.count = count;
+				f.data = c->data;
+			}
 		}
 		wr(c, &f);
 		break;
@@ -1025,29 +1048,54 @@ styxinit(Styxserver *server, Styxops *ops, char *port, int perm, int needfile)
 	if(perm == -1)
 		perm = 0555;
 	server->ops = ops;
+	server->connfd = -1;
+	server->priv = nil;
+	server->curc = nil;
 	server->clients = nil;
 	server->root = nil;
 	server->ftab = (Styxfile**)malloc(TABSZ*sizeof(Styxfile*));
+	if(server->ftab == nil)
+		return Enomem;
 	for(i = 0; i < TABSZ; i++)
 		server->ftab[i] = nil;
 	server->qidgen = Qroot+1;
-	if(styxinitsocket() < 0)
+	if(styxinitsocket() < 0){
+		free(server->ftab);
+		server->ftab = nil;
 		return "styxinitsocket failed";
+	}
 	server->connfd = styxannounce(server, port);
-	if(server->connfd < 0)
+	if(server->connfd < 0){
+		styxend(server);
 		return "can't announce on network port";
+	}
 	styxinitwait(server);
 	server->root = newfile(server, nil, 1, Qroot, "/", perm|DMDIR, eve);
 	server->needfile = needfile;
 	return nil;
 }
 
-char*
-styxend(Styxserver *server)
+/* Release common state after the owning platform admits synchronous teardown. */
+void
+styxendserver(Styxserver *server)
 {
-	USED(server);
-	styxendsocket();
-	return nil;
+	Client *c;
+
+	while((c = server->clients) != nil){
+		server->curc = c;
+		if(server->priv != nil)
+			styxfreeclient(server, c->fd);
+		freeclient(c);
+	}
+	server->curc = nil;
+	if(server->root != nil)
+		sremove(server, server->root);
+	server->root = nil;
+	free(server->ftab);
+	server->ftab = nil;
+	if(server->connfd >= 0)
+		styxclosesocket(server->connfd);
+	server->connfd = -1;
 }
 
 char *

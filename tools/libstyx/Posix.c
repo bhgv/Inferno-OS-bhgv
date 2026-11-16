@@ -43,6 +43,10 @@ styxannounce(Styxserver *server, char *port)
 	s = socket(AF_INET, SOCK_STREAM, 0);
 	if(s < 0)
 		return s;
+	if(s >= FD_SETSIZE){
+		close(s);
+		return -1;
+	}
 	one = 1;
 	if(setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (char*)&one, sizeof(one)) < 0)
 		fprint(2, "setsockopt failed\n");
@@ -72,6 +76,10 @@ styxaccept(Styxserver *server)
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
 	s = accept(server->connfd, (struct sockaddr *)&sin, &len);
+	if(s >= FD_SETSIZE){
+		close(s);
+		return -1;
+	}
 	if(s < 0){
 		if(errno != EINTR)
 			fprint(2, "error in accept: %s\n", strerror(errno));
@@ -141,8 +149,13 @@ styxwaitmsg(Styxserver *server)
 	seltime.tv_sec = 10;
 	seltime.tv_usec = 0L;
 	nfds = select(sizeof(fd_set)*8, &fs->r_infds, &fs->r_outfds, &fs->r_excfds, &seltime);
-	if(nfds < 0 && errno != EINTR)
-		return"error in select";
+	if(nfds < 0){
+		FD_ZERO(&fs->r_infds);
+		FD_ZERO(&fs->r_outfds);
+		FD_ZERO(&fs->r_excfds);
+		if(errno != EINTR)
+			return "error in select";
+	}
 	return nil;
 }
 
@@ -155,6 +168,9 @@ styxrecv(Styxserver *server, int fd, char *buf, int n, int m)
 int
 styxsend(Styxserver *server, int fd, char *buf, int n, int m)
 {
+#ifdef MSG_NOSIGNAL
+	m |= MSG_NOSIGNAL;
+#endif
 	return send(fd, buf, n, m);
 }
 
@@ -162,4 +178,17 @@ void
 styxexit(int n)
 {
 	exit(n);
+}
+
+/* End the native socket owner once, after clunking clients and their backend state. */
+char*
+styxend(Styxserver *server)
+{
+	if(server->ftab == nil)
+		return nil;
+	styxendserver(server);
+	free(server->priv);
+	server->priv = nil;
+	styxendsocket();
+	return nil;
 }

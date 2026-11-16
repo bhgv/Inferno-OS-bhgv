@@ -312,3 +312,11 @@ styxexit(int n)
 	else
 		exits(nil);
 }
+
+/* Shared-memory helper processes need a join protocol before state can be freed. */
+char*
+styxend(Styxserver *server)
+{
+	USED(server);
+	return "Plan9 helper-process shutdown is not implemented";
+}

@@ -170,3 +170,16 @@ styxexit(int n)
 {
 	exit(n);
 }
+
+/* End the native socket owner once, after clunking clients and their backend state. */
+char*
+styxend(Styxserver *server)
+{
+	if(server->ftab == nil)
+		return nil;
+	styxendserver(server);
+	free(server->priv);
+	server->priv = nil;
+	styxendsocket();
+	return nil;
+}
