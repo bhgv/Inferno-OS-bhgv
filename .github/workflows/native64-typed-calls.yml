@@ -21,6 +21,7 @@ on:
       - 'utils/tests/awm-native64-*'
       - 'utils/tests/dis64-layout.py'
       - 'utils/tests/native64-callsites.py'
+      - 'utils/tests/classic-array-initializers.py'
       - 'appl/wm/awm.b'
       - 'appl/wm/atoolbar.b'
       - 'appl/lib/**'
@@ -100,6 +101,13 @@ jobs:
               --source appl/wm/awm.b --control "$control" 2>&1 \
               | tee "$RUNNER_TEMP/typed-call-logs/awm-data-$control.log"
           done
+          for control in array-map array-clone array-value; do
+            source=appl/lib/titlebar.b
+            if [ "$control" = array-value ]; then source=appl/cmd/sh/sh.b; fi
+            python3 utils/tests/awm-native64-data.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+              --source "$source" --control "$control" 2>&1 \
+              | tee "$RUNNER_TEMP/typed-call-logs/awm-data-$control.log"
+          done
       - name: Execute source-derived typed calls and active refusal controls
         env:
           CC: ${{ matrix.compiler }}
@@ -168,6 +176,13 @@ jobs:
           for control in scalar map clone; do
             python3 utils/tests/awm-native64-data.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
               --source appl/wm/awm.b --control "$control" 2>&1 \
+              | tee "$RUNNER_TEMP/typed-call-logs/awm-data-$control.log"
+          done
+          for control in array-map array-clone array-value; do
+            source=appl/lib/titlebar.b
+            if [ "$control" = array-value ]; then source=appl/cmd/sh/sh.b; fi
+            python3 utils/tests/awm-native64-data.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+              --source "$source" --control "$control" 2>&1 \
               | tee "$RUNNER_TEMP/typed-call-logs/awm-data-$control.log"
           done
       - name: Execute typed calls and refusal controls against ARM64 Bionic

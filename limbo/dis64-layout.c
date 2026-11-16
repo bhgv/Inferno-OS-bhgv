@@ -289,6 +289,26 @@ dis64layoutstorage(Decl *args, Decl *locals, Desc *desc, int fp, Dis64Layout *p)
 
 /* Opt-in migration evidence, independent of bytecode emission and admission. */
 void
+dis64layoutarrayreport(Type *t, int descriptor)
+{
+	Dis64Layout p={0};
+	char *enabled=getenv("LIMBO_DIS64_LAYOUT"), *kind=nil;
+	if(enabled==nil || strcmp(enabled,"1")!=0) return;
+	switch(t->kind){
+	case Tbyte: kind="byte"; break;
+	case Tint: kind="word"; break;
+	case Tbig: kind="long"; break;
+	case Treal: kind="real"; break;
+	case Tstring: kind="string"; break;
+	}
+	if(kind!=nil && dis64layouttype(t,&p))
+		fprint(2,"DIS64_ARRAY {\"schema\":\"inferno-array-element-v1\",\"descriptor\":%d,\"kind\":\"%s\",\"legacy_bytes\":%ud,\"bytes\":%ud,\"accepted\":true}\n",descriptor,kind,p.legacybytes,p.bytes);
+	else
+		fprint(2,"DIS64_ARRAY {\"schema\":\"inferno-array-element-v1\",\"descriptor\":%d,\"accepted\":false}\n",descriptor);
+	dis64layoutfree(&p);
+}
+
+void
 dis64layoutreport(Decl *globals, Decl **functions, int count)
 {
 	Dis64Layout p;

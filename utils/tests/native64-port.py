@@ -114,6 +114,11 @@ def main():
     if args.pair_boot_only:
         print('PASS classic-mk console and Dis64 pair boot')
         return
+    run([sys.executable, str(tests/'awm-native64-data.py'), '--limbo', str(tools/'limbo')], build, env, logs/'awm-startup-data.log')
+    for control in ('scalar', 'map', 'clone', 'array-map', 'array-clone', 'array-value'):
+        source = 'appl/wm/awm.b' if not control.startswith('array-') else ('appl/cmd/sh/sh.b' if control == 'array-value' else 'appl/lib/titlebar.b')
+        run([sys.executable, str(tests/'awm-native64-data.py'), '--limbo', str(tools/'limbo'),
+             '--source', source, '--control', control], build, env, logs/('awm-data-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-sys-string-gc.py'), '--limbo', str(tools/'limbo')], build, env, logs/'sys-string-gc.log')
     run([sys.executable, str(tests/'dis64-sys-flow-gc.py'), '--limbo', str(tools/'limbo')], build, env, logs/'sys-flow-gc.log')
     run([sys.executable, str(tests/'dis64-sys-groups-gc.py'), '--limbo', str(tools/'limbo')], build, env, logs/'sys-groups-gc.log')

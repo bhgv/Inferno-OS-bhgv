@@ -26,15 +26,17 @@ def checked_run(command, **options):
         raise
 
 
-def legacy_instructions(data, with_types=False, with_data=False, with_exports=False, with_imports=False):
+def legacy_instructions(data, with_types=False, with_data=False, with_exports=False, with_imports=False, with_arrays=False):
     """Independent classic Dis code reader; no diagnostic or Dis64 parser is reused."""
     if with_imports: with_exports=True
     if with_exports: with_types=with_data=True
     at = 0
     def number():
         nonlocal at
+        if at >= len(data): raise RuntimeError('Truncated classic integer')
         first = data[at]; at += 1
         length, bits = (1, 7) if first < 128 else (2, 14) if first < 192 else (4, 30)
+        if length-1 > len(data)-at: raise RuntimeError('Truncated classic integer')
         value = first & (0x7f if length == 1 else 0x3f)
         for _ in range(length-1): value = (value << 8) | data[at]; at += 1
         return value-(1 << bits) if value & (1 << (bits-1)) else value
@@ -60,8 +62,19 @@ def legacy_instructions(data, with_types=False, with_data=False, with_exports=Fa
             raise RuntimeError('Invalid classic descriptor')
         types[identity] = (size, data[at:at+mapsize]); at += mapsize
     if not with_data: return header, code, types
-    initial = {}
+    initial = {}; stack = []; base = 0; array = None
+    def put(offset, value, width):
+        if array is not None:
+            size = types[array['descriptor']][0]*array['length']
+        else:
+            size = header[4]
+        offset += base
+        widths = {'byte':1,'word':4,'long':8,'real':8,'string':4,'array':4}
+        if with_arrays and (offset > size or width > size-offset or any(offset < old+widths[cell['kind']] and old < offset+width for old, cell in initial.items())):
+            raise RuntimeError('Overlapping or out-of-bounds classic initializer')
+        initial[offset] = value
     while True:
+        if at >= len(data): raise RuntimeError('Truncated classic initializer')
         tag = data[at]; at += 1
         if tag == 0: break
         kind, count = tag>>4, tag&15
@@ -70,14 +83,33 @@ def legacy_instructions(data, with_types=False, with_data=False, with_exports=Fa
         if count < 0 or offset < 0: raise RuntimeError('Invalid classic data record')
         if kind == 3:
             if at+count > len(data): raise RuntimeError('Truncated classic String')
-            initial[offset] = dict(kind='string',bytes=list(data[at:at+count])); at += count
+            put(offset, dict(kind='string',bytes=list(data[at:at+count])), 4); at += count
         elif kind in (1,2,4,8):
             width = {1:1,2:4,4:8,8:8}[kind]
             if count > (len(data)-at)//width: raise RuntimeError('Truncated classic scalar data')
             for i in range(count):
                 value = int.from_bytes(data[at:at+width],'big'); at += width
-                initial[offset+i*width] = dict(kind={1:'byte',2:'word',4:'real',8:'long'}[kind],high=value>>32,low=value&0xffffffff)
+                put(offset+i*width, dict(kind={1:'byte',2:'word',4:'real',8:'long'}[kind],high=value>>32,low=value&0xffffffff), width)
+        elif with_arrays and kind in (5,6,7):
+            if count != 1: raise RuntimeError('Invalid classic array control count')
+            if kind == 5:
+                if at+8 > len(data): raise RuntimeError('Truncated classic array')
+                descriptor, length = (int.from_bytes(data[at+i:at+i+4], 'big') for i in (0,4)); at += 8
+                if descriptor not in types or length > 65536 or types[descriptor][0]*length > 1024*1024:
+                    raise RuntimeError('Unbounded classic array')
+                put(offset, dict(kind='array',descriptor=descriptor,length=length,initial={}), 4)
+            elif kind == 6:
+                if at+4 > len(data): raise RuntimeError('Truncated classic array index')
+                index = int.from_bytes(data[at:at+4], 'big'); at += 4
+                child = initial.get(base+offset)
+                if not child or child['kind'] != 'array' or index > child['length'] or len(stack) >= 4:
+                    raise RuntimeError('Invalid classic array descent')
+                stack.append((initial, base, array)); array=child; initial=child['initial']; base=index*types[child['descriptor']][0]
+            else:
+                if offset or not stack: raise RuntimeError('Invalid classic array pop')
+                initial, base, array = stack.pop()
         else: raise RuntimeError('Non-flat classic initializer in this bounded source gate')
+    if stack: raise RuntimeError('Unclosed classic array initializer')
     if with_exports:
         def name():
             nonlocal at

@@ -463,3 +463,44 @@ The paired-console matrix now runs the full Limbo caller/alias gate on all
 three architectures. The typed/Bionic matrix runs the raw gate and actual
 managed Wm-named file-call families. Target results on this new revision remain
 pending. See doc/dis64-command-alias.ru.md for architecture and reproduction.
+
+## Complete startup MP data, including static arrays
+
+The Command alias Bionic gate exposed two fixture integration errors: missing
+private lib9 strtoll/strtoull owners (03287fc), then global free wrapping also
+intercepting static Bionic fclose's private buffers (a58617b). Link the real
+converters and detect Bionic from target headers: Inferno runtime frees still
+pass through the strict tracked free_ boundary, while libc keeps its own free.
+The complete six-direct/three-nested families pass locally both with private
+numeric names and with Android allocator headers in a static host executable.
+This host header check is not an Android execution claim; target CI is separate.
+
+Extend the opt-in compiler diagnostics with AST-derived primitive/String array
+element kinds and old/native strides. Ordinary Dis bytes remain unchanged.
+The independent classic reader can now explicitly decode DEFA/DIND/DAPOP with
+the runtime's four-level address stack, bounds, overlap and truncation checks;
+its default flat-only policy remains. Four positive graphs and 24 malformed
+records actively check that oracle.
+
+All 16 real startup MP images now construct, including the previously refused
+atoolbar/titlebar/sh. They contain 608 MP Strings, 251 ordinary scalar records,
+365 opaque/table records and 13 arrays (22 contained Strings, 546 numeric
+elements). Real dtype/heaparray/initmem/String factories build the arrays;
+real newmp/arraycpy make independent headers and backing data in two MP clones.
+Shared contained Strings traverse refcounts 1 -> 3 -> 2 -> 1. Exact values,
+element maps/strides, H/zero defaults, external descriptor ownership and complete
+retirement are checked. All 1680 construction and 94 clone allocation-failure
+positions roll back, including partially copied array trees and temporary pins.
+
+The full x64 data gate passes ASan+UBSan with detect_leaks=0. Three existing
+controls plus three array controls (element map, aliased clone, numeric value)
+must produce their specific semantic refusals. The independent typed-layout
+gate still proves 376 storage plans across all 16 sources and compares exact
+classic outputs with the preceding compiler. The four-target typed workflow
+and the complete port driver require the expanded data and refusal gates.
+
+This is data construction and MP cloning, not AWM code execution or general
+Dis64 source/file admission. Opaque tables still retain old code coordinates;
+compound array elements/multidimensional initializers remain refused here.
+No classic ABI, wire ID or shared FlashVM schema is changed. New target results
+remain pending until their jobs finish.

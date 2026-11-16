@@ -23,4 +23,5 @@ int dis64layoutstorage(Decl*, Decl*, Desc*, int, Dis64Layout*);
 int dis64layoutaddress(Dis64Layout*, unsigned int, unsigned int, int, unsigned int*);
 void dis64layoutfree(Dis64Layout*);
 void dis64layoutreport(Decl*, Decl**, int);
+void dis64layoutarrayreport(Type*, int);
 #endif

@@ -25,18 +25,22 @@ def relocate(plan, initial):
     records, strings = [], []
     require(plan['accepted'] and plan['space'] == 'mp', 'unproved MP layout')
     for offset, value in sorted(initial.items()):
-        width = {'byte': 1, 'word': 4, 'long': 8, 'real': 8, 'string': 4}[value['kind']]
+        width = {'byte': 1, 'word': 4, 'long': 8, 'real': 8, 'string': 4, 'array': 4}[value['kind']]
         leaves = [l for l in plan['leaves'] if l[0] <= offset and offset+width <= l[0]+l[2]]
         require(len(leaves) == 1, 'initializer crosses typed storage')
         old, native, oldbytes, size, kind = leaves[0]
         root = oldbytes == 4 and size == 8 and kind >= 0
-        require(root == (value['kind'] == 'string'), 'initializer root role mismatch')
+        require(root == (value['kind'] in ('string', 'array')), 'initializer root role mismatch')
         target = native+offset-old
         if root:
+            # Limbo's stable internal enum: Tarray=3, Tstring=13. The element
+            # report below proves the precise array payload separately.
+            require(kind == (3 if value['kind'] == 'array' else 13), 'initializer managed kind mismatch')
             require(offset == old and target % 8 == 0, 'partial string root')
-            # Validate the complete UTF-8 before the native String constructor.
-            bytes(value['bytes']).decode('utf-8')
-            strings.append((target, value['bytes']))
+            if value['kind'] == 'string':
+                # Validate the complete UTF-8 before the native String constructor.
+                bytes(value['bytes']).decode('utf-8')
+                strings.append((target, value['bytes']))
         else:
             require(size == oldbytes and target % width == 0, 'scalar relocation width/alignment')
             records.append([target, width, (value['high'] << 32) | value['low']])
@@ -51,7 +55,7 @@ def generate(limbo, work, selected=None, control=None):
              'static const Native64TypedStep emptycode[]={{IRET,SRC(AXXX)|DST(AXXX),0,0,0,0}};',
              'static const uchar emptymap[]={0};',
              'static const Native64ModuleFunction emptyfn[]={ {"data_only",0,0,emptycode,1,64,emptymap,1,nil,0} };']
-    cases, blocked, counts = [], [], {'strings': 0, 'scalars': 0, 'opaque': 0}
+    cases, blocked, counts = [], [], {'strings': 0, 'scalars': 0, 'opaque': 0, 'arrays': 0, 'array_strings': 0, 'array_scalars': 0}
     for ordinal, source in enumerate(AWM['STARTUP']):
         if selected and source not in selected:
             continue
@@ -64,10 +68,16 @@ def generate(limbo, work, selected=None, control=None):
         require(image.read_bytes() == original, 'layout diagnostics changed classic bytes')
         plan = next(json.loads(l[13:]) for l in result.stderr.decode().splitlines()
                     if l.startswith('DIS64_LAYOUT ') and json.loads(l[13:])['space'] == 'mp')
+        elements = {}
+        for line in result.stderr.decode().splitlines():
+            if not line.startswith('DIS64_ARRAY '): continue
+            element = json.loads(line[12:]); identity = element['descriptor']
+            require(identity not in elements or elements[identity] == element, 'ambiguous element descriptor')
+            elements[identity] = element
         _, _, types = READ['legacy_instructions'](original, with_types=True)
         require(LAYOUT['verify'](plan, types) == 'accepted', 'independent layout proof failed')
         try:
-            _, _, _, initial = READ['legacy_instructions'](original, with_types=True, with_data=True)
+            _, _, _, initial = READ['legacy_instructions'](original, with_types=True, with_data=True, with_arrays=True)
         except RuntimeError as error:
             if str(error) != 'Non-flat classic initializer in this bounded source gate':
                 raise
@@ -98,12 +108,38 @@ def generate(limbo, work, selected=None, control=None):
                 points = [int.from_bytes(bytes(runes[j:j+4]), 'little') for j in range(0, len(runes), 4)]
                 lines += [f'static const uchar {name}s{i}[]={{'+','.join(map(str, raw or [0]))+'};',
                           f'static const Rune {name}r{i}[]={{'+','.join(map(str, points or [0]))+'};']
+            elif value['kind'] == 'array':
+                element = elements.get(value['descriptor'])
+                require(element and element['accepted'] and element['schema'] == 'inferno-array-element-v1', 'unproved array element')
+                kind = element['kind']; oldwidth = {'byte':1,'word':4,'long':8,'real':8,'string':4}[kind]
+                width = 8 if kind == 'string' else oldwidth
+                require((element['legacy_bytes'],element['bytes']) == (oldwidth,width), 'element stride mismatch')
+                require(types[value['descriptor']] == (oldwidth, b'\x80' if kind == 'string' else b''), 'element root descriptor mismatch')
+                require(value['length'] <= 65536 and value['length']*width <= 1024*1024, 'array object limit')
+                cells = []
+                for j, (at, cell) in enumerate(sorted(value['initial'].items())):
+                    require(cell['kind'] == kind and at % oldwidth == 0 and at//oldwidth < value['length'], 'array element role/span mismatch')
+                    if kind == 'string':
+                        raw = cell['bytes']; points = [ord(c) for c in bytes(raw).decode('utf-8')]
+                        lines += [f'static const uchar {name}a{i}s{j}[]={{'+','.join(map(str,raw or [0]))+'};',
+                                  f'static const Rune {name}a{i}r{j}[]={{'+','.join(map(str,points or [0]))+'};']
+                        cells.append('{'+f'{at},0,0,{name}a{i}s{j},{len(raw)},{name}a{i}r{j},{len(points)},nil'+'}')
+                        counts['array_strings'] += 1
+                    else:
+                        bits = (cell['high'] << 32) | cell['low']
+                        cells.append('{'+f'{at},{width},{bits}ULL,nil,0,nil,0,nil'+'}')
+                        counts['array_scalars'] += 1
+                lines += [f'static const MPCell {name}a{i}cells[]={{'+','.join(cells or ['{0}'])+'};',
+                          f'static const MPArray {name}a{i}={{'+f'{oldwidth},{width},{value["length"]},{int(kind == "string")},{name}a{i}cells,{len(cells)}'+'};']
+                counts['arrays'] += 1
         lines += [f'static const MPCell {name}cells[]={{']
         for i, (offset, value) in enumerate(sorted(initial.items())):
             if value['kind'] == 'string':
                 raw = value['bytes']
                 lines += ['{'+f'{offset},0,0,{name}s{i},{len(raw)},{name}r{i},{len(bytes(raw).decode("utf-8"))}'+'},']
                 counts['strings'] += 1
+            elif value['kind'] == 'array':
+                lines += ['{'+f'{offset},0,0,nil,0,nil,0,&{name}a{i}'+'},']
             else:
                 width = {'byte': 1, 'word': 4, 'long': 8, 'real': 8}[value['kind']]
                 bits = (value['high'] << 32) | value['low']
@@ -113,10 +149,8 @@ def generate(limbo, work, selected=None, control=None):
         lines += ['};', f'static const Native64ModuleSpec {name}spec={{'+
                   f'"AWMData{ordinal}","{source}",emptyfn,1,~0U,{plan["bytes"]},{name}map,{len(maps)},{name}init,{len(records)},nil,0'+'};']
         cases.append('{'+f'&{name}spec,{name}leaves,{len(plan["leaves"])},{name}cells,{len(initial)}'+'}')
-    require(cases, 'no flat startup data images selected')
-    if not selected:
-        require(set(blocked) == {'appl/wm/atoolbar.b', 'appl/lib/titlebar.b', 'appl/cmd/sh/sh.b'},
-                'nested initializer frontier changed; review required')
+    require(cases, 'no startup data images selected')
+    require(not blocked, 'unhandled startup initializer graph')
     lines += ['static const MPCase mpcases[]={'+','.join(cases)+'};']
     (work/'awm-data.h').write_text('\n'.join(lines)+'\n')
     return len(cases), blocked, counts
@@ -136,6 +170,12 @@ def unit():
     strings = (ROOT/'libinterp/string.c').read_text()
     source += '\n'+'\n'.join(extract(strings, s) for s in ('String*\nnewstring(', 'String*\nnewrunes(', 'String*\nc2string('))
     source += '\n'+extract((ROOT/'libinterp/heap.c').read_text(), 'void\nfreestring(')+'\n'
+    heap = (ROOT/'libinterp/heap.c').read_text()
+    source = source.replace(extract(source, 'Array*arraycpy('), 'void* arraycpy(Array*);', 1)
+    source += '\nchar exType[]="type";\n'+'\n'.join(extract(heap, signature) for signature in ('void\nacheck(', 'void\ninitarray(', 'Heap*\nheaparray(', 'void\nfreearray('))+'\n'
+    source += heap[heap.index('typedef struct ArrayCopy'):heap.index('/* Validate source spans')]
+    source += extract(heap, 'static int\ncopyarray(')+'\n'+extract(heap, 'void*\narraycpy(')+'\n'
+    source += extract((ROOT/'emu/port/dis.c').read_text(), 'void\nkrethrow(')+'\n'
     return source+'\n'+(ROOT/'utils/tests/awm-native64-data.c').read_text()
 
 
@@ -143,8 +183,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--limbo', type=Path, required=True)
     parser.add_argument('--source', action='append', choices=AWM['STARTUP'])
-    parser.add_argument('--control', choices=('scalar', 'map', 'clone'))
+    parser.add_argument('--control', choices=('scalar', 'map', 'clone', 'array-map', 'array-clone', 'array-value'))
     args = parser.parse_args()
+    if not args.control:
+        runpy.run_path(str(ROOT/'utils/tests/classic-array-initializers.py'))['main']()
     arch = os.environ.get('NATIVE64_ARCH', 'amd64')
     with tempfile.TemporaryDirectory(prefix='awm-data-', dir=ROOT) as td:
         work = Path(td)
@@ -155,6 +197,17 @@ def main():
             body = extract(text, 'void\nnewmp(')
             require(body.count('h->ref++;') == 1, 'clone retain marker drift')
             text = text.replace(body, body.replace('h->ref++;', ';'), 1)
+        mutations = {
+            'array-map': ('uchar map[]={0x80};', 'uchar map[]={0};'),
+            'array-clone': ('owned = arraycpy(wp);', '{h->ref++;owned=wp;}'),
+            # Damage an already initialized numeric element, not its oracle.
+            'array-value': ('}else mpstore(b->owner.module->origmp+at,c->cells+i);',
+                'if(!v->strings && v->length)a->data[0]^=1;\n        }else mpstore(b->owner.module->origmp+at,c->cells+i);'),
+        }
+        if args.control in mutations:
+            before, after = mutations[args.control]
+            require(text.count(before) == 1, 'array control marker drift')
+            text = text.replace(before, after, 1)
         source.write_text(text)
         cc = shlex.split(os.environ.get('CC', 'cc'))+shlex.split(os.environ.get('NATIVE64_CFLAGS', '-O2 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
         if arch in ('arm64', 'riscv64'):
@@ -166,13 +219,13 @@ def main():
         subprocess.run(cc+[str(source), str(ROOT/'libinterp/dec.c'), '-Wl,--wrap=free', '-lm', '-o', str(binary)], check=True)
         result = subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER', ''))+[str(binary)], capture_output=True, text=True, timeout=180)
         if args.control:
-            marker = {'scalar': 'scalar-value', 'map': 'string-map', 'clone': 'string-refcount'}[args.control]
+            marker = {'scalar': 'scalar-value', 'map': 'string-map', 'clone': 'string-refcount', 'array-map': 'array-element-map', 'array-clone': 'independent-array-clones', 'array-value': 'scalar-value'}[args.control]
             require(result.returncode == 10 and 'AWM data predicate: '+marker in result.stderr and 'Sanitizer' not in result.stderr and 'runtime error:' not in result.stderr, result.stderr)
             print('PASS AWM MP active control:', arch, args.control)
         else:
             require(result.returncode == 0, result.stderr)
             print(result.stdout, end='')
-            print('PASS AWM data relocation:', arch, count, 'images;', totals, '; nested initializers still refused:', ', '.join(blocked))
+            print('PASS AWM data relocation:', arch, count, 'images;', totals, '; unsupported initializer graphs:', ', '.join(blocked) or 'none in startup slice')
             print('Data construction/cloning only; legacy code coordinates retained; no AWM instruction executed.')
 
 
