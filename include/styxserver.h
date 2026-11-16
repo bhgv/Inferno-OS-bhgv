@@ -45,6 +45,7 @@ struct Client
 	uint		msize;	/* negotiated full-message bound */
 	int		versioned;	/* negative rejects unsupported sessions */
 	Fid		*fids;
+	Fid		*current;	/* borrowed only during one dispatch */
 	char		*uname;	/* uid */
 	char		*aname;	/* attach name */
 	void		*u;
@@ -65,6 +66,7 @@ struct Styxops
 	char *(*remove)(Qid qid);
 	char *(*stat)(Qid qid, Dir *d);
 	char *(*wstat)(Qid qid, Dir *d);
+	void (*freefid)(void *aux);	/* consumes fid-owned native context, before freeclient */
 };
 
 struct Styxfile
@@ -98,3 +100,8 @@ void *styxmalloc(int n);
 void styxfree(void *p);
 void styxdebug(void);
 void styxsetowner(char*);
+
+/* Borrow current fid context; set transfers non-nil ownership only into an empty slot.
+ * No automatic cloning: unopened walk clones start empty. Rebuild all consumers. */
+void *styxgetaux(Styxserver *server);
+int styxsetaux(Styxserver *server, void *aux);
