@@ -98,3 +98,5 @@ ARM64/Bionic и в полный port driver. Результаты новых ц�
 вызовов и 960 owned-import roots со всеми прежними активными контролями.
 В предыдущем CI сам LOAD gate на 6528 запусков прошёл на всех четырёх целях;
 остановка происходила в старом rollback-ожидании.
+
+Следующий участок: [файловый Command/Wm.init с argv](native64-typed-command-files.ru.md).

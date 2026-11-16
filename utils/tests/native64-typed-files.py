@@ -68,6 +68,7 @@ def unit():
     source=source.replace(extract(source,'void\ndestroylinks('),extract((ROOT/'libinterp/link.c').read_text(),'void\ndestroylinks('),1)
     source=source.replace('#define require(c) libraryrequire','#undef require\n#define require(c) libraryrequire',1)
     source+='\n'+extract((ROOT/'libinterp/xec.c').read_text(),'OP(movp)')+'\n'+extract((ROOT/'libinterp/string.c').read_text(),'int\nstringcmp(')+'\n'
+    source+='\n#if defined(__BIONIC__) || defined(TEST_PRIVATE_UNSIGNED_CONVERTER)\n'+''.join(line for line in (ROOT/'lib9/strtoull.c').read_text().splitlines(True)if not line.startswith('#include'))+'\n#endif\n'
     return source+'\n#line 1 "native64-typed-files.c"\n'+(ROOT/'utils/tests/native64-typed-files.c').read_text().replace(' NAMESPACE_HANDLERS',handlers)
 
 def main():

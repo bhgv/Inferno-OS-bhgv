@@ -713,3 +713,34 @@ The corrected full local regressions pass 960 module roots, 912 external-call
 roots and 960 owned-import graph roots with every original active control.
 Logs confirm the preceding 6528-root LOAD gate itself passed on all four
 targets before the stale rollback assertion stopped each job.
+
+
+## Fixed Command roots in typed file installation
+
+Extend install64typedimports to the already existing fixed Command trial,
+using client binding getters/checkers rather than introducing managed tags.
+Require the payload classic hash to match the independently supplied .m hash
+and ldt, and require the exact 80-byte prototype with np=2/map {0,0xc0}.
+Scalar geometry/root checks remain unchanged. The existing file reader and
+Command/Wm alias proof still own complete file admission.
+
+The new checked consumer executes LOAD and two explicit init calls against
+Command/Wm provider files, with actual cons/head/tail/length/free-list code.
+3888 C/JIT roots vary argv ASCII/Rune/NUL/nil, nullable mapped Context,
+stack growth, quanta, reloads and I/O/admission/pin/dontcompile policies.
+An always-failing Wm.init loads successfully without invocation and fails
+only on explicit Limbo call. Request/hash buffers are poisoned after install.
+All owners, descriptor refs, pins and namespace counters retire. Seventeen
+preallocation refusals and allocation rollback preserve REG. Payload-hash,
+root-map and argv-head-retain omissions fail semantic controls. The full gate
+passes ASan+UBSan/NDEBUG, detect_leaks=0; scalar/default/disabled controls,
+fresh full console/paired boot and 54 full VM launchers (243 raw) also pass.
+
+The preceding matrix is green on x64/ARM64/RV64; Android exposed missing
+inferno_strtoull in the file fixture's unused linked CLI helpers. Include the
+existing lib9 converter under Bionic in the shared unit. A host private-name
+alias simulation passes the complete scalar gate; actual Android remains a
+separately reported target. Add command-files as the thirteenth typed gate
+and raise both job budgets to 35 minutes (previous x64 duration 23m55s).
+No public managed ABI, new wire IDs, general AWM admission or 32-bit path
+changes. See doc/native64-typed-command-files.ru.md for scope and reproduction.

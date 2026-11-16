@@ -317,7 +317,7 @@ match64typedname(const DisStringPoolView *pool,uint symbol,const char *name)
 #endif
 
 /* Structural file requests plus independent .m hashes join an existing checked
- * ldt. Nothing is published until every table/name/hash/scalar frame agrees. */
+ * ldt. Nothing is published until every table/name/hash/prototype frame agrees. */
 int
 install64typedimports(Module *module,const Native64TypedImportRequest *tables,uint count,int jit)
 {
@@ -340,11 +340,12 @@ install64typedimports(Module *module,const Native64TypedImportRequest *tables,ui
      (uintptr)requests[i].imports>(uintptr)-1-requests[i].importbytes || (uintptr)requests[i].strings>(uintptr)-1-requests[i].stringbytes ||
      requests[i].importbytes+requests[i].stringbytes>8*Dis64LocalBytes-bytes ||
      !disstringpoolcheck(requests[i].strings,requests[i].stringbytes,65536,&pool) ||
-     !dis64bindingscheck(requests[i].imports,requests[i].importbytes,0,&pool,0,0,64,64,&bindings) || bindings.count!=entry->count)return 0;
+     !dis64clientbindingscheck(requests[i].imports,requests[i].importbytes,0,&pool,0,0,64,64,&bindings) || bindings.count!=entry->count)return 0;
   ldt=module->ldt[i];if(ldt==nil || ldt==H)return 0;
   for(j=0;j<entry->count;j++){
-   if(!dis64bindingget(&bindings,j,&binding) || !match64typedname(&pool,binding.symbol,ldt[j].name))return 0;
+   if(!dis64clientbindingget(&bindings,j,&binding) || !match64typedname(&pool,binding.symbol,ldt[j].name))return 0;
    memmove(&hash,entry->hashes+j,4);if(memcmp(&hash,&ldt[j].sig,4))return 0;
+   if(dis64commandsignature(&binding.signature) && hash!=dis64u32(binding.signature.data+4))return 0;
   }
   if(ldt[entry->count].name!=nil)return 0;
   bytes+=requests[i].importbytes+requests[i].stringbytes;total+=entry->count;
@@ -353,16 +354,21 @@ install64typedimports(Module *module,const Native64TypedImportRequest *tables,ui
  base=module->ntype-total;
  for(i=0;i<count;i++){
   if(!disstringpoolcheck(requests[i].strings,requests[i].stringbytes,65536,&pool) ||
-     !dis64bindingscheck(requests[i].imports,requests[i].importbytes,0,&pool,0,0,64,64,&bindings))return 0;
+     !dis64clientbindingscheck(requests[i].imports,requests[i].importbytes,0,&pool,0,0,64,64,&bindings))return 0;
   for(j=0;j<bindings.count;j++){
-   if(!dis64bindingget(&bindings,j,&binding))return 0;
-   frame=64;
-   for(k=0;k<binding.signature.parameters;k++){
-    width=dis64scalarwidth(dis64u32(binding.signature.data+12+4*k));frame=(frame+width-1)&~(width-1);frame+=width;
+   if(!dis64clientbindingget(&bindings,j,&binding))return 0;
+   type=module->type[base++];
+   if(dis64commandsignature(&binding.signature)){
+    if(type==nil || type==H || type->ref<=0 || type->size!=80 || type->np!=2 || type->map[0] || type->map[1]!=0xc0)return 0;
+   }else{
+    frame=64;
+    for(k=0;k<binding.signature.parameters;k++){
+     width=dis64scalarwidth(dis64u32(binding.signature.data+12+4*k));frame=(frame+width-1)&~(width-1);frame+=width;
+    }
+    frame=(frame+7)&~7;
+    if(type==nil || type==H || type->ref<=0 || type->size!=(int)frame || type->np!=(int)((frame+63)/64))return 0;
+    for(k=0;k<(uint)type->np;k++)if(type->map[k])return 0;
    }
-   frame=(frame+7)&~7;type=module->type[base++];
-   if(type==nil || type==H || type->ref<=0 || type->size!=(int)frame || type->np!=(int)((frame+63)/64))return 0;
-   for(k=0;k<(uint)type->np;k++)if(type->map[k])return 0;
   }
  }
  owner=copy64importrequests(requests,count,jit,bytes);if(owner==nil)return 0;
