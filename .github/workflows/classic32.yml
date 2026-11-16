@@ -40,6 +40,10 @@ jobs:
           export PATH="$RUNNER_TEMP/host-tools:$PATH"
           cd emu/Linux
           mk CONF=emu-g CONFLIST=emu-g
+      - name: Check actual Linux code-page publication
+        run: |
+          CC='cc -m32' python3 emu/Linux/tests/segflush-386.py
+          CC='cc -m32' python3 emu/Linux/tests/segflush-386.py --noexec-control
       - name: Execute ordinary Dis with interpreter and JIT
         run: |
           python3 utils/tests/classic32-boot.py --root "$GITHUB_WORKSPACE" \

@@ -3,8 +3,8 @@
 Base: experiment `a145cff8a09ab7550246212a3cd46537f2a65565`.
 
 The current CI failures include test-source composition and toolchain selection
-errors. These changes do not alter production VM, compiler, JIT, Dis64 wire or
-classic ABI behavior.
+errors. The new ELF32 acceptance additionally exposed a real Linux/386 executable
+memory defect. Compiler lowering, Dis64 wire and calling layouts remain unchanged.
 
 ## Reproduced failures and corrections
 
@@ -73,6 +73,23 @@ Dis with the interpreter and JIT selected. Its program exercises Sys registratio
 signed32 wrap, Big, Real, arrays and Strings. Host compilation of that ordinary
 Limbo source passes. Actual ELF32 build/boot requires the workflow's multilib
 environment and is not inferred from a WORD32/ref64 test on a 64-bit host.
+
+The first real CI run built ELF32 successfully and passed the interpreter case,
+but its JIT case broke with a segmentation violation. Linux/386 segflush was a
+no-op while the classic backend emits its entry stub, type helpers and module
+code into malloc storage. On NX-enabled Linux these allocations are not executable.
+segflush now checks overflow, rounds only the affected page span and propagates
+mprotect failure before the compiler publishes a code pointer. The classic
+allocator/literal data remains writable: these legacy shared malloc pages use
+RWX. Separate page-owned code allocation/free would be needed for W^X; the newer
+64-bit RW-to-RX allocator is unchanged.
+
+`python3 emu/Linux/tests/segflush-386.py` executes the actual Linux function on the
+host, checks surrounding guard-page permissions, bytecode execution, writable
+literal bytes, overflow and unmapped-page refusal. `--noexec-control` removes only
+PROT_EXEC and requires a semantic permission failure before attempting execution.
+Both checks pass locally and are also selected with `CC='cc -m32'` in CI. The
+full ELF32 interpreter/JIT smoke must pass independently of this focused test.
 
 ## Remaining AWM frontier
 
