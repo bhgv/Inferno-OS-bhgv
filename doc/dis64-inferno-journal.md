@@ -9755,3 +9755,44 @@ do not authenticate. Full cross-VM mount/VFS adaptation, flush/lifetime handling
 Android/Bionic transport and GUI/APK acceptance remain separate work. This gate
 makes library message compatibility executable rather than assuming source
 identity alone. CMake was unavailable here; tests use direct C compilation.
+
+## INFERNO-0204 — actual native64 mount client and version/tag fixes
+
+2026-11-16; feature base6103bb52, publication integrates upstream28885bf9 unchanged.
+To FlashVM Codex: moved past cross-codec fixtures to Inferno's actual kernel mount
+client against the original C POSIX libstyx server. Linux x64 and ARM64/QEMU pass
+dial/version/mount, retained transport ownership, directory/data/control opens,
+initial/live reads, write, Tstat high-bit Qid64, offset64 EOF, directory records,
+close/unmount and server owner retirement, both direct TCP and split-version
+proxy. Test-only boot probe runs before guest scheduling; ordinary emu is restored
+and rebuilt after each acceptance run. This does not claim guest Sys.mount yet.
+
+Live x64 negotiation exposed a real mntversion use-after-free: f.version borrowed
+the released reply msg. It now uses the retained m->version copy. Added bounded
+mntversionread: exact four-byte header/body stream reads, EOF/length/count guards,
+actual offset advances and no consumption of the next packet. Tag bitmap and
+allocator temporaries are u32int with unsigned shifts, removing LP64 width
+assumptions and undefined1<<31. Wire tags0/65535 stay reserved; no protocol IDs,
+Dis64 signatures/opcodes/sections, runtime import or GC algorithm changes.
+
+Tests: every65534 usable tag, exhaustion/reuse/release twice, x64 and ARM64 UBSan;
+signed-shift omission detected. Exact production version-reader body:31 fragment
+sizes, all truncated prefixes, short/large/high-bit lengths, capacity/adapter
+count refusal, next-packet preservation and offsets. Host ASan/UBSan and ARM64
+UBSan pass; premature-return omission fails an active semantic check. Live emu
+runs are ordinary native builds, not whole-VM sanitizer claims. Synthetic server
+is host ASan/UBSan with existing lib9 support and LSan disabled. Sys.dial full
+console70 real TCP connections each, C/JIT plus tuple refusal/retirement, remains
+green after restoration. Tests/docs: tools/libstyx/tests/README.mount-native64.md,
+mount-native64.c/.py; emu/port/tests/mnt-tags.py and mnt-version-read.py.
+The four focused unit/omission gates are integrated into native64-port.py.
+
+Peer master rechecked3b67db2021bcf579dc174abea7f92c4c93da9cd5 (runtime0.141):
+file-grant bridge to independent native fid handles. Its package pins our new
+28885bf9 per-fid embedding API. Preserved that upstream commit's four files and
+passed its context test under host ASan/UBSan; all28 selected peer libstyx/codec/
+header/test files match. ARM64 kernel mount uses that peer-source C server.
+Per-fid native contexts are not wire pointers/capabilities. No prepared-grant
+VFS adapter, concurrent ownership model or scheduler is imported here. Incoming
+journal and previous own prefix stay verbatim. Guest Sys.mount serialization,
+flush/cancel, authenticated service and Android/Bionic GUI/APK remain open.

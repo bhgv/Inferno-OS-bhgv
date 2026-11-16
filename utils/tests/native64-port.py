@@ -89,6 +89,13 @@ def main():
         target.symlink_to(tools/name)
     run([str(tools/'mk'), 'CONF=emu-g', 'CONFLIST=emu-g'], build/'emu/Linux', env, logs/'mk.log')
     tests = build/'utils/tests'
+    for script, controls in [('mnt-tags.py', (None, '--signed-shift-control')),
+                             ('mnt-version-read.py', (None, '--early-return-control'))]:
+        for control in controls:
+            command = [sys.executable, str(build/'emu/port/tests'/script)]
+            if control:
+                command += [control]
+            run(command, build, env, logs/(script[:-3]+str(control)+'.log'))
     run([sys.executable, str(tests/'dis64-pair-boot.py'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--sys-clock', '--limbo', str(tools/'limbo')],
         build, env, logs/'pair-boot.log')

@@ -35,7 +35,7 @@ struct Mntrpc
 
 enum
 {
-	TAGSHIFT = 5,			/* ulong has to be 32 bits */
+	TAGSHIFT = 5,			/* 32 wire-tag bits per bitmap word */
 	TAGMASK = (1<<TAGSHIFT)-1,
 	NMASK = (64*1024)>>TAGSHIFT,
 };
@@ -49,7 +49,7 @@ struct Mntalloc
 	int	nrpcfree;
 	int	nrpcused;
 	ulong	id;
-	ulong	tagmask[NMASK];
+	u32int	tagmask[NMASK];
 }mntalloc;
 
 void	mattach(Mnt*, Chan*, char*);
@@ -81,12 +81,44 @@ mntinit(void)
 {
 	mntalloc.id = 1;
 	mntalloc.tagmask[0] = 1;			/* don't allow 0 as a tag */
-	mntalloc.tagmask[NMASK-1] = 0x80000000UL;	/* don't allow NOTAG */
+	mntalloc.tagmask[NMASK-1] = 0x80000000U;	/* don't allow NOTAG */
 	fmtinstall('F', fcallfmt);
 /*	fmtinstall('D', dirfmt); */
 /*	fmtinstall('M', dirmodefmt);  */
 
 	cinit();
+}
+
+/* Read exactly one bounded version reply from the byte-stream transport. */
+static long
+mntversionread(Chan *c, uchar *msg, uint capacity)
+{
+	uint have, want, bytes;
+	long n;
+
+	have = 0;
+	want = BIT32SZ;
+	if(capacity < BIT32SZ+BIT8SZ+BIT16SZ)
+		error("short version message capacity");
+	for(;;){
+		n = devtab[c->type]->read(c, msg+have, want-have, c->offset);
+		if(n <= 0)
+			error("EOF receiving fversion reply");
+		if((ulong)n > want-have)
+			error("oversized version transport read");
+		lock(&c->l);
+		c->offset += n;
+		unlock(&c->l);
+		have += n;
+		if(have != want)
+			continue;
+		if(want != BIT32SZ)
+			return have;
+		bytes = GBIT32(msg);
+		if(bytes < BIT32SZ+BIT8SZ+BIT16SZ || bytes > capacity)
+			error("invalid version reply size");
+		want = bytes;
+	}
 }
 
 /*
@@ -176,14 +208,7 @@ mntversion(Chan *c, char *version, int msize, int returnlen)
 	}
 
 	/* message sent; receive and decode reply */
-//	k = devtab[c->type]->read(c, msg, 8192+IOHDRSZ, c->offset);
-	k = devtab[c->type]->read(c, msg, msize, c->offset);
-	if(k <= 0)
-		error("EOF receiving fversion reply");
-
-	lock(&c->l);
-	c->offset += k;
-	unlock(&c->l);
+	k = mntversionread(c, msg, msize);
 
 	l = convM2S(msg, k, &f);
 	if(l != k)
@@ -240,11 +265,12 @@ mntversion(Chan *c, char *version, int msize, int returnlen)
 	poperror();	/* c */
 	qunlock(&c->umqlock);
 
-	k = strlen(f.version);
+	/* f.version borrowed msg, which has already been freed. */
+	k = strlen(m->version);
 	if(returnlen > 0){
 		if(returnlen < k)
 			error(Eshort);
-		memmove(version, f.version, k);
+		memmove(version, m->version, k);
 	}
 
 	return k;
@@ -1024,15 +1050,15 @@ static int
 alloctag(void)
 {
 	int i, j;
-	ulong v;
+	u32int v;
 
 	for(i = 0; i < NMASK; i++){
 		v = mntalloc.tagmask[i];
-		if(v == ~0UL)
+		if(v == ~(u32int)0)
 			continue;
 		for(j = 0; j < 1<<TAGSHIFT; j++)
-			if((v & (1<<j)) == 0){
-				mntalloc.tagmask[i] |= 1<<j;
+			if((v & (1U<<j)) == 0){
+				mntalloc.tagmask[i] |= 1U<<j;
 				return (i<<TAGSHIFT) + j;
 			}
 	}
@@ -1043,7 +1069,7 @@ alloctag(void)
 static void
 freetag(int t)
 {
-	mntalloc.tagmask[t>>TAGSHIFT] &= ~(1<<(t&TAGMASK));
+	mntalloc.tagmask[t>>TAGSHIFT] &= ~(1U<<(t&TAGMASK));
 }
 
 Mntrpc*
