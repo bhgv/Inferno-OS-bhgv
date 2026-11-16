@@ -9723,3 +9723,35 @@ Publication integrates upstream experiment4029a622 (libstyx stream/session,
 backend refusal, walk and directory/transport lifecycle fixes). These16 files
 are disjoint from this change and preserved unchanged; the feature was tested
 from45072fb4. libstyx is outside these VM/compiler test binaries.
+
+## INFERNO-0203 — direct review of DisVM native libstyx and cross-wire gate
+
+2026-11-16; basea374b152. User clarified that the requested comparison is libstyx,
+not a DisVM runtime transfer. Reviewed FlashVM master19d8c84b8db3e35741de44263abb4bf7b7c62949:
+its disVM/native package imports our experiment4029a622. All23 selected libstyx,
+codec and public header files match our bytes. Existing upstream LP64, stream,
+session/authority, backend refusal, walk, live-directory and lifecycle fixes are
+already shared; no duplicate protocol port is needed.
+
+Added tools/libstyx/tests/wire-interop.c/.py and README.wire-interop.md. Each side's
+own four C codec units and headers are separately compiled.29 independently
+encoded vectors cover all27 legal base9P2000 message types, version variants,
+high32 fid/high64 Qid,64-bit offsets/lengths, UTF-8, binary writes, Rstat/Twstat
+and directory Rread. Every truncated prefix must fail; re-encoded bytes and both
+cross-feed orders equal the independent corpus. Host ASan/UBSan and ARM64/QEMU
+UBSan pass; existing native lib9 support archives are not fully sanitized.
+
+The five original peer native64/stream/session/directories/lifecycle tests pass
+host ASan/UBSan. Actual TCP acceptance runs both directions: Inferno Python wire
+vectors against peer-source C server and peer Python vectors against our C
+server, two independent msize/views, live reads/stat/writes and close/free. LSan
+is disabled due to this environment's ptrace limitation. No source semantics
+change or runtime migration; incoming journal and previous own prefix preserved.
+
+The shared contract is base9P2000 fixed-width little-endian wire, not native
+Fcall/ulong/pointers or Dis64 frames. Dot-suffix negotiation falls back to base;
+extension fields and auth-fid provider are not implemented. Packet uname/aname
+do not authenticate. Full cross-VM mount/VFS adaptation, flush/lifetime handling,
+Android/Bionic transport and GUI/APK acceptance remain separate work. This gate
+makes library message compatibility executable rather than assuming source
+identity alone. CMake was unavailable here; tests use direct C compilation.
