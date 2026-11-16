@@ -57,8 +57,11 @@ def verify(root, work, control):
     reader = reader_at(root)
     corpus = ROOT/'utils/tests/goldens/dis64-calls'
     reference = json.loads((root/'disVM/envelope/reports/inferno0112-binding.json').read_text())
-    generator = ROOT/'utils/tests/dis64-call-goldens.py'
-    require(hashlib.sha256(generator.read_bytes()).hexdigest() == json.loads((root/'disVM/envelope/reports/inferno0111-schema.json').read_text())['peer_checker_sha256'], 'generator identity')
+    base = runpy.run_path(str(ROOT/'utils/tests/dis64-peer-schema.py'))
+    try:
+        generator = base['verify_generator'](json.loads((root/'disVM/envelope/reports/inferno0111-schema.json').read_text()), control)
+    except base['GateMismatch'] as failure:
+        raise GateMismatch(str(failure)) from failure
     result = reader.inspect(corpus)
     require(result == {key: reference[key] for key in ('manifest_sha256', 'scope', 'cases')}, 'published report')
     require(len(result['cases']) == 25, 'population')
@@ -118,7 +121,7 @@ def verify(root, work, control):
     changed = reader.inspect(copy)
     require({key: value for key, value in changed.items() if key != 'manifest_sha256'} ==
             {key: value for key, value in result.items() if key != 'manifest_sha256'}, 'authority')
-    return {'peer_commit': PEER, 'identities': 25, 'structural_bindings': 23, 'malformed_outer': 2,
+    return {'peer_commit': PEER, 'generator': generator, 'identities': 25, 'structural_bindings': 23, 'malformed_outer': 2,
             'mutations': ['identity', 'ID/range', 'unsupported form', 'manifest authority'],
             'scope': result['scope'], 'unvalidated': canonical[0]['unvalidated'], 'execution_admitted': False}
 
@@ -127,7 +130,7 @@ def verify(root, work, control):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--peer-root', type=Path, required=True)
-    parser.add_argument('--control', choices=('identity', 'binding', 'unsupported', 'authority'))
+    parser.add_argument('--control', choices=('identity', 'binding', 'unsupported', 'authority', 'generator'))
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='dis64-peer-binding-', dir=ROOT) as directory:

@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import runpy
 import shutil
 import struct
 import sys
@@ -17,6 +18,7 @@ PINS = {
     'disVM/envelope/tests/peer_call_goldens.py': 'e35b59b62bad30d9daa3120f02fc29830d5540903caf1e641001d7d0e52835f8',
     'disVM/envelope/reports/inferno0111-schema.json': 'fab146da93ac47dd790e792a83a45abd880cb1fe0d436545fcae0e3d3fa7a1e9',
 }  # Byte identities, not executable or input provenance authority.
+REVIEWED_GENERATOR = 'cba9f658206685d053a88f86f9b6e4f97e2ab7dab98b925546ce526ba19a9dea'
 
 
 class GateMismatch(RuntimeError):
@@ -27,6 +29,27 @@ class GateMismatch(RuntimeError):
 def require(condition, stage):
     if not condition:
         raise GateMismatch(stage)
+
+
+# The peer report records the historical generator, not the current C-test
+# driver. Keep that reviewed identity and regenerate the exact committed corpus
+# with today's producer instead of pinning unrelated harness/control code.
+def verify_generator(reference, control=None):
+    require(reference['peer_checker_sha256'] == REVIEWED_GENERATOR, 'generator identity')
+    producer = runpy.run_path(str(ROOT/'utils/tests/dis64-call-goldens.py'))
+    if control == 'generator':
+        namespace = producer['corpus'].__globals__
+        original = namespace['container']
+        namespace['container'] = lambda *args, **kwargs: original(*args, **kwargs)+b'\0'
+    try:
+        producer['fixtures']()
+    except RuntimeError as failure:
+        if control == 'generator' and str(failure) == 'Golden manifest drift; regeneration requires review':
+            raise GateMismatch('generator') from failure
+        raise
+    return {'reviewed_sha256': REVIEWED_GENERATOR,
+            'current_sha256': hashlib.sha256((ROOT/'utils/tests/dis64-call-goldens.py').read_bytes()).hexdigest(),
+            'corpus_regenerated': True}
 
 
 # Execute only the exact reviewed parser and its one sibling import from the selected checkout.
@@ -54,9 +77,8 @@ def payload(report):
 def verify(root, control, work):
     corpus = ROOT/'utils/tests/goldens/dis64-calls'
     reference = json.loads((root/'disVM/envelope/reports/inferno0111-schema.json').read_text())
-    generator = ROOT/'utils/tests/dis64-call-goldens.py'
-    require(hashlib.sha256(generator.read_bytes()).hexdigest() == reference['peer_checker_sha256'], 'generator identity')
     reader = reader_at(root)
+    generator = verify_generator(reference, control)
     result = reader.inspect(corpus)
     require(result == {key: reference[key] for key in ('manifest_sha256', 'scope', 'cases')}, 'published partial schema')
     require(len(result['cases']) == 25, 'corpus population')
@@ -111,7 +133,7 @@ def verify(root, control, work):
         item['locals'] = {'untrusted': 'not type authority'}
     (copy/'manifest.json').write_text(json.dumps(manifest))
     require(payload(reader.inspect(copy)) == payload(result), 'authority')
-    return {'peer_commit': PEER, 'scope': result['scope'], 'identities': 25,
+    return {'peer_commit': PEER, 'generator': generator, 'scope': result['scope'], 'identities': 25,
             'canonical_outer': 23, 'malformed_outer': 2, 'partial_schemas': 23,
             'mutation_checks': ['byte identity', 'malformed metadata', 'manifest authority'],
             'unvalidated': canonical[0]['unvalidated'], 'execution_admitted': False}
@@ -121,7 +143,7 @@ def verify(root, control, work):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--peer-root', type=Path, required=True)
-    parser.add_argument('--control', choices=('identity', 'schema', 'authority'))
+    parser.add_argument('--control', choices=('identity', 'schema', 'authority', 'generator'))
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='dis64-peer-schema-', dir=ROOT) as directory:

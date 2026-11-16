@@ -154,3 +154,28 @@ python3 utils/tests/dis64-source-call-boot.py --limbo /path/to/new/limbo \
 python3 utils/tests/dis64-call-goldens.py
 python3 utils/tests/native64-channels.py --limbo /path/to/new/limbo
 ```
+
+The quick paired-console matrix now also boots these28 source programs with
+interpreter/JIT on every target, including library standalone refusals. The
+general layout gate confirms all376 typed banks in the16 AWM startup sources,
+with byte-identical classic output against the previous compiler. The ordinary
+Command producer passes772 deterministic selected files,62 old clients,11 helper
+clients and17 importing triples. These checks do not widen AWM file admission.
+
+## Historical FlashVM report versus the current generator
+
+The independent peer gates correctly pin their external reader/report files,
+but compared the current whole Python test driver to a historical producer SHA.
+Repairing local C-test controls changes that SHA without changing corpus bytes.
+Keep the historical report's generator SHA explicit and keep every peer file pin
+unchanged. Regenerate all25 committed images and the exact manifest using the
+current producer before replaying the independent reader. Report both generator
+identities plus successful regeneration in the local integration artifact.
+
+Both partial-schema and structural-binding gates retain all their identity,
+schema/binding, unsupported-form and authority controls. A new generator control
+adds an actual byte to every produced container and must hit the exact corpus
+drift predicate before peer parsing. Both complete gates and all nine controls
+pass against the original0517104 peer checkout. Hashes confirm that the corpus,
+peer readers and published reports remain unchanged. No shared wire/ABI ID,
+vendor revision, FlashVM source or coordination journal is changed.

@@ -56,6 +56,7 @@ on:
       - 'appl/lib/tkclient.b'
       - 'utils/tests/awm-native64-preflight.py'
       - 'utils/tests/dis64-pair-boot.py'
+      - 'utils/tests/dis64-source-call*.py'
       - 'utils/tests/native64-port.py'
   workflow_dispatch:
 permissions:
@@ -146,6 +147,12 @@ jobs:
           python3 utils/tests/native64-port.py --arch "$NATIVE64_ARCH" --pair-boot-only \
             --cross "$TARGET_CROSS" --runner "$NATIVE64_RUNNER" \
             --build-root "$RUNNER_TEMP/native64-pair" --host-tools "$RUNNER_TEMP/host-tools"
+      - name: Execute source-compiled local calls on each target
+        run: |
+          set -o pipefail
+          python3 utils/tests/dis64-source-call-boot.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --root "$RUNNER_TEMP/native64-pair" --emu "$RUNNER_TEMP/native64-pair/emu/Linux/o.emu-g" \
+            --runner "$NATIVE64_RUNNER" | tee "$RUNNER_TEMP/native64-pair/port-logs/source-call-boot.log"
       - name: Check the selected native Sys registration
         run: |
           set -o pipefail

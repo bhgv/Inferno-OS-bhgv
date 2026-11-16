@@ -589,7 +589,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 utils/tests/dis64-peer-schema.py --peer-root .dis64-peer-schema --report peer-schema.json 2>&1 | tee peer-schema.log
-          for control in identity schema authority; do
+          for control in identity schema authority generator; do
             python3 utils/tests/dis64-peer-schema.py --peer-root .dis64-peer-schema --control "$control" 2>&1 | tee -a peer-schema.log
           done
       - name: Preserve independent partial-schema evidence
@@ -622,7 +622,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 utils/tests/dis64-peer-binding.py --peer-root .dis64-peer-binding --report peer-binding.json 2>&1 | tee peer-binding.log
-          for control in identity binding unsupported authority; do
+          for control in identity binding unsupported authority generator; do
             python3 utils/tests/dis64-peer-binding.py --peer-root .dis64-peer-binding --control "$control" 2>&1 | tee -a peer-binding.log
           done
       - name: Preserve independent structural-binding evidence
