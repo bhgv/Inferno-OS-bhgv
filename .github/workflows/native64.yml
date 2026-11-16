@@ -2,8 +2,6 @@ name: Native64 scalar console
 on:
   pull_request:
     branches: [experiment]
-  pull_request:
-    branches: [experiment]
   push:
     branches: [experiment]
     paths:
