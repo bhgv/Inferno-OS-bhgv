@@ -400,3 +400,27 @@ ARM64 and RV64 pass the first complete targeted five-gate matrix; x64 remote
 acceptance is still running. Subsequent typed workflow revisions retain that
 active run and only the latest pending batch, avoiding cancellation of lengthy
 control compilations for a documentation or additional-target update.
+
+## Real AWM startup data images
+
+At c4544dc the seven typed-call gates and all21 controls pass on x64, native
+ARM64, RV64/QEMU and Android ARM64/Bionic. This is now target execution evidence,
+not merely Android GUI linking.
+
+The next stage consumes actual startup source MP layouts and independently
+decoded classic initializers. Thirteen flat startup data images now relocate
+all scalar/opaque records and construct actual owned Strings at widened root
+slots. AWM itself grows from736 to1368 bytes with all142 initializers accounted
+for. The local gate checks every value, default H/zero storage, two actual newmp
+clones, String retain counts, retirement and all877 construction allocation
+refusals across JIT publication off/on. The whole13-image gate passes ASan+UBSan
+with detect_leaks=0; it is not collector, instruction-execution or leak evidence.
+Scalar corruption, a removed root-map bit and omitted newmp retain each hit their
+specific semantic failure. The common module test unit is extracted without any
+change to its generated C bytes, so this gate reuses the existing owning code.
+
+The atoolbar/titlebar/sh nested initializers remain explicitly unsupported. Old code-coordinate values in
+opaque tables remain unrelocated. No AWM instruction, general Dis64 module
+admission or Android GUI/APK result is claimed. The four-target workflow now
+requires these data gates too. See doc/awm-native64-data.ru.md for exact scope,
+reproduction and the remaining route to AWM.
