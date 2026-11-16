@@ -46,6 +46,7 @@ def main():
     parser.add_argument('--test-cc', default='', help='owning C gate compiler command; defaults to CROSS gcc (use dynamic libc for GNU --wrap=free fixtures)')
     parser.add_argument('--runner', default='', help='target execution command, e.g. qemu-aarch64 -L /sysroot')
     parser.add_argument('--test-cflags', default='-O3 -g -DNDEBUG -fno-strict-aliasing', help='additional owning C gate flags; add UBSan where available')
+    parser.add_argument('--styx-server',type=Path,help='optional native loopback fixture with count/user arguments for guest mount acceptance')
     parser.add_argument('--pair-boot-only', action='store_true', help='build the complete console and run only the paired boot gate')
     args = parser.parse_args()
     build = args.build_root.resolve()
@@ -154,6 +155,11 @@ def main():
         command = [sys.executable, str(tests/'dis64-scalar-client-managed-proof.py'), '--limbo', str(tools/'limbo')]
         if control: command += ['--control', control]
         run(command, build, env, logs/('scalar-client-managed-proof-'+str(control)+'.log'))
+    if args.styx_server:
+        (build/'mnt').mkdir(exist_ok=True)
+        run([sys.executable, str(tests/'dis64-sys-mount.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+             '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--server', str(args.styx_server.resolve())],
+            build, env, logs/'sys-guest-mount.log')
     run([sys.executable, str(tests/'dis64-command.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'command-init-gc.log')
     run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'callee-frame', '--case', 'callee-cons',

@@ -186,7 +186,7 @@ native64bindresult(int managed)
     if(managed==3){
         if(base>(uintptr)-1-(uintptr)size || instruction.d.i.f!=40 || type->map[0] ||
            (size==112 ? (mapbytes!=2 || type->map[1]!=0xdc || instruction.s.ind!=80) :
-            size==144 ? (mapbytes!=3 || type->map[1]!=0xdf || type->map[2] || (instruction.s.ind!=80 && instruction.s.ind!=128)) : 1))error(exBounds);
+            (size==144 || size==160) ? (mapbytes!=3 || type->map[1]!=0xdf || type->map[2]!=(size==160?0x20:0) || (instruction.s.ind!=80 && instruction.s.ind!=128 && !(size==160 && instruction.s.ind==144))) : 1))error(exBounds);
     }else{
 	if(size < 72 || (size&7) != 0 || mapbytes < 0 ||
 	   mapbytes > size/64+(size%64 != 0) ||
@@ -242,7 +242,7 @@ native64bindresult(int managed)
 			if(previous != H) error(exBounds);
 		}
 		/* Managed results use a mapped argument; fixed Sys also admits scalar-only frames. */
-		if(managed == 3 ? (top-target!=80 && !(size==144 && instruction.s.ind==128 && (top-target==72 || top-target==88))) : managed == 2 ? (top-target != 64 && top-target != 72 && top-target != 80 && top-target != 88) : top-target != 72)
+		if(managed == 3 ? (top-target!=80 && !((size==144 || size==160) && instruction.s.ind==128 && (top-target==72 || top-target==80 || top-target==88 || top-target==104))) : managed == 2 ? (top-target != 64 && top-target != 72 && top-target != 80 && top-target != 88) : top-target != 72)
 			error(exBounds);
 		memmove(&entered, (uchar*)pending+O(Frame, mr), sizeof(entered));
 		memmove(&type, (uchar*)pending+O(Frame, t), sizeof(type));
@@ -253,7 +253,7 @@ native64bindresult(int managed)
 		if(type == nil || type == H || (uintptr)type%sizeof(void*) != 0 ||
 		   (uintptr)type > (uintptr)-1-O(Type, map)-2 ||
 		   type->size != (int)(top-target) || type->map[0] != 0 ||
-           (managed == 3 ? (type->np!=2 || (instruction.s.ind==80 ? (type->size!=80 || type->map[1]!=0xc0) : (type->size==72 ? type->map[1]!=0x80 : type->size!=88 || type->map[1]!=0xc0))) : managed == 2 ? (type->size == 64 ? type->np != 1 :
+           (managed == 3 ? (type->np!=2 || (instruction.s.ind==80 ? (type->size!=80 || type->map[1]!=0xc0) : instruction.s.ind==144 ? (type->size!=80 || type->map[1]!=0x80) : (type->size==104 ? type->map[1]!=0xe8 : type->size==72 ? type->map[1]!=0x80 : (type->size!=80 && type->size!=88) || type->map[1]!=0xc0))) : managed == 2 ? (type->size == 64 ? type->np != 1 :
             (type->np != 2 || (type->size == 72 ?
              (type->map[1] != 0 && type->map[1] != 0x80) : (type->map[1] != 0xc0 && (type->size != 80 || type->map[1] != 0x80))))) :
             (type->size != 72 || type->np != 2 || type->map[1] != 0x80)))

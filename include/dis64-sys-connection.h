@@ -1,12 +1,12 @@
 #ifndef DIS64_SYS_CONNECTION_H
 #define DIS64_SYS_CONNECTION_H
 
-static const char *const dis64connectionnames[]={"dial","read","write","iounit","werrstr"};
+static const char *const dis64connectionnames[]={"dial","read","write","iounit","werrstr","mount","unmount","open"};
 static int
 dis64connectionkind(const DisStringPoolView *pool,unsigned int symbol)
 {
     unsigned int i;
-    for(i=0;i<5;i++)if(dis64sysstringname(pool,symbol,dis64connectionnames[i]))return i==0?14:dis64sysfixedkind(dis64connectionnames[i]);
+    for(i=0;i<8;i++)if(dis64sysstringname(pool,symbol,dis64connectionnames[i]))return i==0?14:i==5?15:dis64sysfixedkind(dis64connectionnames[i]);
     return -1;
 }
 static long
@@ -20,16 +20,16 @@ dis64sysconnectionview(const Dis64StorageImage *image,Dis64ManagedLiteralsView *
 {
     Dis64Type frame,byte;DisRuneView name;Dis64CallDecoded decoded;Dis64Instruction in,flow[Dis64ClockInstructions];
     unsigned int i,j,at=4,used,phase=0,loaded=0,calls=0,seen=0,ordinal=0,parameter=0,staged=0,imports=image->imports.count;
-    int kinds[5],kind,hasdial=0;long source,middle,dest;
+    int kinds[8],kind,hasdial=0,hasopen=0,opened=0,dialed=0;long source,middle,dest;
     if(image->module.profile!=1 || image->module.entry || image->module.name!=2 || image->module.frametype || image->module.datatype!=1 ||
-       image->types.count!=3 || image->exports.count || !imports || imports>5 || image->initializers.count || image->data.align!=8 ||
-       !dis64typeget(&image->types,0,&frame) || frame.bytes!=144 || frame.align!=8 || frame.mapbytes!=3 || frame.map[0] || frame.map[1]!=0xdf || frame.map[2] ||
+       image->types.count!=3 || image->exports.count || !imports || imports>8 || image->initializers.count || image->data.align!=8 ||
+       !dis64typeget(&image->types,0,&frame) || (frame.bytes!=144 && frame.bytes!=160) || frame.align!=8 || frame.mapbytes!=3 || frame.map[0] || frame.map[1]!=0xdf || frame.map[2]!=(frame.bytes==160?0x20:0) ||
        !dis64typeget(&image->types,2,&byte) || byte.bytes!=1 || byte.align!=1 || byte.mapbytes!=1 || byte.map[0] ||
        !dis64sysstringname(&image->strings,3,"$Sys") || !disstringpoolget(&image->strings,2,&name) || !name.count || name.count>255 ||
        image->code.count>Dis64ClockInstructions || image->strings.count!=3+imports+(image->data.bytes-24)/8)return 0;
     for(i=0;i<name.count;i++){unsigned int rune;if(!disruneat(&name,i,&rune)||!rune||rune>127)return 0;}
-    for(i=0;i<imports;i++){kinds[i]=dis64connectionkind(&image->strings,i?3+i:1);if(kinds[i]<0)return 0;if(kinds[i]==14)hasdial=1;}
-    if(!hasdial)return 0;
+    for(i=0;i<imports;i++){kinds[i]=dis64connectionkind(&image->strings,i?3+i:1);if(kinds[i]<0)return 0;if(kinds[i]==14)hasdial=1;if(kinds[i]==10)hasopen=1;}
+    if(!hasdial || hasopen!=(frame.bytes==160))return 0;
     for(i=0;i<image->code.count;i++){
         if(!dis64callread(image->code.data+at,image->code.bytes-at,&decoded,&used))return 0;
         at+=used;in=decoded.instruction;flow[i]=in;
@@ -41,34 +41,37 @@ dis64sysconnectionview(const Dis64StorageImage *image,Dis64ManagedLiteralsView *
             ordinal=in.middle;parameter=staged=0;phase=1;seen|=1U<<ordinal;continue;
         }
         if(phase==1){
-            unsigned int argc=kinds[ordinal]==14?2:dis64sysfixedargs(kinds[ordinal]);
+            unsigned int argc=dis64connectionargs(kinds[ordinal]);
             kind=kinds[ordinal];
             if(parameter<argc){
-                if(kind==14 || kind==0){
-                    dest=kind==14?64+8*parameter:64;
+                if(dis64connectionstring(kind,parameter)){
+                    dest=kind==14 || kind==6?64+8*parameter:64;
                     if(!staged){
                         if(in.op!=IMOVP || UDST(in.mode)!=AFP || (in.mode&ARM)!=AXNON || in.destination!=dest)return 0;
                         if(USRC(in.mode)==AMP){
                             if(in.source!=8 && (in.source<24 || in.source%8 || (unsigned long)in.source>=image->data.bytes))return 0;
                             flow[i]=(Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP|AIND),0,0,40};
-                        }else if(USRC(in.mode)==AFP && (in.source==104 || in.source==120))flow[i]=(Dis64Instruction){IMOVW,SRC(AFP)|DST(AFP|AIND),0,in.source==104?96:120,40};
+                        }else if(USRC(in.mode)==AFP && (in.source==104 || in.source==120)){if(in.source==104 && hasopen && !dialed)return 0;flow[i]=(Dis64Instruction){IMOVW,SRC(AFP)|DST(AFP|AIND),0,in.source==104?96:120,40};}
                         else return 0;
                         staged=1;continue;
                     }
-                    if(in.op!=IMOVP || in.mode!=(SRC(AFP)|DST(AFP|AIND)) || in.source!=dest || in.destination!=40 || decoded.secondary!=dest)return 0;
+                    if(in.op!=IMOVP || in.mode!=(SRC(AFP)|DST(AFP|AIND)) || in.source!=dest || in.destination!=40 || decoded.secondary!=dis64connectionoffset(kind,parameter))return 0;
                     flow[i]=(Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP|AIND),0,0,40};
-                }else if(kind==9 || parameter<2){
+                }else if(dis64connectionfd(kind,parameter) || ((kind==12 || kind==13) && parameter==1)){
                     if(!staged && in.op==IMOVP && in.mode==(SRC(AMP)|DST(AFP)) && in.source==8 && in.destination==64){
                         flow[i]=(Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP|AIND),0,0,40};staged=1;continue;
                     }
-                    if(in.op!=IMOVP || in.mode!=(SRC(AFP)|DST(AFP|AIND)) || in.destination!=40 || decoded.secondary!=64+8*parameter)return 0;
+                    if(in.op!=IMOVP || in.mode!=(SRC(AFP)|DST(AFP|AIND)) || in.destination!=40 || decoded.secondary!=dis64connectionoffset(kind,parameter))return 0;
                     if(in.source==64 && staged)source=0;
+                    else if(dis64connectionfd(kind,parameter) && in.source==144 && opened)source=0;
                     else if(!parameter && (in.source==88 || in.source==96))source=96;
-                    else if(parameter==1 && in.source==112)source=112;
+                    else if(kind==15 && parameter==1 && (in.source==88 || in.source==96))source=96;
+                    else if((kind==12 || kind==13) && parameter==1 && in.source==112)source=112;
                     else return 0;
+                    if(source==96 && hasopen && !dialed)return 0;
                     flow[i]=(Dis64Instruction){IMOVW,SRC(source?AFP:AIMM)|DST(AFP|AIND),0,source,40};
                 }else{
-                    if(in.destination!=40 || decoded.secondary!=80 || UDST(in.mode)!=(AFP|AIND) || (in.mode&ARM)!=AXNON)return 0;
+                    if(in.destination!=40 || decoded.secondary!=dis64connectionoffset(kind,parameter) || UDST(in.mode)!=(AFP|AIND) || (in.mode&ARM)!=AXNON)return 0;
                     if(in.op==ILENA){if(USRC(in.mode)!=AFP || in.source!=112)return 0;source=112;}
                     else if(in.op==IMOVW){source=in.source;if(USRC(in.mode)==AFP){source=dis64connectioncell(source);if(source<0)return 0;}else if(USRC(in.mode)!=AIMM)return 0;}
                     else return 0;
@@ -76,12 +79,14 @@ dis64sysconnectionview(const Dis64StorageImage *image,Dis64ManagedLiteralsView *
                 }
                 staged=0;parameter++;continue;
             }
-            if(staged || in.op!=ILEA || in.mode!=(SRC(AFP)|DST(AFP|AIND)) || in.source!=(kind==14?80:128) || in.destination!=40 || decoded.secondary!=32)return 0;
+            if(staged || in.op!=ILEA || in.mode!=(SRC(AFP)|DST(AFP|AIND)) || in.source!=(kind==14?80:kind==10?144:128) || in.destination!=40 || decoded.secondary!=32)return 0;
             phase=2;continue;
         }
         if(phase==2){
             if(in.op!=IMCALL || in.mode!=(SRC(AFP)|AXIMM|DST(AMP)) || in.source!=40 || in.middle!=ordinal || in.destination || ++calls>Dis64ManagedCalls)return 0;
-            if(kinds[ordinal]==14)flow[i].middle=-2;phase=0;continue;
+            if(kinds[ordinal]==14){flow[i].middle=-2;dialed=1;}
+            if(kinds[ordinal]==10){opened=1;flow[i].middle=-1;}
+            phase=0;continue;
         }
         if(in.op==IEXIT){if(in.mode!=(SRC(AXXX)|DST(AXXX)))return 0;continue;}
         if(dis64clockbranch(in.op)){
@@ -119,7 +124,7 @@ dis64sysconnectionview(const Dis64StorageImage *image,Dis64ManagedLiteralsView *
                 if(in.op==ICVTCA){
                     if(in.destination!=112)return 0;
                     if(sm==AMP){if(source!=8 && (source<24 || source%8 || (unsigned long)source>=image->data.bytes))return 0;source=0;sm=AIMM;}
-                    else if(sm==AFP && source==104)source=96;
+                    else if(sm==AFP && source==104){if(hasopen && !dialed)return 0;source=96;}
                     else if(sm!=AFP || source!=120)return 0;dest=112;
                 }else{
                     if(sm!=AFP || source!=112)return 0;

@@ -1170,6 +1170,7 @@ Sys_mount(void *fp)
 	F_Sys_mount local, *f;
 	WORD result;
 	int fd, afd;
+	char *on, *spec;
 
 	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_mount, ret), sizeof(*local.ret));
 	f = &local;
@@ -1184,8 +1185,10 @@ Sys_mount(void *fp)
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
+	on = string2c(f->on);
+	spec = string2c(f->spec);
 	release();
-	result = kmount(fd, afd, string2c(f->on), f->flags, string2c(f->spec));
+	result = kmount(fd, afd, on, f->flags, spec);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }

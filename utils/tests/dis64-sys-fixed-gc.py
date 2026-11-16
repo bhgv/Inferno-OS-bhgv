@@ -18,11 +18,11 @@ def unit():
     source=source.replace('long\nkread(int fd, void *buffer, long bytes)', 'long\nbasekread(int fd, void *buffer, long bytes)',1)
     source=source.replace('int\nkopen(char *path, int mode)', 'int\nbasekopen(char *path, int mode)',1)
     marker='&limbo_native64_Sys_remove_entry};'
-    source=source.replace(marker,'&limbo_native64_Sys_remove_entry,&limbo_native64_Sys_millisec_entry,&limbo_native64_Sys_sleep_entry,&limbo_native64_Sys_dup_entry,&limbo_native64_Sys_unmount_entry,&limbo_native64_Sys_bind_entry,&limbo_native64_Sys_fildes_entry,&limbo_native64_Sys_iounit_entry,&limbo_native64_Sys_open_entry,&limbo_native64_Sys_create_entry,&limbo_native64_Sys_read_entry,&limbo_native64_Sys_write_entry,&limbo_native64_Sys_dial_entry};',1)
-    source=source.replace('module->type=mallocz(3*sizeof(Type*),1);module->ext=mallocz(4*sizeof(Link),1);','module->type=mallocz(15*sizeof(Type*),1);module->ext=mallocz(16*sizeof(Link),1);').replace('for(i=0;i<3;i++){\n        entry=native64sysio[i];','for(i=0;i<15;i++){\n        entry=native64sysio[i];',1)
+    source=source.replace(marker,'&limbo_native64_Sys_remove_entry,&limbo_native64_Sys_millisec_entry,&limbo_native64_Sys_sleep_entry,&limbo_native64_Sys_dup_entry,&limbo_native64_Sys_unmount_entry,&limbo_native64_Sys_bind_entry,&limbo_native64_Sys_fildes_entry,&limbo_native64_Sys_iounit_entry,&limbo_native64_Sys_open_entry,&limbo_native64_Sys_create_entry,&limbo_native64_Sys_read_entry,&limbo_native64_Sys_write_entry,&limbo_native64_Sys_dial_entry,&limbo_native64_Sys_mount_entry};',1)
+    source=source.replace('module->type=mallocz(3*sizeof(Type*),1);module->ext=mallocz(4*sizeof(Link),1);','module->type=mallocz(16*sizeof(Type*),1);module->ext=mallocz(17*sizeof(Link),1);').replace('for(i=0;i<3;i++){\n        entry=native64sysio[i];','for(i=0;i<16;i++){\n        entry=native64sysio[i];',1)
     source=source.replace('static void\ngrouprelease(void)\n{','static void\ngroupstringrelease(void)\n{',1)
     port=(ROOT/'emu/port/inferno.c').read_text()
-    support='typedef struct FD FD;struct FD {Sys_FD fd;Fgrp *grp;};Type *TFD;static int fdclosing;\nint kiounit(int);\nint kunmount(char*,char*);int kbind(char*,char*,int);\nchar Ebadarg[]="bad argument";\n'+'\n'.join(extract(port,signature) for signature in ('static int\nsysnativeint(','void\nSys_millisec(','void\nSys_dup(','void\nSys_sleep(','void\nSys_unmount(','void\nSys_bind(','static void*\nsysresultowner(','static int\nsysiofd(','void\nfreeFD(','Sys_FD*\nmkfd(','void\nSys_fildes(','void\nSys_iounit(','void\nSys_open(','void\nSys_create(','static int\nsysiocount(','static void\nsysioframe(','void\nSys_read(','void\nSys_write('))
+    support='typedef struct FD FD;struct FD {Sys_FD fd;Fgrp *grp;};Type *TFD;static int fdclosing;\nint kiounit(int);\nint kunmount(char*,char*);int kbind(char*,char*,int);int kmount(int,int,char*,int,char*);\nchar Ebadarg[]="bad argument";\n'+'\n'.join(extract(port,signature) for signature in ('static int\nsysnativeint(','void\nSys_millisec(','void\nSys_dup(','void\nSys_sleep(','void\nSys_unmount(','void\nSys_bind(','static void*\nsysresultowner(','static int\nsysiofd(','void\nSys_mount(','void\nfreeFD(','Sys_FD*\nmkfd(','void\nSys_fildes(','void\nSys_iounit(','void\nSys_open(','void\nSys_create(','static int\nsysiocount(','static void\nsysioframe(','void\nSys_read(','void\nSys_write('))
     support=extract((ROOT/'libinterp/heap.c').read_text(),'Heap*\nheap(')+'\n'+support
     start=port.index('typedef struct FDResult FDResult;');end=port.index('/* Mark a descriptor',start)
     support+='\nint kdial(char*,char*,char*,int*);int kclose(int);\n'+port[start:end]
@@ -32,7 +32,7 @@ def unit():
     source=source.replace('void\nSys_werrstr(',support+'\nvoid\nSys_werrstr(',1)
     strings=(ROOT/'libinterp/string.c').read_text();heap=(ROOT/'libinterp/heap.c').read_text();xec=(ROOT/'libinterp/xec.c').read_text()
     source=source.replace(extract(source,'String* c2string('),extract(strings,'String*\nc2string('),1)
-    arrays='Type Tbyte={1,0,0,1};char exType[]="type";\n'+'\n'.join(extract(heap,signature) for signature in ('void\nacheck(','void\ninitarray(','Heap*\nheaparray(','void\nfreearray('))
+    arrays='char exType[]="type";\n'+'\n'.join(extract(heap,signature) for signature in ('void\nacheck(','void\ninitarray(','Heap*\nheaparray(','void\nfreearray('))
     arrays+='\n'+extract((ROOT/'libinterp/runt.c').read_text(),'Array*\nmem2array(')
     arrays+='\n'+'\n'.join(extract(xec,signature) for signature in ('static Type*\nmoduletype(','static void\nnewarray(','OP(newa)','OP(newaz)','OP(lena)','static uchar*\narrayspan(','OP(slicea)'))
     arrays+='\n'+'\n'.join(extract(strings,signature) for signature in ('OP(cvtca)','OP(cvtac)'))
@@ -42,7 +42,7 @@ def unit():
 
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--limbo',required=True,type=Path);args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--limbo',required=True,type=Path);parser.add_argument('--runtime-only',action='store_true');args=parser.parse_args()
     old=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-groups-gc.py'));support=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-string-gc.py'));fixed=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-fixed.py'))
     arch=os.environ.get('NATIVE64_ARCH','amd64')
     command=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('NATIVE64_CFLAGS','-O2 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))+['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DDIS_NATIVE64_MANAGED_FILES=1']
@@ -79,7 +79,7 @@ def main():
         for i,image in enumerate(dialbad):output.append('static const uchar dial_bad'+str(i)+'[]={'+','.join(map(str,image))+'};')
         output.append('static const struct {const uchar *image;unsigned int bytes;} dial_bad[]={'+','.join('{dial_bad'+str(i)+',sizeof(dial_bad'+str(i)+')}' for i in range(len(dialbad)))+'};')
         (work/'sys-dial-images.h').write_text('\n'.join(output)+'\n')
-        connection=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-connection.py'));connectionrows=connection['rows'](args.limbo,work);connection['compiler_refusals'](args.limbo,work)
+        connection=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-connection.py'));connectionrows=connection['rows'](args.limbo,work);mount=runpy.run_path(str(ROOT/'utils/tests/dis64-sys-mount.py'));connectionrows+=mount['rows'](args.limbo,work);connection['compiler_refusals'](args.limbo,work)
         output=['typedef struct ConnectionCase {const uchar *image;unsigned int bytes,calls;SysFixedEvent events[16];WORD status;const char *name;} ConnectionCase;']
         def quote(value):return '"'+value.replace('\\','\\\\').replace('"','\\"').replace('\0','\\000').replace('\n','\\n')+'"'
         for i,(_,image,_,_) in enumerate(connectionrows):output.append('static const uchar connection_image'+str(i)+'[]={'+','.join(map(str,image))+'};')
@@ -89,7 +89,7 @@ def main():
                 method,value,first,second,result=e[:5];other=e[5] if len(e)>5 else None
                 return '{"'+method+'",'+(quote(value) if value is not None else '0')+','+(quote(other) if other is not None else '0')+','+str(first)+','+str(second)+','+str(result)+'}'
             output.append('{connection_image'+str(i)+',sizeof(connection_image'+str(i)+'),'+str(len(events))+',{'+','.join(encode(e) for e in events)+'},'+str(status)+',"'+name+'"},')
-        output.append('};');connectionbad=list(connection['refusals'](connectionrows))
+        output.append('};');connectionbad=list(connection['refusals'](connectionrows))+list(mount['refusals'](connectionrows))
         for i,image in enumerate(connectionbad):output.append('static const uchar connection_bad'+str(i)+'[]={'+','.join(map(str,image))+'};')
         output.append('static const struct {const uchar *image;unsigned int bytes;} connection_bad[]={'+','.join('{connection_bad'+str(i)+',sizeof(connection_bad'+str(i)+')}' for i in range(len(connectionbad)))+'};')
         (work/'sys-connection-images.h').write_text('\n'.join(output)+'\n')
@@ -97,6 +97,12 @@ def main():
         common=command+['-I'+str(work),str(ROOT/'libinterp/dec.c'),str(ROOT/'lib9/rune.c'),'-Wl,--wrap=free','-lm']
         runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''))
         subprocess.run(common+[str(work/'test.c'),'-o',str(work/'test')],check=True);subprocess.run(runner+[str(work/'test')],check=True,timeout=90)
+        if args.runtime_only:return
+        subprocess.run(common+['-DDIS64_TEST_OMIT_OPEN_RESULT=1',str(work/'test.c'),'-o',str(work/'open-root-control')],check=True)
+        result=subprocess.run(runner+[str(work/'open-root-control')],capture_output=True,text=True,timeout=90)
+        if result.returncode!=27 or 'mounted FD GC retention predicate'not in result.stderr or 'Sanitizer'in result.stderr or 'runtime error:'in result.stderr:
+            raise RuntimeError('open FD GC root omission missed predicate: '+result.stdout+result.stderr)
+        print('PASS active mounted FD sole-owner GC omission control',flush=True)
         header=(ROOT/'include/dis64-sys-string.h').read_text();marker='if(++parameter == dis64sysfixedargs(kinds[ordinal])) phase = 4;'
         if header.count(marker)!=1:raise RuntimeError('argument-fact control marker drift')
         override=work/'override';override.mkdir();(override/'dis64-sys-string.h').write_text(header.replace(marker,'flow[i]=(Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP),0,0,72};\n'+marker))
@@ -174,7 +180,9 @@ def main():
         connectionheader=(ROOT/'include/dis64-sys-connection.h').read_text()
         controls=(('Connection initialization','else if(!parameter && (in.source==88 || in.source==96))source=96;','else if(!parameter && (in.source==88 || in.source==96))source=0;'),
                   ('FD as Word','return cell==80?64:','return cell==88?64:cell==80?64:'),
-                  ('mixed caller roots','frame.map[1]!=0xdf','0'))
+                  ('mixed caller roots','frame.map[1]!=0xdf','0'),
+                  ('open result origin','in.source==144 && opened','in.source==144'),
+                  ('Connection origin after open','if(source==96 && hasopen && !dialed)return 0;',''))
         for label,marker,replacement in controls:
             if connectionheader.count(marker)!=1:raise RuntimeError('connection control marker drift: '+label)
             (override/'dis64-sys-connection.h').write_text(connectionheader.replace(marker,replacement))

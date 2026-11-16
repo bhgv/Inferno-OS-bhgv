@@ -19,7 +19,7 @@ import time
 # EN/RU: Split the first real server reply into single-byte sends, then relay transparently.
 # Разбить первый ответ настоящего сервера на байты, затем передавать поток прозрачно.
 @contextmanager
-def fragmented_version(port):
+def fragmented_version(port, requests_seen=None, fragment=True, responses_seen=None):
     errors = []
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0))
@@ -33,12 +33,23 @@ def fragmented_version(port):
                     server.settimeout(10)
                     client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     def requests():
+                        pending = b''
                         try:
                             while True:
                                 data = client.recv(4096)
                                 if not data:
                                     server.shutdown(socket.SHUT_WR)
                                     return
+                                if requests_seen is not None:
+                                    pending += data
+                                    while len(pending) >= 4:
+                                        size = struct.unpack_from('<I', pending)[0]
+                                        if size < 7 or size > 1048576:
+                                            raise RuntimeError('invalid client frame size')
+                                        if len(pending) < size:
+                                            break
+                                        requests_seen.append(pending[4])
+                                        pending = pending[size:]
                                 server.sendall(data)
                         except OSError as error:
                             errors.append(str(error))
@@ -57,13 +68,31 @@ def fragmented_version(port):
                     if not 7 <= size <= 1024:
                         raise RuntimeError('invalid first reply size')
                     first = header + exact(size - 4)
-                    for byte in first:
-                        client.sendall(bytes([byte]))
-                        time.sleep(0.002)
+                    if responses_seen is not None:
+                        responses_seen.append(first)
+                    if fragment:
+                        for byte in first:
+                            client.sendall(bytes([byte]))
+                            time.sleep(0.002)
+                    else:
+                        client.sendall(first)
+                    pending = b''
                     while True:
                         data = server.recv(4096)
                         if not data:
+                            if pending:
+                                raise RuntimeError('truncated server frame')
                             break
+                        if responses_seen is not None:
+                            pending += data
+                            while len(pending) >= 4:
+                                size = struct.unpack_from('<I', pending)[0]
+                                if size < 7 or size > 1048576:
+                                    raise RuntimeError('invalid server frame size')
+                                if len(pending) < size:
+                                    break
+                                responses_seen.append(pending[:size])
+                                pending = pending[size:]
                         client.sendall(data)
                     sender.join(5)
                     if sender.is_alive():

@@ -70,6 +70,7 @@ static const LimboNative64Entry *const native64sysio[] = {
 	&limbo_native64_Sys_iounit_entry, // Fixed FD argument and Word result.
 	&limbo_native64_Sys_create_entry, // String and scalar arguments with a managed FD result.
 	&limbo_native64_Sys_dial_entry, // Separately checked managed Connection tuple result.
+	&limbo_native64_Sys_mount_entry, // Generated descriptor/string/flag mount frame.
 };
 
 

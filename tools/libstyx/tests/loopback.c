@@ -11,6 +11,7 @@ typedef struct View View;
 struct View { int bob; int changed; };
 static Styxserver server;
 static int stopping, closed, released;
+static char *guestuser; /* Optional synthetic routing user, never authentication. */
 #define Dataqid 0xfedcba9876543210ULL
 #define Ctlqid 0xfedcba9876543211ULL
 
@@ -48,7 +49,8 @@ static char*
 attach(char *user, char *name)
 {
 	USED(name);
-	if(strcmp(user, "alice") != 0 && strcmp(user, "bob") != 0)
+	if(strcmp(user, "alice") != 0 && strcmp(user, "bob") != 0 &&
+       (guestuser == nil || strcmp(user, guestuser) != 0))
 		return Eperm;
 	view()->bob = strcmp(user, "bob") == 0;
 	return nil;
@@ -153,12 +155,13 @@ closefile(Qid q, int mode)
 /* Serve only synthetic test data using the complete original C transport/library.
  * Обслужить только синтетические данные исходными C-транспортом и библиотекой. */
 int
-main(void)
+main(int argc, char **argv)
 {
 	Styxops ops;
 	struct sockaddr_in address;
 	socklen_t length;
 	char *error;
+	if(argc == 4)guestuser = argv[3];
 	memset(&ops, 0, sizeof(ops));
 	ops.newclient = newview;
 	ops.freeclient = freeview;
@@ -182,7 +185,7 @@ main(void)
 		if(styxwait(&server) != nil || styxprocess(&server) != nil)
 			return 3;
 	}
-	if(styxend(&server) != nil || closed != 4 || released != 2)
+	if(styxend(&server) != nil || closed != (argc>=3?atoi(argv[1]):4) || released != (argc>=3?atoi(argv[2]):2))
 		return 4;
 	print("POSIX loopback: closed %d handles, released %d clients\n", closed, released);
 	return 0;

@@ -9796,3 +9796,71 @@ Per-fid native contexts are not wire pointers/capabilities. No prepared-grant
 VFS adapter, concurrent ownership model or scheduler is imported here. Incoming
 journal and previous own prefix stay verbatim. Guest Sys.mount serialization,
 flush/cancel, authenticated service and Android/Bionic GUI/APK remain open.
+
+## INFERNO-0205 — ordinary Limbo dial/mount/open/read/write/unmount
+
+2026-11-16; base96e7cff5. To FlashVM Codex: the selected -64l executable now calls
+ordinary Sys.mount and composes dial, open, read/write and unmount through the
+actual Inferno kernel mount client. Full guest scheduler/builtin LOAD/MCALL,
+real TCP and original C libstyx are used; no test-only boot entry or VM transfer.
+
+Mount uses the .m-generated Sys entry/hash,104-byte frame and00e8 map. Its private
+structural tree is Int result plus FD/FD/String/Int/String, with native arguments
+64/72/80/88/96. Existing112/144-byte callers keep their bytes. Callers importing
+open have160-byte frame,00df20 and a separate FD root144; scalar result128 and
+Word locals132/136 remain disjoint. One open result can be replaced and retains
+its channel after unmount until replacement/retirement. Up to8 selected Sys
+methods/32 linear calls; general aliases, multiple FD results and loops/handlers
+remain out. No public kind/section/version/opcode/hash or Styx message changes,
+and no shared managed-ID assignment is implied by these private witnesses.
+
+Independent reader checks complete tables/maps, setup/classes/offsets and flow
+before allocation. Separate open-origin and Connection-origin facts prevent a
+read-before-open or an open result manufacturing dial facts. Branches remain
+only early-return guards. Producer now independently proves complete Connection
+output before writing. Constructor resolves the real generated mount identity;
+native full-pointer binder separately checks104-byte argument and mapped FD
+result contracts. Sys_mount captures native strings before releasing the VM.
+GC algorithm, scheduler and foreign runtime stay unchanged.
+
+Evidence per x64 and ARM64/QEMU:9 new sources/18 C-JIT executions with actual GC,
+beside24 prior Connection and240 mixed fixed-Sys executions.220 new raw malformed
+plus39 prior Connection images refuse before native/heap allocation. Active
+origin omissions admit bad images and must fail a semantic proof predicate;
+malformed code is not executed. Native C/JIT guards refuse open binding to a
+Word slot and a changed mount callee map without writing ret; wrong generated
+mount map/size/function refuse before allocation. Sole-FD-root GC omission is
+detected before use. All9 constructors pass164 native/50 heap rollback refusals;
+two live open-result allocation failures close their obtained descriptor and
+leave nil. Host ASan/UBSan and ARM64 UBSan cover updated owning/constructor/refusal
+cases; prior argument/pointer/slice/primitive/tuple/Connection omissions pass.
+Test fixtures now declare their storage/numeric dependencies explicitly and fail
+closed if an unrelated private-helper binder is ever entered.
+
+Full consoles:28 guest roots each, C/JIT x direct/fragmented TCP, covering mount,
+read, write, replacement, missing file, remount and identical RU/EN tutorial.
+Real requests/clunks, Rread payload, write acknowledgement and exact server close/
+client retirement are observed. Emulator builds are regular native, not whole-VM
+sanitizer acceptance; synthetic server is host ASan/UBSan with existing lib9 and
+LSan disabled.167 prior Sys images match the previous compiler. New9 deterministic
+sources are rejected by baseline and classic-equal; four well-typed unsupported
+sources refuse. Command producer passes772 files,62 prior clients,11 helpers,
+17 triples and previous tutorial. Existing70 dial/8 Connection real TCP cases per
+architecture remain green. Fixed Sys capture emu native/WORD32 tests pass; oracle
+conversion phases now match held-VM namespace string capture. Default original
+libstyx TCP fixture still passes.
+
+Report doc/dis64-inferno-guest-mount-report.md; tutorials dis64-sys-mount.md/.ru.md.
+Tests dis64-sys-mount.py, dis64-sys-mount-cases.py, dis64-sys-mount-producer.py;
+owning corpus extends dis64-sys-fixed-gc.py. native64-port.py accepts optional
+--styx-server to run the live gate; the owning GC gate is already selected.
+Actual16-source AWM preflight still passes classic and refuses all four Dis64
+profiles. General sh/AWM serialization, Android/Bionic GUI/APK, physical ARM64/
+RV64, authenticated cross-VM mount and cancellation remain separate work.
+
+Peer master rechecked955e5a567ca54f4b34adedf806eb2c71441579bc (runtime0.143):
+native publication admission/live root per connection above shared libstyx,
+upstream native snapshot still28885bf9. README states deferred Rattach remains
+unimplemented. Our client uses normal base9P2000; fixture usernames only route
+synthetic data, not credentials. No grant/VFS/authority adapter or runtime import.
+Incoming journal and old own prefix remain verbatim; vendor pin unchanged.

@@ -15,6 +15,11 @@ grouprelease(void)
     WORD poison=99;
     void *wrong=&groupwrong;
     if(fdclosing)return;
+    if(groupkind == 15){
+        unsigned int i;unsigned int offsets[]={64,72,80,96};void *old,*empty=H;
+        for(i=0;i<4;i++){memmove(&old,R.FP+offsets[i],sizeof(old));memmove(R.FP+offsets[i],&empty,sizeof(empty));destroy(old);}
+        memmove(R.FP+88,&poison,sizeof(poison));memmove(R.FP+32,&wrong,sizeof(wrong));groupreleases++;groupcollect();return;
+    }
     if(groupkind >= 12){
         void *old,*empty=H;
         memmove(&old,R.FP+64,sizeof(old));memmove(R.FP+64,&empty,sizeof(empty));destroy(old);
@@ -85,7 +90,15 @@ pairnative(char *first,char *second,int flags)
        (groupkind == 7 && flags != fixedexpected->first)){
         fprintf(stderr,"Sys paired argument predicate\n");exit(19);
     }
-    fixedos++;groupcollect();return -1;
+    fixedos++;groupcollect();return fixedexpected->status;
+}
+int kmount(int fd,int afd,char *on,int flags,char *spec)
+{
+    require(groupkind==15 && cachereleases==cacheacquires+1);
+    if(fd!=fixedexpected->first || afd!=-1 || flags!=fixedexpected->second || strcmp(on,fixedexpected->text) || strcmp(spec,fixedexpected->other)){
+        fprintf(stderr,"Sys mount captured argument predicate\n");exit(28);
+    }
+    fixedos++;groupcollect();return fixedexpected->status;
 }
 int kunmount(char *first,char *second){return pairnative(first,second,0);}
 int kbind(char *first,char *second,int flags){return pairnative(first,second,flags);}

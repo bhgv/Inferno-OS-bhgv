@@ -7,6 +7,10 @@
 #include "dis64-bound-call.h"
 #include "dis64-sys-string-flow.h"
 #include "dis64-sys-dial-schema.h"
+#include "dis64-sys-mount-schema.h"
+/* Host-side admission uses the existing 32-bit consistency-hash width. */
+typedef u32int UWORD;
+#include "dis64-sys-dial.h"
 
 #define ScalarOutputLimit (8U*1024U*1024U) // Match the complete-image admission bound.
 
@@ -743,7 +747,7 @@ typedef struct Dis64ManagedCompilePlan Dis64ManagedCompilePlan;
 struct Dis64ManagedCompilePlan {
 	unsigned int bindings, calls;
     Dis64Instruction connectioncode[Dis64ClockInstructions];
-    unsigned int connectioncount;
+    unsigned int connectioncount,connectionfd;
 	uchar directions[14], nativekind[14], reloads[Dis64ManagedCalls], transfers[Dis64ManagedCalls], ordinals[Dis64ManagedCalls];
 	char *path;
 	char *module; // Actual source interface/module identity.
@@ -1456,7 +1460,7 @@ void
 dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, long databytes)
 {
 	static const uchar arraymaps[][2]={{0,0x83},{0,0x8b},{0,0xc3},{0,0xcb}}, bytemap[]={0};
-    static const uchar dialmap[]={0,0xdc},connectionmap[]={0,0xdf,0};
+    static const uchar dialmap[]={0,0xdc},connectionmap[]={0,0xdf,0},connectionfdmap[]={0,0xdf,0x20};
     static const uchar fdmap[] = {0,0x88}, fdpairmap[] = {0,0xc8};
 	static const uchar map[] = {0, 0x80}, callermap[] = {0, 0xc0}, mpmap[] = {0x80}, loadmap[] = {0xe0};
 	static const uchar load[] = {ILOAD,SRC(AMP)|AXIMM|DST(AMP),0,16,0};
@@ -1504,7 +1508,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		if(!dis64libraryname(plan.symbols[i], symbols[i], &names[consumer && i ? 3+i : 1+i])) { error(impdecl->src.start,"Dis64 managed file: unsupported export name"); return; }
 	if(consumer){
 		module.name = 2; module.profile = 1; module.databytes = fileload ? 24 : plan.calls == 1 && plan.transfers[0] != 2 ? 8 : 16; module.datatype = 1;
-		types[0] = (Dis64Type){builtin==3 ? 144 : builtin==2 ? 112 : plan.arrayroots ? 128 : builtin && plan.wordflow ? 112 : 80, 8, builtin==3 ? connectionmap : builtin==2 ? dialmap : plan.arrayroots ? arraymaps[2*plan.pairroots+!!plan.fdroots] : plan.fdroots ? (plan.pairroots ? fdpairmap : fdmap) : builtin && !plan.pairroots ? map : callermap, builtin==3 ? 3 : 2};
+		types[0] = (Dis64Type){builtin==3 ? (plan.connectionfd?160:144) : builtin==2 ? 112 : plan.arrayroots ? 128 : builtin && plan.wordflow ? 112 : 80, 8, builtin==3 ? (plan.connectionfd?connectionfdmap:connectionmap) : builtin==2 ? dialmap : plan.arrayroots ? arraymaps[2*plan.pairroots+!!plan.fdroots] : plan.fdroots ? (plan.pairroots ? fdpairmap : fdmap) : builtin && !plan.pairroots ? map : callermap, builtin==3 ? 3 : 2};
 		if(plan.calls != 1 || plan.transfers[0] == 2) types[1] = (Dis64Type){16, 8, callermap+1, 1};
 		if(fileload) types[1] = (Dis64Type){24, 8, loadmap, 1};
 		if(plan.nliterals != 0) {
@@ -1579,7 +1583,7 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 		dis64put32(binding+header-4, builtin ? 12+4*dis64sysfixedargs(plan.nativekind[i]) : 20);
 		dis64put32(binding+header, Dis64TrialVersion); dis64put32(binding+header+4, 1);
 		if(builtin){
-            unsigned int signaturebytes=(builtin==2 || (builtin==3 && plan.nativekind[i]==14)) ? dis64sysdialsignature(binding+header) : dis64sysfixedsignature(plan.nativekind[i],binding+header);
+            unsigned int signaturebytes=plan.nativekind[i]==15 ? dis64sysmountsignature(binding+header) : (builtin==2 || (builtin==3 && plan.nativekind[i]==14)) ? dis64sysdialsignature(binding+header) : dis64sysfixedsignature(plan.nativekind[i],binding+header);
             dis64put32(binding+header-4,signaturebytes);
             bindingbytes=header+signaturebytes;continue;
         }
@@ -1599,8 +1603,18 @@ dis64managed(Decl *entry, Decl *globals, Decl *ldts, Inst *input, long count, lo
 	sections[2] = (Dis64Payload){Dis64Types, Dis64Required, typedata, sizes[2]};
 	sections[3] = (Dis64Payload){Dis64Strings, Dis64Required, pool, sizes[3]};
 	sections[4] = (Dis64Payload){consumer ? Dis64Imports : Dis64Exports, Dis64Required, binding, bindingbytes};
-    if(!dis64write(output, sizeof(output), nil, 0, sections, nelem(sections), &written) || Bwrite(bout, output, written) != written)
-		error(impdecl->src.start, "Dis64 managed trial: cannot write image");
+    if(!dis64write(output, sizeof(output), nil, 0, sections, nelem(sections), &written)){
+        error(impdecl->src.start,"Dis64 managed trial: cannot write image");return;
+    }
+    if(builtin==3){
+        Dis64StorageImage checked;Dis64ManagedLiteralsView literals;
+        static const Dis64StorageLimits limits={64,65536,1048576,65536,65536,1024,256,1024};
+        if(!dis64storageimagecheckrecords(output,written,&limits,&checked,dis64sysstringcode,dis64sysdialtable,nil) ||
+           !dis64sysdialview(&checked,&literals)){
+            error(impdecl->src.start,"Dis64 connection: independent image proof refused output");return;
+        }
+    }
+    if(Bwrite(bout,output,written)!=written)error(impdecl->src.start,"Dis64 managed trial: cannot write image");
 }
 
 

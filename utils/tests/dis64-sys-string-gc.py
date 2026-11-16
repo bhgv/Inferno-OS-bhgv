@@ -14,6 +14,7 @@ def unit():
     gc=runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-gc.py'))
     extract=runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))['function']
     source=gc['unit'](managed=True).replace('int\nmain(void)','int\nmanagedbasemain(void)',1)
+    source=source.replace('#include "dis64-call-library.h"','#include "dis64-call-library.h"\n#include "dis64-storage-image.h"\n#include "dis64-numeric-storage.h"',1)
     support='''
 #define DIS_NATIVE64_BOOT_SYS_IO 1
 #include "dis64-sys-string.h"
@@ -39,6 +40,7 @@ ulong msize(void *pointer)
     marker='#ifdef DIS_NATIVE64_MANAGED_FILES\n/* Generated'
     before,after=source.rsplit(marker,1)
     source=before+support+marker+after
+    source+='\n/* Selected Sys fixtures must never enter private local-helper binders. */\nint native64typedlea8step(void){require(0);return 0;}\nType Tbyte={1,0,0,1}; /* Shared loader primitive, no pointer map. */\n'
     return source+'\n'+(ROOT/'utils/tests/dis64-sys-string-gc.c').read_text()
 
 
