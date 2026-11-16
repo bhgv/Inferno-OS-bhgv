@@ -352,3 +352,51 @@ and fail its existing semantic predicate. No production proof predicate changes.
 The owned-import gate also passes locally with ASan+UBSan, including all960
 three-module executions and its three active controls. LeakSanitizer is disabled
 for the sandbox's ptrace restriction; this is not leak or whole-VM evidence.
+
+## Android ARM64 typed module-call target
+
+The targeted workflow also builds and executes the complete typed
+call gates against static ARM64/Bionic with the pinned NDK r27c toolchain and
+Android port headers ahead of Linux fallback headers. A preliminary program
+requires __BIONIC__ at compile time and verifies pointer64/int32 under
+qemu-aarch64 before the runtime fixtures execute. The existing compiler/runner
+interfaces are sufficient; no alternate emitter, binder or production ABI path
+is introduced. All normal source generation, constructor rollback and active
+omission controls remain selected for this target.
+
+This Android job is new CI work, not a local Android pass: the local environment
+has no NDK. Its result must be reviewed independently. Static Bionic/QEMU call
+execution is separate from physical-device execution, Android GUI/window/input,
+serialized AWM dependency admission and APK acceptance. Existing GUI native-link
+checks remain separate. Linux RV64's five typed call gates already pass in the
+first targeted workflow run; native x64/ARM64 remote results remain pending at
+this checkpoint.
+
+The expanded workflow includes direct typed local bodies and forwarding chains
+as well as the five restored gates:4272 C/RX combinations and21 active controls
+per target. The additional two gates pass locally under the same release/UBSan
+flags. The separate trusted-local gate also passes448 cases in each WORD model.
+Android evidence remains pending until the Bionic job actually completes.
+
+Reproduce the targeted Linux gates with a freshly bootstrapped native compiler:
+
+```sh
+for gate in calls tail local multi module external imports; do
+  python3 utils/tests/native64-typed-$gate.py --limbo /path/to/host-tools/limbo
+done
+```
+
+For the Android run, set NATIVE64_ARCH=arm64, NATIVE64_RUNNER=qemu-aarch64 and
+NATIVE64_CFLAGS='-O2 -g -DNDEBUG -fno-strict-aliasing -static'. CC selects the
+NDK's aarch64-linux-android29-clang, followed by -I paths to
+Android/arm64/include and Android/arm/include before the scripts' fallback
+paths. The workflow's Bionic/width probe must pass first; do not substitute a
+Linux cross compiler when interpreting its Android result.
+
+
+The module construct-only and external/import materialize-only modes also pass
+locally with release/UBSan flags and their applicable omission controls. Native
+ARM64 and RV64 pass the first complete targeted five-gate matrix; x64 remote
+acceptance is still running. Subsequent typed workflow revisions retain that
+active run and only the latest pending batch, avoiding cancellation of lengthy
+control compilations for a documentation or additional-target update.

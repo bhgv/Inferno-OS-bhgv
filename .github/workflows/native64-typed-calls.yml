@@ -7,6 +7,7 @@ on:
       - 'makemk.sh'
       - 'mkfiles/**'
       - 'Linux/**'
+      - 'Android/**'
       - 'limbo/**'
       - 'module/**'
       - 'include/**'
@@ -20,7 +21,7 @@ permissions:
   contents: read
 concurrency:
   group: native64-typed-calls-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false # Finish the active typed matrix; retain the latest pending source batch.
 jobs:
   calls:
     name: Typed module calls ${{ matrix.arch }}
@@ -67,7 +68,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/typed-call-logs"
-          for gate in local multi module external imports; do
+          for gate in calls tail local multi module external imports; do
             python3 "utils/tests/native64-typed-$gate.py" --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
               | tee "$RUNNER_TEMP/typed-call-logs/$gate.log"
           done
@@ -75,6 +76,49 @@ jobs:
         if: always()
         with:
           name: typed-module-calls-${{ matrix.arch }}
+          path: ${{ runner.temp }}/typed-call-logs
+          if-no-files-found: warn
+          retention-days: 14
+  bionic:
+    name: Typed module calls Android ARM64 Bionic
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      NATIVE64_ARCH: arm64
+      NATIVE64_RUNNER: qemu-aarch64
+      NATIVE64_CFLAGS: '-O2 -g -DNDEBUG -fno-strict-aliasing -static'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare pinned Android toolchain and native compiler
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends qemu-user
+          curl -fL --retry 3 https://dl.google.com/android/repository/android-ndk-r27c-linux.zip -o "$RUNNER_TEMP/ndk.zip"
+          echo "59c2f6dc96743b5daf5d1626684640b20a6bd2b1d85b13156b90333741bad5cc  $RUNNER_TEMP/ndk.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/ndk.zip" -d "$RUNNER_TEMP"
+          MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+      - name: Verify Bionic headers and native pointer width
+        run: |
+          clang="$RUNNER_TEMP/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang"
+          printf '%s\n' '#include <sys/cdefs.h>' '#include <stdio.h>' \
+            '#ifndef __BIONIC__' '#error Android Bionic headers required' '#endif' \
+            'int main(void){if(sizeof(void*)!=8 || sizeof(int)!=4)return 1;puts("PASS ARM64/Bionic pointer64 int32");return 0;}' \
+            > "$RUNNER_TEMP/bionic-probe.c"
+          "$clang" -O2 -static "$RUNNER_TEMP/bionic-probe.c" -o "$RUNNER_TEMP/bionic-probe"
+          qemu-aarch64 "$RUNNER_TEMP/bionic-probe"
+      - name: Execute typed calls and refusal controls against ARM64 Bionic
+        run: |
+          set -o pipefail
+          export CC="$RUNNER_TEMP/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang -I$GITHUB_WORKSPACE/Android/arm64/include -I$GITHUB_WORKSPACE/Android/arm/include"
+          mkdir -p "$RUNNER_TEMP/typed-call-logs"
+          for gate in calls tail local multi module external imports; do
+            python3 "utils/tests/native64-typed-$gate.py" --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+              | tee "$RUNNER_TEMP/typed-call-logs/$gate.log"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: typed-module-calls-android-arm64-bionic
           path: ${{ runner.temp }}/typed-call-logs
           if-no-files-found: warn
           retention-days: 14
