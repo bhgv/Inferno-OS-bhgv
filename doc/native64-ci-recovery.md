@@ -663,3 +663,53 @@ pipelines and independent unused/wrong-kind refusals pass. All 1024 accepted
 source/flag pairs retain exact previous-compiler output, with 772 producer
 files/refusal boundaries intact. Legacy AWM report remains 16/344, no full
 AWM execution. See doc/native64-typed-loads.ru.md for contract and limits.
+
+
+## Checked LOAD joined to scalar file admission
+
+Add install64typedimports for unpublished trusted-constructor modules that
+already own ldt and select read64ownedimport. Independent .m structural
+requests and native classic-hash arrays must exactly match ldt order/names;
+scalar prototype frames must have exact argument size and zero root maps.
+Validate everything before one allocation publishes private owned requests.
+Preserve ldt and callback on failure. Classic hashes remain consistency tokens,
+not file authority; the existing reader still proves the complete provider.
+Refactor legacy installation to share only its unchanged deep-copy helper.
+
+The new source consumer executes open/run through real ILOAD, namespace
+reader/admission, complete file proof and scheduler. Three -64b providers
+(int/big/real) are read from compiled files through controlled I/O primitives;
+no provider C code/PC/maps enter construction. All contain an uncalled failing
+init, which load must not execute. 1152 C/JIT roots cover two fresh LOADs,
+stack growth, quanta, values, open/admission/read/proof/pin/close failures and
+dontcompile. Input request/name/hash bytes are poisoned after installation.
+All ownership/pin/descriptor counters retire completely. Each scalar variant
+passes 22 no-allocation installer refusals and allocation rollback. UTF-8
+native names match Rune pools, while embedded NUL is refused. Default mode
+publishes nothing; disabled builds do not dereference invalid inputs.
+Three active omissions (hash, root map, String-pool copy) fail semantically;
+the complete gate passes ASan+UBSan/NDEBUG, detect_leaks=0.
+
+Require files as the twelfth four-target typed gate and in the full port driver.
+Legacy int/big ILOAD namespace pipelines and unused/wrong-kind refusals pass,
+as does their active copy control. A clean full console and paired boot pass.
+The provider file scope remains scalar-only; the caller is still trusted IR,
+not generally admitted AWM. No wire IDs, existing file admission or 32-bit
+paths change. See doc/native64-typed-files.ru.md for contract and limits.
+
+
+## CI correction: preserve both LOAD preflight and protected rollback
+
+The preceding LOAD matrix failed on the module-construction fixture on all
+four targets after its LOAD gate itself passed 6528 roots. The fixture used
+ILOAD as an unsupported opcode and required allocation before refusal. LOAD
+now correctly refuses unauthorized metadata during preflight, so that
+allocation expectation was stale. Keep an explicit no-allocation unauthorized
+LOAD assertion, and use opcode 256 (unencodable by the byte ISA) for the
+independent protected post-allocation rollback assertion. Do not weaken either
+ownership/REG check. Run full module/external/owned-import regressions again.
+
+The corrected full local regressions pass 960 module roots, 912 external-call
+roots and 960 owned-import graph roots with every original active control.
+Logs confirm the preceding 6528-root LOAD gate itself passed on all four
+targets before the stale rollback assertion stopped each job.

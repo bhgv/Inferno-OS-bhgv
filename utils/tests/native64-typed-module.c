@@ -104,6 +104,8 @@ static void constructiontests(void)
     { Native64TypedStep bad[64];int before;
       s=module_spec;memcpy(f,module_functions,sizeof(module_functions));s.functions=f;require(f[0].count<nelem(bad));
       memcpy(bad,f[0].code,f[0].count*sizeof(*bad));bad[0].op=ILOAD;f[0].code=bad;before=allocations;
+      require(!native64typedmodule(&s,0,&owner) && allocations==before && owner.module==nil && !owner.rooted && live==0 && rootcount==0 && !memcmp(&saved,&R,sizeof(R)));
+      bad[0].op=256; /* Unencodable opcode still exercises protected post-allocation rollback. */
       require(!native64typedmodule(&s,0,&owner) && allocations>before && owner.module==nil && !owner.rooted && live==0 && rootcount==0 && !memcmp(&saved,&R,sizeof(R)));
     }
     { const Native64TypedStep retcode[]={{IRET,SRC(AXXX)|DST(AXXX),0,0,0,0}};const uchar map[]={0};

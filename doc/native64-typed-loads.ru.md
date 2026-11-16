@@ -82,3 +82,5 @@ ARM64/Bionic и в полный port driver. Результаты новых tar
 Дальше нужен reader/installer полного файлового графа и поддержка оставшихся
 тел `emuinit`, `sh` и AWM. Вызов самого AWM остаётся обычным Limbo `load`/`init`;
 String case этого этапа выполняется C predecode, соседние тела — C/JIT.
+
+Следующий участок: [checked LOAD и файловый reader](native64-typed-files.ru.md).

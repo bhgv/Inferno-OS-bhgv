@@ -599,6 +599,12 @@ struct Native64ImportRequest {
 };
 extern Modlink* read64ownedimport(Module*, WORD, char*); // Private checked-constructor reader; one pinned instance.
 extern int install64callimports(Module*, const Native64ImportRequest*, uint, int); // Trusted unpublished caller; atomic deep copy.
+typedef struct Native64TypedImportRequest Native64TypedImportRequest;
+struct Native64TypedImportRequest {
+ Native64ImportRequest request;
+ const uint *hashes; uint count; // Independent .m classic hashes in exact structural ordinal order.
+};
+extern int install64typedimports(Module*, const Native64TypedImportRequest*, uint, int); // Keep checked ldt; validate shape/order before atomic ownership.
 extern Modlink* read64calllibrary(char*, int, const uchar*, ulong, const uchar*, ulong, int);
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 extern Modlink* read64pair(char*, char*); // Read and root the explicitly linked startup module.

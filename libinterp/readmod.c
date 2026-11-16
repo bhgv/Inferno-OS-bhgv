@@ -244,6 +244,22 @@ read64ownedimport(Module *module,WORD index,char *path)
 #endif
 }
 
+#if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
+static Dis64ImportOwner*
+copy64importrequests(const Native64ImportRequest *tables,uint count,int jit,ulong bytes)
+{
+ Dis64ImportOwner *owner;const Native64ImportRequest *table;uchar *at;uint i;
+ owner=mallocz(bytes,1);if(owner==nil)return nil;
+ owner->count=count;owner->jit=jit;at=(uchar*)(owner+1);
+ for(i=0;i<count;i++){
+  table=tables+i;owner->tables[i]=*table;
+  owner->tables[i].imports=at;memmove(at,table->imports,table->importbytes);at+=table->importbytes;
+  owner->tables[i].strings=at;memmove(at,table->strings,table->stringbytes);at+=table->stringbytes;
+ }
+ return owner;
+}
+#endif
+
 /* Attach all independently generated .m requests to a trusted unpublished
  * caller. One allocation owns every table/name/signature. No borrowed emitter
  * pointers, classic hashes or callback addresses come from serialized bytes.
@@ -253,7 +269,7 @@ install64callimports(Module *module,const Native64ImportRequest *tables,uint cou
 {
 #if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
  Dis64ImportOwner *owner;Module *cached;DisStringPoolView pool;Dis64Bindings bindings;
- const Native64ImportRequest *table;uchar *at;ulong bytes=sizeof(*owner);uint i;
+ const Native64ImportRequest *table;ulong bytes=sizeof(*owner);uint i;
  if(!dis64launchmode() || module==nil || module==H || module->ref!=1 ||
     module->ldt!=nil || module->native64imports!=nil || module->native64importload!=nil ||
     module->cstep!=native64typedlea8step || !count || count>64 || tables==nil || tables==(void*)H ||
@@ -271,16 +287,86 @@ install64callimports(Module *module,const Native64ImportRequest *tables,uint cou
        Dis64LocalFunctions,Dis64LocalParameters,&bindings))return 0;
   bytes+=table->importbytes+table->stringbytes;
  }
- owner=mallocz(bytes,1);if(owner==nil)return 0;
- owner->count=count;owner->jit=jit;at=(uchar*)(owner+1);
- for(i=0;i<count;i++){
-  table=tables+i;owner->tables[i]=*table;
-  owner->tables[i].imports=at;memmove(at,table->imports,table->importbytes);at+=table->importbytes;
-  owner->tables[i].strings=at;memmove(at,table->strings,table->stringbytes);at+=table->stringbytes;
- }
+ owner=copy64importrequests(tables,count,jit,bytes);if(owner==nil)return 0;
  module->native64imports=owner;
  module->native64importload=read64ownedimport;
  return 1;
+#else
+ USED(module);USED(tables);USED(count);USED(jit);return 0;
+#endif
+}
+
+
+#if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
+/* Match pool Runes to bounded UTF-8 native names without locale or truncation. */
+static int
+match64typedname(const DisStringPoolView *pool,uint symbol,const char *name)
+{
+ DisRuneView view;uint i,c,j,n,at=0;uchar utf[4];
+ if(name==nil || name==H || !disstringpoolget(pool,symbol,&view) || !view.count || view.count>255)return 0;
+ for(i=0;i<view.count;i++){
+  if(!disruneat(&view,i,&c) || !c)return 0;
+  if(c<0x80){utf[0]=c;n=1;}
+  else if(c<0x800){utf[0]=0xc0|(c>>6);utf[1]=0x80|(c&63);n=2;}
+  else if(c<0x10000){utf[0]=0xe0|(c>>12);utf[1]=0x80|((c>>6)&63);utf[2]=0x80|(c&63);n=3;}
+  else{utf[0]=0xf0|(c>>18);utf[1]=0x80|((c>>12)&63);utf[2]=0x80|((c>>6)&63);utf[3]=0x80|(c&63);n=4;}
+  for(j=0;j<n;j++)if(at==255 || (uchar)name[at++]!=utf[j])return 0;
+ }
+ return name[at]==0;
+}
+#endif
+
+/* Structural file requests plus independent .m hashes join an existing checked
+ * ldt. Nothing is published until every table/name/hash/scalar frame agrees. */
+int
+install64typedimports(Module *module,const Native64TypedImportRequest *tables,uint count,int jit)
+{
+#if defined(DIS64_PILOT_LOADER) && DIS64_PILOT_LOADER == 1
+ Native64ImportRequest requests[64];Dis64ImportOwner *owner;Module *cached;DisStringPoolView pool;
+ Dis64Bindings bindings;Dis64Binding binding;const Native64TypedImportRequest *entry;
+ ulong bytes=sizeof(*owner);uint i,j,k,total=0,base,frame,width,hash;Type *type;Import *ldt;
+ if(sizeof(void*)!=8 || sizeof(WORD)!=4 || sizeof(uint)!=4 || !dis64launchmode() ||
+    module==nil || module==H || module->ref!=1 || module->compiled ||
+    module->cstep!=native64typedlea8step || module->native64imports!=nil || module->native64importload!=read64ownedimport ||
+    module->ldt==nil || module->ldt==H || module->type==nil || module->type==H || module->ntype<1 || module->ntype>5121 ||
+    !count || count>64 || tables==nil || tables==(void*)H || (jit!=0 && jit!=1))return 0;
+ for(cached=modules;cached!=nil;cached=cached->link)if(cached==module)return 0;
+ for(i=0;i<count;i++){
+  entry=tables+i;requests[i]=entry->request;
+  if(!entry->count || entry->count>64 || entry->count>4096-total || entry->hashes==nil || entry->hashes==(void*)H ||
+     (uintptr)entry->hashes>(uintptr)-1-entry->count*4 ||
+     requests[i].imports==nil || requests[i].imports==(void*)H || requests[i].strings==nil || requests[i].strings==(void*)H ||
+     requests[i].importbytes>Dis64LocalBytes || requests[i].stringbytes>Dis64LocalBytes ||
+     (uintptr)requests[i].imports>(uintptr)-1-requests[i].importbytes || (uintptr)requests[i].strings>(uintptr)-1-requests[i].stringbytes ||
+     requests[i].importbytes+requests[i].stringbytes>8*Dis64LocalBytes-bytes ||
+     !disstringpoolcheck(requests[i].strings,requests[i].stringbytes,65536,&pool) ||
+     !dis64bindingscheck(requests[i].imports,requests[i].importbytes,0,&pool,0,0,64,64,&bindings) || bindings.count!=entry->count)return 0;
+  ldt=module->ldt[i];if(ldt==nil || ldt==H)return 0;
+  for(j=0;j<entry->count;j++){
+   if(!dis64bindingget(&bindings,j,&binding) || !match64typedname(&pool,binding.symbol,ldt[j].name))return 0;
+   memmove(&hash,entry->hashes+j,4);if(memcmp(&hash,&ldt[j].sig,4))return 0;
+  }
+  if(ldt[entry->count].name!=nil)return 0;
+  bytes+=requests[i].importbytes+requests[i].stringbytes;total+=entry->count;
+ }
+ if(module->ldt[count]!=nil || total>=(uint)module->ntype)return 0;
+ base=module->ntype-total;
+ for(i=0;i<count;i++){
+  if(!disstringpoolcheck(requests[i].strings,requests[i].stringbytes,65536,&pool) ||
+     !dis64bindingscheck(requests[i].imports,requests[i].importbytes,0,&pool,0,0,64,64,&bindings))return 0;
+  for(j=0;j<bindings.count;j++){
+   if(!dis64bindingget(&bindings,j,&binding))return 0;
+   frame=64;
+   for(k=0;k<binding.signature.parameters;k++){
+    width=dis64scalarwidth(dis64u32(binding.signature.data+12+4*k));frame=(frame+width-1)&~(width-1);frame+=width;
+   }
+   frame=(frame+7)&~7;type=module->type[base++];
+   if(type==nil || type==H || type->ref<=0 || type->size!=(int)frame || type->np!=(int)((frame+63)/64))return 0;
+   for(k=0;k<(uint)type->np;k++)if(type->map[k])return 0;
+  }
+ }
+ owner=copy64importrequests(requests,count,jit,bytes);if(owner==nil)return 0;
+ module->native64imports=owner;return 1;
 #else
  USED(module);USED(tables);USED(count);USED(jit);return 0;
 #endif
