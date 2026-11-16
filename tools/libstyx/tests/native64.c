@@ -108,6 +108,11 @@ main(void)
 	f.newfid = b->fid;
 	out = request(&c, f);
 	check(out.type == Rerror && findfid(&c, b->fid) == b, "existing newfid replaced");
+	f.newfid = 123;
+	f.nwname = 1;
+	f.wname[0] = "child";
+	out = request(&c, f);
+	check(out.type == Rerror && findfid(&c, 123) == nil, "walk through file killed server or leaked fid");
 	a->open = 1;
 	a->mode = ORDWR;
 	f.type = Tread;

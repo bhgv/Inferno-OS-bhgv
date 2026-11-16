@@ -482,8 +482,6 @@ devwalk(Client *c, Styxfile *file, Fid *fp, Fid *nfp, char **name, int nname, ch
 	qid = p != nil ? p->d.qid : fp->qid;
 	for(j = 0; j < nname; j++){
 		if(!(qid.type&QTDIR)){
-			if(j == 0)
-				styxfatal("devwalk error");
 			*err = Enotdir;
 			goto Done;
 		}
