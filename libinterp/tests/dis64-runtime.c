@@ -123,6 +123,7 @@ read64ownedimport(Module *m,WORD index,char *path)
 REG R;
 Module *modules;
 Type Tarray = {1}, Tstring = {1};
+Type Tbyte={1,0,0,1}; // Production byte primitive needed by the shared constructor.
 void freemodlink(Heap*, int); // Actual destructor body is linked below.
 Type Tmodlink = {1, freemodlink, markheap, -1, 1, 0, 0, {0x80}};
 Pool *heapmem;
@@ -133,6 +134,31 @@ extern void (*dec[256])(void);
 char exHeap[]="heap", exNomem[]="memory", exBounds[]="bounds";
 char exModule[]="module", exNilref[]="nil", exInval[]="invalid";
 char exCompile[]="compile", exOp[]="opcode", exZdiv[]="division by zero";
+
+/* The scalar gate does not execute managed client literals or helper calls.
+ * Extended gates replace these refusing seams with production implementations. */
+String*
+newstring(int bytes)
+{
+	USED(bytes);
+	require(0);
+	return nil;
+}
+
+String*
+newrunes(int count)
+{
+	USED(count);
+	require(0);
+	return nil;
+}
+
+int
+native64typedlea8step(void)
+{
+	require(0);
+	return 0;
+}
 
 
 /* Provide the ordinary runtime allocator with bounded fixture storage. */

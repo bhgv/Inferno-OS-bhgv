@@ -40,6 +40,7 @@ def unit(codecs=False):
  handlers+='\n'+'\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in names)
  s=s.replace('#include "tests/leaf-cons-stub.h"','#define cons unused_client_cons_stub\n#include "tests/leaf-cons-stub.h"\n#undef cons')
  heap=(ROOT/'libinterp/heap.c').read_text();strings=(ROOT/'libinterp/string.c').read_text()
+ s=s.replace(extract(s,'String*\nnewrunes('),'',1)
  s+='\n'+extract(strings,'String*\nnewrunes(')+'\n'
  s+='\n'+extract(heap,'void\nfreelist(')+'\nType Tlist={1,freelist,markheap,sizeof(List)};\n'+extract(xec,'List*\ncons(')+'\n'+extract(xec,'OP(movp)')+'\n#define movp actual_movp\n'+extract(xec,'static List*\nlisthead(')+'\n'
  s+='\n'+extract(heap,'Heap*\nheap(')+'\n'+extract(xec,'static void\nnewrecord(')+'\n'+extract(xec,'OP(new)')+'\n'+extract(xec,'OP(newz)')+'\n'

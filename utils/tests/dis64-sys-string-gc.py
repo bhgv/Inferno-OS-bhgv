@@ -40,7 +40,6 @@ ulong msize(void *pointer)
     marker='#ifdef DIS_NATIVE64_MANAGED_FILES\n/* Generated'
     before,after=source.rsplit(marker,1)
     source=before+support+marker+after
-    source+='\n/* Selected Sys fixtures must never enter private local-helper binders. */\nint native64typedlea8step(void){require(0);return 0;}\nType Tbyte={1,0,0,1}; /* Shared loader primitive, no pointer map. */\n'
     return source+'\n'+(ROOT/'utils/tests/dis64-sys-string-gc.c').read_text()
 
 

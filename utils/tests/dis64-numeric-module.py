@@ -57,6 +57,7 @@ def unit(control):
     source=source.replace('int\nmain(int argc, char **argv)','int\nstorage_attach_main(int argc, char **argv)',1)
     # The production constructor now decodes direct and indirect operands through dis64callread.
     source+='\n#include "dis64-bound-call.h"\n#include "dis64-numeric-storage.h"\n'
+    source+='\n'+next(line for line in (ROOT/'libinterp/heap.c').read_text().splitlines() if line.startswith('Type\tTbyte'))+'\n'
     source+='#define Dis64RuntimeName 255U // Actual numeric display-name policy.\n'
     parts=numericparts()
     changes={'entry':('module->entry = module->prog+load->image.module.entry;','module->entry = nil;'),

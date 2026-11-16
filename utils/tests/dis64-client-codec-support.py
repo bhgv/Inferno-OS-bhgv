@@ -13,7 +13,7 @@ def instrument(source,extract):
  * standard formats used by the unmodified handlers cross this libc seam. */
 int sprint(char *out,char *format,...){va_list ap;int n;va_start(ap,format);n=vsprintf(out,format,ap);va_end(ap);return n;}
 ulong msize(void *pointer){for(unsigned int i=0;i<RuntimeBlocks;i++)if(blocks[i].pointer==pointer)return blocks[i].bytes;require(0);return 0;}
-Type Tbyte={1,0,0,1};char exType[]="type";
+char exType[]="type";
 '''
  support+='\n#undef T\n'+'\n'.join(l for l in(ROOT/'lib9/rune.c').read_text().splitlines()if not l.startswith('#include'))+'\n#undef Bit\n#undef T\n#undef RuneX\n#define T(r) *((void**)(R.r))\n'
  support+='\n'+extract(heap,'void\nfreestring(')+'\n'+'\n'.join(extract(heap,sig)for sig in('void\nacheck(','void\nfreearray('))

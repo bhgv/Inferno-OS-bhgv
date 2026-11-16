@@ -76,6 +76,8 @@ String* c2string(char *text, int length)
 '''
 
         strings = (ROOT/'libinterp/string.c').read_text()
+        for signature in ('String*\nnewstring(', 'String*\nnewrunes('):
+            source = source.replace(extract(source, signature), '', 1)
         source += extract(strings,'String*\nnewstring(')+'\n'+extract(strings,'String*\nnewrunes(')+'\n'
         begin = load64.index('#ifdef DIS_NATIVE64_MANAGED_FILES\n/* Generated')
         end = load64.index('/* Only the explicit console option', begin)

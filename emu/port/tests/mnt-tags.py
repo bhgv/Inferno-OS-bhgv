@@ -46,8 +46,9 @@ int main(void) {
     with tempfile.TemporaryDirectory(prefix='mnt-tags-') as name:
         work = Path(name)
         (work / 'test.c').write_text(text)
-        subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + ['-O1', '-g', '-fsanitize=undefined',
-            '-fno-sanitize-recover=all', str(work / 'test.c'), '-o', str(work / 'test')], check=True)
+        flags = shlex.split(os.environ.get('CFLAGS', '-O1 -g -fsanitize=undefined -fno-sanitize-recover=all'))
+        subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + flags +
+            [str(work / 'test.c'), '-o', str(work / 'test')], check=True)
         result = subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER', '')) + [str(work / 'test')], capture_output=True, text=True)
         if args.signed_shift_control:
             if result.returncode == 0 or 'left shift of 1 by 31' not in result.stderr:

@@ -90,13 +90,24 @@ def main():
         target.symlink_to(tools/name)
     run([str(tools/'mk'), 'CONF=emu-g', 'CONFLIST=emu-g'], build/'emu/Linux', env, logs/'mk.log')
     tests = build/'utils/tests'
+    mountenv = dict(env, CFLAGS=args.test_cflags)
     for script, controls in [('mnt-tags.py', (None, '--signed-shift-control')),
                              ('mnt-version-read.py', (None, '--early-return-control'))]:
         for control in controls:
             command = [sys.executable, str(build/'emu/port/tests'/script)]
+            gateenv = mountenv
+            label = script[:-3]+str(control)
             if control:
                 command += [control]
-            run(command, build, env, logs/(script[:-3]+str(control)+'.log'))
+            if control == '--signed-shift-control':
+                # This deliberate C undefined behavior needs UBSan. Keep the
+                # control on the native build host, including when the target
+                # toolchain (notably RV64) has no sanitizer runtime. Positive
+                # tag allocation and version-reader gates still run on target.
+                gateenv = dict(mountenv, CC='cc', NATIVE64_RUNNER='',
+                               CFLAGS='-O1 -g -fsanitize=undefined -fno-sanitize-recover=all')
+                label += '-host-ubsan'
+            run(command, build, gateenv, logs/(label+'.log'))
     run([sys.executable, str(tests/'dis64-pair-boot.py'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--sys-clock', '--limbo', str(tools/'limbo')],
         build, env, logs/'pair-boot.log')

@@ -1,5 +1,7 @@
 name: Native64 UTF and binding address checks
 on:
+  pull_request:
+    branches: [experiment]
   push:
     branches: [experiment]
     paths:

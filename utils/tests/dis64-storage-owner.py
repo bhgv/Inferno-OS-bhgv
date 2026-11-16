@@ -23,6 +23,9 @@ def unit(control, clones=False):
     heap = (ROOT/'libinterp/heap.c').read_text()
     heaps = '\n\n'.join(fn(heap,s) for s in ('void\nfreeptrs(', 'void\nfreeheap(', 'void\ndestroy(', 'Type*\ndtype(', 'void\nfreetype(', 'void\ninitmem(', 'Heap*\nheapz('))
     owner = (ROOT/'libinterp/load64.c').read_text()
+    # The library-instance constructor between the storage declarations and
+    # destructor belongs to the executable library gates, not this lease gate.
+    owner = owner[:owner.index('typedef struct Dis64LibraryBuild')]+owner[owner.index('/* Consume a staging lease'):]
     bodies = '#define Dis64RuntimeObject (1024U*1024U) // Actual constructor resource policy.\n#define Dis64RuntimeCode 65536U // Actual constructor instruction policy.\n#define Dis64RuntimeBytes (8U*1024U*1024U) // Actual complete-source policy.\n'
     bodies += fn(owner,'static int\ndis64runtimemodel(')+'\n'+owner[owner.index('/* Native staging state is deliberately distinct'):]
     if not clones:

@@ -15,7 +15,13 @@ ROOT=Path(__file__).resolve().parents[2]
 def unit():
     base=runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))
     fn=base['function'];source=base['buildunit']().split('/* Set up an actual root extent, execute to IEXIT, then unwind actual owned storage. */')[0]
-    source=source.replace('#include "dis64-call-infer.h"','#include "dis64-call-infer.h"\n#include "dis64-numeric-storage.h"',1)
+    for name in ('ptradd','ptrdel'):
+        source=source.replace(fn(source,'void\n'+name+'('),'',1)
+    # These are dependencies of the numeric constructor, independent of the
+    # scalar runtime fixture's evolving admission headers.
+    marker='#include "dis64-call-library.h"'
+    if source.count(marker)!=1: raise RuntimeError('numeric fixture include marker drift')
+    source=source.replace(marker,marker+'\n#include "dis64-numeric-storage.h"',1)
     # The root metadata uses actual collector add/del bodies; collection is a separate acceptance fixture.
     gc=(ROOT/'libinterp/gc.c').read_text()
     roots=gc[gc.index('typedef struct Ptrhash'):gc.index('\n\tint\tnprop;')]
@@ -23,6 +29,8 @@ def unit():
     roots+=next(line for line in gc.splitlines() if line.startswith('#define\tHASHPTR'))+'\n'
     roots+='#define malloc(n) trackedallocate(n,0) // Only root metadata allocation is intercepted here.\n'+fn(gc,'void\nptradd(')+'\n'+fn(gc,'void\nptrdel(')+'\n#undef malloc\n'
     load=(ROOT/'libinterp/load64.c').read_text();numeric=load[load.index('/* Native staging state is deliberately distinct'):]
+    # Library linking is a separate gate; do not pull it into storage ownership.
+    numeric=numeric[:numeric.index('typedef struct Dis64LibraryBuild')]+numeric[numeric.index('/* Consume a staging lease'):]
     # Independent storage cloning has its own real newmp/arraycpy/collector closure.
     numeric=numeric[:numeric.index('typedef struct Dis64StorageClone')]+numeric[numeric.index('/* Retain prepared storage in an empty native Module'): ]
     fixture=(ROOT/'utils/tests/dis64-numeric-exec.c').read_text().replace('ROOT_IMPLEMENTATION',roots).replace('NUMERIC_IMPLEMENTATION',numeric)

@@ -46,6 +46,7 @@ Modlink*prepare64calllibrarylink(char*path,uchar*image,ulong bytes,int jit,const
  start=s.rfind(' optab[IMOVW]=countmovw;');end=s.index(' require(prepare64calls(',start);handlers=s[start:end]
  fixture=(ROOT/'utils/tests/dis64-library-namespace.c').read_text().replace('static unsigned int namespaceordinal;','').replace(' NAMESPACE_HANDLERS',handlers)
  if iload:
+  s=s.replace(extract(s,'String*\nnewstring('),'',1)
   fixture=fixture.replace('int main(int argc,char**argv)','int oldnamespace_main(int argc,char**argv)',1)
   s+='\n'+extract(xec:=(ROOT/'libinterp/xec.c').read_text(),'static Import*\nmoduleimports(')+'\n'+extract(xec,'OP(iload)')+'\n'
   s+='\nchar exNegsize[]="negative size";\nint hmsize(void*h){for(int i=0;i<RuntimeBlocks;i++)if(blocks[i].pointer==(uchar*)h-O(Bhdr,u.data))return blocks[i].bytes-O(Bhdr,u.data);require(0);return 0;}\n'+extract((ROOT/'libinterp/string.c').read_text(),'String*\nnewstring(')+'\n'

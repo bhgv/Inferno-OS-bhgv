@@ -66,6 +66,10 @@ def buildunit(resultcalls=False):
     stack = (ROOT/'libinterp/stack.c').read_text()
     emulator = (ROOT/'emu/port/dis.c').read_text()
     parts = [function(emulator, 'int\nkprotect(')]
+    # This scalar constructor never publishes managed-client roots. Scheduler
+    # and collector fixtures supply their own observed/production root services.
+    parts += ['void\n'+name+'(Heap *heap)\n{\n\tUSED(heap);\n\trequire(0);\n}'
+              for name in ('ptradd', 'ptrdel')]
     parts += [function(heap, signature) for signature in (
         'void\nfreeptrs(', 'void\nfreeheap(', 'void\ndestroy(', 'Type*\ndtype(',
         'void\nfreetype(', 'void\ninitmem(', 'Heap*\nheapz(', 'Heap*\nnheap(', 'void\nfreemodlink(')]

@@ -53,6 +53,7 @@ def unit():
  s=s.replace('require(module->jit->dispatch[IEXIT] != nil);','if(module->entry!=nil)require(module->jit->dispatch[IEXIT] != nil);',1)
  pin=extract(s,'void\nptradd(');s=s.replace(pin,'static int librarypinfail;\n'+pin.replace('\n{','\n{\n    if(librarypinfail)error(exNomem);',1),1)
  s+='\n'+extract(xec,'int\nnative64diallea8step(')+'\n'+extract(xec,'int\nnative64stringlea8step(')+'\n'
+ s=s.replace(extract(s,'int\nnative64typedlea8step('),'',1)
  s+='\n#include \"native64-local-bind.h\"\n'+extract(xec,'int\nnative64typedlea8step(')+'\n'+extract(xec,'static int\nmoduleentry(')+'\n'+extract(xec,'OP(mframe)')+'\n'+extract(xec,'OP(mcall)')+'\n'
  fixture=(ROOT/'utils/tests/dis64-library-files.c').read_text().replace('static int librarypinfail;','')
  fixture=fixture.replace('LIBRARY_HANDLERS','\n'.join('optab[I'+n.upper()+']=actual_'+n+';'for n in ('cvtwl','subw','mulw','modw','andw','orw','xorw','shrw','beqw','bnew','bltw','blew','bgtw','bgew','jmp','addl','subl','mull','divl','modl','andl','orl','xorl','shll','shrl','beql','bnel','bltl','blel','bgtl','bgel','beqf','bnef','bltf','blef','bgtf','bgef')))
