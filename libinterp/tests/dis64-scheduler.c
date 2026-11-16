@@ -276,6 +276,7 @@ struct NativeObservation {
 
 static NativeObservation nativeobservations[32]; // Bounded nested import observations.
 static int nativecalls, nativeaccepted, nativedeclined, ccalls, bridgecalls; // Observed real dispatch routes.
+static int nativeleafavailable; // A separate raw leaf was published by an observed live module.
 
 
 /* Count an actual generated leaf invocation before returning its genuine result. */
@@ -375,6 +376,11 @@ observedispatch(Module *module, int requested)
 	require(i < nelem(nativeobservations));
 	nativeobservations[i].jit = module->jit;
 	for(opcode=0; opcode<256; opcode++){
+		/* Some backends alias entry to a complete C tail (RV64 ILEA).
+		 * Such tails execute without passing through the raw-leaf wrapper. */
+		if(module->jit->entry[opcode] != nil && module->jit->entry[opcode] != countnative &&
+		   module->jit->entry[opcode] != module->jit->dispatch[opcode])
+			nativeleafavailable = 1;
 		if(module->jit->entry[opcode] != countnative)
 			nativeobservations[i].entry[opcode] = module->jit->entry[opcode];
 		if(module->jit->entry[opcode] != nil)

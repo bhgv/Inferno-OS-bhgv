@@ -80,6 +80,6 @@ int main(int argc,char**argv)
   else {require(!worker.env->errstr[0] && R.FP==root && fileopens==opens+2 && admissioncalls==admits+2);value=0;if(result){memmove(&value,root+104,result==Dis64Int?4:8);require(value==expected);}}
   namespaceend(p);require(Tstring.ref==1 && fileopens==filecloses);
  }
- if(!rejected && !failure)require(nativecalls && nativeaccepted && bridgecalls && ccalls);
+ if(!rejected && !failure){require(bridgecalls && ccalls);if(nativeleafavailable)require(nativecalls && nativeaccepted);else require(!nativecalls && !nativeaccepted);}
  require(loadinstructions>0 && !live && !nlinkpins && !modules && !worker.nerr);return 0;
 }

@@ -94,7 +94,11 @@ def main():
     before,after={'module':('|| order || !disstringpoolget(&pool,in.symbol,&symbol)','|| 0 || !disstringpoolget(&pool,in.symbol,&symbol)'),
      'signature':('if(!dis64signatureequal(&in.signature,&out.signature,&equal) || !equal)','if(0)'),
      'atomic':('links.entry[i]=out.entry;','links.entry[i]=out.entry;*output=links;')}[a.control]
-    assert text.count(before)==1;(w/'dis64-call-library.h').write_text(text.replace(before,after))
+    assert text.count(before)==1;(w/'dis64-call-library.h').write_text('#define DIS64_CALL_LIBRARY_TEST_VARIANT 1\n'+text.replace(before,after))
+    # The scalar-client header also includes this library header. Load the
+    # controlled copy first, before a nested production include can guard it out.
+    fixture=file.read_text();marker='#include "dis64-scalar-client.h"';assert fixture.count(marker)==1
+    fixture=fixture.replace(marker,'#include "dis64-call-library.h"\n#ifndef DIS64_CALL_LIBRARY_TEST_VARIANT\n#error library omission control header was not selected\n#endif\n'+marker,1);file.write_text(fixture)
    rows=[x for x in rows if x[0]==('deep'if a.control=='atomic'else'single')]
   cc+=[str(file),str(ROOT/'libinterp/dec.c'),'-Wl,--wrap=free','-lm','-o',str(binary)];subprocess.run(cc,env=env,check=True)
   runner=shlex.split(env.get('NATIVE64_RUNNER',''))

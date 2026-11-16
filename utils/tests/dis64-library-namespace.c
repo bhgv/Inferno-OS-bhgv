@@ -14,7 +14,7 @@ namespacebegin(unsigned int kind,unsigned int count,const unsigned int*kinds,int
  starting=m;started=nil;require(kprotect(start,nil));p=started;rootenvironment(p);R=p->R;
  namespacebaseline=live;return p;
 }
-static void namespaceend(Prog*p){observed=p;progexit();emptyqueues();require(!live && !modules && !nlinkpins && Tmodlink.ref==1 && !worker.nerr);}
+static void namespaceend(Prog*p){observed=p;progexit();emptyqueues();require(!live && !modules && !nlinkpins && Tmodlink.ref==1 && !worker.nerr);memset(nativeobservations,0,sizeof(nativeobservations));}
 static Modlink*
 namespaceload(int jit,int sync)
 {
@@ -103,6 +103,6 @@ int main(int argc,char**argv)
    namespaceend(p);memmove(image,saved,bytes);memmove(requestcopy,limbo_native64_Library_scalar_imports,requestsize);memmove(namecopy,limbo_native64_Library_scalar_strings,namesize);
   }
  }
- if(!materialize && !rejected && !failure)require(nativecalls && nativeaccepted && bridgecalls && ccalls);
+ if(!materialize && !rejected && !failure){require(bridgecalls && ccalls);if(nativeleafavailable)require(nativecalls && nativeaccepted);else require(!nativecalls && !nativeaccepted);}
  require(!live && !nlinkpins && !modules && fileopens==filecloses && !worker.nerr);return 0;
 }

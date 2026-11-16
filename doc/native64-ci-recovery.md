@@ -269,3 +269,49 @@ workflow, together with release-mode writer and typed-IR omission controls. The
 full matrix still owns broader runtime acceptance; these changes neither admit
 AWM modules nor establish an Android GUI runtime. The 32-bit source/build paths
 are unchanged.
+
+
+## Shared library dispatch observations
+
+The same empty-call route requirement occurs in the whole-library, native
+namespace and ILOAD fixtures. Determine separate raw-leaf availability once in
+the shared observedispatch function, before wrapping entries. Scalar clients and
+all three library fixtures consume that observation. Complete JIT tails and C
+handlers remain mandatory; a published raw leaf must be called and accepted,
+and a no-leaf case must leave both raw counters zero. No architecture is exempt
+and no instruction/ownership/result predicate is removed. Discard saved RX
+entry observations only after each complete library caller/module retirement.
+
+The quick three-target workflow now runs all14 providers through construction,
+native namespace and scheduled ILOAD, with the same exact source/metadata
+checks, plus the38 managed literal clients and release-mode compiler gates.
+This catches RV64's next library boundary without waiting for every prior full
+matrix gate. Target code still uses the configured cross compiler and QEMU
+sysroot; sanitizer flags are retained on the native targets. Local shared
+scheduler/vmachine execution and its omission controls pass, along with empty
+and single scalar clients and both leaf/bridge observation controls. The full
+matrix remains the broader acceptance gate; no general AWM admission is added.
+
+The quick matrix also runs both single-word leaf/bridge omission controls on
+every target. The leaf control must fail even if a backend accidentally stops
+publishing its expected MOVW leaf: an unobserved route would make the control
+incorrectly succeed and the driver reject it. Thus the backend-aware empty-call
+check does not let wholesale loss of native generation pass the quick matrix.
+
+
+The library mutation controls also needed a header-order correction: a nested
+scalar-client include selected the unmodified production library header before
+the temporary variant. Include the marked control header first and require its
+variant macro at compile time. Module/signature/entry/atomic controls now reach
+their exact semantic failures. The namespace profile control now targets only
+the reader's jit-argument predicate, since a second launch guard was added for
+import installation. Both guards stay present in production. All11 library,
+ILOAD and namespace omission controls pass locally under release flags with
+UBSan, and the disabled namespace bridge performs no constructor/namespace work.
+All14 whole-library, namespace and ILOAD positive families also pass locally.
+
+CI at14257fc confirms release-mode writer/tail/local/external/multi assertions,
+their active controls and all38 literal/scalar-import programs on each of x64,
+native ARM64 and RV64/QEMU. This includes3648 scheduler roots per target with
+actual collection. The broader paired workflow and subsequent expanded library
+matrix remain separate results, not inferred from these individual gates.

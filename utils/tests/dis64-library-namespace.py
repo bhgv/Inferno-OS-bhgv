@@ -39,7 +39,7 @@ Modlink*prepare64calllibrarylink(char*path,uchar*image,ulong bytes,int jit,const
   before,after={'admission':('if(mustbesigned(read->path,read->image,read->bytes,read->dir))','if(0)'),
    'close':('if(read.fd>=0)kclose(read.fd);','if(0)kclose(read.fd);'),
    'acquire':('if(sync)acquire();','if(0)acquire();'),
-   'profile':('if(!dis64launchmode() ||','if(0 ||')}[control]
+   'profile':('if(!dis64launchmode() || (jit!=0 && jit!=1)', 'if(0 || (jit!=0 && jit!=1)')}[control]
   assert reader.count(before)==1;reader=reader.replace(before,after)
  s=s.replace(extract(s,'Modlink*\nread64ownedimport('),'',1)
  s+='\n'+reader

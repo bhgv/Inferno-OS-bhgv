@@ -1,17 +1,8 @@
 /* Both caller CODE and provider CODE originate in compiler files. */
-static int clientproviderjit,clientloads,clientleafexpected;
-/* RV64 can publish only complete C tails for an empty call. In particular,
- * its ILEA entry aliases dispatch rather than naming a separately counted leaf.
- * Require genuine leaf execution whenever either file actually publishes one. */
-static void clientleafobserve(Module *module){
- if(module->jit==nil)return;
- for(int op=0;op<256;op++)
-  if(module->jit->entry[op]!=nil && module->jit->entry[op]!=countnative &&
-     module->jit->entry[op]!=module->jit->dispatch[op])clientleafexpected=1;
-}
+static int clientproviderjit,clientloads;
 static void clientloadstep(void){
  void*destination=R.d;Modlink*ml;actual_iload();memmove(&ml,destination,sizeof(ml));require(!nlinkpins);
- if(ml!=H){require(ml!=nil);clientleafobserve(ml->m);observedispatch(ml->m,clientproviderjit && !dontcompile);clientloads++;}
+ if(ml!=H){require(ml!=nil);observedispatch(ml->m,clientproviderjit && !dontcompile);clientloads++;}
 }
 static void clientempty(void){require(!live && !modules && !nlinkpins && !worker.nerr && !fileopen && fileopens==filecloses && Tstring.ref==1 && Tlist.ref==1 && Tptr.ref==1);/* All modules are retired; cached RX entry addresses no longer belong to a live sidecar. */memset(nativeobservations,0,sizeof(nativeobservations));}
 int main(int argc,char**argv)
@@ -36,7 +27,7 @@ int main(int argc,char**argv)
  }
  if(materialize)return 0;
  for(jit=0;jit<2;jit++)for(pjit=0;pjit<2;pjit++)for(grow=0;grow<2;grow++)for(q=0;q<3;q++)for(mode=0;mode<4;mode++){
-  cflag=jit;m=readmod("client.dis64",nil,0);require(m!=nil && !nlinkpins);clientleafobserve(m);observedispatch(m,jit);m->ss=grow?0:4096;
+  cflag=jit;m=readmod("client.dis64",nil,0);require(m!=nil && !nlinkpins);observedispatch(m,jit);m->ss=grow?0:4096;
   /* No compiler/image metadata may remain borrowed when startup allocates. */
   memset(client,0xa5,clientfilebytes);starting=m;started=nil;require(kprotect(start,nil));p=started;rootenvironment(p);R=p->R;root=p->R.FP;
   clientproviderjit=cflag=pjit;p->quanta=q==0?1:q==1?3:1000;
@@ -51,5 +42,5 @@ int main(int argc,char**argv)
   else {if(worker.env->errstr[0] || R.FP!=root)fprintf(stderr,"client execution: error=%s jit=%d provider=%d grow=%d q=%d mode=%d pc=%p owner=%s dispc=%lu\n",worker.env->errstr,jit,pjit,grow,q,mode,(void*)R.PC,R.M->m->name,(unsigned long)(((uintptr)R.PC-(uintptr)R.M->m->prog)/sizeof(Inst)));require(!worker.env->errstr[0] && R.FP==root);value=0;if(result){if(result==Dis64Int){WORD word;memmove(&word,root+offset,sizeof(word));value=(LONG)word;}else memmove(&value,root+offset,8);require(value==expected);}}
   namespaceend(p);clientempty();memmove(client,saved,clientfilebytes);
  }
- if(!failure){require(ccalls && bridgecalls);if(clientleafexpected)require(nativecalls && nativeaccepted);else require(!nativecalls && !nativeaccepted);}require(clientloads>0);return 0;
+ if(!failure){require(ccalls && bridgecalls);if(nativeleafavailable)require(nativecalls && nativeaccepted);else require(!nativecalls && !nativeaccepted);}require(clientloads>0);return 0;
 }

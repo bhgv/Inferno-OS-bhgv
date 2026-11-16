@@ -48,6 +48,7 @@ libraryrun(Modlink*provider,unsigned int result,unsigned int parameters,const un
  }
  observed=process;progexit();emptyqueues();
  require(live==0 && modules==nil && nlinkpins==0 && Tmodlink.ref==1 && worker.nerr==0);
+ memset(nativeobservations,0,sizeof(nativeobservations));
 }
 
 static int librarypinfail;
@@ -120,7 +121,7 @@ int main(int argc,char**argv)
  }
  if(!materialize){
   if(failure)require(ccalls>0); /* A constant zero divisor may have no emitted RX entry. */
-  else require(nativecalls>0 && nativeaccepted>0 && bridgecalls>0 && ccalls>0);
+  else {require(bridgecalls && ccalls);if(nativeleafavailable)require(nativecalls && nativeaccepted);else require(!nativecalls && !nativeaccepted);}
  }
  require(live==0 && nlinkpins==0 && worker.nerr==0);return 0;
 }
