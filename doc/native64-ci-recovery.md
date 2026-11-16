@@ -905,3 +905,39 @@ all original Command/MP omission controls and both signature-walk controls.
 The previous 3888 argv roots, 960 module C/RX cases, both compiler IR suites
 with all controls, and fresh full console/paired boot pass. These are bounded
 fixture/console receipts, not whole-VM sanitizer or full AWM readiness.
+
+## Two-root Module/argv tuple returns
+
+Checked LOAD lowering now admits exactly (Module, list of string) results:
+two classic pointer leaves at 0/4 relocate to native 0/8. Track both defined
+fields in the result CFG meet, including inherited pair calls. A partial,
+duplicate-first or path-incomplete result cannot authorize RET. Keep the
+scalar, external-only and unsupported aggregate boundaries unchanged.
+
+Native-only contract 48 and store witnesses 40/56 preserve separate managed
+IMOVP ownership. Match function/call result contracts, prove the fresh 16-byte
+slot and both map bits before allocation, then check both actual caller roots
+again in the LEA binder. No wire IDs or 32-bit format/ABI changes.
+
+The eighteenth gate pairs composes six private helpers and four exports,
+actual namespace LOAD, source startup literals, direct tuple destructuring,
+MP publication and explicit file Command/Wm.init. The independent classic
+oracle checks both fields and mixed call islands. Reversed, list-int,
+three-field and scalar tuples stay refused; so does external-only pairing.
+
+3888 C/JIT cases plus 432 C-consumer partial-store/missing-root fault cases
+retire all owners. Root-map injection occurs after frame initialization and
+restores the map before teardown. Seven constructor metadata refusals
+allocate nothing; 32/33 allocation failures verify C/JIT rollback. Active
+controls separately omit the second-root constructor guard, runtime binder
+guard and complete-result CFG predicate, with semantic observations before
+unsafe writes. Preserve all previous signature, Command and forwarding
+controls. Add the gate to both target workflow loops and the full port driver.
+
+The complete gate passes local x64 ASan+UBSan/NDEBUG with detect_leaks=0,
+including all active controls. The previous local-loads 3888 cases, module
+960 cases, local/multi/external compiler IR units and fresh console/paired
+boot also pass. These are bounded local receipts; full AWM is still pending.
+At this stage the preceding ba8cd67 CI has successful classic32, paired
+console, Android GUI/GC, RV64 typed and Android ARM64/Bionic typed receipts;
+its x64/ARM64 typed jobs and this change's target receipts are separate.

@@ -38,6 +38,7 @@ struct Native64ModuleFunction {
     const Native64ModuleSite *sites;
     unsigned int nsites;
     const Native64ModuleCase *cases;unsigned int ncases;
+    unsigned int resultcontract; /* Native-only 48: two mapped result cells, Module/List. Zero keeps legacy contracts. */
 };
 
 struct Native64ModuleInit {unsigned int offset,width;uvlong bits;};
@@ -124,6 +125,10 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
            f->nsites>f->count/2 || (f->nsites && f->sites==nil))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
         if(!native64modulelists(s,f))return 0;
+        if(f->resultcontract && f->resultcontract!=48)return 0;
+        for(j=0;j<f->count;j++)if(f->code[j].returned==40 || f->code[j].returned==56){
+            if(f->resultcontract!=48 || f->code[j].op!=IMOVP)return 0;
+        }
         for(j=0;j<f->count;j++)if(f->code[j].op==ILOAD){
             unsigned int modes[2],offsets[2],k;
             step=f->code+j;
@@ -142,6 +147,20 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         for(j=0;j<f->nsites;j++){
             site=f->sites+j;if(site->external>1)return 0;
             if(!site->external){if(site->target>=s->nfunctions)return 0;}
+            if(!site->external){
+                if((site->contract==48)!=(s->functions[site->target].resultcontract==48) ||
+                   (site->inherited && ((site->contract==48)!=(f->resultcontract==48))))return 0;
+                if(site->contract==48 && !site->inherited){
+                    if(site->end<2 || site->end>=f->count)return 0;
+                    step=f->code+site->end-1;
+                    if(step->op!=ILEA || step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->m ||
+                       step->d!=32 || step->returned!=(128|48) || step->s<64 ||
+                       (unsigned long)step->s>f->bytes || 16>f->bytes-step->s || step->s%8)return 0;
+                    for(at=step->s;at<(unsigned long)step->s+16;at+=8){
+                        bit=at/8;if(!(f->map[bit/8]&(0x80>>(bit%8))))return 0;
+                    }
+                }
+            }
             else{
                 if(site->table>=s->ntables || site->target>=s->tables[site->table].count ||
                    (site->modulemode!=AFP && site->modulemode!=AMP) || site->moduleoffset%8)return 0;

@@ -40,7 +40,7 @@ def verify_nilbranches(data,row,imports,rows=None):
     EXT['verify'](data,normal,imports,loads=True,rows=rows)
     return count
 
-def generate(limbo,work,implementation,fault,argv=False,local=False):
+def generate(limbo,work,implementation,fault,argv=False,local=False,pair=False):
     # Keep the scalar namespace fixture's unused compatibility header independent.
     FILES['generate'](limbo,work,1)
     (work/'command.m').write_text(INTERFACE);(work/'provider.m').write_text(INTERFACE)
@@ -70,8 +70,14 @@ def generate(limbo,work,implementation,fault,argv=False,local=False):
         startup_source=startup_source.replace('p=load Command path;', 'next:=resolve_forward(path);p=next;').replace(prepare,'args=prepare_forward(args);')
         startup_source+='resolve(path:string):Command{next:=load Command path;return next;}resolve_forward(path:string):Command{return resolve(path);}'
         startup_source+='prepare(args:list of string):list of string{'+prepare+'return args;}prepare_forward(args:list of string):list of string{return prepare(args);}'
+    if pair:
+        assert local
+        startup_source=startup_source.replace('args=prepare_forward(args);prepared=args;p->init(ctxt,args);p->init(ctxt,args);',
+            '(next,words):=loadmod_forward(p,args);prepared=words;next->init(ctxt,words);next->init(ctxt,words);')
+        startup_source+='loadmod(next:Command,args:list of string):(Command,list of string){words:=prepare_forward(args);return (next,words);}'
+        startup_source+='loadmod_forward(next:Command,args:list of string):(Command,list of string){return loadmod(next,args);}'
     data,rows=EXT['compile_source'](limbo,work,startup_source if argv else SOURCE,interface=INTERFACE,loads=True)
-    assert len(rows)==(8 if local else 4 if argv else 3) and all(r['accepted']for r in rows),[(r['name'],r.get('reason'))for r in rows]
+    assert len(rows)==(10 if pair else 8 if local else 4 if argv else 3) and all(r['accepted']for r in rows),[(r['name'],r.get('reason'))for r in rows]
     imports=EXT['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];assert len(imports)==1 and len(imports[0])==1;imports=imports[0]
     if argv:
         assert sum(verify_nilbranches(data,r,imports,rows=rows if local else None)for r in rows)==2
@@ -83,8 +89,8 @@ def generate(limbo,work,implementation,fault,argv=False,local=False):
         for r in rows:EXT['verify'](data,r,imports,loads=True)
     if local:
         EXT['MODULE']['check_exports'](data,rows)
-        assert {r['name']for r in rows if r['signature']is None}=={'resolve','resolve_forward'}
-        calls=[site for r in rows for site in r.get('calls',[])];assert len(calls)==4 and sum(c[6]for c in calls)==2
+        assert {r['name']for r in rows if r['signature']is None}==({'resolve','resolve_forward','loadmod','loadmod_forward'}if pair else{'resolve','resolve_forward'})
+        calls=[site for r in rows for site in r.get('calls',[])];assert len(calls)==(6 if pair else 4) and sum(c[6]for c in calls)==(3 if pair else 2)
         for kind in ('target','contract','inherited','suffix'):
             badrows=json.loads(json.dumps(rows));badrow=next(r for r in badrows if r['name']=='resolve_forward')
             if kind=='target':badrow['calls'][0][2]=999999
@@ -94,7 +100,7 @@ def generate(limbo,work,implementation,fault,argv=False,local=False):
             try:verify_nilbranches(data,badrow,imports,rows=badrows)
             except (AssertionError,StopIteration):pass
             else:raise AssertionError('local/import joint oracle missed '+kind)
-        print('PASS local LOAD source: four private helpers, Module/List results, fresh/inherited contracts, unavailable private module hashes and four joint-oracle controls',flush=True)
+        print('PASS local LOAD source:', 'six private helpers with pair results'if pair else'four private Module/List helpers', 'fresh/inherited contracts, unavailable private module hashes and four joint-oracle controls',flush=True)
     signature=imports[0]['signature'];assert imports[0]['name']=='init'
     assert NS['C'].BASE.Reader(requests).word()==1 and int.from_bytes(requests[16:20],'big')==0xface0186 and int.from_bytes(requests[20:24],'big')==signature
     header=subprocess.check_output([str(limbo),'-H','-M','Command','-I',str(ROOT/'module'),str(work/'command.m')],text=True)
@@ -116,7 +122,7 @@ def generate(limbo,work,implementation,fault,argv=False,local=False):
     exports=EXT['BASE']['READ']['legacy_instructions'](data,with_exports=True)[-1];exports={e['name']:e for e in exports}
     for r in rows:
         n=r['name'];e=exports.get(n);assert e is None or e['pc']==r['first'];sites=r.get('externals',[])+r.get('calls',[])
-        lines.append('{'+json.dumps(n)+f',{e["signature"]if e else 0}U,{int(e is not None)},command_code_{n},{len(r["code"])},{r["frame"]["bytes"]},command_map_{n},{len(r["frame"]["map"])},'+(f'command_sites_{n}'if sites else'nil')+f',{len(sites)}'+'},')
+        lines.append('{'+json.dumps(n)+f',{e["signature"]if e else 0}U,{int(e is not None)},command_code_{n},{len(r["code"])},{r["frame"]["bytes"]},command_map_{n},{len(r["frame"]["map"])},'+(f'command_sites_{n}'if sites else'nil')+f',{len(sites)},nil,0,{48 if r.get("result_pair")else 0}'+'},')
     lines+=['};'];r=rows[0];g={v[0]:v[1]for v in r['globals']};assert {'p','nil','calls'}<=set(g) if argv else set(g)=={'p','nil','calls'}
     literals=[]
     if argv:
@@ -131,7 +137,8 @@ def generate(limbo,work,implementation,fault,argv=False,local=False):
     for i,r in enumerate(rows):lines.append(f'static const uint command_{r["name"]}={i};')
     if not argv:lines+=['static const uint command_ready=~0U;']
     if not local:lines+=['static const uint command_resolve=~0U,command_prepare=~0U;']
-    lines += [f'static const uint command_local={int(local)};']
+    if not pair:lines+=['static const uint command_loadmod=~0U;']
+    lines += [f'static const uint command_pair={int(pair)},command_local={int(local)};']
     lines += [f'static const uint command_argv={int(argv)},command_prepared_offset={g.get("prepared",0)};']
     if argv:
         opcodes=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES
@@ -140,6 +147,13 @@ def generate(limbo,work,implementation,fault,argv=False,local=False):
         lines += ['static const uint command_publish_index='+str(publication[0])+';']
     if argv:lines+=['static const uint command_literal_offsets[]={'+','.join(str(offset)for offset,_,_ in literals)+'};','static const char *command_literal_text[]={'+','.join(json.dumps(text.decode())for _,text,_ in literals)+'};']
     else:lines+=['static const uint command_literal_offsets[]={0};','static const char *command_literal_text[]={""};']
+    if pair:
+        body=next(row for row in rows if row['name']=='loadmod');offset=sum(len(row['code'])for row in rows[:rows.index(body)])
+        stores=[(i,step[5])for i,step in enumerate(body['code'])if step[5]in(40,56)];assert [v for _,v in stores]==[40,56]
+        lines+=['static const uint command_pair_store0='+str(offset+stores[0][0])+',command_pair_store1='+str(offset+stores[1][0])+';']
+        run=next(row for row in rows if row['name']=='run');sites=[site for site in run['calls']if site[5]==48];assert len(sites)==1 and not sites[0][6]
+        lines+=['static const uint command_pair_offset='+str(sites[0][4])+';']
+    else:lines+=['static const uint command_pair_store0=~0U,command_pair_store1=~0U,command_pair_offset=0;']
     lines += [f'static const uint command_provider_offset={g["p"]},command_calls_offset={g["calls"]},command_fault={int(fault)};']
     (work/'typed-command-files.h').write_text('\n'.join(lines)+'\n')
     print('PASS Command file source:',implementation,'fault'if fault else'consume',str(len(rows))+' checked bodies, independent existing Command bytes/.m hash and mapped 80-byte import frame',flush=True)
@@ -159,9 +173,10 @@ def unit():
     start=source.index(' optab[IMOVW]=countmovw;');end=source.index(' require(prepare64calls(',start);handlers=source[start:end]
     return source+'\n#line 1 "native64-typed-command-files.c"\n'+(ROOT/'utils/tests/native64-typed-command-files.c').read_text().replace(' COMMAND_HANDLERS',handlers)
 
-def main(argv=False,local=False):
+def main(argv=False,local=False,pair=False):
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',type=Path,required=True);a=p.parse_args()
     if not __debug__:p.error('source/file oracles require assertions')
+    if pair:runpy.run_path(str(ROOT/'utils/tests/dis64-typed-pairs.py'))['main']()
     if local:runpy.run_path(str(ROOT/'utils/tests/dis64-typed-signature.py'))['main']()
     CMD['witnesses']()
     if argv:
@@ -184,12 +199,17 @@ def main(argv=False,local=False):
             assert all(not row['accepted']for row in old if row['name']in('run','ready'))
             print('PASS startup nil boundary: four nested/array/ref/module-pair refusals, external-only mode remains closed',flush=True)
         if local:
-            pair='implement Pair;include "provider.m";Pair:module{pair:fn(p:Command,args:list of string):(Command,list of string);};pair(p:Command,args:list of string):(Command,list of string){return (p,args);}'
-            _,refused=EXT['compile_source'](a.limbo.resolve(),work,pair,interface=INTERFACE,loads=True)
+            pair_source='implement Pair;include "provider.m";Pair:module{pair:fn(p:Command,args:list of string):(Command,list of string);};pair(p:Command,args:list of string):(Command,list of string){return (p,args);}'
+            _,refused=EXT['compile_source'](a.limbo.resolve(),work,pair_source,interface=INTERFACE,loads=False)
             assert len(refused)==1 and not refused[0]['accepted']and refused[0]['reason']=='aggregate-result'
-            print('PASS current tuple boundary: module/list aggregate result remains refused',flush=True)
+            print('PASS external-only tuple boundary: module/list aggregate result remains refused',flush=True)
+        if pair:
+            badpair='implement Bad;include "provider.m";Bad:module{reversed:fn(p:Command,a:list of string):(list of string,Command);ints:fn(p:Command,a:list of int):(Command,list of int);three:fn(p:Command,a:list of string):(Command,list of string,int);scalar:fn(p:Command,a:int):(Command,int);};reversed(p:Command,a:list of string):(list of string,Command){return(a,p);}ints(p:Command,a:list of int):(Command,list of int){return(p,a);}three(p:Command,a:list of string):(Command,list of string,int){return(p,a,1);}scalar(p:Command,a:int):(Command,int){return(p,a);}'
+            _,refused=EXT['compile_source'](a.limbo.resolve(),work,badpair,interface=INTERFACE,loads=True)
+            assert len(refused)==4 and all(not r['accepted']and r['reason']=='aggregate-result'for r in refused)
+            print('PASS pair source boundary: reversed/list-int/three-field/scalar aggregates refused',flush=True)
         for implementation,fault in (('Command',False),('Wm',False),('Wm',True)):
-            image=generate(a.limbo.resolve(),work,implementation,fault,argv=argv,local=local);subprocess.run(command,check=True)
+            image=generate(a.limbo.resolve(),work,implementation,fault,argv=argv,local=local,pair=pair);subprocess.run(command,check=True)
             r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary),str(image)],capture_output=True,text=True,timeout=180)
             assert not r.returncode and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
             for line in r.stdout.splitlines():
@@ -227,5 +247,21 @@ def main(argv=False,local=False):
                     assert r.returncode==10 and 'Command file predicate: inherited result address publication'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
                     print('PASS private call active control:',arch,'inherited result address publication',flush=True)
                     (work/'native64-typed-module.h').unlink();(work/'native64-typed-multi.h').unlink()
+                if pair:
+                    module=(ROOT/'include/native64-typed-module.h').read_text();old='at<(unsigned long)step->s+16';assert module.count(old)==1
+                    (work/'native64-typed-module.h').write_text(module.replace(old,'at<(unsigned long)step->s+8',1))
+                    subprocess.run(command,check=True)
+                    r=subprocess.run(runner+[str(binary),str(image),'install-only'],capture_output=True,text=True,timeout=180)
+                    assert r.returncode==10 and 'Command file predicate: pair preflight refusal'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
+                    print('PASS pair active control: constructor checks second root',flush=True)
+                    (work/'native64-typed-module.h').unlink()
+                    bind=(ROOT/'include/native64-local-bind.h').read_text();old='at<(unsigned int)instruction.s.ind+width';assert bind.count(old)==1
+                    (work/'native64-local-bind.h').write_text(bind.replace(old,'at<(unsigned int)instruction.s.ind+(contract==48?8:width)',1))
+                    subprocess.run(command,check=True)
+                    r=subprocess.run(runner+[str(binary),str(image),'pair-root-control'],capture_output=True,text=True,timeout=180)
+                    assert r.returncode==10 and 'Command file predicate: pair result root map'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
+                    print('PASS pair active control: runtime binder checks second root before writes',flush=True)
+                    (work/'native64-local-bind.h').unlink()
+
 
 if __name__=='__main__':main()

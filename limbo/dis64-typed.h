@@ -27,7 +27,7 @@ struct Dis64TypedBody {
     long *contextfields; /* Selected compiler-owned indirect field displacements. */
 	Dis64Layout frame, data;
 	unsigned int first, count, badpc;
-	int resultkind, tail;
+	int resultkind, tail, resultpair;
 	unsigned int target, targetdesc, callend, resultoffset, resultcontract;
 	unsigned int resultbytes;
 	char *reason;

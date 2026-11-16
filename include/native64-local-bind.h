@@ -28,9 +28,9 @@ native64localbind(void)
         return fetched.module->native64casec();
     }
     if(fetched.op!=ILEA)return 0;
-    memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;width=contract&15;reference=!!(contract&16);
+    memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;width=contract==48?16:contract&15;reference=!!(contract&16);
     if(!native64model() || instruction.add!=(SRC(AFP)|DST(AFP|AIND)) || instruction.d.i.f!=40 || instruction.d.i.s!=32 ||
-       (contract&~31) || (width!=1 && width!=4 && width!=8) || (reference && width!=8) || R.FP==nil || R.FP==H)error(exBounds);
+       (contract!=48 && ((contract&~31) || (width!=1 && width!=4 && width!=8) || (reference && width!=8))) || R.FP==nil || R.FP==H)error(exBounds);
     base=(uintptr)R.FP;
     if(base%8 || base>(uintptr)-1-sizeof(Frame))error(exBounds);
     memmove(&caller,R.FP+O(Frame,t),sizeof(caller));
@@ -39,7 +39,7 @@ native64localbind(void)
         memmove(&caller,(void*)(base-OA(Stkext,reg.tos.fu)+O(Stkext,reg.TR)),sizeof(caller));
     }
     if(!native64localtype(caller) || base>(uintptr)-1-caller->size || instruction.s.ind<64 ||
-       (unsigned int)instruction.s.ind>(unsigned int)caller->size || width>(unsigned int)caller->size-instruction.s.ind || instruction.s.ind%width)error(exBounds);
+       (unsigned int)instruction.s.ind>(unsigned int)caller->size || width>(unsigned int)caller->size-instruction.s.ind || instruction.s.ind%(contract==48?8:width))error(exBounds);
     for(at=instruction.s.ind;at<(unsigned int)instruction.s.ind+width;at++){
         bit=at/8;
         if(!!(bit/8<(unsigned int)caller->np && (caller->map[bit/8]&(0x80>>(bit%8))))!=reference)error(exBounds);

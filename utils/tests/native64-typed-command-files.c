@@ -2,14 +2,40 @@
 static void commandcheck(int ok,const char *why){if(!ok){fprintf(stderr,"Command file predicate: %s\n",why);exit(10);}}
 static Module *localowner;
 static uint forwarded;
+static int pairfault;
+static int pairmapfault;
+static uchar *pairmap,savedpairmap;
+static uint pairstores[2];
+static void checkedpairframe(void)
+{
+ Type *t;
+ actual_frame();
+ if(pairmapfault && localowner){
+  memmove(&t,R.FP+O(Frame,t),sizeof(t));
+  if(t==nil)t=((Stkext*)R.EX)->reg.TR;
+  if(t==localowner->type[command_run+1]){
+   uint bit=(command_pair_offset+8)/8;
+   pairmap=t->map+bit/8;savedpairmap=*pairmap;*pairmap&=~(0x80>>(bit%8));pairmapfault=0;
+  }
+ }
+}
+static void checkedpairmovp(void)
+{
+ int field=-1;
+ if(localowner && R.PC-1==localowner->prog+command_pair_store0)field=0;
+ if(localowner && R.PC-1==localowner->prog+command_pair_store1)field=1;
+ if(field>=0)commandcheck(pairmap==nil,"pair result root map");
+ actual_movp();
+ if(field>=0){pairstores[field]++;if(pairfault && field==0)error(exZdiv);}
+}
 /* Observe the borrowed pointer before CALL can dereference a broken result.
- * Only the two private forwarding edges have this inherited contract. */
+ * Private forwarding edges carry this inherited contract. */
 static void checkedlocalcall(void)
 {
  uint i,offset=0;Frame *pending;Inst *target;void *from,*to;
  memmove(&target,R.d,sizeof(target));
  if(localowner)for(i=0;i<nelem(command_functions);i++){
-  if(target==localowner->prog+offset && (i==command_resolve || i==command_prepare)){
+  if(target==localowner->prog+offset && (i==command_resolve || i==command_prepare || (command_pair && i==command_loadmod))){
    memmove(&pending,R.s,sizeof(pending));memmove(&from,R.FP+32,sizeof(from));memmove(&to,(uchar*)pending+32,sizeof(to));
    commandcheck(from==to,"inherited result address publication");forwarded++;
   }
@@ -66,6 +92,31 @@ static void commandpreflight(void)
  require(native64typedmoduleclear(&owner) && !live && !nlinkpins);
  printf("PASS Command installer: 17 no-allocation frame/root/hash/trial refusals, allocation rollback and unchanged REG\n");
 }
+static void pairpreflight(void)
+{
+ Native64ModuleSpec spec=command_spec;Native64ModuleFunction functions[nelem(command_functions)];
+ Native64ModuleOwner owner={0};Native64ModuleSite sites[64];Native64TypedStep code[256];uchar map[128];
+ REG saved=R;uint i,j,slot=command_pair_offset,bit;int before;
+ for(i=0;i<7;i++){
+  memmove(functions,command_functions,sizeof(functions));spec.functions=functions;
+  require(functions[command_run].nsites<=nelem(sites) && functions[command_run].count<=nelem(code) && functions[command_run].mapbytes<=sizeof(map));
+  memmove(sites,functions[command_run].sites,functions[command_run].nsites*sizeof(*sites));functions[command_run].sites=sites;
+  memmove(code,functions[command_run].code,functions[command_run].count*sizeof(*code));functions[command_run].code=code;
+  memmove(map,functions[command_run].map,functions[command_run].mapbytes);functions[command_run].map=map;
+  for(j=0;j<functions[command_run].nsites;j++)if(sites[j].contract==48)break;
+  require(j<functions[command_run].nsites);
+  if(i<2){bit=(slot+8*i)/8;map[bit/8]&=~(0x80>>(bit%8));}
+  if(i==2)functions[command_loadmod].resultcontract=0;
+  if(i==3)functions[command_loadmod].resultcontract=49;
+  if(i==4)sites[j].contract=24;
+  if(i==5)code[sites[j].end-1].s=functions[command_run].bytes-8;
+  if(i==6)code[sites[j].end-1].returned=152;
+  before=allocations;
+  commandcheck(!native64typedmodule(&spec,0,&owner),"pair preflight refusal");
+  require(allocations==before && !owner.module && !live && !nlinkpins && !memcmp(&R,&saved,sizeof(R)));
+ }
+ puts("PASS pair constructor: seven no-allocation root/contract/span refusals");
+}
 static Module *commandlauncher(int jit,int grow,int skip)
 {
  Module *m;Inst *p;uchar map[]={0,0xe4};uint n=0,i;
@@ -95,11 +146,13 @@ static void commandrun(int pjit,int cjit,int grow,int quantum,int input,int cont
  Native64ModuleOwner owner={0};Native64TypedImportRequest table=command_file_tables[0];Module *cm,*outer;Modlink *consumer,*provider;
  uchar request[128],names[4096],*root,firstbyte;uint hash=command_hashes[0],i;String *path,*a,*b;List *argv=H,*node;void *ctxt=H;
  Type *ct=nil,*child=nil;Prog *process;WORD calls;uvlong guard=0xf0e1d2c3b4a59687ULL,after;int opens,admits,ctors,pins,steps,done;
- int skip=mode==8,iofail=(mode>0 && mode<6)||mode==7;const char *expected=iofail?exModule:!skip && (command_fault || (!command_argv && input==2))?exZdiv:"";
+ int skip=mode==8,iofail=(mode>0 && mode<6)||mode==7;const char *expected=mode==10?exBounds:mode==9?exZdiv:iofail?exModule:!skip && (command_fault || (!command_argv && input==2))?exZdiv:"";
  require(sizeof(command_file_requests)<=sizeof(request) && sizeof(command_file_names)<=sizeof(names));
  memmove(request,command_file_requests,sizeof(command_file_requests));memmove(names,command_file_names,sizeof(command_file_names));table.request.imports=request;table.request.strings=names;table.hashes=&hash;
  require(native64typedmodule(&command_spec,cjit,&owner));cm=owner.module;require(install64typedimports(cm,&table,1,pjit));pins=nlinkpins;
  localowner=command_local?cm:nil;forwarded=0;
+ pairfault=mode==9;pairstores[0]=pairstores[1]=0;
+ pairmapfault=mode==10;pairmap=nil;
  consumer=commandinstance(cm);outer=commandlauncher(cjit,grow,skip);memset(request,0xa5,sizeof(request));memset(names,0xa5,sizeof(names));hash=0;
  starting=outer;started=nil;require(kprotect(start,nil));process=started;rootenvironment(process);root=process->R.FP;
  path=newstring(13);memmove(path->Sascii,"library.dis64",14);memmove(root+64,&consumer,sizeof(consumer));memmove(root+104,&path,sizeof(path));
@@ -144,7 +197,9 @@ static void commandrun(int pjit,int cjit,int grow,int quantum,int input,int cont
  else if(mode==2)require(admissioncalls==admits+2 && namespaceconstructors==ctors);
  else require(admissioncalls==admits+2 && namespaceconstructors==ctors+2);
  if(!iofail){memmove(&provider,consumer->MP+command_provider_offset,sizeof(provider));require(provider!=H && provider->m->entry==nil && provider->m->entryt==nil && (provider->m->jit!=nil)==(pjit && mode!=6));}
- if(command_local && !cjit)require(forwarded==(skip?2:expected[0]?3:4));
+ if(command_local && !cjit)require(forwarded==(mode==10?2:skip?2:expected[0]?(command_pair?4:3):(command_pair?6:4)));
+ if(mode==9)commandcheck(pairstores[0]==1 && !pairstores[1],"partial pair fault observed");
+ if(mode==10){require(pairmap!=nil && !pairstores[0] && !pairstores[1]);*pairmap=savedpairmap;}
  for(i=0;i<8;i++)require(root[112+i]==0xa5);memmove(&after,root+120,8);require(after==guard);
  localowner=nil;observed=process;progexit();emptyqueues();require(cm->ref==1 && native64typedmoduleclear(&owner));
  require(D2H(a)->ref==1 && D2H(b)->ref==1);destroy(a);destroy(b);
@@ -158,12 +213,21 @@ int main(int argc,char **argv)
  bytes=libraryread(argv[1],image,sizeof(image));filesource=image;filebytes=bytes;
  rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;
  worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;
- require(dis64selectlaunch("dis64-calls"));commandpreflight();if(argc==3)return 0;if(command_argv)argvconstruction();
+ require(dis64selectlaunch("dis64-calls"));commandpreflight();if(command_pair)pairpreflight();if(argc==3 && strcmp(argv[2],"pair-root-control"))return 0;if(command_argv)argvconstruction();
  optab[ILOAD]=actual_iload;optab[IMOVP]=actual_movp;optab[ICONSP]=actual_consp;optab[IHEADP]=actual_headp;optab[ITAIL]=actual_tail;optab[ILENL]=actual_lenl;optab[ILENC]=actual_lenc;
  COMMAND_HANDLERS
  if(command_local)optab[ICALL]=checkedlocalcall;
+ if(command_pair){optab[IMOVP]=checkedpairmovp;optab[IFRAME]=checkedpairframe;}
+ if(argc==3){require(command_pair);commandrun(0,0,0,1,0,0,10);return 0;}
  for(p=0;p<2;p++)for(c=0;c<2;c++)for(g=0;g<2;g++)for(q=0;q<3;q++)for(v=0;v<3;v++)for(t=0;t<2;t++)for(mode=0;mode<9;mode++){
   commandrun(p,c,g,quantum[q],v,t,mode);cases++;
  }
- printf("PASS checked LOAD -> file Command.init: %d C/JIT roots, argv ASCII/Rune/NUL/nil, nullable Context, fresh reloads, explicit init/no auto-init and complete managed retirement\n",cases);if(command_argv)printf("PASS source startup argv: exact -l/sh/-c/$* literals, nil-list/module branches, prepared MP aliases and explicit Limbo init\n");if(command_local)printf("PASS private LOAD calls: fresh and forwarded Module/List results, replacement and complete retirement\n");return 0;
+ if(command_pair){
+  for(p=0;p<2;p++)for(g=0;g<2;g++)for(q=0;q<3;q++)for(v=0;v<3;v++)for(t=0;t<2;t++){
+   commandrun(p,0,g,quantum[q],v,t,9);
+   commandrun(p,0,g,quantum[q],v,t,10);
+  }
+  puts("PASS pair faults: 144 partial-publication/missing-second-root cases, complete owner retirement");
+ }
+ printf("PASS checked LOAD -> file Command.init: %d C/JIT roots, argv ASCII/Rune/NUL/nil, nullable Context, fresh reloads, explicit init/no auto-init and complete managed retirement\n",cases);if(command_argv)printf("PASS source startup argv: exact -l/sh/-c/$* literals, nil-list/module branches, prepared MP aliases and explicit Limbo init\n");if(command_local)printf("PASS private LOAD calls: fresh and forwarded Module/List results, replacement and complete retirement\n");if(command_pair)printf("PASS two-root pair results: fresh and inherited Module/List tuple publication and complete retirement\n");return 0;
 }

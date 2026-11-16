@@ -37,7 +37,7 @@ def verify(data,r,imports,loads=False,rows=None):
     for first,end,target,descriptor,offset,contract,inherited in r.get('calls',[]):
         assert rows is not None and previous<first<end<len(original);previous=end
         callee=next(x for x in rows if x['first']==target);assert callee['accepted']and callee['descriptor']==descriptor
-        assert contract==(callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
+        assert contract==(48 if callee.get('result_pair')==[11,10]else callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
         assert end-first==len(callee['args'])+1+bool(contract)
         pending=original[first]['d'][0];assert original[first]['op']==5 and original[first]['s']==[descriptor]
         assert r['code'][first]==[5,17,descriptor,0,40,0]
@@ -86,6 +86,13 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert address in (0,1)
                 leaves=r['frame'if address else'data']['leaves']
                 assert any(leaf[1]==offset and leaf[3]==8 and leaf[4]==kind for leaf in leaves)
+        if r.get('result_pair'):
+            assert r['result_pair']==[11,10]and r['result']==[14,16]
+            if o['op']==41 and o['mode']&7==5:
+                assert o['d']in([16,0],[16,4])and d==32+2*o['d'][1]and returned==(40 if o['d'][1]==0 else 56)
+                address=mode>>3&7;assert address in(0,1)
+                assert s==maps['frame'if address else'data'][o['s'][0]]
+                continue
         for label,address,value,new in (('s',mode>>3&7,o['s'],s),('d',mode&7,o['d'],d)):
             if value is None:assert new==0
             elif label=='d'and op in BRANCHES:assert new==value[0]-r['first']and new not in inside

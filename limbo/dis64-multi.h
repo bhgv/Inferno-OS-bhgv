@@ -226,6 +226,23 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 
 static int typedmultibody(TypedMulti*,unsigned int,unsigned int);
 
+/* A destructured tuple may bind to two separate local declarations. Both
+ * compiler declarations and both relocated root cells must agree. */
+static int
+typedpairslot(TypedMulti *c,Dis64TypedBody *p,Addr *a)
+{
+ unsigned int i;Decl *fn,*d;int pass;
+ if(!a->decl || !a->decl->ty || a->reg!=a->decl->offset)return 0;
+ if(typedpairtype(a->decl->ty))return 1;
+ if(a->decl->ty->kind!=Tmodule)return 0;
+ for(i=0;i<(unsigned int)c->nf;i++)if(c->functions[i]->pc->pc==(int)p->first){
+  fn=c->functions[i];
+  for(pass=0;pass<2;pass++)for(d=pass?fn->locals:fn->ty->ids;d;d=d->next)
+   if(d->offset==a->reg+4 && d->ty && d->ty->kind==Tlist && d->ty->tof && d->ty->tof->kind==Tstring)return 1;
+ }
+ return 0;
+}
+
 static int
 typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int depth,unsigned int *next,unsigned int *height)
 {
@@ -263,13 +280,19 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(at+1!=end || (binding=c->instructions[at])==nil || binding->op!=ILEA || binding->mm!=Anone ||
            binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil)return typedfail(p,"multi-result");
         kind=child->resultkind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
-        contract=child->resultbytes | (root?16:0);
+        contract=child->resultpair?48:child->resultbytes | (root?16:0);
         if(binding->sm==Afp){
-            if(!typedoperand(Afp,&binding->s,root?TypedRoot:kind,0,0,p,&source,&sm,&actual) ||
+            if(child->resultpair){
+                unsigned int second;Addr *a=&binding->s;
+                if(!typedpairslot(c,p,a) ||
+                   !dis64layoutaddress(&p->frame,a->reg,4,1,&offset) ||
+                   !dis64layoutaddress(&p->frame,a->reg+4,4,1,&second) || second!=offset+8)return typedfail(p,"pair-call-result");
+                source=offset;sm=AFP;
+            }else if(!typedoperand(Afp,&binding->s,root?TypedRoot:kind,0,0,p,&source,&sm,&actual) ||
                (root && actual!=kind && actual!=Tany))return typedfail(p,"multi-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;
         }else{
-            if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || kind!=p->resultkind)return typedfail(p,"multi-inherit");
+            if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || kind!=p->resultkind || child->resultpair!=p->resultpair)return typedfail(p,"multi-inherit");
             inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;
         }
         at++;
@@ -290,7 +313,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     if(c->state[index])return c->state[index]==2;
     c->state[index]=1;
     for(i=0;i<(unsigned int)c->nf;i++)if(c->functions[i]->pc->pc>fn->pc->pc && c->functions[i]->pc->pc<(int)stop)stop=c->functions[i]->pc->pc;
-    i=dis64typedlower(fn,c->globals,c->instructions[0],c->count,stop,p);
+    i=typedlower(fn,c->globals,c->instructions[0],c->count,stop,p,c->loads);
     cost=p->frame.bytes+p->data.bytes+(p->frame.count+p->data.count)*sizeof(Dis64LayoutLeaf);
     if(cost>32*1024*1024-c->cost){typedfail(p,"multi-storage-budget");goto fail;}c->cost+=cost;
     /* A successful scalar lowering may retain an immutable byte in MP.

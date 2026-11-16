@@ -83,6 +83,20 @@ typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out)
     *out=(Dis64Instruction){in->op,SRC(sm)|DST(AMP),0,value,base+(in->op==IGOTO?4:0)};return 1;
 }
 
+/* The only aggregate result selected by the native LOAD proof: two mapped
+ * roots, Module then list of String, with exact classic/native geometry. */
+static int
+typedpairtype(Type *t)
+{
+ Decl *a;Dis64Layout layout={0};int ok;
+ if(!t || t->kind!=Ttuple || !(a=t->ids) || !a->ty || a->ty->kind!=Tmodule ||
+    !(a=a->next) || a->next || !a->ty || a->ty->kind!=Tlist || !a->ty->tof || a->ty->tof->kind!=Tstring)return 0;
+ ok=dis64layouttype(t,&layout) && layout.legacybytes==8 && layout.bytes==16 && layout.count==2 &&
+  layout.leaves[0].legacy==0 && layout.leaves[0].native==0 && layout.leaves[0].kind==Tmodule &&
+  layout.leaves[1].legacy==4 && layout.leaves[1].native==8 && layout.leaves[1].kind==Tlist;
+ dis64layoutfree(&layout);return ok;
+}
+
 static int
 typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out, unsigned char *result)
 {
@@ -138,6 +152,9 @@ typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out,
 		if(in->dm!=Apc || in->branch==nil || in->branch->pc<p->first || in->branch->pc>=stop || in->d.offset!=in->branch->pc)
 			return typedfail(p,"branch-owner");
 		out->destination=in->branch->pc-p->first; dm=AIMM;
+	}else if(in->dm==Afpind && p->resultpair){
+        if(in->op!=IMOVP || in->mm!=Anone || in->d.reg!=16 || (in->d.offset!=0 && in->d.offset!=4))return typedfail(p,"pair-result-destination");
+        out->destination=in->d.offset?40:32;dm=AFP|AIND;destkind=in->d.offset?Tlist:Tmodule;*result=in->d.offset?16:8;
 	}else if(in->dm==Afpind){
 		if(p->resultkind==Tnone || in->d.reg!=16 || in->d.offset!=0 ||
 		   (dk==TypedRoot ? !(p->resultkind==Tstring || p->resultkind==Tref || p->resultkind==Tarray || p->resultkind==Tlist || p->resultkind==Tchan || p->resultkind==Tmodule) :
@@ -166,9 +183,12 @@ typedresults(Dis64TypedBody *p)
 	int ok=1;
 	if(p->resultkind==Tnone) return 1;
 	state=allocmem(p->count);memset(state,0,p->count);
-	queue=allocmem((2*p->count+1)*sizeof(*queue));state[0]=1;queue[tail++]=0;
+	queue=allocmem(((p->resultpair?3:2)*p->count+1)*sizeof(*queue));state[0]=1;queue[tail++]=0;
 	while(head<tail){
-		pc=queue[head++];flow=(p->returns[pc] && p->returns[pc]<=32)?3:state[pc];n=0;
+		pc=queue[head++];flow=state[pc];
+        if(p->resultpair){if(p->returns[pc]==8)flow|=2;if(p->returns[pc]==16)flow|=4;if(p->returns[pc]==32)flow=7;}
+        else if(p->returns[pc] && p->returns[pc]<=32)flow=3;
+        n=0;
 		if(p->code[pc].op==IRET) continue;
         if(p->code[pc].op==ICASE || p->code[pc].op==ICASEL || p->code[pc].op==IGOTO || p->code[pc].op==ICASEC){
             Dis64TypedTable *t=nil;unsigned int j,target;
@@ -193,12 +213,12 @@ typedresults(Dis64TypedBody *p)
 			if(joined!=state[edge[i]]){state[edge[i]]=joined;queue[tail++]=edge[i];}
 		}
 	}
-	if(ok)for(pc=0;pc<p->count;pc++)if(p->code[pc].op==IRET && state[pc]==1){p->badpc=p->first+pc;ok=typedfail(p,"undefined-result");break;}
+	if(ok)for(pc=0;pc<p->count;pc++)if(p->code[pc].op==IRET && (p->resultpair?(state[pc]!=0 && state[pc]!=7):state[pc]==1)){p->badpc=p->first+pc;ok=typedfail(p,"undefined-result");break;}
 	free(state);free(queue);return ok;
 }
 
-int
-dis64typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned int stop, Dis64TypedBody *p)
+static int
+typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned int stop, Dis64TypedBody *p,int pairs)
 {
 	Inst *in;
 	unsigned int at=0;
@@ -213,6 +233,7 @@ dis64typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsign
 	case Tbyte:p->resultbytes=1;break;
 	case Tint:case Tfix:p->resultbytes=4;break;
 	case Tbig:case Treal:case Tstring:case Tref:case Tarray:case Tlist:case Tchan:case Tmodule:p->resultbytes=8;break;
+	case Ttuple:if(!pairs || !typedpairtype(fn->ty->tof))return typedfail(p,"aggregate-result");p->resultbytes=16;p->resultpair=1;break;
 	default:return typedfail(p,"aggregate-result");
 	}
 	p->first=fn->pc->pc;
@@ -231,6 +252,12 @@ dis64typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsign
 	}
 	if(at!=p->count) return typedfail(p,"instruction-count");
 	return typedresults(p);
+}
+
+int
+dis64typedlower(Decl *fn,Decl *globals,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p)
+{
+ return typedlower(fn,globals,input,count,stop,p,0);
 }
 
 /* Canonical forwarding calls: one prepared frame, all declared arguments,
@@ -533,12 +560,12 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             if((multi!=nil && strcmp(multi,"1")==0) || (external!=nil && strcmp(external,"1")==0) || (loads!=nil && strcmp(loads,"1")==0)){
                 fprint(2,",\"signature\":");typedsignature(fn);fprint(2,",\"export_name\":");typedexportname(fn);
             }
-			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);
+			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair)fprint(2,",\"result_pair\":[%d,%d]",Tmodule,Tlist);
 			fprint(2,",\"descriptor\":%d,\"data_descriptor\":%d,\"frame\":",fn->desc->id,descriptors->id);
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);
 			fprint(2,",\"code\":[");
-			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.returns[i]>=32?p.returns[i]:p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);
+			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.resultpair && p.returns[i]==8?40:p.resultpair && p.returns[i]==16?56:p.returns[i]>=32?p.returns[i]:p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);
 			fprint(2,"],\"globals\":");typedbindings(globals,0);
 		}
 		fprint(2,"}\n"); dis64typedfree(&p);

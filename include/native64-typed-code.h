@@ -86,6 +86,9 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 		if(!native64typedcodeoperand(sm,s->s,fpbytes,mpbytes))return 0;
 		if(native64typedbranch(s->op)){
 			if(dm!=AIMM || s->d<0 || (unsigned long)s->d>=count || s->returned)return 0;
+		}else if(s->returned==40 || s->returned==56){
+            if(s->op!=IMOVP || dm!=(AFP|AIND) || mm!=AXNON || s->m || s->d!=(s->returned==40?32:40) ||
+               !native64typedrootoperand(sm,s->s,fpbytes,mpbytes))return 0;
 		}else if(s->returned){
 			width=s->returned&15;reference=!!(s->returned&16);
 			if(dm!=(AFP|AIND) || s->d!=32 || (s->returned&~31) ||
@@ -99,7 +102,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 		s=steps+i;p=out+i;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;p->reg=s->m;
 		p->s.imm=s->s;
 		if(native64typedbranch(s->op))p->d.ins=out+s->d;
-		else if(s->returned){p->d.i.f=32;p->d.i.s=0;}
+		else if(s->returned){p->d.i.f=32;p->d.i.s=s->returned==56?8:0;}
 		else p->d.ind=s->d;
 	}
 	return 1;

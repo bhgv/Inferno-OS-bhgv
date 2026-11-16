@@ -88,3 +88,7 @@ ABI и 32-битные пути не расширены. Полный emuinit/sh
 включая pointer-publication контроль перед CALL. Прежние 3888 argv и 960
 module C/RX случаев, оба compiler IR unit с контролями и свежая полная
 console/paired boot проходят. Проверка остальных целей — по CI нового SHA.
+
+Следующий этап реализует ограниченный двухкорневой результат:
+[Module/List pair results](native64-typed-pairs.ru.md). Описанный выше
+external-only отказ сохраняется; новый контракт включён только в LOAD route.
