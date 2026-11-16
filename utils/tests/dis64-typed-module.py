@@ -11,8 +11,11 @@ def check_exports(data,rows):
     header,code,types,initial,module,exports=MULTI['BASE']['READ']['legacy_instructions'](data,with_exports=True)
     byname={x['name']:x for x in exports};assert len(byname)==len(exports)
     for row in rows:
-        assert row['accepted']and 0<=row['signature']<=0xffffffff
+        assert row['accepted']
         e=byname.get(row['export_name'])
+        if row['signature'] is None:
+            assert row.get('signature_available') is False and e is None
+        else:assert 0<=row['signature']<=0xffffffff
         if e:assert (e['pc'],e['descriptor'],e['signature'])==(row['first'],row['descriptor'],row['signature'])
     assert set(byname)=={r['export_name']for r in rows if r['export_name']in byname}
     return module,byname

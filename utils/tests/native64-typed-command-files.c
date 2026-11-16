@@ -1,5 +1,22 @@
 #include "typed-command-files.h"
 static void commandcheck(int ok,const char *why){if(!ok){fprintf(stderr,"Command file predicate: %s\n",why);exit(10);}}
+static Module *localowner;
+static uint forwarded;
+/* Observe the borrowed pointer before CALL can dereference a broken result.
+ * Only the two private forwarding edges have this inherited contract. */
+static void checkedlocalcall(void)
+{
+ uint i,offset=0;Frame *pending;Inst *target;void *from,*to;
+ memmove(&target,R.d,sizeof(target));
+ if(localowner)for(i=0;i<nelem(command_functions);i++){
+  if(target==localowner->prog+offset && (i==command_resolve || i==command_prepare)){
+   memmove(&pending,R.s,sizeof(pending));memmove(&from,R.FP+32,sizeof(from));memmove(&to,(uchar*)pending+32,sizeof(to));
+   commandcheck(from==to,"inherited result address publication");forwarded++;
+  }
+  offset+=command_functions[i].count;
+ }
+ actual_call();
+}
 static void argvtext(String *text,const char *expected)
 {
  require(text!=H && text!=nil && text->len==(int)strlen(expected) && !memcmp(text->Sascii,expected,strlen(expected)));
@@ -82,6 +99,7 @@ static void commandrun(int pjit,int cjit,int grow,int quantum,int input,int cont
  require(sizeof(command_file_requests)<=sizeof(request) && sizeof(command_file_names)<=sizeof(names));
  memmove(request,command_file_requests,sizeof(command_file_requests));memmove(names,command_file_names,sizeof(command_file_names));table.request.imports=request;table.request.strings=names;table.hashes=&hash;
  require(native64typedmodule(&command_spec,cjit,&owner));cm=owner.module;require(install64typedimports(cm,&table,1,pjit));pins=nlinkpins;
+ localowner=command_local?cm:nil;forwarded=0;
  consumer=commandinstance(cm);outer=commandlauncher(cjit,grow,skip);memset(request,0xa5,sizeof(request));memset(names,0xa5,sizeof(names));hash=0;
  starting=outer;started=nil;require(kprotect(start,nil));process=started;rootenvironment(process);root=process->R.FP;
  path=newstring(13);memmove(path->Sascii,"library.dis64",14);memmove(root+64,&consumer,sizeof(consumer));memmove(root+104,&path,sizeof(path));
@@ -126,8 +144,9 @@ static void commandrun(int pjit,int cjit,int grow,int quantum,int input,int cont
  else if(mode==2)require(admissioncalls==admits+2 && namespaceconstructors==ctors);
  else require(admissioncalls==admits+2 && namespaceconstructors==ctors+2);
  if(!iofail){memmove(&provider,consumer->MP+command_provider_offset,sizeof(provider));require(provider!=H && provider->m->entry==nil && provider->m->entryt==nil && (provider->m->jit!=nil)==(pjit && mode!=6));}
+ if(command_local && !cjit)require(forwarded==(skip?2:expected[0]?3:4));
  for(i=0;i<8;i++)require(root[112+i]==0xa5);memmove(&after,root+120,8);require(after==guard);
- observed=process;progexit();emptyqueues();require(cm->ref==1 && native64typedmoduleclear(&owner));
+ localowner=nil;observed=process;progexit();emptyqueues();require(cm->ref==1 && native64typedmoduleclear(&owner));
  require(D2H(a)->ref==1 && D2H(b)->ref==1);destroy(a);destroy(b);
  if(ct){require(ct->ref==1 && child->ref==1);freetype(ct);freetype(child);}
  require(!live && !nlinkpins && !modules && !worker.nerr && Tstring.ref==1 && Tmodlink.ref==1 && Tlist.ref==1 && Tptr.ref==1);
@@ -142,8 +161,9 @@ int main(int argc,char **argv)
  require(dis64selectlaunch("dis64-calls"));commandpreflight();if(argc==3)return 0;if(command_argv)argvconstruction();
  optab[ILOAD]=actual_iload;optab[IMOVP]=actual_movp;optab[ICONSP]=actual_consp;optab[IHEADP]=actual_headp;optab[ITAIL]=actual_tail;optab[ILENL]=actual_lenl;optab[ILENC]=actual_lenc;
  COMMAND_HANDLERS
+ if(command_local)optab[ICALL]=checkedlocalcall;
  for(p=0;p<2;p++)for(c=0;c<2;c++)for(g=0;g<2;g++)for(q=0;q<3;q++)for(v=0;v<3;v++)for(t=0;t<2;t++)for(mode=0;mode<9;mode++){
   commandrun(p,c,g,quantum[q],v,t,mode);cases++;
  }
- printf("PASS checked LOAD -> file Command.init: %d C/JIT roots, argv ASCII/Rune/NUL/nil, nullable Context, fresh reloads, explicit init/no auto-init and complete managed retirement\n",cases);if(command_argv)printf("PASS source startup argv: exact -l/sh/-c/$* literals, nil-list/module branches, prepared MP aliases and explicit Limbo init\n");return 0;
+ printf("PASS checked LOAD -> file Command.init: %d C/JIT roots, argv ASCII/Rune/NUL/nil, nullable Context, fresh reloads, explicit init/no auto-init and complete managed retirement\n",cases);if(command_argv)printf("PASS source startup argv: exact -l/sh/-c/$* literals, nil-list/module branches, prepared MP aliases and explicit Limbo init\n");if(command_local)printf("PASS private LOAD calls: fresh and forwarded Module/List results, replacement and complete retirement\n");return 0;
 }

@@ -389,6 +389,8 @@ def main():
         build, env, logs/'typed-source-lists.log')
     run([sys.executable, str(tests/'native64-typed-argv.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'typed-source-argv.log')
+    run([sys.executable, str(tests/'native64-typed-local-loads.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-local-loads.log')
     run([sys.executable, str(tests/'native64-typed-module.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'typed-module-exports-mcall.log')
     run([sys.executable, str(tests/'native64-typed-external.py'), '--limbo', str(tools/'limbo')],

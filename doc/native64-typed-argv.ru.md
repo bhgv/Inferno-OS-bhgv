@@ -76,3 +76,5 @@ driver. Полный локальный gate проходит ASan+UBSan/NDEBUG 
 следует отличать от полного GUI VM и новых target CI receipts. Прежние Command/list gates остаются отдельными
 регрессиями. Полный AWM требует дальнейшей поддержки tuple/module результатов,
 остальных source-тел и реальных Sys/Draw/GUI связей.
+
+Следующий участок: [приватные Module/List results и вложенные LOAD helpers](native64-typed-local-loads.ru.md).

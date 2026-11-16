@@ -16,7 +16,7 @@ clear(){p=nil;}
 
 ARGV_SOURCE='implement Launch;include "provider.m";\nLaunch:module{open:fn(path:string);run:fn(ctxt:ref Draw->Context,argv:list of string);ready:fn():int;clear:fn();};\np:Command;prepared:list of string;calls:int=17;\nopen(path:string){p=load Command path;}\nrun(ctxt:ref Draw->Context,args:list of string){calls++;if(args==nil)args="-l"::nil;else args="sh"::"-c"::"$*"::args;prepared=args;p->init(ctxt,args);p->init(ctxt,args);}\nready():int{if(p==nil)return 0;return 1;}\nclear(){prepared=nil;p=nil;}\n'
 
-def verify_nilbranches(data,row,imports):
+def verify_nilbranches(data,row,imports,rows=None):
     """Prove exact pointer widening/swapping, then reuse the classic relocation oracle."""
     codes=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES
     classic=EXT['BASE']['READ']['legacy_instructions'](data)[1]
@@ -37,10 +37,10 @@ def verify_nilbranches(data,row,imports):
         expected=[codes['IBEQL']if old['op']==codes['IBEQW']else codes['IBNEL'],(mode<<3)|192|2,left,right,old['d'][0]-row['first'],0]
         assert row['code'][i]==expected,(row['name'],i,row['code'][i],expected)
         normal['code'][i]=[old['op'],old['mode'],a,b,old['d'][0]-row['first'],0];count+=1
-    EXT['verify'](data,normal,imports,loads=True)
+    EXT['verify'](data,normal,imports,loads=True,rows=rows)
     return count
 
-def generate(limbo,work,implementation,fault,argv=False):
+def generate(limbo,work,implementation,fault,argv=False,local=False):
     # Keep the scalar namespace fixture's unused compatibility header independent.
     FILES['generate'](limbo,work,1)
     (work/'command.m').write_text(INTERFACE);(work/'provider.m').write_text(INTERFACE)
@@ -63,17 +63,38 @@ def generate(limbo,work,implementation,fault,argv=False):
     if argv and implementation!='Command':
         startup_source=startup_source.replace('if(args==nil)args="-l"::nil;else args="sh"::"-c"::"$*"::args;', 'if(nil!=args)args="sh"::"-c"::"$*"::args;else args="-l"::nil;')
         startup_source=startup_source.replace('if(p==nil)return 0;return 1;', 'if(nil!=p)return 1;return 0;')
+    if local:
+        assert argv
+        prepare='if(args==nil)args="-l"::nil;else args="sh"::"-c"::"$*"::args;'if implementation=='Command'else'if(nil!=args)args="sh"::"-c"::"$*"::args;else args="-l"::nil;'
+        assert prepare in startup_source
+        startup_source=startup_source.replace('p=load Command path;', 'next:=resolve_forward(path);p=next;').replace(prepare,'args=prepare_forward(args);')
+        startup_source+='resolve(path:string):Command{next:=load Command path;return next;}resolve_forward(path:string):Command{return resolve(path);}'
+        startup_source+='prepare(args:list of string):list of string{'+prepare+'return args;}prepare_forward(args:list of string):list of string{return prepare(args);}'
     data,rows=EXT['compile_source'](limbo,work,startup_source if argv else SOURCE,interface=INTERFACE,loads=True)
-    assert len(rows)==(4 if argv else 3) and all(r['accepted']for r in rows),[(r['name'],r.get('reason'))for r in rows]
+    assert len(rows)==(8 if local else 4 if argv else 3) and all(r['accepted']for r in rows),[(r['name'],r.get('reason'))for r in rows]
     imports=EXT['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];assert len(imports)==1 and len(imports[0])==1;imports=imports[0]
     if argv:
-        assert sum(verify_nilbranches(data,r,imports)for r in rows)==2
+        assert sum(verify_nilbranches(data,r,imports,rows=rows if local else None)for r in rows)==2
         damaged=json.loads(json.dumps(next(r for r in rows if r['name']=='ready')));damaged['code'][0][0]=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES['IBEQW']
-        try:verify_nilbranches(data,damaged,imports)
+        try:verify_nilbranches(data,damaged,imports,rows=rows if local else None)
         except AssertionError:pass
         else:raise AssertionError('narrow pointer comparison escaped oracle')
     else:
         for r in rows:EXT['verify'](data,r,imports,loads=True)
+    if local:
+        EXT['MODULE']['check_exports'](data,rows)
+        assert {r['name']for r in rows if r['signature']is None}=={'resolve','resolve_forward'}
+        calls=[site for r in rows for site in r.get('calls',[])];assert len(calls)==4 and sum(c[6]for c in calls)==2
+        for kind in ('target','contract','inherited','suffix'):
+            badrows=json.loads(json.dumps(rows));badrow=next(r for r in badrows if r['name']=='resolve_forward')
+            if kind=='target':badrow['calls'][0][2]=999999
+            if kind=='contract':badrow['calls'][0][5]=8
+            if kind=='inherited':badrow['calls'][0][6]=0
+            if kind=='suffix':badrow['code'][-1][0]=0
+            try:verify_nilbranches(data,badrow,imports,rows=badrows)
+            except (AssertionError,StopIteration):pass
+            else:raise AssertionError('local/import joint oracle missed '+kind)
+        print('PASS local LOAD source: four private helpers, Module/List results, fresh/inherited contracts, unavailable private module hashes and four joint-oracle controls',flush=True)
     signature=imports[0]['signature'];assert imports[0]['name']=='init'
     assert NS['C'].BASE.Reader(requests).word()==1 and int.from_bytes(requests[16:20],'big')==0xface0186 and int.from_bytes(requests[20:24],'big')==signature
     header=subprocess.check_output([str(limbo),'-H','-M','Command','-I',str(ROOT/'module'),str(work/'command.m')],text=True)
@@ -87,13 +108,15 @@ def generate(limbo,work,implementation,fault,argv=False):
     for r in rows:
         n=r['name'];lines += [f'static const Native64TypedStep command_code_{n}[]={{']+['{'+','.join(map(str,c))+'},'for c in r['code']]+['};']
         array('command_map_'+n,r['frame']['map'])
-        if r.get('externals'):lines += [f'static const Native64ModuleSite command_sites_{n}[]={{']+['{'+','.join(map(str,(e['first'],e['end'],e['binding'],e['contract'],e['inherited'],1,0,*e['module'])))+'},'for e in r['externals']]+['};']
+        sites=[(e['first'],e['end'],e['binding'],e['contract'],e['inherited'],1,0,*e['module'])for e in r.get('externals',[])]
+        sites += [(a,b,next(i for i,row in enumerate(rows)if row['first']==target),contract,inherited,0,0,0,0)for a,b,target,desc,offset,contract,inherited in r.get('calls',[])]
+        if sites:lines += [f'static const Native64ModuleSite command_sites_{n}[]={{']+['{'+','.join(map(str,e))+'},'for e in sorted(sites)]+['};']
     sites=next(r for r in rows if r['name']=='run')['externals'];assert len(sites)==2 and all([a[0]for a in s['args']]==[64,72]and s['contract']==0 for s in sites)
     array('command_request_map',[0,192]);lines += ['static const Native64ModuleImport command_requests[]={{"init",'+str(signature)+'U,80,command_request_map,2}};','static const Native64ModuleTable command_tables[]={{command_requests,1}};','static const Native64ModuleFunction command_functions[]={']
     exports=EXT['BASE']['READ']['legacy_instructions'](data,with_exports=True)[-1];exports={e['name']:e for e in exports}
     for r in rows:
-        n=r['name'];e=exports[n];assert e['pc']==r['first'];sites=r.get('externals',[])
-        lines.append('{'+json.dumps(n)+f',{e["signature"]}U,1,command_code_{n},{len(r["code"])},{r["frame"]["bytes"]},command_map_{n},{len(r["frame"]["map"])},'+(f'command_sites_{n}'if sites else'nil')+f',{len(sites)}'+'},')
+        n=r['name'];e=exports.get(n);assert e is None or e['pc']==r['first'];sites=r.get('externals',[])+r.get('calls',[])
+        lines.append('{'+json.dumps(n)+f',{e["signature"]if e else 0}U,{int(e is not None)},command_code_{n},{len(r["code"])},{r["frame"]["bytes"]},command_map_{n},{len(r["frame"]["map"])},'+(f'command_sites_{n}'if sites else'nil')+f',{len(sites)}'+'},')
     lines+=['};'];r=rows[0];g={v[0]:v[1]for v in r['globals']};assert {'p','nil','calls'}<=set(g) if argv else set(g)=={'p','nil','calls'}
     literals=[]
     if argv:
@@ -107,6 +130,8 @@ def generate(limbo,work,implementation,fault,argv=False):
     array('command_data_map',r['data']['map']);lines += ['static const Native64ModuleInit command_initial[]={{'+str(g['calls'])+',4,17}};','static const Native64ModuleSpec command_spec={"Launch","trusted/Launch",command_functions,'+str(len(rows))+',~0U,'+f'{r["data"]["bytes"]},command_data_map,{len(r["data"]["map"])},command_initial,1,command_tables,1,'+('c2string,command_strings,'+str(len(literals))if argv else'nil,nil,0')+',read64ownedimport'+'};']
     for i,r in enumerate(rows):lines.append(f'static const uint command_{r["name"]}={i};')
     if not argv:lines+=['static const uint command_ready=~0U;']
+    if not local:lines+=['static const uint command_resolve=~0U,command_prepare=~0U;']
+    lines += [f'static const uint command_local={int(local)};']
     lines += [f'static const uint command_argv={int(argv)},command_prepared_offset={g.get("prepared",0)};']
     if argv:
         opcodes=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES
@@ -134,9 +159,10 @@ def unit():
     start=source.index(' optab[IMOVW]=countmovw;');end=source.index(' require(prepare64calls(',start);handlers=source[start:end]
     return source+'\n#line 1 "native64-typed-command-files.c"\n'+(ROOT/'utils/tests/native64-typed-command-files.c').read_text().replace(' COMMAND_HANDLERS',handlers)
 
-def main(argv=False):
+def main(argv=False,local=False):
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',type=Path,required=True);a=p.parse_args()
     if not __debug__:p.error('source/file oracles require assertions')
+    if local:runpy.run_path(str(ROOT/'utils/tests/dis64-typed-signature.py'))['main']()
     CMD['witnesses']()
     if argv:
         text=(ROOT/'appl/cmd/emuinit.b').read_text()
@@ -157,8 +183,13 @@ def main(argv=False):
             _,old=EXT['compile_source'](a.limbo.resolve(),work,ARGV_SOURCE,interface=INTERFACE,loads=False)
             assert all(not row['accepted']for row in old if row['name']in('run','ready'))
             print('PASS startup nil boundary: four nested/array/ref/module-pair refusals, external-only mode remains closed',flush=True)
+        if local:
+            pair='implement Pair;include "provider.m";Pair:module{pair:fn(p:Command,args:list of string):(Command,list of string);};pair(p:Command,args:list of string):(Command,list of string){return (p,args);}'
+            _,refused=EXT['compile_source'](a.limbo.resolve(),work,pair,interface=INTERFACE,loads=True)
+            assert len(refused)==1 and not refused[0]['accepted']and refused[0]['reason']=='aggregate-result'
+            print('PASS current tuple boundary: module/list aggregate result remains refused',flush=True)
         for implementation,fault in (('Command',False),('Wm',False),('Wm',True)):
-            image=generate(a.limbo.resolve(),work,implementation,fault,argv=argv);subprocess.run(command,check=True)
+            image=generate(a.limbo.resolve(),work,implementation,fault,argv=argv,local=local);subprocess.run(command,check=True)
             r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary),str(image)],capture_output=True,text=True,timeout=180)
             assert not r.returncode and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
             for line in r.stdout.splitlines():
@@ -187,4 +218,14 @@ def main(argv=False):
                     r=subprocess.run(runner+[str(binary),str(image)],capture_output=True,text=True,timeout=180)
                     assert r.returncode==10 and 'Command file predicate: argv MP publication'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
                     print('PASS startup active control:',arch,'prepared argv MP publication',flush=True);header.write_text(original)
+                if local:
+                    materializer=(ROOT/'include/native64-typed-multi.h').read_text();old='p->d.i.s=s->d;';assert materializer.count(old)==1
+                    (work/'native64-typed-module.h').write_text((ROOT/'include/native64-typed-module.h').read_text())
+                    (work/'native64-typed-multi.h').write_text(materializer.replace(old,'p->d.i.s=(c->inherited && j==c->end-1)?48:s->d;',1))
+                    subprocess.run(command,check=True)
+                    r=subprocess.run(runner+[str(binary),str(image)],capture_output=True,text=True,timeout=180)
+                    assert r.returncode==10 and 'Command file predicate: inherited result address publication'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
+                    print('PASS private call active control:',arch,'inherited result address publication',flush=True)
+                    (work/'native64-typed-module.h').unlink();(work/'native64-typed-multi.h').unlink()
+
 if __name__=='__main__':main()

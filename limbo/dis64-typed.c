@@ -431,6 +431,43 @@ typedbindings(Decl *decls, int frame)
 	fprint(2,"]");
 }
 
+/* Diagnostic hashes must not sign an interface already narrowed by the
+ * compiler. Walk readonly with bounded recursion; report unavailable rather
+ * than inventing a legacy hash or mutating module linkage to compute one. */
+static int
+typedsignable(Type *t,Type **active,unsigned int depth,unsigned int *budget)
+{
+ Decl *d;unsigned int i;
+ if(!*budget || depth==64)return 0;
+ --*budget;
+ if(t==nil)return 1;
+ for(i=0;i<depth;i++)if(active[i]==t)return 1;
+ active[depth]=t;
+ switch(t->kind){
+ case Tnone:case Tbig:case Tbyte:case Treal:case Tint:case Tstring:case Tfix:case Tpoly:return 1;
+ case Tref:case Tlist:case Tarray:case Tchan:return typedsignable(t->tof,active,depth+1,budget);
+ case Tmodule:
+  if(!t->tof || !t->tof->linkall)return 0;
+  for(d=t->tof->ids;d;d=d->next){if(!*budget)return 0;--*budget;if(!d->tag && !typedsignable(d->ty,active,depth+1,budget))return 0;}
+  return 1;
+ case Tfn:case Ttuple:case Tadt:case Tadtpick:
+  for(d=t->ids;d;d=d->next){if(!*budget)return 0;--*budget;if(d->store==Dlocal || (storespace[d->store] && !typedsignable(d->ty,active,depth+1,budget)))return 0;}
+  for(d=t->polys;d;d=d->next){if(!*budget)return 0;--*budget;if(d->store==Dlocal || (storespace[d->store] && !typedsignable(d->ty,active,depth+1,budget)))return 0;}
+  for(d=t->tags;d;d=d->next){if(!*budget)return 0;--*budget;if(!typedsignable(d->ty,active,depth+1,budget))return 0;}
+  if(t->kind==Tfn)return typedsignable(t->tof,active,depth+1,budget);
+  if(t->kind==Tadtpick)return t->decl && t->decl->dot && typedsignable(t->decl->dot->ty,active,depth+1,budget);
+  return 1;
+ }
+ return 0;
+}
+static void
+typedsignature(Decl *fn)
+{
+ Type *active[64];unsigned int budget=4096;
+ if(fn->ty->sig || typedsignable(fn->ty,active,0,&budget))fprint(2,"%ud",(unsigned int)sign(fn));
+ else fprint(2,"null,\"signature_available\":false");
+}
+
 void
 dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, long count)
 {
@@ -494,7 +531,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
                 fprint(2,"]");
             }
             if((multi!=nil && strcmp(multi,"1")==0) || (external!=nil && strcmp(external,"1")==0) || (loads!=nil && strcmp(loads,"1")==0)){
-                fprint(2,",\"signature\":%ud,\"export_name\":",(unsigned int)sign(fn));typedexportname(fn);
+                fprint(2,",\"signature\":");typedsignature(fn);fprint(2,",\"export_name\":");typedexportname(fn);
             }
 			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);
 			fprint(2,",\"descriptor\":%d,\"data_descriptor\":%d,\"frame\":",fn->desc->id,descriptors->id);

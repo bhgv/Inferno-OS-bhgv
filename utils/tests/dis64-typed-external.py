@@ -28,14 +28,37 @@ def compile_source(limbo,work,source,interface=None,loads=False):
     assert ordinary.read_bytes()==traced.read_bytes()
     return traced.read_bytes(),[json.loads(x[12:])for x in result.stderr.splitlines()if x.startswith('DIS64_TYPED ')]
 
-def verify(data,r,imports,loads=False):
-    assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and 'calls'not in r
+def verify(data,r,imports,loads=False,rows=None):
+    assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and (rows is not None or 'calls'not in r)
     _,old,types=BASE['READ']['legacy_instructions'](data,with_types=True)
     layout=json.loads(json.dumps(r));layout.update(schema='inferno-typed-body-v2',code=[]);BASE['verify'](data,layout)
     maps={space:{leaf[0]+i:leaf[1]+i for leaf in r[space]['leaves']for i in range(leaf[2])}for space in ('frame','data')}
     original=old[r['first']:r['first']+len(r['code'])];covered=set();inside=set();previous=-1
+    for first,end,target,descriptor,offset,contract,inherited in r.get('calls',[]):
+        assert rows is not None and previous<first<end<len(original);previous=end
+        callee=next(x for x in rows if x['first']==target);assert callee['accepted']and callee['descriptor']==descriptor
+        assert contract==(callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
+        assert end-first==len(callee['args'])+1+bool(contract)
+        pending=original[first]['d'][0];assert original[first]['op']==5 and original[first]['s']==[descriptor]
+        assert r['code'][first]==[5,17,descriptor,0,40,0]
+        for at,arg in enumerate(callee['args'],first+1):
+            o=original[at];sm=o['mode']>>3&7
+            assert o['d']==[pending,next(x[0]for x in callee['frame']['leaves']if x[1]==arg[0])]
+            assert r['code'][at]==[o['op'],o['mode'],o['s'][0]if sm==2 else maps['frame'if sm==1 else'data'][o['s'][0]],0,arg[0],64]
+        if contract:
+            binding=original[end-1];assert binding['op']==39 and binding['d']==[pending,16]and binding['m']is None
+            if inherited:
+                assert binding['mode']==45 and binding['s']==[16,0]and offset==32
+                assert r['code'][end-1]==[118,13,32,0,32,64]
+            else:
+                assert binding['mode']==13 and offset==maps['frame'][binding['s'][0]]
+                assert r['code'][end-1]==[39,13,offset,0,32,128|contract]
+        assert original[end]=={'op':4,'mode':10,'m':None,'s':[pending],'d':[target]}
+        assert r['code'][end]==[4,10,40,0,target,32 if inherited else 0]
+        covered.update(range(first,end+1));inside.update(range(first+1,end+1))
+    previous=-1
     for e in r.get('externals',[]):
-        first,end=e['first'],e['end'];assert previous<first<end<len(original);previous=end
+        first,end=e['first'],e['end'];assert previous<first<end<len(original)and not covered.intersection(range(first,end+1));previous=end
         assert imports[e['binding']]=={'name':e['name'],'signature':e['signature']}
         o=original[first];mode,offset=e['module'];assert mode in (0,1)and o['op']==11 and o['mode']==(mode<<3)|64|1
         assert offset==maps['frame'if mode else 'data'][o['s'][0]]

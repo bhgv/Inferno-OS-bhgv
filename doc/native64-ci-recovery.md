@@ -867,3 +867,41 @@ including safe MP-publication omission and original three Command controls.
 The original 3888 Command/9072 list/6528 LOAD gates retain their controls and
 pass, as does fresh full console/paired boot. Four well-typed nested/array/
 ref/module-pair comparisons refuse the new nil route. Target CI follows.
+
+## Private loaded-Module and argv helper results
+
+An ordinary private resolve(path):Command compiles, but its typed report
+previously aborts in sign() with "signing a narrowed module". The reporter
+now performs a readonly bounded availability walk before attempting a new
+legacy signature. Keep cached hashes and all existing available signatures;
+report unavailable as JSON null plus signature_available:false, never as a
+fabricated hash. Walk the actual serialized declaration classes, including
+tagged fields, and preserve Type/Decl/linkall/rec/eq. Private unavailable
+signatures cannot stand in for exported hashes in the classic export oracle.
+
+The seventeenth gate local-loads composes four private helpers with four
+exported consumer bodies: fresh and inherited Module/List return contracts,
+actual owned namespace LOAD, startup argv construction and explicit file
+Command/Wm.init calls. Its joint classic oracle checks local/external islands
+and four corrupt target/contract/inherited/suffix reports. Keep the previous
+external-only oracle boundary when no local row set is supplied.
+
+3888 C/JIT roots cover reload/replacement, nil/Rune/NUL, stack growth, quanta
+and namespace faults. 30/31 constructor allocation failures retire owners.
+Observe the inherited result pointer before CALL, so deliberate materializer
+mispublication fails semantically before an invalid callee write. Keep all
+previous installer and argv-publication controls. A bounded signature unit
+checks readonly recursive/narrowed/tagged graphs and depth/budget controls.
+The real two-root tuple result remains explicitly refused (aggregate-result).
+No new wire IDs/public ABI, file admission or 32-bit changes.
+
+The preceding d0e3246 typed matrix is now green on all four targets, confirming
+the scoped LOAD mutation repair. d6b4aa7 classic32 and Android GUI/GC jobs
+succeeded; its newer typed run and this gate's target receipts are separate.
+
+The complete new local-loads gate passes local x64 ASan+UBSan/NDEBUG with
+LSan disabled, including the pre-CALL inherited-address semantic control,
+all original Command/MP omission controls and both signature-walk controls.
+The previous 3888 argv roots, 960 module C/RX cases, both compiler IR suites
+with all controls, and fresh full console/paired boot pass. These are bounded
+fixture/console receipts, not whole-VM sanitizer or full AWM readiness.
