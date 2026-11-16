@@ -46,6 +46,12 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 		s=steps+i;sm=USRC(s->mode);dm=UDST(s->mode);mm=s->mode&ARM;
 		if(s->mode>255 || s->op>255)return 0;
 		switch(s->op){
+		case ILOAD:
+            if((sm!=AFP && sm!=AMP) || (dm!=AFP && dm!=AMP) || mm!=AXIMM || s->m<0 || s->m>=64 ||
+               s->returned || !native64typedcodeoperand(sm,s->s,fpbytes,mpbytes) ||
+               !native64typedcodeoperand(dm,s->d,fpbytes,mpbytes) || s->s%8 || s->d%8 ||
+               8>(sm==AFP?fpbytes:mpbytes)-s->s || 8>(dm==AFP?fpbytes:mpbytes)-s->d)return 0;
+            continue;
 		case ICASE:case ICASEL:case IGOTO:case ICASEC:
             width=s->op==ICASEL || s->op==ICASEC?8:4;
             if((sm!=AFP && sm!=AMP) || dm!=AMP || mm!=AXNON || s->m || s->returned ||

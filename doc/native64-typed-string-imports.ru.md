@@ -65,3 +65,5 @@ NATIVE64_CFLAGS='-O1 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefin
 AWM. String-поиск по-прежнему использует C predecode, соседние тела — C/JIT.
 Остаются файловый путь общего LOAD, исключения, оставшиеся операции и запуск
 полного графа `emuinit`/`sh`/AWM; AWM и любой другой модуль вызываются из Limbo.
+
+Следующий этап: [checked-IR Limbo LOAD](native64-typed-loads.ru.md).

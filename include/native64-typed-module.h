@@ -54,6 +54,7 @@ struct Native64ModuleSpec {
     const Native64ModuleTable *tables;unsigned int ntables;
     String *(*string)(char*,int); /* Trusted owner's real length-aware String constructor. */
     const Native64ModuleString *strings;unsigned int nstrings;
+    Modlink *(*load)(Module*,WORD,char*); /* Trusted service; returns a pinned owned instance or nil/H. */
 };
 #include "native64-typed-tables.h"
 
@@ -80,7 +81,7 @@ static int
 native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsigned int *exports,unsigned int *scratch,unsigned int *imports)
 {
     unsigned int i,j,code=0,links=0,maxsites=0,total,end=0,at,bit,nimports=0,bytes;const Native64ModuleFunction *f;const Native64ModuleInit *v;
-    const Native64ModuleImport *request;const Native64ModuleTable *table;const Native64ModuleSite *site;const uchar *map;
+    const Native64ModuleImport *request;const Native64ModuleTable *table;const Native64ModuleSite *site;const uchar *map;const Native64TypedStep *step;
     if(!native64model() || s==nil || !native64modulename(s->name) || !native64modulename(s->path) ||
        !s->nfunctions || s->nfunctions>1024 || (s->entry!=~0U && s->entry>=s->nfunctions) || s->functions==nil ||
        !native64modulemap(s->databytes,s->datamap,s->mapbytes,0) || s->ninitial>65536 || (s->ninitial && s->initial==nil) || s->ntables>64 || (s->ntables && s->tables==nil))return 0;
@@ -102,6 +103,21 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
            !native64modulemap(f->bytes,f->map,f->mapbytes,1) || f->bytes>32*1024*1024-total ||
            f->nsites>f->count/2 || (f->nsites && f->sites==nil))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
+        for(j=0;j<f->count;j++)if(f->code[j].op==ILOAD){
+            unsigned int modes[2],offsets[2],k;
+            step=f->code+j;
+            if(s->load==nil || s->load==(Modlink*(*)(Module*,WORD,char*))H || step->m<0 || (unsigned long)step->m>=s->ntables ||
+               (step->mode&ARM)!=AXIMM || step->returned)return 0;
+            modes[0]=USRC(step->mode);modes[1]=UDST(step->mode);
+            if(step->s<0 || step->d<0 || (unsigned long)step->s>1024*1024 || (unsigned long)step->d>1024*1024)return 0;
+            offsets[0]=step->s;offsets[1]=step->d;
+            for(k=0;k<2;k++){
+                if(modes[k]!=AFP && modes[k]!=AMP)return 0;
+                bytes=modes[k]==AFP?f->bytes:s->databytes;map=modes[k]==AFP?f->map:s->datamap;at=offsets[k];
+                if(at%8 || at>bytes || 8>bytes-at || (modes[k]==AFP && at<64))return 0;
+                bit=at/8;if((map[bit/8] & (0x80>>(bit%8)))==0)return 0;
+            }
+        }
         for(j=0;j<f->nsites;j++){
             site=f->sites+j;if(site->external>1)return 0;
             if(!site->external){if(site->target>=s->nfunctions)return 0;}
@@ -196,6 +212,7 @@ native64modulemake(void *arg)
     }
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].ncases;j++)
         if(s->functions[i].cases[j].op==ICASEC)m->native64casec=native64modulecasecstep;
+    m->native64importload=s->load;
     if(s->entry!=~0U){m->entry=m->prog+b->offsets[s->entry];m->entryt=m->type[s->entry+1];}
     m->cstep=native64typedlea8step;
     if(b->jit && !compile(m,m->nprog,nil))error(exCompile);

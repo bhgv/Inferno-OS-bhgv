@@ -15,25 +15,26 @@ SOURCE+='loop_count(p:Multi,n:int):int{total:=0;while(n>0){a:=p->relay_count(n);
 SOURCE+='loader():Multi{return load Multi "trusted/Multi";}'
 BRANCHES=MODULE['MULTI']['BRANCHES'];ROOTS=MODULE['MULTI']['ROOTS']
 
-def compile_source(limbo,work,source,interface=None):
+def compile_source(limbo,work,source,interface=None,loads=False):
     (work/'provider.m').write_text(INTERFACE if interface is None else interface)
     file=work/'external.b';file.write_text(source);ordinary=work/'ordinary.dis';traced=work/'external.dis'
     env=dict(os.environ)
-    for key in ('LIMBO_DIS64_TYPED','LIMBO_DIS64_TYPED_MULTI','LIMBO_DIS64_TYPED_TAIL','LIMBO_DIS64_TYPED_LOCAL','LIMBO_DIS64_TYPED_EXTERNAL'):env.pop(key,None)
+    for key in ('LIMBO_DIS64_TYPED','LIMBO_DIS64_TYPED_MULTI','LIMBO_DIS64_TYPED_TAIL','LIMBO_DIS64_TYPED_LOCAL','LIMBO_DIS64_TYPED_EXTERNAL','LIMBO_DIS64_TYPED_LOAD'):env.pop(key,None)
     cmd=[str(limbo),'-i','-I',str(work),'-o']
     BASE['READ']['checked_run'](cmd+[str(ordinary),str(file)],env=env,check=True,capture_output=True)
     env.update(LIMBO_DIS64_TYPED='1',LIMBO_DIS64_TYPED_EXTERNAL='1')
+    if loads:env['LIMBO_DIS64_TYPED_LOAD']='1'
     result=BASE['READ']['checked_run'](cmd+[str(traced),str(file)],env=env,check=True,capture_output=True,text=True)
     assert ordinary.read_bytes()==traced.read_bytes()
     return traced.read_bytes(),[json.loads(x[12:])for x in result.stderr.splitlines()if x.startswith('DIS64_TYPED ')]
 
-def verify(data,r,imports):
-    assert r['accepted']and r['schema']=='inferno-typed-external-v1'and r['externals']and 'calls'not in r
+def verify(data,r,imports,loads=False):
+    assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and 'calls'not in r
     _,old,types=BASE['READ']['legacy_instructions'](data,with_types=True)
     layout=json.loads(json.dumps(r));layout.update(schema='inferno-typed-body-v2',code=[]);BASE['verify'](data,layout)
     maps={space:{leaf[0]+i:leaf[1]+i for leaf in r[space]['leaves']for i in range(leaf[2])}for space in ('frame','data')}
     original=old[r['first']:r['first']+len(r['code'])];covered=set();inside=set();previous=-1
-    for e in r['externals']:
+    for e in r.get('externals',[]):
         first,end=e['first'],e['end'];assert previous<first<end<len(original);previous=end
         assert imports[e['binding']]=={'name':e['name'],'signature':e['signature']}
         o=original[first];mode,offset=e['module'];assert mode in (0,1)and o['op']==11 and o['mode']==(mode<<3)|64|1
@@ -56,6 +57,12 @@ def verify(data,r,imports):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc];assert op==o['op']and mode==o['mode']
+        if op==8:
+            assert loads and mode&192==64 and 0<=m<64 and returned==0
+            for address,offset,kind in ((mode>>3&7,s,13),(mode&7,d,11)):
+                assert address in (0,1)
+                leaves=r['frame'if address else'data']['leaves']
+                assert any(leaf[1]==offset and leaf[3]==8 and leaf[4]==kind for leaf in leaves)
         for label,address,value,new in (('s',mode>>3&7,o['s'],s),('d',mode&7,o['d'],d)):
             if value is None:assert new==0
             elif label=='d'and op in BRANCHES:assert new==value[0]-r['first']and new not in inside

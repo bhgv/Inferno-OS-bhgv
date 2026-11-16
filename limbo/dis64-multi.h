@@ -3,7 +3,7 @@ typedef struct TypedMulti TypedMulti;
 struct TypedMulti {
     Decl *globals,**functions;
     Inst **instructions;
-    int *entries,nf,external;
+    int *entries,nf,external,loads;
     Dis64TypedBody *bodies;
     uchar *state;
     unsigned int *height,count,cost;
@@ -292,12 +292,13 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->external>=2 && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
             if(!typedclientlist(in,p,p->code+pc-p->first))goto fail;
             if(UDST(p->code[pc-p->first].mode)==(AFP|AIND))p->returns[pc-p->first]=1;pc++;
-        }else if(c->external==2 && in->op==ILOAD){
+        }else if((c->external==2 || c->loads) && in->op==ILOAD){
             long source,destination;unsigned int sm,dm;int actual;
-            if(in->mm!=Aldt || in->m.decl==nil || in->m.decl->offset!=0 || in->branch!=nil ||
+            if(in->mm!=Aldt || in->m.decl==nil || in->m.decl->offset<0 || in->m.decl->offset>63 ||
+               (!c->loads && in->m.decl->offset!=0) || in->branch!=nil ||
                !typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) || actual!=Tstring ||
                !typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&destination,&dm,&actual) || actual!=Tmodule){typedfail(p,"load-roles");goto fail;}
-            p->code[pc-p->first]=(Dis64Instruction){ILOAD,SRC(sm)|AXIMM|DST(dm),0,source,destination};pc++;
+            p->code[pc-p->first]=(Dis64Instruction){ILOAD,SRC(sm)|AXIMM|DST(dm),in->m.decl->offset,source,destination};pc++;
         }else{
             if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;
             pc++;
@@ -314,8 +315,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(inside[target]){typedfail(p,"multi-table-setup-branch");goto fail;}
         }
     }
-    if((c->external<2 && !p->nsites && !p->nexternal) || !typedresults(p))goto fail;
-    free(inside);p->tail=c->external?4:3;c->state[index]=2;c->height[index]=h;return 1;
+    if((c->external<2 && !c->loads && !p->nsites && !p->nexternal) || !typedresults(p))goto fail;
+    free(inside);p->tail=c->loads?5:c->external?4:3;c->state[index]=2;c->height[index]=h;return 1;
 fail:
     free(inside);c->state[index]=3;return 0;
 }
@@ -327,7 +328,7 @@ typedmultilower(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsig
     USED(stop);
     if(p->code!=nil || p->reason!=nil || p->sites!=nil || p->external!=nil)return typedfail(p,"nonempty-output");
     if(nf<1 || nf>4096 || !count || count>TypedInstructions || functions==nil || input==nil)return typedfail(p,"multi-limit");
-    c.external=external;c.globals=globals;c.functions=functions;c.nf=nf;c.count=count;
+    c.loads=external==4;c.external=c.loads?1:external;c.globals=globals;c.functions=functions;c.nf=nf;c.count=count;
     c.bodies=allocmem(nf*sizeof(*c.bodies));memset(c.bodies,0,nf*sizeof(*c.bodies));
     c.state=allocmem(nf);memset(c.state,0,nf);c.height=allocmem(nf*sizeof(*c.height));memset(c.height,0,nf*sizeof(*c.height));
     c.instructions=allocmem(count*sizeof(*c.instructions));memset(c.instructions,0,count*sizeof(*c.instructions));
@@ -368,3 +369,9 @@ dis64typedclient(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsi
 }
 
 int dis64typedcommand(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p){return typedmultilower(fn,globals,functions,nf,input,count,stop,p,3);}
+
+int
+dis64typedloads(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsigned int count,unsigned int stop,Dis64TypedBody *p)
+{
+    return typedmultilower(fn,globals,functions,nf,input,count,stop,p,4);
+}

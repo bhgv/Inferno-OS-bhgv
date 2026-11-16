@@ -3313,6 +3313,8 @@ OP(iload)
 	   (uintptr)m > (uintptr)-1-sizeof(*m))
 		error(exModule);
 	structural = m->native64importload != nil;
+	if(m->native64importload == (Modlink*(*)(Module*,WORD,char*))H)
+		error(exModule);
 	if(!structural && !(m->rt & HASLDT))
 		error("obsolete dis");
 	/* Bound and capture the result cell before any conversion/linker callback. */
@@ -3328,7 +3330,7 @@ OP(iload)
 	n = string2c(name);
 	if(structural){
   ml = m->native64importload(m, index, n);
-  if(ml == nil) ml = H;
+  if(ml == nil || ml == H) ml = H;
   else {
    /* Keep the temporary pin until the mapped destination owns the instance. */
    Setmark(D2H(ml));

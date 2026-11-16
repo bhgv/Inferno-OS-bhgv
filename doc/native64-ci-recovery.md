@@ -634,3 +634,32 @@ The existing owned-import source generator still passes all 18 bodies, 34
 sites and 23 requests with the default interface, including its prior four
 corrupt-report controls. Workflow duplicate-map, shell syntax and Python
 syntax checks pass.
+
+
+## Trusted source LOAD and owned publication
+
+The preceding MP-root matrix, paired console and classic32 are green. Add an
+explicit typed LOAD diagnostic mode (LIMBO_DIS64_TYPED_LOAD=1) and private
+Spec.load callback, retaining the previous external-mode loader refusal.
+Validate full mapped String/module operand spans and owned import-table index
+before allocation. Materialize ILOAD without any new wire IDs or file flags.
+The existing iload path now rejects an H callback and treats a returned H as
+load failure rather than dereferencing it. Successful pin transfer, nil/H
+replacement and error preservation are checked through real Limbo bodies.
+
+The service fixture selects a constructed provider; it is not a general AWM
+file reader. All 6528 C/JIT graph roots pass, including Unicode paths, nil
+String paths, reload MP isolation, old-instance observers and full retirement.
+All 51 constructor allocation failures preserve REG; 14 metadata refusals
+allocate nothing. Runtime indices 1/63 and invalid callbacks preserve full
+REG, while two distinct source interfaces retain classic indices 0/1.
+Three active omission controls cover callback/root admission and publication
+pin release. The complete gate passes ASan+UBSan/NDEBUG (detect_leaks=0).
+
+Require loads as the eleventh four-target gate and in the full port driver.
+Fresh complete console/paired boot, 54 source Command launchers (243 raw
+checks), previous 3264 MP roots/controls, selected int/big namespace ILOAD
+pipelines and independent unused/wrong-kind refusals pass. All 1024 accepted
+source/flag pairs retain exact previous-compiler output, with 772 producer
+files/refusal boundaries intact. Legacy AWM report remains 16/344, no full
+AWM execution. See doc/native64-typed-loads.ru.md for contract and limits.
