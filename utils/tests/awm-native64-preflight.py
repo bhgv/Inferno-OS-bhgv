@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
+from collections import Counter
 import shlex
 import subprocess
 import tempfile
@@ -32,11 +34,11 @@ STARTUP = (
 
 
 # Capture the real compiler status and diagnostics for a single source.
-def compile_module(limbo, source, target, options):
+def compile_module(limbo, source, target, options, env=None):
     return subprocess.run(
         [str(limbo), *options, '-I', 'module', '-o', str(target), source],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, timeout=60,
+        text=True, timeout=60, env=env,
     )
 
 
@@ -187,9 +189,56 @@ int main(void)
 
 
 # Keep ordinary source compilation and experimental Dis64 admission separate.
+# Checked native IR is a separate diagnostic route: its output must still be
+# byte-for-byte classic Dis, and acceptance never implies file/VM admission.
+def checked_frontier(limbo, source, work):
+    env=dict(os.environ)
+    for key in tuple(env):
+        if key.startswith('LIMBO_DIS64_'):env.pop(key)
+    plain=work/(Path(source).stem+'.checked-plain.dis')
+    traced=work/(Path(source).stem+'.checked-traced.dis')
+    baseline=compile_module(limbo,source,plain,['-i'],env)
+    if baseline.returncode or any(marker in baseline.stdout for marker in ('AddressSanitizer','UndefinedBehaviorSanitizer','runtime error:')):raise RuntimeError(f'{source}: checked reference compile failed\n{baseline.stdout}')
+    env.update(LIMBO_DIS64_TYPED='1',LIMBO_DIS64_TYPED_EXTERNAL='1',LIMBO_DIS64_TYPED_LOAD='1')
+    result=compile_module(limbo,source,traced,['-i'],env)
+    if result.returncode or any(marker in result.stdout for marker in ('AddressSanitizer','UndefinedBehaviorSanitizer','runtime error:')):
+        raise RuntimeError(f'{source}: checked reporter failure\n{result.stdout}')
+    data=plain.read_bytes()
+    if traced.read_bytes()!=data:raise RuntimeError(f'{source}: diagnostic mode changed classic bytecode')
+    rows=[json.loads(line[12:])for line in result.stdout.splitlines()if line.startswith('DIS64_TYPED ')]
+    if not rows or len({(row['name'],row['first'])for row in rows})!=len(rows):raise RuntimeError(f'{source}: missing/duplicate function reports')
+    reader=runpy.run_path(str(ROOT/'utils/tests/native64-callsites.py'))
+    code=reader['legacy_instructions'](data)[1]
+    enumeration=(ROOT/'include/isa.h').read_text().split('};',1)[0]
+    names=re.findall(r'^\s*(I[A-Z0-9]+)\s*,',enumeration,re.M)
+    if not names or names[0]!='INOP':raise RuntimeError('unsupported opcode declaration syntax')
+    functions=[];reasons=Counter()
+    for row in rows:
+        if type(row['accepted'])is not bool or not 0<=row['first']<len(code):raise RuntimeError(f'{source}: malformed frontier function')
+        fn={k:row[k]for k in ('name','first','accepted','schema')}
+        if row['accepted']:
+            fn.update(instructions=len(row['code']),local_calls=len(row.get('calls',[])),imported_calls=len(row.get('externals',[])))
+        else:
+            reason=row['reason'];pc=row['pc'];fn.update(reason=reason,pc=pc);reasons[reason]+=1
+            end=min((other['first']for other in rows if other['first']>row['first']),default=len(code))
+            declaration_or_graph=reason in ('nonempty-output','function-result-or-polymorphism','aggregate-result','code-limit','storage-layout','multi-limit','multi-function-table','multi-instruction-table','multi-storage-budget','multi-depth','multi-cycle')
+            if not declaration_or_graph and row['first']<=pc<end:
+                ins=code[pc];fn['instruction']={**ins,'opcode':names[ins['op']]if ins['op']<len(names)else'unknown'}
+                if fn['instruction']['opcode']in('IFRAME','IMFRAME'):
+                    fn['following_instructions']=[{'pc':at,**code[at],'opcode':names[code[at]['op']]if code[at]['op']<len(names)else'unknown'}for at in range(pc+1,min(pc+5,end))]
+            else:fn['location_note']='No instruction attributed: declaration/call-graph refusal or PC outside this body.'
+        functions.append(fn)
+    accepted=sum(fn['accepted']for fn in functions)
+    print(f'PASS checked frontier: {source}: {accepted}/{len(functions)} bodies; classic bytes unchanged; refusals {dict(reasons)}')
+    return {'schema':'inferno-checked-frontier-v1','diagnostic_only':True,'file_admission':False,
+            'classic_bytes_unchanged':True,'classic_options':['-i'],'classic_sha256':hashlib.sha256(data).hexdigest(),
+            'accepted_functions':accepted,'reasons':dict(reasons),'functions':functions}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--limbo', type=Path, required=True)
+    parser.add_argument('--checked-only',action='store_true',help='report checked native IR functions and exact classic-byte preservation only')
     parser.add_argument('--report', type=Path, help='write compiler barriers and static LOAD dependencies as JSON')
     args = parser.parse_args()
     limbo = args.limbo.resolve()
@@ -201,6 +250,13 @@ def main():
               'modules': [], 'execution_tested': False}
     with tempfile.TemporaryDirectory(prefix='awm-preflight-', dir=ROOT) as directory:
         work = Path(directory)
+        if args.checked_only:
+            report['scope']='Checked native IR diagnostics and classic byte preservation only; static imports, file profiles and runtime not checked.'
+            for source in STARTUP:
+                report['modules'].append({'source':source,'source_sha256':hashlib.sha256((ROOT/source).read_bytes()).hexdigest(),'checked_frontier':checked_frontier(limbo,source,work)})
+            if args.report:args.report.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+            print('PASS checked-only startup frontier: diagnostic evidence only; no AWM execution')
+            return
         report['static_imports'] = check_startup_imports(limbo, work)
         check_string_frames(limbo, work)
         for source in STARTUP:
@@ -211,7 +267,7 @@ def main():
             module = {'source': source, 'source_sha256': hashlib.sha256((ROOT/source).read_bytes()).hexdigest(),
                       'classic': {'bytes': legacy.stat().st_size,
                                   'sha256': hashlib.sha256(legacy.read_bytes()).hexdigest()},
-                      'profiles': {}}
+                      'profiles': {}, 'checked_frontier':checked_frontier(limbo,source,work)}
             report['modules'].append(module)
             for profile, option in profiles:
                 target = work / (Path(source).stem + '.' + profile + '.dis64')

@@ -53,7 +53,7 @@ Array*arraycpy(Array*a){USED(a);require(0);return nil;}
         subprocess.run(command,check=True,env=env);subprocess.run(runner+[str(binary)]+runargs,check=True,env=env,timeout=120)
         # Deliberate omissions must produce their exact semantic diagnostics.
         production=(ROOT/'include/native64-typed-module.h').read_text()
-        for before,after,diagnostic in (('site->table>=s->ntables','0','case=0'),('!(map[bit/8]&(0x80>>(bit%8)))','0','case=3')):
+        for before,after,diagnostic in (('site->table>=s->ntables','0','case=0'),('bit=site->moduleoffset/8;if(!(map[bit/8]&(0x80>>(bit%8))))return 0;','bit=site->moduleoffset/8;','case=3')):
             assert production.count(before)==1
             (work/'native64-typed-module.h').write_text(production.replace(before,after))
             subprocess.run(command,check=True,env=env)

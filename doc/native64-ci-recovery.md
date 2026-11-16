@@ -1012,3 +1012,30 @@ preserving bit calculation and every LOAD/IRAISE/pair guard. The repaired
 String MP import gate passes local x64 ASan+UBSan/NDEBUG, detect_leaks=0,
 including both semantic omission controls. The complete twenty-gate host
 sequence is being checked as a separate regression pass.
+
+
+## Complete host typed sequence and checked-function frontier
+
+Running the complete twenty-gate host sequence exposed the same unscoped
+root-predicate mutation in the final owned-imports gate (case=3), after its
+960 functional cases and constructor rollback cases passed. Scope this control
+to site->moduleoffset too; keep all production guards intact. The repaired
+owned-import gate passes x64 ASan+UBSan/NDEBUG, detect_leaks=0, including both
+constructor controls and the exact-hash binding control.
+
+Extend AWM preflight with checked LOAD per-function reports alongside the
+existing static imports and four file profiles. Two ordinary -i compilations
+must be byte-identical with/without diagnostics. Independently decode the
+classic failing instruction and show bounded call-setup context. Keep repeated
+ADT method names separate by (name, first); storage/signature refusals before
+body traversal must not claim an instruction. checked-only is a diagnostic
+shortcut, never file or runtime admission. The full 16-module preflight passes:
+380 functions, 37 individually accepted bodies, all classic bytes unchanged.
+See native64-startup-frontier.ru.md for precise emuinit barriers and scope.
+
+All twenty host typed gates now complete successfully with the exact CI
+-O2/-DNDEBUG/fno-strict-aliasing/UBSan flags, including the repaired final
+owned-import gate. Both repaired import gates separately pass ASan+UBSan.
+Full and checked-only startup preflight reports agree exactly for all sixteen
+sources; declaration/graph refusals do not acquire invented instruction PCs.
+Target acceptance for these repairs remains the new CI run's responsibility.
