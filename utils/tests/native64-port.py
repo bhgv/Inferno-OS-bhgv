@@ -195,6 +195,18 @@ def main():
         run(command, build, env, logs/('client-literals-proof-'+str(control)+'.log'))
     run([sys.executable, str(tests/'dis64-command-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'command-init-boot.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--chain', '--limbo', str(tools/'limbo')],
+        build, env, logs/'command-chain-gc.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--chain', '--chain-owner-control', '--case', 'chain-required',
+         '--limbo', str(tools/'limbo')], build, env, logs/'command-chain-owner-control.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--chain', '--gc-control', 'callee-frame', '--case', 'chain-owned',
+         '--limbo', str(tools/'limbo')], build, env, logs/'command-chain-gc-control.log')
+    for control in (None, 'load', 'export'):
+        command = [sys.executable, str(tests/'dis64-command-chain-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('command-chain-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-command-chain-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'command-chain-boot.log')
     run([sys.executable, str(tests/'dis64-command-producer.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'command-init-producer.log')
     for control in (None, 'hash', 'class', 'arguments', 'export'):

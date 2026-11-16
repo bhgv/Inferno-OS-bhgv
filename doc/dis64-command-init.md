@@ -331,3 +331,6 @@ parameters, results and frame maps; only the root init body may load/call import
 Root init ends with IEXIT, helpers with RET. Calling a helper before LOAD does
 not establish the load fact required by MCALL. Extra public exports and mutable
 global MP data are not enabled by this composition.
+
+
+For a Command with its own file dependency, see the [worked tutorial](dis64-command-import.md).

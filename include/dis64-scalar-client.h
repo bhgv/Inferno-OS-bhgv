@@ -15,8 +15,9 @@ struct Dis64ScalarClientView {
  Dis64ModuleInfo module;
  Dis64TypeTable types;
  DisStringPoolView strings;
- Dis64Bindings imports;
- Dis64Section code,requests,names;
+ Dis64Bindings imports,exports;
+ Dis64Section code,requests,names,definitions;
+ unsigned int importing;
  unsigned int count,frame,calls,literals,contexttype,bytearrays,bytetype,intarrays,inttype;
  unsigned int prooftype,localcount,localused,localtype[8],localentry[8];
  unsigned int returning,returnkind,localvalue[8],localresult[8];
@@ -280,6 +281,7 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
  unsigned int nslots=0,i,j,k,changed,seed[2]={0},previous[Dis64ClientSlots],at=4,used,offset,kind,width,result,ordinal,start;Dis64Type frame;
  Dis64CallDecoded *d;Dis64Instruction *in;Dis64Binding b;
  const unsigned char *data=v->envelope.data;
+ int allowimports=!library || (v->importing && !v->prooftype);
  if(!ready){for(i=0;i<v->count;i++){if(at>=v->code.bytes || !dis64clientinstructionread(data+v->code.offset+at,v->code.bytes-at,v->decoded+i,&used))return 0;at+=used;}
  if(at!=v->code.bytes || !dis64clientliteraluses(v))return 0;}
  if(!dis64typeget(&v->types,v->prooftype,&frame))return 0;
@@ -317,7 +319,7 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
   if(library || v->localcount)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IFRAME){unsigned int bits[2]={0},gives[2]={0},assigned=0;
    if(!dis64clientlocalcall(v,i,slots,&nslots,bits,gives,&assigned))return 0;
   }
-  if(!library)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IMFRAME){
+  if(allowimports)for(i=0;i<v->count;i++)if(v->decoded[i].instruction.op==IMFRAME){
    Dis64Binding binding;unsigned int bits[2]={0};long ordinal=v->decoded[i].instruction.middle;
    if(ordinal>=0 && (unsigned long)ordinal<v->imports.count && dis64clientbindingget(&v->imports,ordinal,&binding) && dis64commandsignature(&binding.signature))
     if(!dis64commandarguments(v,i,slots,nslots,bits))return 0;
@@ -331,7 +333,7 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
  for(i=0;i<v->count;i++){
   start=i;node=nodes+i;node->boundary=1;node->target=v->count;
   d=v->decoded+i;in=&d->instruction;
-  if(in->op==ILOAD){if(library || in->mode!=(SRC(AMP)|AXIMM|DST(AMP)) || in->middle || in->source!=16 || in->destination)return 0;node->load=1;node->next=i+1;continue;}
+  if(in->op==ILOAD){if(!allowimports || in->mode!=(SRC(AMP)|AXIMM|DST(AMP)) || in->middle || in->source!=16 || in->destination)return 0;node->load=1;node->next=i+1;continue;}
   if(in->op==IEXIT || (library && in->op==IRET)){if((library && in->op!=IRET) || in->mode!=(SRC(AXXX)|DST(AXXX)))return 0;node->needload=library && v->returning;node->next=v->count;continue;}
   if(i==v->count-1)return 0;
   if(in->op==IINDB || in->op==IINDW){
@@ -353,7 +355,7 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
    if(dis64clientbranch(in->op)){if(in->destination<0 || (unsigned long)in->destination>=v->count)return 0;node->target=in->destination;}
    continue;
   }
-  if(library)return 0;
+  if(!allowimports)return 0;
   if(in->mode!=(SRC(AMP)|AXIMM|DST(AFP)) || in->source || in->destination!=40 || in->middle<0 ||
      (unsigned long)in->middle>=v->imports.count || !dis64clientbindingget(&v->imports,in->middle,&b))return 0;
   node->needload=1;ordinal=in->middle;offset=64;
@@ -381,7 +383,7 @@ dis64clientbodyprove(Dis64ScalarClientView *v,int library,int ready)
   }
   nodes[start].next=i+1;
  }
- if((library?v->calls!=0:!v->calls) || v->decoded[v->count-1].instruction.op!=(unsigned int)(library?IRET:IEXIT))return 0;
+ if((allowimports?!v->calls:v->calls!=0) || v->decoded[v->count-1].instruction.op!=(unsigned int)(library?IRET:IEXIT))return 0;
  for(i=0;i<v->count;i++)if(nodes[i].boundary && ((nodes[i].next<v->count && !nodes[nodes[i].next].boundary) ||
     (nodes[i].target<v->count && !nodes[nodes[i].target].boundary)))return 0;
  if(!dis64clientflow(nodes,v->count,seed))return 0;

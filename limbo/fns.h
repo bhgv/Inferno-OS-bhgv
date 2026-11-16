@@ -412,3 +412,4 @@ void dis64callsfile(Decl*, Decl*, Decl**, int, Inst*, long); // Checked scalar c
 
 int dis64commandfile(Decl*, Decl**, int, Inst*, long, long);
 void dis64clientfile(Decl*, Decl*, Decl*, Decl**, int, Inst*, long, long);
+void dis64commandimportfile(Decl*, Decl*, Decl**, int, Inst*, long, long);

@@ -41,7 +41,7 @@ commandliteralcheck(const Dis64ScalarClientView *view,uchar *mp)
 {
  unsigned int i,j,expected,actual;String *value;DisRuneView rune;
  for(i=0;i<view->literals;i++){
-  require(disstringpoolget(&view->strings,view->imports.count+3+i,&rune));memmove(&value,mp+24+8*i,sizeof(value));
+  require(disstringpoolget(&view->strings,view->imports.count+3+view->importing+i,&rune));memmove(&value,mp+24+8*i,sizeof(value));
   require(value!=nil && value!=H && D2H(value)->t==&Tstring && (unsigned int)(value->len<0?-value->len:value->len)==rune.count && value->max>=(int)rune.count);
   for(j=0;j<rune.count;j++){
    require(disruneat(&rune,j,&expected));if(value->len<0)memmove(&actual,value->Srune+j,sizeof(actual));else actual=value->Sascii[j];require(actual==expected);

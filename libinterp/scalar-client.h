@@ -17,12 +17,12 @@ dis64clientconstruct(void *argument)
  for(i=0;i<name.count;i++){disruneat(&name,i,&rune);path->Sascii[i]=rune;}path->Sascii[name.count]=0;
  memmove(m->origmp+16,&path,sizeof(path));Setmark(D2H(path));
  for(i=0;i<v->literals;i++){
-  if(!disstringpoolget(&v->strings,3+v->imports.count+i,&name))return 0;
+  if(!disstringpoolget(&v->strings,3+v->imports.count+v->importing+i,&name))return 0;
   ascii=1;for(j=0;j<name.count;j++){if(!disruneat(&name,j,&rune))return 0;if(rune>127)ascii=0;}
   path=ascii?newstring(name.count):newrunes(name.count);memmove(m->origmp+24+8*i,&path,sizeof(path));Setmark(D2H(path));
   for(j=0;j<name.count;j++){if(!disruneat(&name,j,&rune))return 0;if(ascii)path->Sascii[j]=rune;else memmove(path->Srune+j,&rune,sizeof(rune));}
  }
- if(v->module.profile){
+ if(v->module.profile || v->importing){
  bytes=sizeof(*owner)+v->requests.bytes+v->names.bytes;owner=mallocz(bytes,1);if(!owner)return 0;m->native64imports=owner;
  owner->count=1;owner->jit=b->jit;at=(uchar*)(owner+1);
  owner->tables[0]=(Native64ImportRequest){at,at+v->requests.bytes,v->requests.bytes,v->names.bytes};
@@ -42,7 +42,7 @@ dis64clientconstruct(void *argument)
  for(j=0;j<name.count;j++){disruneat(&name,j,&rune);m->name[j]=rune;}
  m->path=strdup(b->path);if(!m->path)return 0;m->entry=v->module.profile?m->prog:nil;m->entryt=v->module.profile?m->type[0]:nil;m->cstep=(roots || v->localcount)?native64typedlea8step:native64lea8step;
  if(!v->module.profile){Dis64Binding binding;
-  if(!dis64clientbindingget(&v->imports,0,&binding))return 0;
+  if(!dis64clientbindingget(v->importing?&v->exports:&v->imports,0,&binding))return 0;
   m->ext=mallocz(2*sizeof(Link),1);if(!m->ext)return 0;
   m->ext[0].name=strdup("init");if(!m->ext[0].name)return 0;
   m->ext[0].sig=dis64u32(binding.signature.data+4);m->ext[0].frame=m->type[0];m->ext[0].u.pc=m->prog;

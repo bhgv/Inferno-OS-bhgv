@@ -22,7 +22,7 @@ def instrument(source,control=None):
  at=source.index('/* Both caller CODE and provider CODE');source=source[:at]+(ROOT/'utils/tests/dis64-scalar-client-gc.c').read_text()+'\n'+source[at:]
  source=source.replace('clientloads++;','clientlocalremember(ml->m,providerfile,providerfilebytes);clientloads++;')
  source=source.replace('observedispatch(m,jit);m->ss=','clientlocalremember(m,clientfile,clientfilebytes);observedispatch(m,jit);m->ss=')
- source=source.replace('clientempty(void){','clientempty(void){clientlocalcount=clientresultcount=0;for(int slot=1;slot<GcSlots;slot++)require(numericblock(slot)->magic==MAGIC_F);')
+ source=source.replace('clientempty(void){','clientempty(void){clientlocalcount=clientresultcount=0;memset(nativeobservations,0,sizeof(nativeobservations));for(int slot=1;slot<GcSlots;slot++)require(numericblock(slot)->magic==MAGIC_F);')
  head,tail=source.rsplit('done=kprotect(executeprocess,p);if(!done)break;',1);source=head+'done=kprotect(executeprocess,p);if(!done)break;clientcollect(p,m,root);'+tail
  if control=='frame':source=source.replace('clientproviderjit=cflag=pjit;', 'm->type[0]->mark=noptrs;clientproviderjit=cflag=pjit;')
  if control=='list':source=source.replace('clientproviderjit=cflag=pjit;', 'Tlist.mark=noptrs;clientproviderjit=cflag=pjit;')

@@ -274,7 +274,7 @@ struct NativeObservation {
 	int (*entry[256])(REG*); // Actual emitted targets behind counting wrappers.
 };
 
-static NativeObservation nativeobservations[4]; // At most two concurrently owned test modules.
+static NativeObservation nativeobservations[32]; // Bounded nested import observations.
 static int nativecalls, nativeaccepted, nativedeclined, ccalls, bridgecalls; // Observed real dispatch routes.
 
 
@@ -375,7 +375,8 @@ observedispatch(Module *module, int requested)
 	require(i < nelem(nativeobservations));
 	nativeobservations[i].jit = module->jit;
 	for(opcode=0; opcode<256; opcode++){
-		nativeobservations[i].entry[opcode] = module->jit->entry[opcode];
+		if(module->jit->entry[opcode] != countnative)
+			nativeobservations[i].entry[opcode] = module->jit->entry[opcode];
 		if(module->jit->entry[opcode] != nil)
 			module->jit->entry[opcode] = countnative;
 	}

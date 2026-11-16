@@ -7,7 +7,7 @@ P=runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client.py'))
 C=runpy.run_path(str(ROOT/'utils/tests/dis64-command-cases.py'))
 D=runpy.run_path(str(ROOT/'utils/tests/dis64-command.py'))
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--baseline',type=Path);p.add_argument('--command-baseline',type=Path);p.add_argument('--field-baseline',type=Path);p.add_argument('--reference-baseline',type=Path);p.add_argument('--literal-baseline',type=Path);p.add_argument('--codec-baseline',type=Path);p.add_argument('--array-baseline',type=Path);p.add_argument('--index-baseline',type=Path);p.add_argument('--int-array-baseline',type=Path);p.add_argument('--local-baseline',type=Path);p.add_argument('--result-baseline',type=Path);p.add_argument('--argument-baseline',type=Path);p.add_argument('--scalar-result-baseline',type=Path);p.add_argument('--managed-argument-baseline',type=Path);p.add_argument('--import-helper-baseline',type=Path);a=p.parse_args();env=dict(os.environ);env["ROOT"]=str(ROOT);env.pop("EMU",None)
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--baseline',type=Path);p.add_argument('--command-baseline',type=Path);p.add_argument('--field-baseline',type=Path);p.add_argument('--reference-baseline',type=Path);p.add_argument('--literal-baseline',type=Path);p.add_argument('--codec-baseline',type=Path);p.add_argument('--array-baseline',type=Path);p.add_argument('--index-baseline',type=Path);p.add_argument('--int-array-baseline',type=Path);p.add_argument('--local-baseline',type=Path);p.add_argument('--result-baseline',type=Path);p.add_argument('--argument-baseline',type=Path);p.add_argument('--scalar-result-baseline',type=Path);p.add_argument('--managed-argument-baseline',type=Path);p.add_argument('--import-helper-baseline',type=Path);p.add_argument('--command-import-baseline',type=Path);a=p.parse_args();env=dict(os.environ);env["ROOT"]=str(ROOT);env.pop("EMU",None)
  with tempfile.TemporaryDirectory(prefix='command-producer-',dir=ROOT)as td:
   w=Path(td);env['TMPDIR']=str(w);source=w/'source.b';image=w/'new.dis64';old=w/'old.dis64';plain=w/'plain.dis';oldplain=w/'old.dis'
   def compile(compiler,flag,target,check=True):
@@ -18,8 +18,8 @@ def main():
   for name in ('cases','numeric-cases','managed-cases'):prior+=list(runpy.run_path(str(ROOT/('utils/tests/dis64-scalar-client-'+name+'.py')))['cases']())
   for row in prior:
    source.write_text(row[8]);(w/'library.m').write_text(P['NS']['declarations'](row[1]));compile(a.limbo,'-64c',image);compile(a.limbo,'-i',plain)
-   if a.baseline or a.codec_baseline or a.array_baseline or a.index_baseline or a.int_array_baseline or a.local_baseline or a.result_baseline or a.argument_baseline or a.scalar_result_baseline or a.managed_argument_baseline or a.import_helper_baseline:
-    priorcompiler=a.baseline or a.codec_baseline or a.array_baseline or a.index_baseline or a.int_array_baseline or a.local_baseline or a.result_baseline or a.argument_baseline or a.scalar_result_baseline or a.managed_argument_baseline or a.import_helper_baseline;compile(priorcompiler,'-64c',old);compile(priorcompiler,'-i',oldplain);assert image.read_bytes()==old.read_bytes()and plain.read_bytes()==oldplain.read_bytes(),row[0]
+   if a.baseline or a.codec_baseline or a.array_baseline or a.index_baseline or a.int_array_baseline or a.local_baseline or a.result_baseline or a.argument_baseline or a.scalar_result_baseline or a.managed_argument_baseline or a.import_helper_baseline or a.command_import_baseline:
+    priorcompiler=a.baseline or a.codec_baseline or a.array_baseline or a.index_baseline or a.int_array_baseline or a.local_baseline or a.result_baseline or a.argument_baseline or a.scalar_result_baseline or a.managed_argument_baseline or a.import_helper_baseline or a.command_import_baseline;compile(priorcompiler,'-64c',old);compile(priorcompiler,'-i',oldplain);assert image.read_bytes()==old.read_bytes()and plain.read_bytes()==oldplain.read_bytes(),row[0]
   (w/'command.m').write_text(C['INTERFACE']);count=0
   for name,provider,caller,_ in C['cases']():
    for text,flag in ((provider,'-64b'),(caller,'-64c')):
@@ -105,12 +105,29 @@ def main():
      old.unlink(missing_ok=True);r=compile(a.import_helper_baseline,flag,old,False)
      if not r.returncode:assert old.read_bytes()==data,(name,r.stderr)
      else:assert name.startswith('importhelper-')and(not old.exists()or not old.stat().st_size)and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.stderr)
+    if a.command_import_baseline:
+     compile(a.command_import_baseline,'-i',oldplain);assert plain.read_bytes()==oldplain.read_bytes(),name
+     compile(a.command_import_baseline,flag,old);assert old.read_bytes()==data,name
     count+=1
   scalarhelpers=list(runpy.run_path(str(ROOT/'utils/tests/dis64-scalar-client-local-cases.py'))['cases']())
   for row in scalarhelpers:
    (w/'library.m').write_text(P['NS']['declarations'](row[1]));source.write_text(row[8]);compile(a.limbo,'-64c',image);data=image.read_bytes();compile(a.limbo,'-64c',image);assert image.read_bytes()==data;compile(a.limbo,'-i',plain)
    if a.import_helper_baseline:
     compile(a.import_helper_baseline,'-i',oldplain);assert plain.read_bytes()==oldplain.read_bytes();old.unlink(missing_ok=True);r=compile(a.import_helper_baseline,'-64c',old,False);assert r.returncode and(not old.exists()or not old.stat().st_size)
+  if a.command_import_baseline:
+   for row in scalarhelpers:
+    (w/'library.m').write_text(P['NS']['declarations'](row[1]));source.write_text(row[8]);compile(a.limbo,'-64c',image);compile(a.command_import_baseline,'-64c',old);assert image.read_bytes()==old.read_bytes();compile(a.limbo,'-i',plain);compile(a.command_import_baseline,'-i',oldplain);assert plain.read_bytes()==oldplain.read_bytes()
+  chains=list(C['chaincases']())
+  (w/'command.m').write_text(C['INTERFACE'])
+  for row in chains:
+   (w/'library.m').write_text(row[5])
+   for owner,text,flag in [('dependency',row[4],'-64b'),('library',row[1],'-64b'),('client',row[2],'-64c')]:
+    source.write_text(text);compile(a.limbo,flag,image);data=image.read_bytes();compile(a.limbo,flag,image);assert data==image.read_bytes();compile(a.limbo,'-i',plain)
+    if a.command_import_baseline:
+     compile(a.command_import_baseline,'-i',oldplain);assert plain.read_bytes()==oldplain.read_bytes()
+     old.unlink(missing_ok=True);r=compile(a.command_import_baseline,flag,old,False)
+     if owner=='library':assert r.returncode and(not old.exists()or not old.stat().st_size)
+     else:assert not r.returncode and old.read_bytes()==data
   (w/'command.m').write_text(C['INTERFACE'])
   for declarations,body,helpers,interface in [
    ('','n:=first(7);','first(n:int):int{return n+1;}','init:fn();first:fn(n:int):int;'),
@@ -148,10 +165,20 @@ def main():
   text=next(r[2]for r in C['constructorcases']()if r[0]=='constructors-local').replace('ctxt:=ref Draw->Context(nil,nil,nil);m->init(ctxt,argv);m->init(ctxt,argv);keepctxt:=ctxt;','m->init(ref Draw->Context(nil,nil,nil),argv);')
   source.write_text(text);compile(a.limbo,'-i',plain);image.unlink(missing_ok=True);r=compile(a.limbo,'-64c',image,False)
   assert r.returncode and(not image.exists()or not image.stat().st_size)and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,r.stderr
+  # The importing entryless branch must preserve its deliberately narrow shape.
+  chain=next(r for r in C['chaincases']()if r[0]=='chain-scalar')
+  (w/'library.m').write_text(chain[5])
+  refusals=[chain[1].replace('n:=m->inc(7);','other:=load Library "second.dis64";n:=m->inc(7);'),
+   chain[1].replace('init(ctxt:', 'helper:fn();init(ctxt:').replace('n:=m->inc(7);','helper();n:=m->inc(7);')+'helper(){m:=load Library "dependency.dis64";n:=m->inc(7);}',
+   chain[1].replace('init(ctxt:', 'counter:int;init(ctxt:').replace('n:=m->inc(7);','counter++;n:=m->inc(counter);'),
+   chain[1].replace('include "command.m";',C['INTERFACE'].replace('include "sh.m";','Command:module{init:fn(ctxt:ref Draw->Context,argv:list of string);extra:fn();};'))+'extra(){}']
+  for text in refusals:
+   source.write_text(text);compile(a.limbo,'-i',plain);image.unlink(missing_ok=True);r=compile(a.limbo,'-64b',image,False)
+   assert r.returncode and(not image.exists()or not image.stat().st_size)and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,r.stderr
   examples=[re.findall(r'```limbo\n(.*?)```',(ROOT/('doc/dis64-command-init'+language+'.md')).read_text(),re.S)for language in ('','.ru')]
   assert len(examples[0])==3 and examples[0]==examples[1]
   for name,text in zip(('command.m','library.b','client.b'),examples[0]):(w/name).write_text(text)
   for flag,name in [('-64b','library.b'),('-64c','client.b')]:
    source.write_text((w/name).read_text());compile(a.limbo,flag,image)
- print('PASS ordinary init producer:',count,'deterministic files;',len(prior),'prior clients; eleven scalar helper clients; sixteen library/four client well-typed source refusals; RU/EN tutorial compiled'+('; prior Dis64/all classic bytes equal'if a.baseline or a.codec_baseline or a.array_baseline or a.index_baseline or a.int_array_baseline or a.local_baseline or a.result_baseline or a.argument_baseline or a.scalar_result_baseline or a.managed_argument_baseline or a.import_helper_baseline else'; no baseline'),flush=True)
+ print('PASS ordinary init producer:',count,'deterministic files;',len(prior),'prior clients; eleven scalar helper clients; '+str(len(chains))+' importing Command triples; sixteen library/four client/four importing-library well-typed source refusals; RU/EN tutorial compiled'+('; prior Dis64/all classic bytes equal'if a.baseline or a.codec_baseline or a.array_baseline or a.index_baseline or a.int_array_baseline or a.local_baseline or a.result_baseline or a.argument_baseline or a.scalar_result_baseline or a.managed_argument_baseline or a.import_helper_baseline or a.command_import_baseline else'; no baseline'),flush=True)
 if __name__=='__main__':main()

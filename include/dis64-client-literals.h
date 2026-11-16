@@ -7,7 +7,7 @@
 static int
 dis64clientdatacheck(Dis64ScalarClientView *v)
 {
- Dis64Type mp,context,byte;DisRuneView value;unsigned int i,j,map,total=0,base=v->imports.count+3;
+ Dis64Type mp,context,byte;DisRuneView value;unsigned int i,j,map,total=0,base=v->imports.count+3+v->importing;
  if(v->strings.count<base || v->strings.count-base>Dis64ManagedLiterals)return 0;
  v->literals=v->strings.count-base;v->contexttype=v->literals?2:1;
  if(v->types.count<v->contexttype+1 || v->types.count>v->contexttype+11)return 0;

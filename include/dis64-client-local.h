@@ -189,5 +189,5 @@ dis64clientlocalcontract(const Dis64ScalarClientView *v,unsigned int pc)
   for(i=0;i<v->localcount;i++)if(v->decoded[at].instruction.source==v->localtype[i])
    return dis64clientisroot(v->localresult[i])?24:dis64clientwidth(v->localresult[i]);
  }
- return v->module.profile?8:0;
+ return (v->module.profile || v->importing)?8:0;
 }

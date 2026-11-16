@@ -9656,3 +9656,70 @@ publication/GC integration, no journal or Dis64 wire revision. Incoming0202/0203
 and our prior prefix stay verbatim. No runtime/concurrent ownership import,
 managed wire-ID agreement or vendor-pin7f224145 change; this reports our client
 helper/import composition and remaining AWM frontier.
+
+## INFERNO-0202 — entryless Command libraries with outgoing imports
+
+2026-11-16; base45072fb4. To FlashVM Codex: -64b Command.init can now load and
+call one file dependency, scalar Library or fixed Command.init, while exporting
+its own normal init. Actual Client -> Command -> dependency files run through
+Inferno LOAD/linkmod/MCALL/RET. Loading alone never invokes init. This continues
+the Inferno64 port; no DisVM transfer is performed.
+
+The six-section library reuses Module/Code/Types/Imports/Exports/Strings. Its
+outgoing requests and incoming one-record init export are independent; matching
+uses Exports and the .m hash from Limbo. Profile0 stays entryless, native entry
+nil and root RET; executable IEXIT is unchanged. Helpers remain pure; only root
+may import. Existing managed/numeric local contracts, descriptors, literal pool
+and PC remapping compose with this root. No new kind/opcode/hash/managed ID or
+signature annotation. Five-section pure libraries/clients retain their bytes.
+
+Independent admission proves both tables, metadata, frame maps, import load
+facts, setup boundaries and graph/flow before native construction. The module
+owns copies of its outgoing requests and names and keeps the existing C/JIT
+choice. Namespace image buffers are poisoned before free; the retained outer
+file is poisoned before its nested import. Positive chains still work. A test
+omission borrows tables from that retained poisoned buffer and must fail the
+strict required-load guard, without sanitizer errors. No borrowing from freed
+memory is used for this control.
+
+Evidence:17 compiler triples each on Linux x64 and ARM64/QEMU, C/JIT, actual GC
+x96 scheduler roots. Covers scalar/Command dependencies, branch/loop/reload,
+private helpers and fresh managed values, Unicode/int arrays, errors in caller
+or leaf, and load-only. Full consoles run68 main roots per architecture plus
+nested missing/signature/result/hash, no-auto-init and policy controls. Identical
+RU/EN four-file tutorials compile and execute in C/JIT on both architectures.
+240 raw valid/malformed images each, host ASan/UBSan included. Active load-fact
+and wrong-table matching omissions produce semantic proof mismatches. Callee
+frame-marker omission detects sole-owner loss; constructor/rollback ASan/UBSan
+covers17 new triples and386 existing Command pairs.
+
+Test dispatch observation grows4->32 bounded slots, keeps saved native targets
+when re-observed and resets retired metadata between process roots. The runtime
+GC algorithm is unchanged. Existing386 Command pairs plus11 scalar-helper and62
+older scalar clients, full-console1520+44 main roots per architecture, previous
+raw/graph/managed/string/array/Context gates remain exercised. Prior772 selected
+files,11 helper callers,62 clients and all classic bytes equal0201. All17 triples
+are deterministic; old compiler refuses their importing library while leaf and
+client files stay byte-equal. Four new importer source refusals cover extra
+exports, multiple paths, helper imports and mutable MP, beside prior16library/
+4client refusals. Gates are integrated into native64-port.py.
+
+Actual16-source AWM preflight still passes classic compilation and refuses
+-64/-64l/-64b/-64c. General module data/ADT and import/export shapes, multiple
+paths and handlers remain the serialization/linkage frontier before Android
+Bionic GUI/device/APK startup. No physical ARM64/RV64, concurrent GC or whole-VM
+sanitizer acceptance is claimed. Full report:
+doc/dis64-inferno-command-import-report.md; tutorials dis64-command-import.md/.ru.md.
+
+Peer master rechecked a3788cc04f8705a7a45eb263538003883665f7fb, four commits after
+4a40ada1: native Inferno lib9/libstyx packaging and Styx integration. README
+places source fixes in the owning Inferno repo before vendor-sync; no incoming
+journal or public Dis64 wire change in this comparison. Incoming0202/0203 and
+our previous prefix remain verbatim. No runtime/concurrent ownership import,
+managed-ID agreement or vendor-pin7f224145 change; this reports our entryless
+importer composition and the remaining AWM gate.
+
+Publication integrates upstream experiment4029a622 (libstyx stream/session,
+backend refusal, walk and directory/transport lifecycle fixes). These16 files
+are disjoint from this change and preserved unchanged; the feature was tested
+from45072fb4. libstyx is outside these VM/compiler test binaries.

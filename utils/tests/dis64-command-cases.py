@@ -568,3 +568,8 @@ def importhelpercases(pathlength=13):
   definitions=''.join(fn+'('+ps+')'+(':'+ty if ty else'')+'{'+code+'}'for fn,ps,ty,code in functions)
   caller='implement Client;include "command.m";Client:module{init:fn();};'+declarations+'init(){'+body+'}'+definitions
   yield 'importhelper-'+name,provider,caller,1 if name=='error'else 0
+
+def chaincases(pathlength=13):
+ from pathlib import Path
+ import runpy
+ yield from runpy.run_path(str(Path(__file__).with_name('dis64-command-chain-cases.py')))['cases']()
