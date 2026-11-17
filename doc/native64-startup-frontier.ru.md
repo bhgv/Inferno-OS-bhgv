@@ -44,3 +44,9 @@ python3 utils/tests/awm-native64-preflight.py --limbo /path/to/limbo --checked-o
 Вторая команда предназначена для быстрого анализа checked IR: static imports
 и четыре file profiles в этом режиме не проверяются. Обе команды явно
 помечают отсутствие runtime acceptance. 32-битный формат и ABI не меняются.
+
+
+Следующий этап: [computed String arguments](native64-typed-concat-args.ru.md).
+После его compiler lowering первый барьер getenv перемещается к PC101:
+сравнение ref Sys->FD с nil (load-nil-roles). Таблица выше сохраняет снимок
+предыдущего compiler; актуальные координаты следует получать preflight.

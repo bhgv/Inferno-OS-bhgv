@@ -14,7 +14,8 @@ SOURCE+='fresh_int(p:Multi,n:int):int{a:=p->relay_forward(n);b:=p->chain_forward
 SOURCE+='loop_count(p:Multi,n:int):int{total:=0;while(n>0){a:=p->relay_count(n);total+=a;n--;}return total;}'
 SOURCE+='loader():Multi{return load Multi "trusted/Multi";}'
 BRANCHES=MODULE['MULTI']['BRANCHES'];ROOTS=MODULE['MULTI']['ROOTS']
-RAISE=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES['IRAISE']
+OPCODES=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES
+RAISE=OPCODES['IRAISE']
 
 def compile_source(limbo,work,source,interface=None,loads=False):
     (work/'provider.m').write_text(INTERFACE if interface is None else interface)
@@ -69,7 +70,14 @@ def verify(data,r,imports,loads=False,rows=None):
             a=original[at];sm=a['mode']>>3&7
             alignment=8 if oldbytes==8 else 4;oldoffset=(oldoffset+alignment-1)&~(alignment-1)
             assert a['d']==[pending,oldoffset];oldoffset+=oldbytes
-            assert r['code'][at]==[a['op'],a['mode'],a['s'][0]if sm==2 else maps['frame'if sm==1 else 'data'][a['s'][0]],0,new,64]
+            if a['op']==OPCODES['IADDC']:
+                mm=1 if a['mode']&192==128 else 0 if a['mode']&192==192 else -1
+                assert loads and kind==13 and oldbytes==4 and width==8 and sm in(0,1)and mm in(0,1)
+                for space,old in (('frame'if sm else'data',a['s'][0]),('frame'if mm else'data',a['m'])):
+                    assert any(leaf[0]==old and leaf[2:]==[4,8,13]for leaf in r[space]['leaves'])
+                assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm else'data'][a['s'][0]],maps['frame'if mm else'data'][a['m']],new,64]
+            else:
+                assert r['code'][at]==[a['op'],a['mode'],a['s'][0]if sm==2 else maps['frame'if sm==1 else 'data'][a['s'][0]],0,new,64]
         contract=e['contract'];assert end-first==len(e['args'])+1+bool(contract)
         if contract:
             b=original[end-1];assert b['op']==39 and b['d']==[pending,16]

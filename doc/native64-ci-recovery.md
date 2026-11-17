@@ -1039,3 +1039,35 @@ owned-import gate. Both repaired import gates separately pass ASan+UBSan.
 Full and checked-only startup preflight reports agree exactly for all sixteen
 sources; declaration/graph refusals do not acquire invented instruction PCs.
 Target acceptance for these repairs remains the new CI run's responsibility.
+
+
+## Computed imported String arguments
+
+Checked LOAD now recognizes the actual getenv argument shape: IADDC writes
+"#e/"+name directly into a prepared imported String/int frame. Keep exact
+String types, direct FP/MP roots, bounded middle offset, exact formal/frame
+identity, setup isolation and unchanged result contracts. Scalar/external-only
+profiles remain closed. No general standalone/local concat or file admission.
+
+Before allocation, validate both caller roots, complete source spans, imported
+site membership and callee argument root. Native materialization preserves the
+middle register; execute production addc/addstring/stringdup and ordinary frame
+cleanup. Add the twenty-first target gate concat-args: four complete consumer
+bodies, independent classic imports/exports and four corruption controls,
+ten compiler role refusals, twelve no-allocation metadata refusals, constructor
+rollback and active source-map/destination-map/middle-publication controls.
+
+Use a controlled Paths.open with the Sys.open String/int prefix and String
+result, not the real FD service. The real emuinit getenv frontier advances from
+PC96 external-argument at MFRAME to PC101 load-nil-roles at the FD nil comparison;
+full getenv/AWM execution is still pending. Wire and classic32 remain unchanged.
+
+The complete concat-args gate passes local x64 ASan+UBSan/NDEBUG,
+detect_leaks=0: 4032 C/JIT cases, including first/second concat allocation
+failure, all three native controls and the exact-class compiler control.
+23/24 constructor failures preserve ownership/REG. The static host Android
+header/allocator closure passes the same complete matrix and controls.
+Previous external (912 cases), String MP imports (3264), raises (3888 plus
+pair/nil faults) with their controls and fresh console/paired boot pass.
+Full actual-source preflight still refuses complete emuinit/AWM; its getenv
+frontier now reports FD nil comparison, with unchanged classic bytes.

@@ -126,6 +126,25 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
         if(!native64modulelists(s,f))return 0;
         if(f->resultcontract && f->resultcontract!=48)return 0;
+        for(j=0;j<f->count;j++)if(f->code[j].op==IADDC){
+            unsigned int k,found=0,modes[2],offsets[2];
+            step=f->code+j;
+            for(k=0;k<f->nsites;k++){
+                site=f->sites+k;
+                if(site->first<j && site->end>j && (!site->contract || j<site->end-1)){
+                    if(found++ || !site->external || site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
+                    request=s->tables[site->table].imports+site->target;
+                    if(!native64typedconcatarg(step,f->bytes,s->databytes,request->bytes,request->map,request->mapbytes))return 0;
+                }
+            }
+            if(!found)return 0;
+            modes[0]=USRC(step->mode);modes[1]=(step->mode&ARM)==AXINF?AFP:AMP;
+            offsets[0]=step->s;offsets[1]=step->m;
+            for(k=0;k<2;k++){
+                map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;
+                if(!(map[bit/8]&(0x80>>(bit%8))))return 0;
+            }
+        }
         for(j=0;j<f->count;j++)if(f->code[j].op==IRAISE){
             step=f->code+j;at=USRC(step->mode);
             if(UDST(step->mode)!=AXXX || (step->mode&ARM)!=AXNON || step->m || step->d || step->returned ||

@@ -10,6 +10,19 @@ struct Native64TypedCall {
     unsigned int external,modulemode,moduleoffset;
 };
 
+/* One computed String argument in an already prepared imported frame. */
+static int
+native64typedconcatarg(const Native64TypedStep *s,unsigned int fpbytes,unsigned int mpbytes,unsigned int bytes,const uchar *map,unsigned int np)
+{
+    unsigned int mm=s->mode&ARM,bit;
+    if(s->op!=IADDC || s->mode>255 || s->returned!=64 || UDST(s->mode)!=(AFP|AIND) ||
+       (mm!=AXINF && mm!=AXINM) || s->m<0 || s->m>65535 ||
+       !native64typedrootoperand(USRC(s->mode),s->s,fpbytes,mpbytes) ||
+       !native64typedrootoperand(mm==AXINF?AFP:AMP,s->m,fpbytes,mpbytes) ||
+       s->d<64 || s->d%8 || (unsigned long)s->d>bytes || 8>bytes-s->d || map==nil)return 0;
+    bit=s->d/8;return bit/8<np && (map[bit/8]&(0x80>>(bit%8)));
+}
+
 static int
 native64typedblocked(unsigned int pc,const Native64TypedCall *calls,unsigned int n)
 {
@@ -50,6 +63,10 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         stop=c->end-(c->contract!=0);
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
+            if(s->op==IADDC){
+                if(!c->external || c->callee->np<0 || !native64typedconcatarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+                continue;
+            }
             if((s->op!=IMOVB && s->op!=IMOVW && s->op!=IMOVL && s->op!=IMOVF && s->op!=IMOVP) ||
                s->mode!=(SRC(sm)|DST(AFP|AIND)) || s->m || s->returned!=64 || sm==AXXX ||
                !native64typedcodeoperand(sm,s->s,fpbytes,mpbytes) || s->d<64 || s->d>65535 ||
@@ -84,7 +101,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 s=steps+j;p=out+j;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;
                 if(j==i){p->s.imm=c->external?c->moduleoffset:c->ordinal;p->reg=c->external?c->ordinal:0;p->d.ind=40;}
                 else if(j==c->end){p->s.ind=40;if(c->external){p->reg=c->ordinal;p->d.ind=c->moduleoffset;}else p->d.ins=c->target;}
-                else{p->s.imm=s->s;p->d.i.f=40;p->d.i.s=s->d;if(c->contract && !c->inherited && j==c->end-1)p->reg=c->contract;}
+                else{p->s.imm=s->s;p->d.i.f=40;p->d.i.s=s->d;if(s->op==IADDC)p->reg=s->m;if(c->contract && !c->inherited && j==c->end-1)p->reg=c->contract;}
             }
             i=c->end+1;continue;
         }
