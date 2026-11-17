@@ -21,7 +21,7 @@ def main():
         runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''));subprocess.run(command,check=True);subprocess.run(runner+[str(binary)],check=True,timeout=30)
         print('PASS imported-call IR: exact module/import identity, fixed arguments, setup isolation, inherited result, legacy-profile refusal and allocation retirement',flush=True)
         production=(ROOT/'limbo/dis64-external.h').read_text()
-        for before,after,marker in (('call->d.reg!=frame->s.reg','0','EXTERNAL_MODULE'),('in->d.offset!=arg->offset','0','EXTERNAL_ARGUMENT'),('frame->m.decl->iface->offset>32767','0','EXTERNAL_ORDINAL'),('inherit?32:0','0','EXTERNAL_INHERITED')):
+        for before,after,marker in (('call->d.reg!=frame->s.reg','0','EXTERNAL_MODULE'),('in->op!=op || in->mm!=Anone || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset','in->op!=op || in->mm!=Anone || in->dm!=Afpind || in->d.reg!=frame->d.reg','EXTERNAL_ARGUMENT'),('frame->m.decl->iface->offset>32767','0','EXTERNAL_ORDINAL'),('inherit?32:0','0','EXTERNAL_INHERITED')):
             assert production.count(before)==1
             (work/'dis64-external.h').write_text(production.replace(before,after));subprocess.run(command,check=True)
             result=subprocess.run(runner+[str(binary)],capture_output=True,text=True,timeout=30)
