@@ -258,9 +258,14 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
        (target=c->entries[call->d.offset])<0)return typedfail(p,"multi-call");
     if(c->functions[target]->desc==nil || c->functions[target]->desc->id!=frame->s.offset ||
        (call->branch!=nil && call->branch!=c->functions[target]->pc))return typedfail(p,"multi-target");
-    if(!typedmultibody(c,target,depth+1))return typedfail(p,"multi-callee");
     child=c->bodies+target;
-    if(*height<c->height[target]+1)*height=c->height[target]+1;
+    if(c->loads && child==p && c->state[target]==1){
+        binding=c->instructions[end-1];
+        if(p->resultkind==Tnone || !p->code || !p->returns || p->frame.reason || p->data.reason || p->frame.bytes<64 ||
+           end+1>=stop || !c->instructions[end+1] || c->instructions[end+1]->op!=IRET || binding->op!=ILEA || binding->sm!=Afpind ||
+           binding->s.reg!=16 || binding->s.offset)return typedfail(p,"multi-self-tail");
+    }else if(!typedmultibody(c,target,depth+1))return typedfail(p,"multi-callee");
+    if(child!=p && *height<c->height[target]+1)*height=c->height[target]+1;
     if(*height>64)return typedfail(p,"multi-depth");
     p->code[pc-p->first]=(Dis64Instruction){IFRAME,SRC(AIMM)|DST(AFP),0,frame->s.offset,40};at=pc+1;
     for(arg=c->functions[target]->ty->ids;arg!=nil;arg=arg->next){
@@ -268,6 +273,16 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
+        if(c->loads && child==p && kind==Tstring && in->op==IADDC){
+            unsigned int mm;long middle;
+            if(in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || in->branch ||
+               !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || offset>65535 ||
+               !typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) || actual!=Tstring ||
+               !typedoperand(in->mm,&in->m,Tstring,0,1,p,&middle,&mm,&actual) || actual!=Tstring)
+                return typedfail(p,"self-concat-argument");
+            p->code[at-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,offset};
+            p->returns[at++-p->first]=64;continue;
+        }
         if((!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal) ||
            in->op!=op || in->mm!=Anone || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || in->branch!=nil ||
            !dis64layoutaddress(&child->frame,arg->offset,width,root,&offset) || offset>65535 ||
@@ -345,7 +360,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedclientbyte(in,p,pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)){
             if(!typedclientcodec(in,p,pc-p->first))goto fail;pc++;
-        }else if(c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)){
+        }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
+                 (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->external>=2 && in->op==IMOVP && (in->sm==Afpind || in->dm==Afpind)){
             if(!typedclientfield(in,p,pc-p->first,0))goto fail;pc++;

@@ -50,3 +50,7 @@ python3 utils/tests/awm-native64-preflight.py --limbo /path/to/limbo --checked-o
 После его compiler lowering первый барьер getenv перемещается к PC101:
 сравнение ref Sys->FD с nil (load-nil-roles). Таблица выше сохраняет снимок
 предыдущего compiler; актуальные координаты следует получать preflight.
+
+Следующий проверенный участок: [неизменённая unquoted](native64-emuinit-unquoted.ru.md).
+Теперь её полное тело принимается checked compiler и исполняется в native
+module через C/JIT, включая self-tail recursion. Это не запуск полного emuinit.

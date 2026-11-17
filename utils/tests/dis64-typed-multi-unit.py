@@ -20,7 +20,7 @@ def main():
         runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''));subprocess.run(command,check=True);subprocess.run(runner+[str(binary)],check=True,timeout=30)
         print('PASS multi-call IR: prefix/two sites, exact descriptors/arguments, setup isolation, inherited return fact, cycles/limits and allocation retirement',flush=True)
         production=(ROOT/'limbo/dis64-multi.h').read_text()
-        for before,after,marker in (('c->functions[target]->desc->id!=frame->s.offset','0','MULTI_DESCRIPTOR'),('in->d.offset!=arg->offset','0','MULTI_ARGUMENT'),('inside[in->branch->pc-p->first]','0','MULTI_BRANCH'),('inherit?32:0','0','MULTI_INHERITED')):
+        for before,after,marker in (('c->functions[target]->desc->id!=frame->s.offset','0','MULTI_DESCRIPTOR'),('in->d.offset!=arg->offset || in->branch!=nil','in->branch!=nil','MULTI_ARGUMENT'),('inside[in->branch->pc-p->first]','0','MULTI_BRANCH'),('inherit?32:0','0','MULTI_INHERITED')):
             assert production.count(before)==1
             (work/'dis64-multi.h').write_text(production.replace(before,after));subprocess.run(command,check=True)
             result=subprocess.run(runner+[str(binary)],capture_output=True,text=True,timeout=30)

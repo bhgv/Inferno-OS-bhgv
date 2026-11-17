@@ -46,7 +46,13 @@ def verify(data,r,imports,loads=False,rows=None):
         for at,arg in enumerate(callee['args'],first+1):
             o=original[at];sm=o['mode']>>3&7
             assert o['d']==[pending,next(x[0]for x in callee['frame']['leaves']if x[1]==arg[0])]
-            assert r['code'][at]==[o['op'],o['mode'],o['s'][0]if sm==2 else maps['frame'if sm==1 else'data'][o['s'][0]],0,arg[0],64]
+            if o['op']==OPCODES['IADDC']:
+                mm=1 if o['mode']&192==128 else 0 if o['mode']&192==192 else -1
+                assert loads and target==r['first']and inherited and arg[1:]==[13,4,8]and sm in(0,1)and mm in(0,1)
+                assert r['code'][end+1][0]==OPCODES['IRET']
+                assert r['code'][at]==[o['op'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],maps['frame'if mm else'data'][o['m']],arg[0],64]
+            else:
+                assert r['code'][at]==[o['op'],o['mode'],o['s'][0]if sm==2 else maps['frame'if sm==1 else'data'][o['s'][0]],0,arg[0],64]
         if contract:
             binding=original[end-1];assert binding['op']==39 and binding['d']==[pending,16]and binding['m']is None
             if inherited:
@@ -88,7 +94,11 @@ def verify(data,r,imports,loads=False,rows=None):
         covered.update(range(first,end+1));inside.update(range(first+1,end+1))
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
-        o=original[pc];assert op==o['op']and mode==o['mode']
+        o=original[pc]
+        if op==OPCODES['IADDC']and not o['mode']&192:
+            assert loads and o['mode']&7==1
+            o={**o,'mode':o['mode']|128,'m':o['d'][0]}
+        assert op==o['op']and mode==o['mode']
         if op==8:
             assert loads and mode&192==64 and 0<=m<64 and returned==0
             for address,offset,kind in ((mode>>3&7,s,13),(mode&7,d,11)):

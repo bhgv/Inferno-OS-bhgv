@@ -64,7 +64,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
             if(s->op==IADDC){
-                if(!c->external || c->callee->np<0 || !native64typedconcatarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+                if((!c->external && (!c->inherited || c->target!=out)) || c->callee->np<0 || !native64typedconcatarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
             }
             if((s->op!=IMOVB && s->op!=IMOVW && s->op!=IMOVL && s->op!=IMOVF && s->op!=IMOVP) ||

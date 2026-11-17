@@ -37,6 +37,31 @@ native64typedrootoperand(unsigned int mode,long offset,unsigned int fpbytes,unsi
   offset%8==0 && 8<=(mode==AFP?fpbytes:mpbytes)-offset;
 }
 
+static int
+native64typedwordoperand(unsigned int mode,long offset,unsigned int fpbytes,unsigned int mpbytes)
+{
+ return native64typedcodeoperand(mode,offset,fpbytes,mpbytes) &&
+  (mode==AIMM || ((mode==AFP || mode==AMP) && offset%4==0 && 4<=(mode==AFP?fpbytes:mpbytes)-offset));
+}
+
+static int
+native64typedstringstep(const Native64TypedStep *s,unsigned int fpbytes,unsigned int mpbytes)
+{
+ unsigned int mm=s->mode&ARM;
+ if(s->mode>255 || s->returned || UDST(s->mode)!=AFP)return 0;
+ if(s->op==IADDC)return (mm==AXINF || mm==AXINM) &&
+  native64typedrootoperand(USRC(s->mode),s->s,fpbytes,mpbytes) &&
+  native64typedrootoperand(mm==AXINF?AFP:AMP,s->m,fpbytes,mpbytes) && s->m<=65535 &&
+  native64typedrootoperand(AFP,s->d,fpbytes,mpbytes);
+ if(s->op!=IINDC && s->op!=ISLICEC)return 0;
+ if(mm!=AXIMM && mm!=AXINF)return 0;
+ if(mm==AXIMM){if(s->m< -32768 || s->m>32767)return 0;}
+ else if(s->m>65535 || !native64typedwordoperand(AFP,s->m,fpbytes,mpbytes))return 0;
+ return s->op==IINDC?
+  native64typedrootoperand(USRC(s->mode),s->s,fpbytes,mpbytes) && native64typedwordoperand(AFP,s->d,fpbytes,mpbytes):
+  native64typedwordoperand(USRC(s->mode),s->s,fpbytes,mpbytes) && native64typedrootoperand(AFP,s->d,fpbytes,mpbytes);
+}
+
 /* Input, layouts and semantic operand roles were proved by the compiler and
  * remain immutable. This bridge checks native encoding and local branch ownership.
  * Output must be disjoint from input. Refusal leaves all output bytes untouched.
@@ -53,6 +78,9 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 		s=steps+i;sm=USRC(s->mode);dm=UDST(s->mode);mm=s->mode&ARM;
 		if(s->mode>255 || s->op>255)return 0;
 		switch(s->op){
+		case IADDC:case IINDC:case ISLICEC:
+            if(!native64typedstringstep(s,fpbytes,mpbytes))return 0;
+            continue;
 		case IRAISE:
             if(dm!=AXXX || mm!=AXNON || s->m || s->d || s->returned ||
                !native64typedrootoperand(sm,s->s,fpbytes,mpbytes))return 0;

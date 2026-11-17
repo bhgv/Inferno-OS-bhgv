@@ -129,6 +129,8 @@ jobs:
             python3 "utils/tests/native64-typed-$gate.py" --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
               | tee "$RUNNER_TEMP/typed-call-logs/$gate.log"
           done
+          python3 utils/tests/native64-emuinit-unquoted.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-unquoted.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -204,6 +206,8 @@ jobs:
             python3 "utils/tests/native64-typed-$gate.py" --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
               | tee "$RUNNER_TEMP/typed-call-logs/$gate.log"
           done
+          python3 utils/tests/native64-emuinit-unquoted.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-unquoted.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
