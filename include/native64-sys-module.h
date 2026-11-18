@@ -6,6 +6,8 @@ typedef struct Native64ModuleVariadic Native64ModuleVariadic;
 struct Native64ModuleVariadic {
     unsigned int function,first,end,binding,modulemode,moduleoffset,resultoffset,contract,operation,count,bytes;
     const uchar *map;unsigned int mapbytes;
+    const Native64TailSlot *tail; /* nil retains the earlier all-String tail. */
+    unsigned int inherited;
 };
 
 static int
@@ -17,7 +19,7 @@ native64sysmoduleblocked(unsigned int pc,const Native64ModuleVariadic *v)
 static int
 native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v,unsigned int n)
 {
-    unsigned int code,links,scratch,imports,i,j,k,at,bit,total=0,fields,seen,sm,bytes,offset,fd=~0U;
+    unsigned int code,links,scratch,imports,i,j,k,at,bit,total=0,fields,seen,sm,bytes,fixed,kind,reference,store,width,fd=~0U;
     const Native64ModuleFunction*f;const Native64TypedStep*step;const uchar*map;Inst probe;
     if(!n || n>256 || v==nil || v==H || !native64modulecheck(s,&code,&links,&scratch,&imports))return 0;
     for(i=0;i<n;i++){
@@ -25,10 +27,18 @@ native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v
         if(p->function>=s->nfunctions || (p->operation!=Native64SysSprint && p->operation!=Native64SysFprint) ||
            p->count>256 || p->count>4096-total || p->contract!=(p->operation==Native64SysSprint?24:4) || p->binding>32767 ||
            (p->modulemode!=AFP && p->modulemode!=AMP))return 0;
-        total+=p->count;fields=p->count+(p->operation==Native64SysSprint?1:2);f=s->functions+p->function;
+        total+=p->count;fixed=p->operation==Native64SysSprint?1:2;fields=p->count+fixed;f=s->functions+p->function;
         if(p->bytes!=64+8*fields || !native64modulemap(p->bytes,p->map,p->mapbytes,1) ||
            p->first>=f->count || p->end>=f->count-1 || p->end<p->first+fields+2)return 0;
-        for(at=0;at<p->bytes;at+=8){bit=at/8;if(!!(p->map[bit/8]&(128>>(bit%8)))!=(at>=64))return 0;}
+        if(p->tail==H || (p->tail && (uintptr)p->tail>(uintptr)-1-p->count*sizeof(*p->tail)))return 0;
+        for(j=0;j<p->count;j++)if(p->tail){const Native64TailSlot*t=p->tail+j;
+            if((t->kind!=Native64TailInt && t->kind!=Native64TailFix && t->kind!=Native64TailBig && t->kind!=Native64TailReal && t->kind!=Native64TailRef) ||
+               t->offset!=8*j || t->bytes!=8 || (t->kind==Native64TailRef?t->type!=&Tstring:t->type!=nil))return 0;
+        }
+        for(at=0;at<p->bytes;at+=8){bit=at/8;
+            reference=at>=64 && (at<64+8*fixed || !p->tail || p->tail[(at-64)/8-fixed].kind==Native64TailRef);
+            if(!!(p->map[bit/8]&(128>>(bit%8)))!=reference)return 0;
+        }
         for(j=0;j<i;j++)if(v[j].function==p->function && !(p->end<v[j].first || v[j].end<p->first))return 0;
         for(j=0;j<f->nsites;j++)if(!(p->end<f->sites[j].first || f->sites[j].end<p->first))return 0;
         bytes=p->modulemode==AFP?f->bytes:s->databytes;map=p->modulemode==AFP?f->map:s->datamap;bit=p->moduleoffset/8;
@@ -36,23 +46,35 @@ native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v
         step=f->code+p->first;
         if(step->op!=IFRAME || step->mode!=(SRC(AIMM)|DST(AFP)) || step->m || step->d!=40 || step->returned)return 0;
         step=f->code+p->end;
-        if(step->op!=IMCALL || step->mode!=(SRC(AFP)|AXIMM|DST(p->modulemode)) || step->m!=p->binding || step->s!=40 || step->d!=p->moduleoffset || step->returned)return 0;
+        if(step->op!=IMCALL || step->mode!=(SRC(AFP)|AXIMM|DST(p->modulemode)) || step->m!=p->binding || step->s!=40 || step->d!=p->moduleoffset || step->returned!=(p->inherited?32:0))return 0;
         step=f->code+p->end-1;
         bytes=p->contract==24?8:4;bit=p->resultoffset/8;
-        if(step->op!=ILEA || step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->m || step->s!=p->resultoffset || step->d!=32 || step->returned!=(128|p->contract) ||
-           p->resultoffset<64 || p->resultoffset%bytes || p->resultoffset>f->bytes || bytes>f->bytes-p->resultoffset || !!(f->map[bit/8]&(128>>(bit%8)))!=(p->contract==24))return 0;
+        if(p->inherited>1 || step->op!=(p->inherited?IMOVL:ILEA) || step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->m ||
+           step->s!=p->resultoffset || step->d!=32 || step->returned!=(128|p->contract))return 0;
+        if(p->inherited){if(p->resultoffset!=32)return 0;}
+        else if(p->resultoffset<64 || p->resultoffset%bytes || p->resultoffset>f->bytes || bytes>f->bytes-p->resultoffset ||
+                !!(f->map[bit/8]&(128>>(bit%8)))!=(p->contract==24))return 0;
         seen=0;fd=~0U;
         for(at=p->first+1;at<p->end-1;at++){
             step=f->code+at;sm=USRC(step->mode);
-            if(step->op!=IMOVP || step->m || (sm!=AFP && sm!=AMP) ||
-               !native64typedrootoperand(sm,step->s,f->bytes,s->databytes))return 0;
-            map=sm==AFP?f->map:s->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
+            if(step->m)return 0;
             if(step->returned==64){
-                if(step->mode!=(SRC(sm)|DST(AFP|AIND)) || seen==fields || step->d!=64+8*seen)return 0;
+                if(seen==fields)return 0;
+                kind=seen<fixed || !p->tail?Native64TailRef:p->tail[seen-fixed].kind;
+                reference=kind==Native64TailRef;width=kind==Native64TailInt || kind==Native64TailFix?4:8;
+                store=reference?IMOVP:kind==Native64TailReal?IMOVF:width==4?ICVTWL:IMOVL;
+                if(step->op!=store || step->mode!=(SRC(sm)|DST(AFP|AIND)) || step->d!=64+8*seen)return 0;
+                if(sm==AIMM){if(reference || width!=4 || step->s< -536870912L || step->s>536870911L)return 0;}
+                else{
+                    bytes=sm==AFP?f->bytes:s->databytes;map=sm==AFP?f->map:s->datamap;bit=step->s/8;
+                    if((sm!=AFP && sm!=AMP) || step->s<0 || (sm==AFP && step->s<64) || step->s%width ||
+                       (unsigned long)step->s>bytes || width>bytes-step->s || !!(map[bit/8]&(128>>(bit%8)))!=reference)return 0;
+                }
                 if(!seen && p->operation==Native64SysFprint && sm==AFP)fd=step->s;
                 seen++;
             }else{
-                if(step->returned || seen!=1 || p->operation!=Native64SysFprint || fd==~0U || sm!=AMP || step->mode!=(SRC(AMP)|DST(AFP)) ||
+                if(step->op!=IMOVP || sm!=AMP || !native64typedrootoperand(sm,step->s,f->bytes,s->databytes) ||
+                   !(s->datamap[(step->s/8)/8]&(128>>((step->s/8)%8))) || step->returned || seen!=1 || p->operation!=Native64SysFprint || fd==~0U || step->mode!=(SRC(AMP)|DST(AFP)) ||
                    step->d!=fd || !native64typedcode(&probe,1,step,1,f->bytes,s->databytes))return 0;
                 bit=fd/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;
                 for(j=0;j<s->nstrings;j++)if(s->strings[j].offset==(unsigned int)step->s)return 0;
@@ -127,8 +149,8 @@ native64sysmodulemake(void*argument)
             else{out->s.imm=step->s;out->d.i.f=40;out->d.i.s=step->d;if(j==v->end-1)out->reg=v->contract;}
         }
         p->bindpc=offset+v->end-1;p->callpc=offset+v->end;
-        p->frame=(Native64SysFrameSpec){v->operation,m->type[ordinal+i],m->type[v->function+1],v->resultoffset,v->count?b->slots+slot:nil,v->count,8,4096};
-        for(j=0;j<v->count;j++)b->slots[slot++]=(Native64TailSlot){Native64TailRef,8*j,8,&Tstring};
+        p->frame=(Native64SysFrameSpec){v->operation,m->type[ordinal+i],m->type[v->function+1],v->resultoffset,v->count?b->slots+slot:nil,v->count,8,4096,v->inherited};
+        for(j=0;j<v->count;j++)b->slots[slot++]=v->tail?v->tail[j]:(Native64TailSlot){Native64TailRef,8*j,8,&Tstring};
     }
     if(!Sys_setprogram64(m,b->programs,b->count))error(exInval);
     if(b->jit && !compile(m,m->nprog,nil))error(exCompile);

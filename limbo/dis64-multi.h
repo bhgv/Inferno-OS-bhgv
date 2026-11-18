@@ -425,8 +425,14 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(p->resultkind!=Tstring || in->mm!=Anone || in->branch || in->d.reg!=16 || in->d.offset){typedfail(p,"load-byte-result");goto fail;}
             if(!typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual))goto fail;
             p->code[pc-p->first]=(Dis64Instruction){ICVTAC,SRC(sm)|DST(AFP|AIND),0,source,32};p->returns[pc-p->first]=1;pc++;
-        }else if((c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)) || (c->loads && in->op==ICVTAC)){
-            if((c->loads && !typedloadbytes(in,p,pc-p->first)) || !typedclientcodec(in,p,pc-p->first))goto fail;pc++;
+        }else if(c->loads && in->op==IADDC && in->dm==Afpind){
+            long source,middle;unsigned int sm,mm;int actual;
+            if(p->resultkind!=Tstring || in->d.reg!=16 || in->d.offset || in->branch ||
+               !typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) ||
+               !typedoperand(in->mm,&in->m,Tstring,0,1,p,&middle,&mm,&actual))goto fail;
+            p->code[pc-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,32};p->returns[pc-p->first]=1;pc++;
+        }else if((c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)) || (c->loads && (in->op==ICVTAC || in->op==ICVTWC))){
+            if((c->loads && in->op!=ICVTWC && !typedloadbytes(in,p,pc-p->first)) || !typedclientcodec(in,p,pc-p->first))goto fail;pc++;
         }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
                  (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;

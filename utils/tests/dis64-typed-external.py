@@ -88,16 +88,23 @@ def verify(data,r,imports,loads=False,rows=None):
         o=original[first];assert o['op']==5 and o['mode']==17 and o['m']is None
         size,roots=types[o['s'][0]];count=v['count']+(1 if op==0 else 2);frame=v['frame']
         assert frame['legacy_bytes']==size and frame['bytes']==64+8*count
-        assert frame['leaves']==[[32+4*j,64+8*j,4,8,12 if op==3 and j==0 else 13]for j in range(count)]
-        assert {i*8+b for i,x in enumerate(roots)for b in range(8)if x&(128>>b)}==set(range(8,8+count))
+        leaves=frame['leaves'];assert len(leaves)==count
+        assert leaves[:1 if op==0 else 2]==[[32+4*j,64+8*j,4,8,12 if op==3 and j==0 else 13]for j in range(1 if op==0 else 2)]
+        rootwords={l[0]//4 for l in leaves if l[4]in(12,13)}
+        assert {i*8+b for i,x in enumerate(roots)for b in range(8)if x&(128>>b)}==rootwords
         expected=[0]*((frame['bytes']+63)//64)
-        for j in range(count):expected[(64+8*j)//64]|=128>>((8+j)%8)
+        for l in leaves:
+            if l[4]in(12,13):expected[l[1]//64]|=128>>((l[1]//8)%8)
         assert frame['map']==expected and r['code'][first]==[5,17,o['s'][0],0,40,0]
-        pending=o['d'][0];at=first+1;fd=None
-        for j in range(count):
-            a=original[at];sm=a['mode']>>3&7;assert a['op']==41 and sm in(0,1)and a['m']is None and a['d']==[pending,32+4*j]
-            source=maps['frame'if sm else'data'][a['s'][0]]
-            assert r['code'][at]==[41,a['mode'],source,0,64+8*j,64]
+        pending=o['d'][0];at=first+1;fd=None;oldend=32
+        for j,(legacy,native,oldwidth,width,kind)in enumerate(leaves):
+            assert kind in(4,7,9,12,13,16)and native==64+8*j and width==8 and oldwidth==(8 if kind in(4,7)else 4)and legacy>=oldend and legacy%4==0 and legacy+oldwidth<=size
+            oldend=legacy+oldwidth
+            oldop=41 if kind in(12,13)else 118 if kind==4 else 46 if kind==7 else 45
+            newop=oldop if kind in(4,7,12,13)else OPCODES['ICVTWL']
+            a=original[at];sm=a['mode']>>3&7;assert a['op']==oldop and sm in((0,1)if kind in(4,7,12,13)else(0,1,2))and a['m']is None and a['d']==[pending,legacy]
+            source=a['s'][0]if sm==2 else maps['frame'if sm else'data'][a['s'][0]]
+            assert r['code'][at]==[newop,a['mode'],source,0,native,64]
             if op==3 and j==0 and sm==1:fd=a['s'][0]
             at+=1
             if op==3 and j==0 and original[at]['mode']&7==1:
@@ -105,10 +112,14 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
                 assert r['code'][at]==[41,1,maps['data'][clear['s'][0]],0,maps['frame'][fd],0]
                 assert not any(a['mode']>>3&7==1 and a['s']==[fd]for a in original[at+1:end-1]);at+=1
-        assert at==end-1;binding=original[at];assert binding['op']==39 and binding['mode']==13 and binding['m']is None and binding['d']==[pending,16]
-        assert v['resultoffset']==maps['frame'][binding['s'][0]]and r['code'][at]==[39,13,v['resultoffset'],0,32,128|v['contract']]
+        assert at==end-1;binding=original[at];assert binding['op']==39 and binding['mode']in(13,45)and binding['m']is None and binding['d']==[pending,16]
+        if v.get('inherited'):
+            assert v['inherited']==1 and binding['mode']==45 and binding['s']==[16,0]and v['resultoffset']==32
+            assert r['code'][at]==[118,13,32,0,32,128|v['contract']]
+        else:
+            assert binding['mode']==13 and v['resultoffset']==maps['frame'][binding['s'][0]]and r['code'][at]==[39,13,v['resultoffset'],0,32,128|v['contract']]
         call=original[end];mode,offset=v['module'];assert mode in(0,1)and call['op']==9 and call['mode']==8|64|mode and call['m']==v['binding']and call['s']==[pending]
-        assert offset==maps['frame'if mode else'data'][call['d'][0]]and r['code'][end]==[9,8|64|mode,40,v['binding'],offset,0]
+        assert offset==maps['frame'if mode else'data'][call['d'][0]]and r['code'][end]==[9,8|64|mode,40,v['binding'],offset,32 if v.get('inherited')else 0]
         covered.update(range(first,end+1));inside.update(range(first+1,end+1))
     previous=-1
     for e in r.get('externals',[]):

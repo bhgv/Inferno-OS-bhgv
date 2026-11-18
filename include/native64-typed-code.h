@@ -49,6 +49,10 @@ static int
 native64typedstringstep(const Native64TypedStep *s,unsigned int fpbytes,unsigned int mpbytes)
 {
  unsigned int mm=s->mode&ARM;
+ if(s->op==IADDC && s->returned==24){
+  return s->mode<=255 && UDST(s->mode)==(AFP|AIND) && s->d==32 && (mm==AXINF || mm==AXINM) && s->m<=65535 &&
+   native64typedrootoperand(USRC(s->mode),s->s,fpbytes,mpbytes) && native64typedrootoperand(mm==AXINF?AFP:AMP,s->m,fpbytes,mpbytes);
+ }
  if(s->mode>255 || s->returned || (UDST(s->mode)!=AFP && !(s->op==ISLICEC && UDST(s->mode)==AMP)))return 0;
  if(s->op==IADDC)return (mm==AXINF || mm==AXINM) &&
   native64typedrootoperand(USRC(s->mode),s->s,fpbytes,mpbytes) &&
@@ -97,6 +101,10 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 		switch(s->op){
 		case INEWAZ:case ISLICEA:case ICVTAC:
             if(!native64typedbytestep(s,fpbytes,mpbytes))return 0;
+            continue;
+        case ICVTWC:
+            if(s->returned || dm!=AFP || mm!=AXNON || s->m || !native64typedwordoperand(sm,s->s,fpbytes,mpbytes) ||
+               !native64typedrootoperand(AFP,s->d,fpbytes,mpbytes))return 0;
             continue;
 		case IADDC:case IINDC:case ISLICEC:
             if(!native64typedstringstep(s,fpbytes,mpbytes))return 0;

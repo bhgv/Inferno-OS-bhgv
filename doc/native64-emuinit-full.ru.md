@@ -60,3 +60,5 @@ CI включает gate для Linux amd64/arm64/riscv64 и Android ARM64 Bioni
 и загрузка настоящих зависимостей AWM/Draw/Tk; затем графический Android host.
 
 Следующий этап: [настоящий emuinit boot](native64-emuinit-boot.ru.md), реальные Sys и Command file reader, 18 целых C/JIT процессов. Реальный AWM остаётся следующим этапом.
+
+Следующий этап: [координаты WM и числовые variadic tails](native64-coordinate-format.ru.md). Старый all-String режим сохранён; новый private compiler/owning путь добавляет явные scalar slot kinds и inherited results.

@@ -14,6 +14,7 @@ struct Native64SysFrameCall {
     REG *live;
     int pid;
     int entered; // Pending FRAME binding or entered MCALL result resolution.
+    void *borrowed; // Stable result identity after explicit inherited preparation.
     int operation; // Private selector: sprint/aprint/print/fprint; never serialized.
 };
 
@@ -105,12 +106,41 @@ native64sysframecell(void *argument)
     }
     if(!native64sysframemap(request->type, call->fixed, request->slots, &call->plan)) return nil;
     bytes = call->operation >= 2 ? sizeof(WORD) : sizeof(void*);
-    if(!foundcallee || !foundcaller || request->result_offset < 64 || request->result_offset%bytes != 0 ||
-       request->result_offset > (unsigned int)request->caller_type->size ||
-       bytes > (unsigned int)request->caller_type->size-request->result_offset) return nil;
-    slot = request->result_offset/8;
-    if(!!(request->caller_type->map[slot/8] & (0x80>>(slot%8))) != (call->operation < 2)) return nil;
-    result = caller+request->result_offset;
+    if(!foundcallee || !foundcaller)return nil;
+    if(request->inherited){
+        uintptr owner=0,ancestor,next,scan;unsigned int depth;Frame parent;
+        if(request->result_offset!=32)return nil;
+        memmove(&address,(void*)(caller+32),sizeof(address));result=(uintptr)address;
+        if(call->borrowed && address!=call->borrowed)return nil;
+        /* Find one complete older frame containing the correctly mapped cell. */
+        for(cursor=first;cursor<caller;cursor=end){
+            memmove(&parent,(void*)cursor,sizeof(parent));type=parent.t==nil?extent->reg.TR:parent.t;end=cursor+type->size;
+            if(result>=cursor+64 && result<=end && bytes<=end-result && result%bytes==0){
+                slot=(result-cursor)/8;
+                if(!!(type->map[slot/8]&(128>>(slot%8)))!=(call->operation<2))return nil;
+                owner=cursor;break;
+            }
+        }
+        if(!owner)return nil;
+        /* Prepared but unentered frames are not result owners. Follow the
+         * actual caller chain, bounded and strictly decreasing in this extent. */
+        memmove(&parent,(void*)caller,sizeof(parent));ancestor=(uintptr)parent.fp;
+        for(depth=0;depth<64;depth++){
+            if(ancestor==owner)break;
+            if(ancestor<first || ancestor>=caller)return nil;
+            for(scan=first;scan<ancestor;scan+=type->size){memmove(&parent,(void*)scan,sizeof(parent));type=parent.t==nil?extent->reg.TR:parent.t;}
+            if(scan!=ancestor)return nil;
+            memmove(&parent,(void*)ancestor,sizeof(parent));next=(uintptr)parent.fp;
+            if(next>=ancestor)return nil;ancestor=next;
+        }
+        if(depth==64)return nil;
+    }else{
+        if(request->result_offset<64 || request->result_offset%bytes ||
+           request->result_offset>(unsigned int)request->caller_type->size || bytes>(unsigned int)request->caller_type->size-request->result_offset)return nil;
+        slot=request->result_offset/8;
+        if(!!(request->caller_type->map[slot/8]&(128>>(slot%8)))!=(call->operation<2))return nil;
+        result=caller+request->result_offset;
+    }
     if(!call->entered) return (void*)result;
     memmove(&address, (uchar*)request->frame+32, sizeof(address));
     return (uintptr)address == result ? (void*)result : nil;
@@ -121,9 +151,9 @@ static int
 native64sysframeprepare(Native64SysFrameCall *call, const Native64SysFrameRequest *request,
     int operation, int entered)
 {
-    const LimboNative64Prefix *prefix;
+    const LimboNative64Prefix *prefix;void *result;
     if(!native64model() || request == nil || request->prog == nil || request->prog == H || request->prog != currun() ||
-       request->initial <= UTFmax+2 || request->limit < request->initial ||
+       (request->inherited!=0 && request->inherited!=1) || request->initial <= UTFmax+2 || request->limit < request->initial ||
        request->frame == nil || request->frame == H || (uintptr)request->frame%8 != 0 ||
        R.M == nil || R.M == H || (entered && R.M->prog != nil) || operation < Native64SysSprint || operation > Native64SysFprint)
         return 0;
@@ -141,7 +171,8 @@ native64sysframeprepare(Native64SysFrameCall *call, const Native64SysFrameReques
     call->pid = request->prog->pid;
     call->live = request->prog->native64live;
     if(!native64tailplan(&prefix->fixed, request->slots, request->count, &call->plan) ||
-       !native64sysframecell(call)) return 0;
+       !(result=native64sysframecell(call))) return 0;
+    if(request->inherited)call->borrowed=result;
     return 1;
 }
 

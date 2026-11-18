@@ -14,7 +14,7 @@ struct Dis64TypedExternal {
 };
 typedef struct Dis64TypedVariadic Dis64TypedVariadic;
 struct Dis64TypedVariadic {
-    unsigned int first,end,binding,modulemode,moduleoffset,resultoffset,contract,operation,count;
+    unsigned int first,end,binding,modulemode,moduleoffset,resultoffset,contract,operation,count,inherited;
     Decl *callee;
     Dis64Layout frame;
 };

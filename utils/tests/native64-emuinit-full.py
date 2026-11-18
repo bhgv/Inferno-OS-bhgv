@@ -4,9 +4,10 @@ import argparse,copy,json,os,re,runpy,shlex,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 CMD=runpy.run_path(str(ROOT/'utils/tests/native64-typed-command-files.py'));E=CMD['EXT']
-def generate(limbo,w,source=None,module='Emuinit'):
+def generate(limbo,w,source=None,module='Emuinit',shape=None):
+ expected_functions,expected_tables,expected_sites,entry=shape or ((4,3,3,'0')if module=='Emuinit'else(8,1,1,'~0U'))
  source=(ROOT/'appl/cmd/emuinit.b').read_text()if source is None else source;data,rows=E['compile_source'](limbo,w,source,interface='',loads=True)
- assert len(rows)==(4 if module=='Emuinit'else 8) and all(r['accepted']for r in rows),[(r['name'],r.get('reason'),r.get('pc'))for r in rows]
+ assert len(rows)==expected_functions and all(r['accepted']for r in rows),[(r['name'],r.get('reason'),r.get('pc'))for r in rows]
  imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]
  E['MODULE']['check_exports'](data,rows)
  for r in rows:CMD['verify_nilbranches'](data,r,imports,rows=rows)
@@ -14,7 +15,7 @@ def generate(limbo,w,source=None,module='Emuinit'):
  controls=0
  for row in rows:
   for j,site in enumerate(row.get('variadics',[])):
-   for key in ('first','end','binding','module','resultoffset','contract','operation','count','frame'):
+   for key in ('first','end','binding','module','resultoffset','contract','operation','count','inherited','frame'):
     corrupt=copy.deepcopy(row);v=corrupt['variadics'][j]
     if key=='module':v[key][1]+=8
     elif key=='frame':v[key]['bytes']+=8
@@ -36,10 +37,10 @@ def generate(limbo,w,source=None,module='Emuinit'):
   for fn,size in re.findall(r'^#define F_'+name+r'_(\w+)_size (\d+)',h,re.M):
    m=re.search(r'^#define F_'+name+'_'+fn+r'_map \{([^}]*)\}',h,re.M);assert m
    frames[(name,fn)]=(int(size),[int(x,0)for x in m[1].split(',')if x])
- assert len(imports)==(3 if module=='Emuinit'else 1)
+ assert len(imports)==expected_tables
  namespaces=[]
  for ti,table in enumerate(imports):
-  namespace='Sys'if any(e['name']=='fprint'for e in table)else'Arg'if any(e['name']=='opt'for e in table)else'Command'
+  namespace='Sys'if any(e['name']in('fprint','sprint')for e in table)else'Arg'if any(e['name']=='opt'for e in table)else'Command'
   namespaces.append({'Sys':0,'Arg':1,'Command':2}[namespace])
   for j,e in enumerate(table):
    size,mapping=(80,[0,192])if namespace=='Command'else frames[(namespace,e['name'])]
@@ -74,12 +75,16 @@ def generate(limbo,w,source=None,module='Emuinit'):
   else:
    width={'byte':1,'word':4,'long':8,'real':8}[cell['kind']];bits=cell.get('high',0)<<32|cell['low'];values.append('{'+f'{offset},{width},{bits}ULL'+'}')
  lines+=['static const Native64ModuleString full_strings[]={'+','.join(strings)+'};','static const Native64ModuleInit full_initial[]={'+','.join(values or ['{0,0,0}'])+'};']
- lines+=['static const Native64ModuleSpec full_spec={'+json.dumps(module)+','+json.dumps('trusted/'+module)+',full_functions,'+str(len(rows))+','+('0'if module=='Emuinit'else'~0U')+','+f'{layout["bytes"]},full_data_map,{len(layout["map"])},full_initial,{len(values)},full_tables,{len(imports)},c2string,full_strings,{len(strings)},fullload'+'};']
+ lines+=['static const Native64ModuleSpec full_spec={'+json.dumps(module)+','+json.dumps('trusted/'+module)+',full_functions,'+str(len(rows))+','+entry+','+f'{layout["bytes"]},full_data_map,{len(layout["map"])},full_initial,{len(values)},full_tables,{len(imports)},c2string,full_strings,{len(strings)},fullload'+'};']
  variables=[]
  for i,r in enumerate(rows):
   for j,v in enumerate(r.get('variadics',[])):
-   name=f'full_var_map_{i}_{j}';array(name,v['frame']['map']);variables.append('{'+','.join(map(str,(i,v['first'],v['end'],v['binding'],*v['module'],v['resultoffset'],v['contract'],v['operation'],v['count'],v['frame']['bytes'])))+','+name+','+str(len(v['frame']['map']))+'}')
- assert len(variables)==(3 if module=='Emuinit'else 1)
+   fixed=1 if v['operation']==0 else 2;tail=v['frame']['leaves'][fixed:];slotname=f'full_var_slots_{i}_{j}'
+   if tail:
+    kinds={4:'Native64TailBig',7:'Native64TailReal',9:'Native64TailInt',16:'Native64TailFix',13:'Native64TailRef'}
+    lines+=['static const Native64TailSlot '+slotname+'[]={'+','.join('{'+f'{kinds[l[4]]},{8*k},8,'+('&Tstring'if l[4]==13 else'nil')+'}'for k,l in enumerate(tail))+'};']
+   name=f'full_var_map_{i}_{j}';array(name,v['frame']['map']);variables.append('{'+','.join(map(str,(i,v['first'],v['end'],v['binding'],*v['module'],v['resultoffset'],v['contract'],v['operation'],v['count'],v['frame']['bytes'])))+','+name+','+str(len(v['frame']['map']))+','+(slotname if tail else'nil')+','+str(v.get('inherited',0))+'}')
+ assert len(variables)==expected_sites
  lines+=['static const Native64ModuleVariadic full_variadics[]={'+','.join(variables)+'};']
  for i,r in enumerate(rows):lines+=[f'static const uint full_fn_{r["name"]}={i};']
  (w/'full.h').write_text('\n'.join(lines)+'\n')
@@ -117,7 +122,7 @@ def main():
   # The metadata suite must fail when the frame-map predicate is disabled.
   header=w/'native64-sys-module.h';original=(ROOT/'include/native64-sys-module.h').read_text();before='!native64modulemap(p->bytes,p->map,p->mapbytes,1)';assert original.count(before)==1
   # Also remove the exact root walk: otherwise its independent check masks this control.
-  changed=original.replace(before,'0',1);before='if(!!(p->map[bit/8]&(128>>(bit%8)))!=(at>=64))return 0;';assert changed.count(before)==1
+  changed=original.replace(before,'0',1);before='if(!!(p->map[bit/8]&(128>>(bit%8)))!=reference)return 0;';assert changed.count(before)==1
   header.write_text(changed.replace(before,'if(0)return 0;',1));subprocess.run(command,check=True);r=subprocess.run(runner+[str(binary)],capture_output=True,text=True,timeout=180)
   assert r.returncode==10 and 'metadata refusal before allocation/publication'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
   print('PASS complete emuinit active control: removed native frame-map validation detected',flush=True)

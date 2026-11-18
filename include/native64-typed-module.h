@@ -187,10 +187,17 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             modes[0]=USRC(step->mode);modes[1]=(step->mode&ARM)==AXIMM?AIMM:(step->mode&ARM)==AXINF?AFP:AMP;modes[2]=UDST(step->mode);
             offsets[0]=step->s;offsets[1]=step->m;offsets[2]=step->d;
             roots[0]=step->op!=ISLICEC;roots[1]=step->op==IADDC;roots[2]=step->op!=IINDC;
+            if(step->returned)modes[2]=AIMM;
             for(k=0;k<3;k++)if(modes[k]!=AIMM){
                 map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;
                 if(!!(map[bit/8]&(0x80>>(bit%8)))!=roots[k])return 0;
             }
+        }
+        for(j=0;j<f->count;j++)if(f->code[j].op==ICVTWC){
+            Inst probe;unsigned int mode;step=f->code+j;
+            if(!native64typedcode(&probe,1,step,1,f->bytes,s->databytes))return 0;
+            bit=step->d/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;
+            mode=USRC(step->mode);if(mode!=AIMM){map=mode==AFP?f->map:s->datamap;bit=step->s/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
         }
         for(j=0;j<f->count;j++)if(f->code[j].op==IBEQC || f->code[j].op==IBNEC || f->code[j].op==IBLTC || f->code[j].op==IBLEC || f->code[j].op==IBGTC || f->code[j].op==IBGEC){
             unsigned int k,modes[2],offsets[2];Inst probe;step=f->code+j;

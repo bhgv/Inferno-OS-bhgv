@@ -19,7 +19,7 @@ native64sysprogramrecord(Module *module, const Native64SysProgramSpec *spec)
        spec->callpc>=(unsigned int)module->nprog-1)return 0;
     bind=module->prog+spec->bindpc;call=module->prog+spec->callpc;
     width=spec->frame.operation<Native64SysPrint?8:4;
-    if(bind->op!=ILEA || bind->add!=(SRC(AFP)|DST(AFP|AIND)) ||
+    if(bind->op!=(spec->frame.inherited?IMOVL:ILEA) || bind->add!=(SRC(AFP)|DST(AFP|AIND)) ||
        bind->reg!=(width==8?24:4) || bind->s.ind!=(int)spec->frame.result_offset ||
        bind->d.i.f!=40 || bind->d.i.s!=32 || call->op!=IMCALL ||
        call->s.ind!=40 || call->reg<0 || call->reg>32767)return 0;

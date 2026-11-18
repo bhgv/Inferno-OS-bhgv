@@ -415,7 +415,7 @@ typedlayout(Dis64Layout *p)
 	fprint(2,"{\"legacy_bytes\":%ud,\"bytes\":%ud,\"map\":[",p->legacybytes,p->bytes);
 	for(i=0;i<(p->bytes+63)/64;i++){
 		bits=0;
-		for(j=0;j<p->count;j++) if(p->leaves[j].kind>=0 && p->leaves[j].oldbytes==4 && p->leaves[j].bytes==8 && p->leaves[j].native/64==i)
+		for(j=0;j<p->count;j++) if(p->leaves[j].kind>=0 && p->leaves[j].kind!=Tint && p->leaves[j].kind!=Tfix && p->leaves[j].oldbytes==4 && p->leaves[j].bytes==8 && p->leaves[j].native/64==i)
 			bits|=0x80>>((p->leaves[j].native/8)%8);
 		fprint(2,"%s%ud",i?",":"",bits);
 	}
@@ -565,7 +565,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
                 Dis64TypedVariadic *v=p.variadic+i;
                 fprint(2,"%s{\"first\":%ud,\"end\":%ud,\"binding\":%ud,\"module\":[%ud,%ud],\"resultoffset\":%ud,\"contract\":%ud,\"operation\":%ud,\"count\":%ud,\"signature\":%ud,\"name\":",
                     i?",":"",v->first,v->end,v->binding,v->modulemode,v->moduleoffset,v->resultoffset,v->contract,v->operation,v->count,(unsigned int)sign(v->callee));
-                typedexportname(v->callee);fprint(2,",\"frame\":");typedlayout(&v->frame);fprint(2,"}");
+                typedexportname(v->callee);fprint(2,",\"inherited\":%ud,\"frame\":",v->inherited);typedlayout(&v->frame);fprint(2,"}");
             }
             fprint(2,"]");
         }
