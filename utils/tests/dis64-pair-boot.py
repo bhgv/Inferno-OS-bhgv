@@ -633,10 +633,14 @@ int main(void) {
     binary = work/'flow-check'; run = shlex.split(runner)
     subprocess.run(compiler+flags+['-I'+str(root/'include'),str(source),'-o',str(binary)],check=True)
     subprocess.run(run+[str(binary)],check=True,timeout=30)
-    header = (root/'include/dis64-pilot.h').read_text()
+    header = (root/'include/dis64/pilot/operands.h').read_text()
     old = '*target = *target ? 16U|((*target & state)&239U) : state;'
     if header.count(old)!=1: raise RuntimeError('flow join control drift')
-    (work/'dis64-pilot.h').write_text(header.replace(old,'*target |= state; /* Deliberately use union at a join. */',1))
+    shadow=work/'dis64/pilot';shadow.mkdir(parents=True,exist_ok=True)
+    (work/'dis64-pilot.h').write_text((root/'include/dis64-pilot.h').read_text())
+    (work/'dis64-code.h').write_text((root/'include/dis64-code.h').read_text())
+    (shadow/'flow.h').write_text((root/'include/dis64/pilot/flow.h').read_text())
+    (shadow/'operands.h').write_text(header.replace(old,'*target |= state; /* Deliberately use union at a join. */',1))
     subprocess.run(compiler+flags+['-I'+str(work),'-I'+str(root/'include'),str(source),'-o',str(binary)],check=True)
     result = subprocess.run(run+[str(binary)],capture_output=True,text=True,timeout=30)
     if result.returncode!=10 or result.stderr.strip()!='flow refusal predicate':
