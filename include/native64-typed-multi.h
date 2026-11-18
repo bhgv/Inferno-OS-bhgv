@@ -24,6 +24,17 @@ native64typedgeometryarg(const Native64TypedStep*s,unsigned int fp,unsigned int 
  return 1;
 }
 
+enum { Native64TypedListPrep=112 };
+static int
+native64typedlistprep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ Native64TypedStep copy=*s;Inst probe;
+ if(s->returned!=Native64TypedListPrep || (s->op!=IMOVP && s->op!=ICONSP) || UDST(s->mode)!=AFP ||
+    (s->op==IMOVP && USRC(s->mode)!=AMP) || s->m || (s->mode&ARM)!=AXNON)return 0;
+ copy.returned=0;return native64typedcode(&probe,1,&copy,1,fp,mp) &&
+  native64typedrootoperand(USRC(s->mode),s->s,fp,mp) && native64typedrootoperand(AFP,s->d,fp,mp);
+}
+
 /* One computed String argument in an already prepared imported frame. */
 static int
 native64typedconcatarg(const Native64TypedStep *s,unsigned int fpbytes,unsigned int mpbytes,unsigned int bytes,const uchar *map,unsigned int np)
@@ -96,6 +107,9 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
             if(!s->returned){if(c->external || !native64typedargprep(s,fpbytes,mpbytes))return 0;continue;}
+            if(s->returned==Native64TypedListPrep){
+                if(!c->external || !native64typedlistprep(s,fpbytes,mpbytes))return 0;continue;
+            }
             if(s->op==IMOVM){
                 if(!c->external || c->callee->np<0 || !native64typedgeometryarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
@@ -142,6 +156,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 s=steps+j;p=out+j;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;
                 if(j==i){p->s.imm=c->external?c->moduleoffset:c->ordinal;p->reg=c->external?c->ordinal:0;p->d.ind=40;}
                 else if(j==c->end){p->s.ind=40;if(c->external){p->reg=c->ordinal;p->d.ind=c->moduleoffset;}else p->d.ins=c->target;}
+                else if(s->returned==Native64TypedListPrep){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
                 else if(!s->returned){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
                 else{p->s.imm=s->s;p->d.i.f=40;p->d.i.s=s->d;if(s->op==IADDC || s->op==IMOVM)p->reg=s->m;if(c->contract && !c->inherited && j==c->end-1)p->reg=c->contract;}
             }

@@ -133,6 +133,7 @@ struct Addr
 	long	offset;
 	Decl	*decl;
 	Type *native64type;		/* Borrowed per-use type before temporary reuse; no wire field. */
+	Type *native64base;		/* Original ref ADT owner beneath an indirect operand; no wire field. */
 };
 
 struct Inst

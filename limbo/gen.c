@@ -699,6 +699,8 @@ genaddr(Node *n)
 		fatal("can't deal with %n in genaddr", n);
 		break;
 	}
+	if(a.native64base==nil && (n->addable==Rreg || n->addable==Rmreg) && n->decl && n->ty && n->ty->kind==Tref && n->ty->tof && n->ty->tof->kind==Tadt)
+		a.native64base=n->ty;
 	a.native64type = n->ty;
 	return a;
 }

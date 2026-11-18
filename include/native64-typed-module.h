@@ -82,11 +82,12 @@ native64modulemap(unsigned int bytes,const uchar *map,unsigned int n,int frame)
 static int
 native64modulelists(const Native64ModuleSpec *spec,const Native64ModuleFunction *fn)
 {
- unsigned int i,k,bit,mode;long offset;const uchar *map;Inst probe;const Native64TypedStep *step;
+ unsigned int i,k,bit,mode;long offset;const uchar *map;Inst probe;Native64TypedStep copy;const Native64TypedStep *step;
  for(i=0;i<fn->count;i++){
   step=fn->code+i;
   if(step->op!=ICONSP && step->op!=IHEADP && step->op!=ITAIL)continue;
-  if(!native64typedcode(&probe,1,step,1,fn->bytes,spec->databytes))return 0;
+  copy=*step;if(copy.returned==Native64TypedListPrep)copy.returned=0;
+  if(!native64typedcode(&probe,1,&copy,1,fn->bytes,spec->databytes))return 0;
   for(k=0;k<2;k++){
    if(k && step->returned)continue;
    mode=k?UDST(step->mode):USRC(step->mode);offset=k?step->d:step->s;
@@ -112,6 +113,66 @@ native64modulecontext(const Native64ModuleSpec*spec,const Native64ModuleFunction
   }
   /* Field operations cannot be hidden inside a pending call setup. */
   for(k=0;k<fn->nsites;k++)if(fn->sites[k].first<=i && i<=fn->sites[k].end)return 0;
+ }
+ return 1;
+}
+
+static int
+native64modulewindow(const Native64ModuleSpec*spec,const Native64ModuleFunction*fn)
+{
+ unsigned int i,k,mode,bit;long offsets[2];const uchar*map;const Native64TypedStep*step;
+ for(i=0;i<fn->count;i++){
+  step=fn->code+i;if(step->returned<Native64TypedWindow || step->returned>=Native64TypedWindowNil+6)continue;
+  if(!native64typedwindowstep(step,fn->bytes,spec->databytes) || (step->returned!=Native64TypedWindow && (step->d<0 || (unsigned long)step->d>=fn->count)))return 0;
+  offsets[0]=step->s;offsets[1]=step->returned==Native64TypedWindow?step->d:step->m;
+  for(k=0;k<2;k++){
+   mode=(k?(step->returned==Native64TypedWindow?UDST(step->mode):AMP):USRC(step->mode))&~AIND;
+   map=mode==AFP?fn->map:spec->datamap;bit=offsets[k]/8;
+   if(!(map[bit/8] & (128 >> (bit%8))))return 0;
+  }
+  for(k=0;k<fn->nsites;k++)if(fn->sites[k].first<=i && i<=fn->sites[k].end)return 0;
+ }
+ return 1;
+}
+
+static int
+native64modulelistpreps(const Native64ModuleSpec*s,const Native64ModuleFunction*f)
+{
+ unsigned int i,j,k,n,found,bit,mode;long slot,nilslot=-1;const Native64ModuleSite*site=nil;const Native64ModuleImport*request;const Native64TypedStep*step;const uchar*map;
+ for(i=0;i<f->count;i++){
+  step=f->code+i;if(step->returned!=Native64TypedListPrep)continue;
+  if(step->op!=IMOVP || !native64typedlistprep(step,f->bytes,s->databytes))return 0;
+  if(nilslot>=0 && nilslot!=step->s)return 0;
+  if(nilslot<0){
+  if(s->nstrings>65536 || (s->nstrings && (s->strings==nil || s->strings==H)))return 0;
+  n=0;for(k=0;k<s->nfunctions;k++){if(!s->functions[k].count || s->functions[k].count>65536-n || s->functions[k].code==nil || s->functions[k].code==H)return 0;n+=s->functions[k].count;}
+  /* The compiler's nil initializer is readonly, never a literal or a mutable
+   * module/global root. Dynamic C mutation is outside this trusted plan. */
+  for(k=0;k<s->nstrings;k++)if(s->strings[k].offset==(unsigned long)step->s)return 0;
+  for(k=0;k<s->nfunctions;k++)for(j=0;j<s->functions[k].count;j++)if(UDST(s->functions[k].code[j].mode)==AMP &&
+    s->functions[k].code[j].d/8==step->s/8)return 0;
+  nilslot=step->s;
+  }
+  slot=step->d;found=0;
+  for(k=0;k<f->nsites;k++)if(f->sites[k].first<i && i<f->sites[k].end){if(found++)return 0;site=f->sites+k;}
+  if(!found || !site->external || site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
+  request=s->tables[site->table].imports+site->target;n=0;
+  for(j=i;j<site->end && f->code[j].returned==Native64TypedListPrep;j++){
+   step=f->code+j;
+   if(!native64typedlistprep(step,f->bytes,s->databytes) || step->d!=slot || (j==i?step->op!=IMOVP:step->op!=ICONSP) || j-i>256)return 0;
+   for(k=0;k<2;k++){
+    mode=k?AFP:USRC(step->mode);map=mode==AFP?f->map:s->datamap;bit=(k?step->d:step->s)/8;
+    if((map[bit/8] & (128 >> (bit%8)))==0)return 0;
+   }
+   if(j!=i)n++;
+  }
+  if(!n || j>=site->end)return 0;step=f->code+j;
+  if(step->op!=IMOVP || step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->returned!=64 || step->m || step->s!=slot || step->d<64 || step->d%8 ||
+     (unsigned long)step->d>request->bytes || 8>request->bytes-step->d)return 0;
+  bit=step->d/8;if(!(request->map[bit/8]&(128>>(bit%8))))return 0;
+  if(j+1>=site->end || f->code[j+1].op!=IMOVP || f->code[j+1].returned!=Native64TypedListPrep ||
+     f->code[j+1].s!=f->code[i].s || f->code[j+1].d!=slot || !native64typedlistprep(f->code+j+1,f->bytes,s->databytes))return 0;
+  i=j+1;
  }
  return 1;
 }
@@ -163,7 +224,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
            !native64modulemap(f->bytes,f->map,f->mapbytes,1) || f->bytes>32*1024*1024-total ||
            f->nsites>f->count/2 || (f->nsites && f->sites==nil))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
-        if(!native64modulelists(s,f) || !native64modulecontext(s,f) || !native64modulegeometry(s,f))return 0;
+        if(!native64modulelists(s,f) || !native64modulecontext(s,f) || !native64modulewindow(s,f) || !native64modulelistpreps(s,f) || !native64modulegeometry(s,f))return 0;
         if(f->resultcontract && f->resultcontract!=48)return 0;
         for(j=0;j<f->nsites;j++){
             unsigned int k,r,modes[2],offsets[2];site=f->sites+j;

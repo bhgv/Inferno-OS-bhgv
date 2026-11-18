@@ -133,6 +133,24 @@ def verify(data,r,imports,loads=False,rows=None):
         at=first+1;aggregates={a['index']:a['layout']for a in e.get('aggregate_args',[])}
         assert len(aggregates)==len(e.get('aggregate_args',[]))
         for j,(new,kind,oldbytes,width)in enumerate(e['args']):
+            listclear=None
+            if at<end and r['code'][at][5]==112:
+                assert loads and kind==10 and oldbytes==4 and width==8
+                temp=None;count=0
+                while at<end and r['code'][at][5]==112:
+                    a=original[at];sm=a['mode']>>3&7
+                    assert a['m']is None and a['mode']&7==1 and sm in(0,1)
+                    target=maps['frame'][a['d'][0]]
+                    assert next(l for l in r['frame']['leaves']if l[0]==a['d'][0])[2:4]==[4,8]
+                    if temp is None:
+                        assert a['op']==41 and sm==0 and next(l for l in r['data']['leaves']if l[0]==a['s'][0])[4]==20
+                        temp=target;listclear=(temp,maps['data'][a['s'][0]])
+                    else:
+                        assert a['op']==OPCODES['ICONSP']and target==temp
+                        assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==a['s'][0])[4]in(13,20)
+                        count+=1
+                    assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm else'data'][a['s'][0]],0,target,112];at+=1
+                assert 0<count<=256 and original[at]['s']==[next(old for old,v in maps['frame'].items()if v==temp)]and original[at]['mode']==13
             a=original[at];sm=a['mode']>>3&7
             alignment=8 if oldbytes==8 and kind!=1 else 4;oldoffset=(oldoffset+alignment-1)&~(alignment-1)
             if kind==1:
@@ -168,6 +186,11 @@ def verify(data,r,imports,loads=False,rows=None):
             else:
                 assert r['code'][at]==[a['op'],a['mode'],a['s'][0]if sm==2 else maps['frame'if sm==1 else 'data'][a['s'][0]],0,new,64]
             at+=1
+            if listclear is not None:
+                temp,nilroot=listclear;clear=original[at]
+                assert clear['op']==41 and clear['mode']==1 and clear['m']is None
+                assert maps['data'][clear['s'][0]]==nilroot and maps['frame'][clear['d'][0]]==temp
+                assert r['code'][at]==[41,1,nilroot,0,temp,112];at+=1
         assert not aggregates
         contract=e['contract'];assert at+bool(contract)==end
         if contract:
@@ -180,6 +203,26 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if 100<=returned<107:
+            assert loads
+            oldfields=[0,20,40,52,56,84];newfields=[0,24,48,64,72,104]
+            if returned==100:
+                assert op==o['op']==41 and mode==o['mode']and o['m']is None
+                sm=mode>>3&7;dm=mode&7;read=sm in(4,5)
+                assert (read and dm in(0,1))or(not read and sm in(0,1)and dm in(4,5))
+                field=o['s']if read else o['d'];direct=o['d']if read else o['s'];assert len(field)==2
+                index=oldfields.index(field[1]);bm=(sm if read else dm)&1;vm=dm if read else sm
+                assert m==newfields[index]and (s if read else d)==maps['frame'if bm else'data'][field[0]]and (d if read else s)==maps['frame'if vm else'data'][direct[0]]
+                assert next(l for l in r['frame'if bm else'data']['leaves']if l[0]==field[0])[2:]==[4,8,12]
+                leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==direct[0]);assert leaf[2:4]==[4,8]and (leaf[4]==(6 if index==3 else 12)or(not read and vm==0 and leaf[4]==20))
+            else:
+                sm=o['mode']>>3&7;field=o['s'];assert sm in(4,5)and len(field)==2
+                index=oldfields.index(field[1]);assert returned==101+index and o['mode']==(sm<<3)|192|2 and mode==o['mode']
+                assert o['op']in(93,94)and op==(OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'])
+                assert s==maps['frame'if sm==5 else'data'][field[0]]and m==maps['data'][o['m']]and d==o['d'][0]-r['first']and d not in inside
+                assert next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==field[0])[2:]==[4,8,12]
+                assert next(l for l in r['data']['leaves']if l[0]==o['m'])[4]==20
+            continue
         if 97<=returned<100:
             assert loads and o['op']in(93,94)and op==(OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'])and mode&192==192 and mode&7==2
             sm=o['mode']>>3&7;left=o['s'];right=[o['m']]

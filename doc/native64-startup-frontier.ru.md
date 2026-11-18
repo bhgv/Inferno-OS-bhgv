@@ -84,3 +84,5 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий этап: [поля Draw.Context](native64-context-fields.ru.md): checked AWM init проходит PC51 и nil test wm, первый отказ теперь PC61 — Rect argument вызова reshape. Это ещё не runtime acceptance полного AWM.
 
 Следующий этап: [Point/Rect в imported arguments](native64-geometry-args.ru.md): AWM init проходит reshape PC61, следующий отказ PC72 — Window.image. Реальные Limbo-to-Limbo C/JIT вызовы проверяются отдельным gate; полного AWM окна ещё нет.
+
+Следующий этап: [Window roots и список startinput](native64-window-startup.ru.md): AWM init проходит PC72/84; следующий checked отказ PC93 — makescreen. Полного AWM окна ещё нет.
