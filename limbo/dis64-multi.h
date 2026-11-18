@@ -17,6 +17,7 @@ typedbytearrayaddr(Addr *a)
 }
 
 #include "dis64-external.h"
+#include "dis64-variadic.h"
 
 /* List primitives belong only to the selected importing-client lowering. */
 static int
@@ -398,12 +399,14 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     }
     p->sites=allocmem((p->count/2+1)*sizeof(*p->sites));
     if(c->external)p->external=allocmem((p->count/2+1)*sizeof(*p->external));
+    if(c->loads){p->variadic=allocmem((p->count/2+1)*sizeof(*p->variadic));memset(p->variadic,0,(p->count/2+1)*sizeof(*p->variadic));}
     inside=allocmem(p->count);memset(inside,0,p->count);
     for(pc=p->first;pc<stop;){
         in=c->instructions[pc];p->badpc=pc;
         if(in==nil){typedfail(p,"multi-instruction-order");goto fail;}
         if(in->op==IFRAME || (c->external && in->op==IMFRAME)){
             if(in->op==IMFRAME){if(!typedexternalsite(c,p,pc,stop,&next))goto fail;}
+            else if(c->loads && in->native64args){if(!typedvariadicsite(c,p,pc,stop,&next))goto fail;}
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
@@ -474,7 +477,7 @@ typedmultilower(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsig
 {
     TypedMulti c={0};Inst *in;unsigned int i,root=0;int found=0,ok=0;
     USED(stop);
-    if(p->code!=nil || p->reason!=nil || p->sites!=nil || p->external!=nil)return typedfail(p,"nonempty-output");
+    if(p->code!=nil || p->reason!=nil || p->sites!=nil || p->external!=nil || p->variadic!=nil)return typedfail(p,"nonempty-output");
     if(nf<1 || nf>4096 || !count || count>TypedInstructions || functions==nil || input==nil)return typedfail(p,"multi-limit");
     c.loads=external==4;c.external=c.loads?1:external;c.globals=globals;c.functions=functions;c.nf=nf;c.count=count;
     c.bodies=allocmem(nf*sizeof(*c.bodies));memset(c.bodies,0,nf*sizeof(*c.bodies));

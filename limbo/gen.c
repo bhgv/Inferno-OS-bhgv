@@ -427,7 +427,7 @@ genchan(Src *src, Node *sz, Type *mt, Node *d)
 {
 	Inst *in;
 	Desc *td;
-	Addr reg;
+	Addr reg = {0};
 	int op, regm;
 
 	regm = Anone;
@@ -475,7 +475,7 @@ genmove(Src *src, int how, Type *mt, Node *s, Node *d)
 {
 	Inst *in;
 	Desc *td;
-	Addr reg;
+	Addr reg = {0};
 	int op, regm;
 
 	regm = Anone;
@@ -640,7 +640,7 @@ foldbranch(Inst *in)
 Addr
 genaddr(Node *n)
 {
-	Addr a;
+	Addr a = {0};
 
 	a.reg = 0;
 	a.offset = 0;
@@ -699,6 +699,7 @@ genaddr(Node *n)
 		fatal("can't deal with %n in genaddr", n);
 		break;
 	}
+	a.native64type = n->ty;
 	return a;
 }
 
@@ -940,7 +941,7 @@ Inst*
 rewritesrcreg(Inst *in, int op, int treg, int pc)
 {
 	Inst *new;
-	Addr a;
+	Addr a = {0};
 	int am;
 
 	a = in->m;

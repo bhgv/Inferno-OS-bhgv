@@ -13,6 +13,8 @@ static int (*order)(void*,void*);
 static int hostorder(const void *a,const void *b) {return order((void*)a,(void*)b);}
 void infqsort(void *p,long n,long size,int (*compare)(void*,void*)) {order=compare;qsort(p,n,size,hostorder);}
 Desc *descriptors;
+/* Raw IR fixtures supply test signatures; real source gates use types.c sign. */
+ulong sign(Decl*d){return d&&d->ty?(ulong)d->ty->sig:0;}
 
 static void tabletests(void)
 {

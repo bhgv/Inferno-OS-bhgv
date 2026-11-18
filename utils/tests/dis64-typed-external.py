@@ -33,7 +33,7 @@ def compile_source(limbo,work,source,interface=None,loads=False):
 def verify(data,r,imports,loads=False,rows=None):
     assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and (rows is not None or 'calls'not in r)
     _,old,types=BASE['READ']['legacy_instructions'](data,with_types=True)
-    layout=json.loads(json.dumps(r));layout.update(schema='inferno-typed-body-v2',code=[]);BASE['verify'](data,layout)
+    layout=json.loads(json.dumps(r));layout.update(schema='inferno-typed-body-v2');BASE['verify'](data,layout,validate_code=False)
     maps={space:{leaf[0]+i:leaf[1]+i for leaf in r[space]['leaves']for i in range(leaf[2])}for space in ('frame','data')}
     original=old[r['first']:r['first']+len(r['code'])];covered=set();inside=set();previous=-1
     for first,end,target,descriptor,offset,contract,inherited in r.get('calls',[]):
@@ -79,9 +79,42 @@ def verify(data,r,imports,loads=False,rows=None):
         assert r['code'][end]==[4,10,40,0,target,32 if inherited else 0]
         covered.update(set(range(first,end+1))-preps);inside.update(range(first+1,end+1))
     previous=-1
+    for v in r.get('variadics',[]):
+        first,end=v['first'],v['end'];assert loads and previous<first<end<len(original) and not covered.intersection(range(first,end+1));previous=end
+        op=v['operation'];assert op in(0,3) and v['contract']==(24 if op==0 else 4)
+        choices=imports if imports and isinstance(imports[0],list)else[imports]
+        assert any(v['binding']<len(t)and t[v['binding']]=={'name':v['name'],'signature':v['signature']}for t in choices)
+        assert v['name']==('sprint'if op==0 else'fprint') and v['signature']==(0x4c0624b6 if op==0 else 0xf46486c8)
+        o=original[first];assert o['op']==5 and o['mode']==17 and o['m']is None
+        size,roots=types[o['s'][0]];count=v['count']+(1 if op==0 else 2);frame=v['frame']
+        assert frame['legacy_bytes']==size and frame['bytes']==64+8*count
+        assert frame['leaves']==[[32+4*j,64+8*j,4,8,12 if op==3 and j==0 else 13]for j in range(count)]
+        assert {i*8+b for i,x in enumerate(roots)for b in range(8)if x&(128>>b)}==set(range(8,8+count))
+        expected=[0]*((frame['bytes']+63)//64)
+        for j in range(count):expected[(64+8*j)//64]|=128>>((8+j)%8)
+        assert frame['map']==expected and r['code'][first]==[5,17,o['s'][0],0,40,0]
+        pending=o['d'][0];at=first+1;fd=None
+        for j in range(count):
+            a=original[at];sm=a['mode']>>3&7;assert a['op']==41 and sm in(0,1)and a['m']is None and a['d']==[pending,32+4*j]
+            source=maps['frame'if sm else'data'][a['s'][0]]
+            assert r['code'][at]==[41,a['mode'],source,0,64+8*j,64]
+            if op==3 and j==0 and sm==1:fd=a['s'][0]
+            at+=1
+            if op==3 and j==0 and original[at]['mode']&7==1:
+                clear=original[at];assert clear['op']==41 and clear['mode']==1 and clear['m']is None and clear['d']==[fd]
+                assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
+                assert r['code'][at]==[41,1,maps['data'][clear['s'][0]],0,maps['frame'][fd],0]
+                assert not any(a['mode']>>3&7==1 and a['s']==[fd]for a in original[at+1:end-1]);at+=1
+        assert at==end-1;binding=original[at];assert binding['op']==39 and binding['mode']==13 and binding['m']is None and binding['d']==[pending,16]
+        assert v['resultoffset']==maps['frame'][binding['s'][0]]and r['code'][at]==[39,13,v['resultoffset'],0,32,128|v['contract']]
+        call=original[end];mode,offset=v['module'];assert mode in(0,1)and call['op']==9 and call['mode']==8|64|mode and call['m']==v['binding']and call['s']==[pending]
+        assert offset==maps['frame'if mode else'data'][call['d'][0]]and r['code'][end]==[9,8|64|mode,40,v['binding'],offset,0]
+        covered.update(range(first,end+1));inside.update(range(first+1,end+1))
+    previous=-1
     for e in r.get('externals',[]):
         first,end=e['first'],e['end'];assert previous<first<end<len(original)and not covered.intersection(range(first,end+1));previous=end
-        assert imports[e['binding']]=={'name':e['name'],'signature':e['signature']}
+        choices=imports if imports and isinstance(imports[0],list)else[imports]
+        assert any(e['binding']<len(t)and t[e['binding']]=={'name':e['name'],'signature':e['signature']}for t in choices)
         o=original[first];mode,offset=e['module'];assert mode in (0,1)and o['op']==11 and o['mode']==(mode<<3)|64|1
         assert offset==maps['frame'if mode else 'data'][o['s'][0]]
         pending=o['d'][0];assert r['code'][first]==[11,o['mode'],offset,e['binding'],40,0]and o['m']==e['binding']

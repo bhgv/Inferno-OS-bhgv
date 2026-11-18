@@ -37,8 +37,8 @@ caller/callee должны находиться в одном текущем sta
   охватывают три GC phases. Есть семь metadata и шесть live identity отказов,
   rollback installer, копирование рецептов, busy output и полное освобождение.
 * `native64-sys-program.py` исполняет эти call sequences в полном native VM
-  и leaf JIT: 72 случая C/JIT, quanta 1/3/1000, старый snapshot инструкций,
-  чужой native callback и allocation failure producer. Проверяются точный
+  и leaf JIT: 108 случаев C/JIT, quanta 1/3/1000, старый snapshot инструкций,
+  чужой native callback, точный shared fixed prefix и его повреждение, allocation failure producer. Проверяются точный
   результат/его ширина, guards, diagnostic и полный scheduler/module/Type
   teardown. Здесь producer управляемый: настоящий formatter проверяется
   предыдущим gate. Компилируется также полный production runt.c с formatter.
@@ -51,8 +51,8 @@ C/JIT и старые getenv/registration gates проверяются отде�
 VM gate включён для amd64/arm64/riscv64 и Android ARM64 Bionic; локальный host
 прогон не означает запуск на Android устройстве.
 
-Это исполнение call sequences с заранее подготовленным source bank.
-Целые `init`/`loadmod` по-прежнему не принимаются checked compiler, и AWM ещё
-не запущен. Следующий этап — compiler lowering variadic FRAME/MCALL и установка
-этих program sites из owning constructor полного source-derived модуля.
-Classic bytes, 32-битный ABI и file admission не изменены.
+На этом этапе исполнялись call sequences с заранее подготовленным source bank.
+Следующий этап: [полный неизменённый emuinit](native64-emuinit-full.ru.md).
+Теперь checked compiler принимает все четыре функции, а owning constructor
+устанавливает program sites до публикации модуля. Classic bytes, 32-битный ABI
+и file admission не изменены. AWM-окно пока не запущено.

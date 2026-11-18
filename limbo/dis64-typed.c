@@ -19,6 +19,7 @@ typedoperand(int mode, Addr *a, int kind, int immediate, int middle,
 	Dis64LayoutLeaf *leaf=nil;
 	unsigned int i,offset,width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
 	int reference=kind==TypedRoot || kind==Tstring || kind==Tlist || kind==Tarray;
+    int role;Type *use;
 	if(mode==Aimm){
 		if(!immediate || reference || width==8 || a->offset < -536870912L || a->offset>536870911L ||
 		   (middle && (a->offset < -32768 || a->offset>32767)) ||
@@ -30,12 +31,20 @@ typedoperand(int mode, Addr *a, int kind, int immediate, int middle,
 	layout=mode==Afp?&p->frame:&p->data;
 	if(!dis64layoutaddress(layout,a->reg,width,reference,&offset)) return typedfail(p,"typed-span");
 	for(i=0;i<layout->count;i++) if(a->reg>=layout->leaves[i].legacy && a->reg-layout->leaves[i].legacy<layout->leaves[i].oldbytes){leaf=layout->leaves+i;break;}
+    role=leaf?leaf->kind:-1;
+    /* Compiler word temporaries share managed geometry across nominal classes.
+     * Only their original per-use type can refine an already proven root. */
+    use=a->native64type;
+    if(p->sourceroles && reference && leaf && leaf->oldbytes==4 && leaf->bytes==8 && role>=0 && use && use->size==4 &&
+       (use->kind==Tstring || use->kind==Tref || use->kind==Tlist || use->kind==Tarray || use->kind==Tmodule || use->kind==Tchan || use->kind==Tany) &&
+       a->decl && a->decl->store==Dlocal && a->decl->sym && a->decl->sym->name[0]=='.' && a->decl->sym->name[1]=='t' &&
+       a->reg==a->decl->offset && !a->offset)role=use->kind;
 	if(leaf==nil || (reference ? (leaf->oldbytes!=4 || leaf->bytes!=8 || leaf->kind<0 ||
-	   (kind!=TypedRoot && leaf->kind!=kind && leaf->kind!=Tany)) :
+	   (kind!=TypedRoot && role!=kind && role!=Tany)) :
 	   (leaf->kind!=kind && !(kind==Tint && leaf->kind==Tfix) &&
 	    !((kind==Tbig || kind==Treal) && (leaf->kind==Tbig || leaf->kind==Treal))))) return typedfail(p,"opcode-type");
 	if(middle && offset>65535) return typedfail(p,"middle-offset");
-	*value=offset; *wire=mode==Afp?AFP:AMP; *actual=leaf->kind; return 1;
+	*value=offset; *wire=mode==Afp?AFP:AMP; *actual=role; return 1;
 }
 
 static int
@@ -232,6 +241,7 @@ typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned in
 {
 	Inst *in;
 	unsigned int at=0;
+    p->sourceroles=loads;
 	if(p->code!=nil || p->reason!=nil) return typedfail(p,"nonempty-output");
 	if(fn!=nil && fn->pc!=nil && fn->pc->pc>=0) p->first=fn->pc->pc;
 	if(fn==nil || fn->ty==nil || fn->pc==nil || fn->ty->kind!=Tfn || fn->ty->varargs ||
@@ -393,6 +403,7 @@ dis64typedlocal(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsig
 void
 dis64typedfree(Dis64TypedBody *p)
 {
+    unsigned int i;for(i=0;i<p->nvariadic;i++)dis64layoutfree(&p->variadic[i].frame);free(p->variadic);
 	free(p->tables);free(p->contextfields);free(p->external);free(p->sites);free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
 }
 
@@ -544,6 +555,16 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
                 Dis64TypedExternal *e=p.external+i;
                 fprint(2,"%s{\"first\":%ud,\"end\":%ud,\"binding\":%ud,\"module\":[%ud,%ud],\"resultoffset\":%ud,\"contract\":%ud,\"inherited\":%ud,\"signature\":%ud,\"name\":",i?",":"",e->first,e->end,e->binding,e->modulemode,e->moduleoffset,e->resultoffset,e->contract,e->inherited,(unsigned int)sign(e->callee));
                 typedexportname(e->callee);fprint(2,",\"args\":");typedbindings(e->callee->ty->ids,1);fprint(2,"}");
+            }
+            fprint(2,"]");
+        }
+        if(p.nvariadic && p.reason==nil){
+            fprint(2,",\"variadics\":[");
+            for(i=0;i<p.nvariadic;i++){
+                Dis64TypedVariadic *v=p.variadic+i;
+                fprint(2,"%s{\"first\":%ud,\"end\":%ud,\"binding\":%ud,\"module\":[%ud,%ud],\"resultoffset\":%ud,\"contract\":%ud,\"operation\":%ud,\"count\":%ud,\"signature\":%ud,\"name\":",
+                    i?",":"",v->first,v->end,v->binding,v->modulemode,v->moduleoffset,v->resultoffset,v->contract,v->operation,v->count,(unsigned int)sign(v->callee));
+                typedexportname(v->callee);fprint(2,",\"frame\":");typedlayout(&v->frame);fprint(2,"}");
             }
             fprint(2,"]");
         }

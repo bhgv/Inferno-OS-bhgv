@@ -1,0 +1,151 @@
+#ifndef INFERNO_NATIVE64_SYS_MODULE_H
+#define INFERNO_NATIVE64_SYS_MODULE_H
+/* Explicit trusted source builder. Include after the coherent Sys gateways and
+ * native64-typed-module.h. No serialized variadic records or registry expansion. */
+typedef struct Native64ModuleVariadic Native64ModuleVariadic;
+struct Native64ModuleVariadic {
+    unsigned int function,first,end,binding,modulemode,moduleoffset,resultoffset,contract,operation,count,bytes;
+    const uchar *map;unsigned int mapbytes;
+};
+
+static int
+native64sysmoduleblocked(unsigned int pc,const Native64ModuleVariadic *v)
+{
+    return pc>v->first && pc<=v->end;
+}
+
+static int
+native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v,unsigned int n)
+{
+    unsigned int code,links,scratch,imports,i,j,k,at,bit,total=0,fields,seen,sm,bytes,offset,fd=~0U;
+    const Native64ModuleFunction*f;const Native64TypedStep*step;const uchar*map;Inst probe;
+    if(!n || n>256 || v==nil || v==H || !native64modulecheck(s,&code,&links,&scratch,&imports))return 0;
+    for(i=0;i<n;i++){
+        const Native64ModuleVariadic*p=v+i;
+        if(p->function>=s->nfunctions || (p->operation!=Native64SysSprint && p->operation!=Native64SysFprint) ||
+           p->count>256 || p->count>4096-total || p->contract!=(p->operation==Native64SysSprint?24:4) || p->binding>32767 ||
+           (p->modulemode!=AFP && p->modulemode!=AMP))return 0;
+        total+=p->count;fields=p->count+(p->operation==Native64SysSprint?1:2);f=s->functions+p->function;
+        if(p->bytes!=64+8*fields || !native64modulemap(p->bytes,p->map,p->mapbytes,1) ||
+           p->first>=f->count || p->end>=f->count-1 || p->end<p->first+fields+2)return 0;
+        for(at=0;at<p->bytes;at+=8){bit=at/8;if(!!(p->map[bit/8]&(128>>(bit%8)))!=(at>=64))return 0;}
+        for(j=0;j<i;j++)if(v[j].function==p->function && !(p->end<v[j].first || v[j].end<p->first))return 0;
+        for(j=0;j<f->nsites;j++)if(!(p->end<f->sites[j].first || f->sites[j].end<p->first))return 0;
+        bytes=p->modulemode==AFP?f->bytes:s->databytes;map=p->modulemode==AFP?f->map:s->datamap;bit=p->moduleoffset/8;
+        if(p->moduleoffset%8 || (p->modulemode==AFP && p->moduleoffset<64) || p->moduleoffset>bytes || 8>bytes-p->moduleoffset || !(map[bit/8]&(128>>(bit%8))))return 0;
+        step=f->code+p->first;
+        if(step->op!=IFRAME || step->mode!=(SRC(AIMM)|DST(AFP)) || step->m || step->d!=40 || step->returned)return 0;
+        step=f->code+p->end;
+        if(step->op!=IMCALL || step->mode!=(SRC(AFP)|AXIMM|DST(p->modulemode)) || step->m!=p->binding || step->s!=40 || step->d!=p->moduleoffset || step->returned)return 0;
+        step=f->code+p->end-1;
+        bytes=p->contract==24?8:4;bit=p->resultoffset/8;
+        if(step->op!=ILEA || step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->m || step->s!=p->resultoffset || step->d!=32 || step->returned!=(128|p->contract) ||
+           p->resultoffset<64 || p->resultoffset%bytes || p->resultoffset>f->bytes || bytes>f->bytes-p->resultoffset || !!(f->map[bit/8]&(128>>(bit%8)))!=(p->contract==24))return 0;
+        seen=0;fd=~0U;
+        for(at=p->first+1;at<p->end-1;at++){
+            step=f->code+at;sm=USRC(step->mode);
+            if(step->op!=IMOVP || step->m || (sm!=AFP && sm!=AMP) ||
+               !native64typedrootoperand(sm,step->s,f->bytes,s->databytes))return 0;
+            map=sm==AFP?f->map:s->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
+            if(step->returned==64){
+                if(step->mode!=(SRC(sm)|DST(AFP|AIND)) || seen==fields || step->d!=64+8*seen)return 0;
+                if(!seen && p->operation==Native64SysFprint && sm==AFP)fd=step->s;
+                seen++;
+            }else{
+                if(step->returned || seen!=1 || p->operation!=Native64SysFprint || fd==~0U || sm!=AMP || step->mode!=(SRC(AMP)|DST(AFP)) ||
+                   step->d!=fd || !native64typedcode(&probe,1,step,1,f->bytes,s->databytes))return 0;
+                bit=fd/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;
+                for(j=0;j<s->nstrings;j++)if(s->strings[j].offset==(unsigned int)step->s)return 0;
+                for(j=at+1;j<p->end-1;j++)if(USRC(f->code[j].mode)==AFP && f->code[j].s==(long)fd)return 0;
+                fd=~0U;
+            }
+        }
+        if(seen!=fields)return 0;
+        for(j=0;j<f->count;j++)if(native64typedbranch(f->code[j].op) && native64sysmoduleblocked(f->code[j].d,p))return 0;
+        for(j=0;j<f->ncases;j++){
+            const Native64ModuleCase*t=f->cases+j;
+            if(t->op!=IGOTO && native64sysmoduleblocked(t->fallback,p))return 0;
+            for(k=0;k<t->count;k++)if(native64sysmoduleblocked(t->rows[k].target,p))return 0;
+        }
+    }
+    return 1;
+}
+
+typedef struct Native64SysModuleBuild Native64SysModuleBuild;
+struct Native64SysModuleBuild {
+    const Native64ModuleSpec *spec;const Native64ModuleVariadic *variadic;unsigned int count;int jit;
+    Native64ModuleOwner owner;
+    Native64ModuleFunction *functions;
+    Native64TypedStep *code;
+    Native64SysProgramSpec *programs;
+    Native64TailSlot *slots;
+};
+static int
+native64sysmodulemake(void*argument)
+{
+    Native64SysModuleBuild*b=argument;Native64ModuleSpec spec=*b->spec;Module*m;Type**types;
+    unsigned int i,j,k,total=0,pc=0,offset,ordinal,slot=0;Inst*out;const Native64TypedStep*step;
+    for(i=0;i<spec.nfunctions;i++)total+=spec.functions[i].count;
+    b->functions=mallocz(spec.nfunctions*sizeof(*b->functions),0);if(b->functions==nil)error(exNomem);
+    b->code=mallocz(total*sizeof(*b->code),0);if(b->code==nil)error(exNomem);
+    for(i=0;i<spec.nfunctions;i++){
+        b->functions[i]=spec.functions[i];b->functions[i].code=b->code+pc;
+        memmove(b->code+pc,spec.functions[i].code,spec.functions[i].count*sizeof(*b->code));
+        for(j=0;j<b->count;j++)if(b->variadic[j].function==i)
+            for(k=b->variadic[j].first;k<=b->variadic[j].end;k++)b->code[pc+k]=(Native64TypedStep){IRET,SRC(AXXX)|DST(AXXX),0,0,0,0};
+        pc+=spec.functions[i].count;
+    }
+    spec.functions=b->functions;
+    if(!native64typedmodule(&spec,0,&b->owner))error(exInval);
+    m=b->owner.module;ordinal=m->ntype;
+    /* Program gateways require caller/callee in one current extent. Reserve
+     * the distinct-function source path plus its largest native callee before
+     * publishing the entry, instead of growing at the first variadic FRAME. */
+    total=0;pc=0;
+    for(i=0;i<b->spec->nfunctions;i++)total+=b->spec->functions[i].bytes;
+    for(i=0;i<b->count;i++)if(pc<b->variadic[i].bytes)pc=b->variadic[i].bytes;
+    for(i=0;i<b->spec->ntables;i++)for(j=0;j<b->spec->tables[i].count;j++)
+        if(pc<b->spec->tables[i].imports[j].bytes)pc=b->spec->tables[i].imports[j].bytes;
+    if(total>Native64BindFrame || pc>Native64BindFrame-total || OA(Stkext,reg.tos.fu)>Native64BindFrame-total-pc)error(exBounds);
+    m->ss=OA(Stkext,reg.tos.fu)+total+pc;
+
+    types=mallocz((m->ntype+b->count)*sizeof(*types),1);if(types==nil)error(exNomem);
+    memmove(types,m->type,m->ntype*sizeof(*types));free(m->type);m->type=types;m->ntype+=b->count;
+    b->programs=mallocz(b->count*sizeof(*b->programs),1);if(b->programs==nil)error(exNomem);
+    total=0;for(i=0;i<b->count;i++)total+=b->variadic[i].count;
+    if(total){b->slots=mallocz(total*sizeof(*b->slots),1);if(b->slots==nil)error(exNomem);}
+    for(i=0;i<b->count;i++){
+        const Native64ModuleVariadic*v=b->variadic+i;Native64SysProgramSpec*p=b->programs+i;
+        const Native64ModuleFunction*f=b->spec->functions+v->function;
+        offset=0;for(j=0;j<v->function;j++)offset+=b->spec->functions[j].count;
+        m->type[ordinal+i]=dtype(freeheap,v->bytes,(uchar*)v->map,v->mapbytes);if(m->type[ordinal+i]==nil)error(exNomem);
+        for(j=v->first;j<=v->end;j++){
+            step=f->code+j;out=m->prog+offset+j;memset(out,0,sizeof(*out));out->op=step->op;out->add=step->mode;
+            if(j==v->first){out->s.imm=ordinal+i;out->d.ind=40;}
+            else if(j==v->end){out->reg=v->binding;out->s.ind=40;out->d.ind=v->moduleoffset;}
+            else if(!step->returned){if(!native64typedcode(out,1,step,1,f->bytes,b->spec->databytes))error(exInval);}
+            else{out->s.imm=step->s;out->d.i.f=40;out->d.i.s=step->d;if(j==v->end-1)out->reg=v->contract;}
+        }
+        p->bindpc=offset+v->end-1;p->callpc=offset+v->end;
+        p->frame=(Native64SysFrameSpec){v->operation,m->type[ordinal+i],m->type[v->function+1],v->resultoffset,v->count?b->slots+slot:nil,v->count,8,4096};
+        for(j=0;j<v->count;j++)b->slots[slot++]=(Native64TailSlot){Native64TailRef,8*j,8,&Tstring};
+    }
+    if(!Sys_setprogram64(m,b->programs,b->count))error(exInval);
+    if(b->jit && !compile(m,m->nprog,nil))error(exCompile);
+    return 1;
+}
+
+/* The base constructor sees only inert RET placeholders for the private call
+ * ranges. The module stays unpublished; complete native sites replace those
+ * placeholders and acquire their owners before any optional JIT is created. */
+static int
+native64sysmodule(const Native64ModuleSpec*s,const Native64ModuleVariadic*v,unsigned int n,int jit,Native64ModuleOwner*out)
+{
+    Native64SysModuleBuild b={0};REG saved=R;int ok;
+    if(out==nil || out->module || out->rooted || out->self || (jit!=0 && jit!=1) || !native64sysmodulecheck(s,v,n))return 0;
+    b.spec=s;b.variadic=v;b.count=n;b.jit=jit;ok=kprotect(native64sysmodulemake,&b);R=saved;
+    free(b.functions);free(b.code);free(b.programs);free(b.slots);
+    if(!ok){if(b.owner.module)native64typedmoduleclear(&b.owner);R=saved;return 0;}
+    *out=b.owner;out->self=out;return 1;
+}
+#endif

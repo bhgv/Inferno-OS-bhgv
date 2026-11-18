@@ -1778,6 +1778,7 @@ callcom(Src *src, int op, Node *n, Node *ret)
 		in->sm = Adesc;
 		in->s.decl = nfn->decl;
         callframe = in;
+        if(nfn->ty->varargs) in->native64args = nfn->ty;
 	}
 
 	/*

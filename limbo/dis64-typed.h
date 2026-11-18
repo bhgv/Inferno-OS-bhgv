@@ -12,6 +12,12 @@ struct Dis64TypedExternal {
     unsigned int first,end,binding,modulemode,moduleoffset,resultoffset,contract,inherited;
     Decl *callee;
 };
+typedef struct Dis64TypedVariadic Dis64TypedVariadic;
+struct Dis64TypedVariadic {
+    unsigned int first,end,binding,modulemode,moduleoffset,resultoffset,contract,operation,count;
+    Decl *callee;
+    Dis64Layout frame;
+};
 typedef struct Dis64TypedBody Dis64TypedBody;
 typedef struct Dis64TypedTable Dis64TypedTable;
 struct Dis64TypedTable {unsigned int pc,offset;int op;Case *table;};
@@ -23,11 +29,13 @@ struct Dis64TypedBody {
     unsigned int ntables;
     Dis64TypedExternal *external;
     unsigned int nexternal;
+    Dis64TypedVariadic *variadic;
+    unsigned int nvariadic;
 	unsigned char *returns;
     long *contextfields; /* Selected compiler-owned indirect field displacements. */
 	Dis64Layout frame, data;
 	unsigned int first, count, badpc;
-	int resultkind, tail, resultpair;
+	int resultkind, tail, resultpair, sourceroles;
 	unsigned int target, targetdesc, callend, resultoffset, resultcontract;
 	unsigned int resultbytes;
 	char *reason;

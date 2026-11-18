@@ -76,7 +76,7 @@ def compile_source(limbo,work,source,filename=None,tail=False,local=False,multi=
     return traced.read_bytes(),records
 
 
-def verify(data,record):
+def verify(data,record,validate_code=True):
     assert record['schema']=='inferno-typed-body-v2'
     header,code,types=READ['legacy_instructions'](data,with_types=True)
     if not record['accepted']:
@@ -99,7 +99,7 @@ def verify(data,record):
         assert {i*8+b for i,value in enumerate(serializedmap) for b in range(8) if value&(0x80>>b)}==oldmap
         offsets[name]=mapping
     branches=set(range(87,111))|set(range(129,135))
-    for index,(op,mode,s,m,d,returned) in enumerate(record['code']):
+    for index,(op,mode,s,m,d,returned) in enumerate(record['code'] if validate_code else []):
         legacy=code[first+index]
         assert op==legacy['op'] and mode==legacy['mode']
         for label,address,old,new in (('s',(mode>>3)&7,legacy['s'],s),('d',mode&7,legacy['d'],d)):
@@ -213,7 +213,7 @@ def main():
             ('in->branch->pc>=stop','0','BRANCH_OWNER'),
             ('sourcekind!=Tany && sourcekind!=destkind','0','REF_CLASS'),
             ('reference || width==8 ||','reference ||','WIDE_IMMEDIATE'),
-            ('p->code[pc].op==IRET && state[pc]==1','0','RESULT_DEFINED'),
+            ('p->code[pc].op==IRET && (p->resultpair?(state[pc]!=0 && state[pc]!=7):state[pc]==1)','0','RESULT_DEFINED'),
             ('state[edge[i]]&flow','state[edge[i]]|flow','RESULT_JOIN'),
         ):
             assert production.count(before)==1

@@ -34,6 +34,20 @@ native64sysprogramrecord(Module *module, const Native64SysProgramSpec *spec)
     return bit/8<(unsigned int)type->np && (type->map[bit/8]&(128>>(bit%8)));
 }
 
+/* One shared imported trampoline keeps the generated fixed-prefix Type while
+ * each FRAME owns its complete typed tail. Exact per-site frames remain valid. */
+static int
+native64sysprogramentryframe(Type *type, const Native64SysSite *site)
+{
+    const LimboNative64Entry *prefix;
+    if(type==site->spec.type)return 1;
+    if(!native64sysframetype(type))return 0;
+    prefix=site->spec.operation==Native64SysSprint?&limbo_native64_Sys_sprint_prefix.fixed:
+        site->spec.operation==Native64SysAprint?&limbo_native64_Sys_aprint_prefix.fixed:
+        site->spec.operation==Native64SysPrint?&limbo_native64_Sys_print_prefix.fixed:&limbo_native64_Sys_fprint_prefix.fixed;
+    return type->size==(int)prefix->frame_size && type->np==(int)prefix->map_bytes && !memcmp(type->map,prefix->map,type->np);
+}
+
 /* The mapped call operand must resolve to this trampoline before publishing a
  * result address. A matching Type alone never authorizes another native C entry. */
 static int
@@ -46,7 +60,7 @@ native64sysprogramtarget(const Native64SysSite *site)
     memmove(&target,base+site->call.d.ind,sizeof(target));
     if(target==nil || target==H || (uintptr)target>(uintptr)-1-sizeof(*target) ||
        target->prog!=nil || target->nlinks<=0 || target->nlinks>65536 || ordinal>=(unsigned int)target->nlinks)return 0;
-    return target->links[ordinal].frame==site->spec.type && target->links[ordinal].u.runt==Sys_programcall64;
+    return native64sysprogramentryframe(target->links[ordinal].frame,site) && target->links[ordinal].u.runt==Sys_programcall64;
 }
 
 /* The generic local binder delegates only through this explicit owned hook.
@@ -101,7 +115,7 @@ native64sysprogramcall(void *frame)
         if(site->callpc==nil || active.lr!=site->callpc+1)continue;
         ordinal=site->call.reg;
         if(memcmp(site->bindpc,&site->binding,sizeof(Inst)) || memcmp(site->callpc,&site->call,sizeof(Inst)) ||
-           R.M->nlinks<=0 || R.M->nlinks>65536 || ordinal>=(unsigned int)R.M->nlinks || R.M->links[ordinal].frame!=site->spec.type ||
+           R.M->nlinks<=0 || R.M->nlinks>65536 || ordinal>=(unsigned int)R.M->nlinks || !native64sysprogramentryframe(R.M->links[ordinal].frame,site) ||
            R.M->links[ordinal].u.runt!=Sys_programcall64)error(exBounds);
         if(!native64syssitesrun(module,i,currun(),frame,1)){
             kgerrstr(diagnostic,sizeof(diagnostic));

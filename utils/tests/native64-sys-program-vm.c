@@ -35,8 +35,8 @@ static void programrun(int b,int jit,int q,int mode){
  p[pc].op=ILEA;p[pc].add=SRC(AFP)|DST(AFP|AIND);p[pc].reg=b==1?24:4;p[pc].s.ind=resultoffset;p[pc].d.i.f=40;p[pc++].d.i.s=32;
  p[pc].op=IMCALL;p[pc].add=SRC(AFP)|AXIMM|DST(AFP);p[pc].s.ind=40;p[pc++].d.ind=linkoffset;p[pc].op=IEXIT;p[pc++].add=SRC(AXXX)|DST(AXXX);m->nprog=pc;m->entry=p;
  for(i=0;i<count;i++)slots[i]=(Native64TailSlot){Native64TailRef,8*i,8,&Tstring};spec.frame=(Native64SysFrameSpec){b==1?Native64SysSprint:Native64SysFprint,m->type[2],m->type[1],resultoffset,slots,count,8,128};require(Sys_setprogram64(m,&spec,1));
- target=mallocz(sizeof(*target),1);require(target!=nil);target->ref=1;target->origmp=H;target->ntype=1;target->type=mallocz(sizeof(Type*),1);require(target->type!=nil);target->type[0]=m->type[2];target->type[0]->ref++;
- target->ref++;native=mklinkmod(target,1);require(native!=H);native->MP=H;native->links[0].frame=m->type[2];native->links[0].u.runt=mode==2?programforeign:Sys_programcall64;
+ target=mallocz(sizeof(*target),1);require(target!=nil);target->ref=1;target->origmp=H;target->ntype=1;target->type=mallocz(sizeof(Type*),1);require(target->type!=nil);if(mode>=4){uchar fixedmap[]={0,b==1?0x80:0xc0};if(mode==5)fixedmap[0]=0x80;target->type[0]=dtype(freeheap,b==1?72:80,fixedmap,2);require(target->type[0]!=nil);}else{target->type[0]=m->type[2];target->type[0]->ref++;}
+ target->ref++;native=mklinkmod(target,1);require(native!=H);native->MP=H;native->links[0].frame=target->type[0];native->links[0].u.runt=mode==2?programforeign:Sys_programcall64;
  if(jit)require(compile(m,m->nprog,nil));if(mode==1)m->prog[spec.bindpc].reg^=8;
  m->ref++;starting=m;started=nil;require(kprotect(start,nil));process=started;rootenvironment(process);root=process->R.FP;memmove(root+linkoffset,&native,8);
  fdtype=dtype(freeheap,sizeof(Sys_FD),nil,0);require(fdtype!=nil);
@@ -45,10 +45,10 @@ static void programrun(int b,int jit,int q,int mode){
   else{text=cell->seed==1?c2string((char*)cell->initial,cell->length):c2string(store->ordinal==0?"chosen":"failure",store->ordinal==0?6:7);value=text;}memmove(root+64+8*i,&value,8);}
  if(b!=1)memset(root+resultoffset,0x5a,8);memset(root+niloffset+8,0xa5,8);process->quanta=q;
  for(steps=0;steps<10000;steps++){done=kprotect(executeprocess,process);if(!done)break;}failat=0;
- if(steps>=10000 || strcmp(worker.env->errstr,mode==1||mode==2?exBounds:mode==3?exHeap:""))fprintf(stderr,"program case=%d jit=%d q=%d mode=%d error=%s\n",b,jit,q,mode,worker.env->errstr);
- programcheck(steps<10000 && !strcmp(worker.env->errstr,mode==1||mode==2?exBounds:mode==3?exHeap:""),"complete VM outcome");
- programcheck(programcalls==((mode==0||mode==3)?1:0),"dispatch count");
- if(mode){if(b==1){memmove(&value,root+resultoffset,8);programcheck(value==H,"failed String preserved");}else{memmove(&guard,root+resultoffset,8);programcheck(guard==0x5a5a5a5a5a5a5a5aULL,"failed scalar preserved");}}
+ if(steps>=10000 || strcmp(worker.env->errstr,mode==1||mode==2||mode==5?exBounds:mode==3?exHeap:""))fprintf(stderr,"program case=%d jit=%d q=%d mode=%d error=%s\n",b,jit,q,mode,worker.env->errstr);
+ programcheck(steps<10000 && !strcmp(worker.env->errstr,mode==1||mode==2||mode==5?exBounds:mode==3?exHeap:""),"complete VM outcome");
+ programcheck(programcalls==((mode==0||mode==3||mode==4)?1:0),"dispatch count");
+ if(mode && mode!=4){if(b==1){memmove(&value,root+resultoffset,8);programcheck(value==H,"failed String preserved");}else{memmove(&guard,root+resultoffset,8);programcheck(guard==0x5a5a5a5a5a5a5a5aULL,"failed scalar preserved");}}
  else if(b==1){memmove(&text,root+resultoffset,8);programcheck(text!=H && text->len==11 && !memcmp(text->Sascii,"typed error",11),"String result published");}
  else{memmove(&status,root+resultoffset,4);programcheck(status==71+b,"Word result published");for(i=4;i<8;i++)programcheck(root[resultoffset+i]==0x5a,"Word width preserved");}
  for(i=0;i<8;i++)programcheck(root[niloffset+8+i]==0xa5,"caller guard");
@@ -59,5 +59,5 @@ int main(int argc,char**argv){int b,j,q,k,total=0;int quanta[]={1,3,1000};requir
  rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;require(dis64selectlaunch("dis64-calls"));
  PROGRAM_HANDLERS
  optab[IMOVP]=actual_movp;
- for(b=0;b<3;b++)for(j=0;j<2;j++)for(q=0;q<3;q++)for(k=0;k<4;k++){if(argc==2 && k!=2)continue;programrun(b,j,quanta[q],k);total++;}
- printf("PASS full Sys program VM: %d C/JIT recipe calls, quanta 1/3/1000, stale-code and foreign-target refusal, producer allocation failure and complete retirement; formatter producer bounded\n",total);return 0;}
+ for(b=0;b<3;b++)for(j=0;j<2;j++)for(q=0;q<3;q++)for(k=0;k<6;k++){if(argc==2 && k!=2)continue;programrun(b,j,quanta[q],k);total++;}
+ printf("PASS full Sys program VM: %d C/JIT recipe calls, quanta 1/3/1000, shared fixed-prefix entries and bad-prefix refusal, stale-code and foreign-target refusal, producer allocation failure and complete retirement; formatter producer bounded\n",total);return 0;}

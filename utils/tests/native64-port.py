@@ -411,6 +411,8 @@ def main():
         build, env, logs/'emuinit-getenv.log')
     run([sys.executable, str(tests/'native64-sys-program.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'sys-program.log')
+    run([sys.executable, str(tests/'native64-emuinit-full.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'emuinit-full.log')
     run([sys.executable, str(tests/'native64-typed-module.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'typed-module-exports-mcall.log')
     run([sys.executable, str(tests/'native64-typed-external.py'), '--limbo', str(tools/'limbo')],

@@ -132,6 +132,7 @@ struct Addr
 	long	reg;
 	long	offset;
 	Decl	*decl;
+	Type *native64type;		/* Borrowed per-use type before temporary reuse; no wire field. */
 };
 
 struct Inst
@@ -149,6 +150,7 @@ struct Inst
 	Inst	*branch;		/* branch destination */
 	Inst	*next;
 	int	block;			/* blocks nested inside */
+	Type *native64args;		/* Borrowed instantiated variadic FRAME arguments; no wire field. */
 };
 
 struct Case
