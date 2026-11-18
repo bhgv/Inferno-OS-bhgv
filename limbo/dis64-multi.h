@@ -348,6 +348,12 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     if(i){c->state[index]=2;c->height[index]=1;return 1;}
     if(p->reason==nil || (strcmp(p->reason,"unsupported-opcode") && !((c->external>=2 || c->loads) && p->code && !p->frame.reason && !p->data.reason)))goto fail;
     p->reason=nil;p->ntables=0;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
+    if(c->loads){
+        unsigned int before=p->frame.bytes;
+        if(!typedstatframe(c,fn,p,stop))goto fail;
+        if(p->frame.bytes-before>32*1024*1024-c->cost){typedfail(p,"multi-storage-budget");goto fail;}
+        c->cost+=p->frame.bytes-before;
+    }
     p->sites=allocmem((p->count/2+1)*sizeof(*p->sites));
     if(c->external)p->external=allocmem((p->count/2+1)*sizeof(*p->external));
     inside=allocmem(p->count);memset(inside,0,p->count);

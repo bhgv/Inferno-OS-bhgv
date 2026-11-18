@@ -1,4 +1,67 @@
 /* Fixed-arity imported calls in trusted final compiler IR. No load/file admission. */
+/* One native-only mixed result: Sys.fstat -> (int, Sys.Dir).
+ * Prove every scalar/root leaf against both the declaration and caller frame.
+ * No aggregate return forwarding or general tuple-call ABI is admitted. */
+static int
+typedstatresult(Decl *fn,Inst *binding,Dis64TypedBody *p,unsigned int *base,int relocate)
+{
+ static const unsigned int old[]={0,8,12,16,20,24,32,36,40,44,48,56,64,68};
+ static const unsigned int native[]={0,8,16,24,32,40,48,52,56,60,64,72,80,84};
+ static const int kinds[]={Tint,Tstring,Tstring,Tstring,Tstring,Tbig,Tint,Tint,Tint,Tint,Tint,Tbig,Tint,Tint};
+ Dis64Layout result={0};Dis64LayoutLeaf *leaf,*cell;Type *t,*fd;Decl *field,*formal;unsigned int i,j,first=0,end,delta;int ok=0;
+ if(!(formal=fn->ty->ids) || formal->next || !formal->ty || formal->ty->kind!=Tref || !(fd=formal->ty->tof) || fd->kind!=Tadt ||
+    !fd->decl || !fd->decl->sym || strcmp(fd->decl->sym->name,"FD") || !fd->decl->dot || !fd->decl->dot->sym || strcmp(fd->decl->dot->sym->name,"Sys") ||
+    !fd->ids || fd->ids->next || !fd->ids->ty || fd->ids->ty->kind!=Tint || fd->ids->offset || fd->size!=4)return 0;
+ if(!fn->sym || strcmp(fn->sym->name,"fstat") || !fn->dot || !fn->dot->sym || strcmp(fn->dot->sym->name,"Sys") ||
+    !(t=fn->ty->tof) || t->kind!=Ttuple || !(field=t->ids) || !field->ty || field->ty->kind!=Tint ||
+    !(field=field->next) || field->next || !field->ty || field->ty->kind!=Tadt || !field->ty->decl ||
+    !field->ty->decl->sym || strcmp(field->ty->decl->sym->name,"Dir") || !field->ty->decl->dot ||
+    !field->ty->decl->dot->sym || strcmp(field->ty->decl->dot->sym->name,"Sys") ||
+    binding->sm!=Afp || binding->s.reg<32 || binding->s.reg>Dis64LayoutBytes-72 || !dis64layouttype(t,&result) || result.count!=14 || result.bytes!=88 || result.legacybytes!=72)goto done;
+ for(first=0;first<p->frame.count;first++)if(p->frame.leaves[first].legacy==(unsigned int)binding->s.reg)break;
+ if(first>p->frame.count || 14>p->frame.count-first)goto done;
+ *base=(p->frame.leaves[first].native+7)&~7U;
+ for(i=0;i<14;i++){
+  leaf=result.leaves+i;cell=p->frame.leaves+first+i;
+  if(leaf->legacy!=old[i] || leaf->native!=native[i] || leaf->kind!=kinds[i] ||
+     leaf->oldbytes!=(kinds[i]==Tbig?8:4) || leaf->bytes!=(kinds[i]==Tint?4:8) ||
+     cell->legacy!=binding->s.reg+old[i] || cell->kind!=kinds[i] || cell->oldbytes!=leaf->oldbytes || cell->bytes!=leaf->bytes ||
+     (!relocate && cell->native!=*base+native[i]))goto done;
+ }
+ end=p->frame.leaves[first+13].native+4;
+ if(*base>Dis64LayoutBytes-88 || end>*base+88)goto done;
+ delta=*base+88-end;
+ if(relocate){
+  if(delta>Dis64LayoutBytes-p->frame.bytes)goto done;
+  for(i=0;i<14;i++)p->frame.leaves[first+i].native=*base+native[i];
+  for(j=first+14;j<p->frame.count;j++)p->frame.leaves[j].native+=delta;
+  p->frame.bytes+=delta;
+ }
+ if(*base%8 || *base>p->frame.bytes || 88>p->frame.bytes-*base)goto done;
+ ok=1;
+ done:dis64layoutfree(&result);return ok;
+}
+
+/* Repack only exact fstat caller-result groups before translating any body
+ * instruction. Destructured locals can otherwise drop the tuple's status pad.
+ * Legacy bytes/descriptors stay unchanged; all native users share this plan. */
+static int
+typedstatframe(TypedMulti *c,Decl *owner,Dis64TypedBody *p,unsigned int stop)
+{
+ unsigned int pc,end,base;Inst *in,*binding,*call;Decl *arg,*fn;
+ for(pc=p->first;pc<stop;pc++){
+  in=c->instructions[pc];if(!in || in->op!=IMFRAME || !(fn=in->m.decl) || !fn->sym || strcmp(fn->sym->name,"fstat") ||
+     !fn->dot || !fn->dot->sym || strcmp(fn->dot->sym->name,"Sys"))continue;
+  end=pc+1;while(end<stop && c->instructions[end] && c->instructions[end]->dm==Afpind)end++;
+  if(end<=pc+1 || end>=stop || !(call=c->instructions[end]) || call->op!=IMCALL || call->m.decl!=fn ||
+     !(binding=c->instructions[end-1]) || binding->op!=ILEA || binding->sm!=Afp || binding->s.reg<32 || binding->s.reg>Dis64LayoutBytes-72 ||
+     !fn->ty || fn->ty->kind!=Tfn || !fn->ty->tof)return typedfail(p,"external-result-kind");
+  for(arg=owner->ty->ids;arg;arg=arg->next)if(!arg->ty || (binding->s.reg<arg->offset+arg->ty->size && binding->s.reg+72>arg->offset))return typedfail(p,"external-result-kind");
+  if(!typedstatresult(fn,binding,p,&base,1))return typedfail(p,"external-result-kind");
+ }
+ return 1;
+}
+
 static int
 typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int *next)
 {
@@ -41,11 +104,14 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
     }
     kind=fn->ty->tof->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
     if(kind!=Tnone){
-        if(!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal)return typedfail(p,"external-result-kind");
+        if(!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal && !(c->loads && kind==Ttuple))return typedfail(p,"external-result-kind");
         contract=(root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4)|(root?16:0);
         if(at+1!=end || (binding=c->instructions[at])==nil || binding->op!=ILEA || binding->mm!=Anone ||
            binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil)return typedfail(p,"external-result");
-        if(binding->sm==Afp){
+        if(c->loads && kind==Ttuple){
+            if(!typedstatresult(fn,binding,p,&local,0))return typedfail(p,"external-result-kind");
+            contract=88;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;
+        }else if(binding->sm==Afp){
             if(!typedoperand(Afp,&binding->s,root?TypedRoot:kind,0,0,p,&source,&sm,&actual) ||
                (root && actual!=kind && actual!=Tany))return typedfail(p,"external-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;

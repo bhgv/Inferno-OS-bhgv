@@ -58,3 +58,7 @@ module через C/JIT, включая self-tail recursion. Это не зап�
 Следующий участок: [прямое сравнение Sys.FD с nil](native64-emuinit-fd.ru.md).
 getenv теперь проходит PC101 и останавливается на PC104: Sys.fstat возвращает
 aggregate (int, Dir). Полный emuinit/AWM всё ещё закрыт.
+
+Следующий участок: [Sys.fstat result и caller tuple layout](native64-emuinit-fstat.ru.md).
+getenv теперь проходит PC104 и останавливается на PC112 (INEWA byte array).
+Полный emuinit/AWM пока не исполняется; classic bytes сохранены.

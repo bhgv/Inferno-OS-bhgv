@@ -133,6 +133,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-unquoted.log"
           python3 utils/tests/native64-emuinit-fd.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fd.log"
+          python3 utils/tests/native64-emuinit-fstat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fstat.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -212,6 +214,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-unquoted.log"
           python3 utils/tests/native64-emuinit-fd.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fd.log"
+          python3 utils/tests/native64-emuinit-fstat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fstat.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

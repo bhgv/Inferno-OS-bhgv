@@ -186,8 +186,21 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 bit=at/8;if((map[bit/8] & (0x80>>(bit%8)))==0)return 0;
             }
         }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==(128|88)){
+            unsigned int k,found=0;
+            for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].contract==88)found++;
+            if(found!=1)return 0;
+        }
         for(j=0;j<f->nsites;j++){
             site=f->sites+j;if(site->external>1)return 0;
+            if(site->contract==88){
+                if(!site->external || site->inherited || site->table>=s->ntables || site->target>=s->tables[site->table].count || site->end<2 || site->end>=f->count)return 0;
+                request=s->tables[site->table].imports+site->target;
+                if(strcmp(request->name,"fstat") || request->signature!=0xda4499c2U || request->bytes!=72 || request->mapbytes!=2 || request->map[0] || request->map[1]!=0x80)return 0;
+                step=f->code+site->end-1;
+                if(step->op!=ILEA || step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->m || step->d!=32 || step->returned!=(128|88) || step->s<0 || (unsigned long)step->s>f->bytes ||
+                   !native64statresultmap(f->bytes,f->map,f->mapbytes,step->s))return 0;
+            }
             if(!site->external){if(site->target>=s->nfunctions)return 0;}
             if(!site->external){
                 if((site->contract==48)!=(s->functions[site->target].resultcontract==48) ||
