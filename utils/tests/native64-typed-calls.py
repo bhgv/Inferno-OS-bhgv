@@ -33,7 +33,7 @@ def main():
         subprocess.run(command,check=True,env=env)
         subprocess.run(runner+[str(binary)],check=True,env=env,timeout=120)
         production=(ROOT/'include/native64-typed-code.h').read_text()
-        for before,after,case in (('(unsigned long)s->d>=count','0',3),('s->m>32767','0',6)):
+        for before,after,case in (('(unsigned long)s->d>=count','0',3),('else if(mm==AXIMM){if(s->m < -32768 || s->m>32767)return 0;}','else if(mm==AXIMM){if(s->m < -32768)return 0;}',6)):
             assert production.count(before)==1
             (work/'native64-typed-code.h').write_text(production.replace(before,after))
             subprocess.run(command,check=True,env=env)
