@@ -103,7 +103,7 @@ def main():
                     bodies += '\n'+function(strings,'OP(lenc)')+'\n'
                     bodies += '\n'+function(vm,'List*\ncons(')+'\n'+function(vm,'OP(consp)')+'\n'
                     source += '\n'+function((ROOT/'libinterp/load.c').read_text(), 'void\nfreemod(').replace('void\nfreemod(', 'void\nnative64_owned_freemod(', 1)+'\n'
-                    source += (ROOT/'utils/tests/native64-sys-frame.c').read_text().replace('VM_FRAME_IMPLEMENTATION', bodies)
+                    source += (ROOT/'utils/tests/native64-sys-frame.c').read_text().replace('VM_FRAME_IMPLEMENTATION', bodies).replace('/* REAL_EMUINIT_PLANS */', (ROOT/'utils/tests/native64-emuinit-varargs.c').read_text())
                     source += (ROOT/'utils/tests/native64-typed-body.c').read_text()
                     for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64(', 'int\nSys_setframes64(', 'int\nSys_clearframes64(', 'int\nSys_bindsite64(', 'int\nSys_callsite64(', 'int\nSys_bindframe64(', 'int\nSys_sprintframe64(', 'int\nSys_aprintframe64(', 'int\nSys_printframe64(', 'int\nSys_fprintframe64('):
                         source += '\n'+function(runtime, signature)+'\n'
@@ -144,6 +144,7 @@ def main():
                             ('fp-current-mp', '@unit', 'R.s = (uchar*)input.value+bases[1]+cell->setupoffset; // Actual MP input at defining PC.', 'R.s = &text; // Deliberately substitute the old String seed.'),
                             ('fp-order', '@unit', 'index = bank->order[i]; // Compiler-defined preparation order.', 'index = bank->order[bank->steps-1-i]; // Deliberately reverse preparation.'),
                             ('typed-field-origin', '@unit', 'origin=(uchar*)owner.value+bases[cell->space]+cell->offset; // Typed ADT field origin.', 'origin=(uchar*)owner.value+bases[cell->space]+store->source; // Deliberately reuse the legacy ADT field offset.'),
+                            ('emuinit-clear', '@unit', 'value=H;R.s=&value;R.d=origin;movp();', 'value=H;R.s=&value;R.d=origin; /* Omit source FD retirement. */'),
                             ('typed-body-branch', '@unit', 'target=program+step->d;R.d=&target;', 'target=program+pc+1;R.d=&target;'),
                             ('typed-return-width', 'native64-typed-return.h', 'b->width!=width', '0'),
                             ('typed-return-map', 'native64-typed-return.h', '!= b->reference)', '!= b->reference && 0)')):

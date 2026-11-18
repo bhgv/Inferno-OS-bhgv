@@ -1495,6 +1495,7 @@ native64callstores(Native64CallPC *note, int linked, Decl *globals, Inst **image
     Native64CallArg *field;
     Inst *in;
     unsigned int count = 0, i, low, high, middle, op;
+    Inst *cleanups[4098], *later; unsigned int ncleanups = 0, prior;
     char *reason = note->lowerreason, *kind, *source;
     long value;
     if(reason == nil && !linked) reason = "unlinked";
@@ -1507,6 +1508,25 @@ native64callstores(Native64CallPC *note, int linked, Decl *globals, Inst **image
         for(in=note->frame->next; in != note->result; in=in->next) {
             if(in == nil) { reason = "instruction-range"; break; }
             if(in->op == INOOP) continue;
+            /* The optimizer clears an already transferred temporary FD owner.
+             * Keep the exact cleanup separate from argument writes; never turn
+             * an arbitrary direct write into a discarded instruction. */
+            if(in->op==IMOVP && in->sm==Amp && in->dm==Afp && in->mm==Anone && !in->branch &&
+               in->s.decl && in->s.decl->ty && in->s.decl->ty->kind==Tany &&
+               in->s.reg==in->s.decl->offset && !in->s.offset &&
+               in->d.decl && in->d.decl->ty &&
+               note->caller && note->caller->desc && in->d.reg>=STemp && in->d.reg%4==0 &&
+               in->d.reg/32<note->caller->desc->nmap &&
+               (note->caller->desc->map[in->d.reg/32]&(0x80>>((in->d.reg/4)%8))) &&
+               in->d.reg==in->d.decl->offset && !in->d.offset){
+                for(prior=0;prior<count;prior++)if(stores[prior].op==IMOVP && stores[prior].origin->sm==Afp &&
+                    stores[prior].origin->s.reg==in->d.reg && note->args[stores[prior].field].kind==Tref)break;
+                if(prior==count || ncleanups==nelem(cleanups)){reason="cleanup-origin";break;}
+                for(later=in->next;later && later!=note->result;later=later->next)
+                    if(later->sm==Afp && later->s.reg==in->d.reg)break;
+                if(later!=note->result){reason="cleanup-live-source";break;}
+                cleanups[ncleanups++]=in;continue;
+            }
             if(count == note->arguments || in->branch != nil || in->mm != Anone ||
                in->dm != Afpind || in->d.reg != note->frame->d.reg ||
                (in->sm != Afp && in->sm != Amp && in->sm != Aimm)) { reason = "argument-address"; break; }
@@ -1614,6 +1634,8 @@ native64callstores(Native64CallPC *note, int linked, Decl *globals, Inst **image
             fprint(2, "%s{\"legacy_pc\":%ld,\"opcode\":%ud,\"fixed\":%s,\"ordinal\":%ud,\"kind\":\"%s\",\"source_mode\":\"%s\",\"source_value\":%ld,\"destination\":%ud,\"bytes\":8,\"source_cell\":%ld,\"source_offset\":%ud}",
                 i == 0 ? "" : ",", in->pc, stores[i].op, field->fixed ? "true" : "false", field->ordinal, kind, source, value, field->native, stores[i].cell == (unsigned int)-1 ? -1L : (long)stores[i].cell, stores[i].cell == (unsigned int)-1 ? 0 : cells[stores[i].cell].native);
         }
+        fprint(2, "],\"cleanups\":[");
+        for(i=0;i<ncleanups;i++)fprint(2,"%s%ld",i?",":"",cleanups[i]->pc);
         fprint(2, "],\"bank\":{\"evaluation\":\"per-read\",\"bytes\":%ud,\"map\":[", bankbytes);
         for(i=0; i<mapbytes; i++) fprint(2, "%s%ud", i == 0 ? "" : ",", bankmap[i]);
         fprint(2, "],\"cells\":[");

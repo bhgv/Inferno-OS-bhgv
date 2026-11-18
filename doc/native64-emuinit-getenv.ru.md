@@ -35,3 +35,5 @@ getenv и unquoted (2 из 4 функций emuinit); init и loadmod остаю
 в обычном boot Sys registry также остаётся отдельным шагом: fixture
 регистрирует нужные три импорта явно. File admission не расширялся.
 Цель остаётся emuinit → /dis/wm/awm.dis → mod->init(nil, args).
+
+Следующий этап: [реальные variadic-планы и boot Sys.fstat](native64-emuinit-varargs.ru.md). fstat теперь зарегистрирован в обычном выбранном boot-профиле; все три variadic source-плана проверяются и воспроизводятся через typed gateways. Полные init/loadmod пока не исполняются.

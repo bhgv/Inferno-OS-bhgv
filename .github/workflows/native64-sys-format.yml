@@ -11,6 +11,7 @@ on:
       - 'libinterp/**'
       - 'lib9/**'
       - 'utils/tests/native64-*'
+      - 'appl/cmd/emuinit.b'
       - 'module/sys.m'
       - 'module/math.m'
       - 'emu/port/dis.c'

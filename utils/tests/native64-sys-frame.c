@@ -885,6 +885,8 @@ static void vmcase(int phase, int operation, int mode, int useframe)
     heapmonitor = nil; sourcebankpool = 0;
 }
 
+/* REAL_EMUINIT_PLANS */
+
 int main(int argc, char **argv)
 {
     int phase, operation, mode, useframe, cases = 0;
@@ -896,6 +898,7 @@ int main(int argc, char **argv)
     vmfpdefinitions();
     vmseedstrings();
     vmtypedfields();
+    vmemuinitplans();
     typedbodytests();
     for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
         vmcase(phase, operation, mode, useframe); cases++;

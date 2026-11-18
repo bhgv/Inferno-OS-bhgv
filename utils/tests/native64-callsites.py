@@ -137,18 +137,19 @@ def legacy_instructions(data, with_types=False, with_data=False, with_exports=Fa
     return header, code, types, initial
 
 
-def verify_locations(data, records, diagnostics):
+def verify_locations(data, records, diagnostics, callers=None):
     sites = [json.loads(line.removeprefix('NATIVE64_CALL_PC ')) for line in diagnostics.splitlines() if line.startswith('NATIVE64_CALL_PC ')]
     by_id = {site['id']: site for site in sites}
     if len(sites) != len(records) or len(by_id) != len(records) or set(by_id) != {r['id'] for r in records}:
         raise RuntimeError('Call-site identities/locations were lost or duplicated')
     header, code = legacy_instructions(data)
+    if callers is None: callers = {header[7]: header[8]}
     spaces = {0: 'mp', 1: 'fp', 4: 'mp-indirect', 5: 'fp-indirect'}
     for record in records:
         site = by_id[record['id']]
         if site['pc_space'] != 'legacy-dis' or not site['located'] or not site['linked']:
             raise RuntimeError('Ordinary Sys call was not located after optimization: '+str(site))
-        if site['caller_pc'] != header[7] or site['caller_descriptor'] != header[8]: raise RuntimeError('Caller identity does not match the serialized init entry/frame')
+        if callers.get(site['caller_pc']) != site['caller_descriptor']: raise RuntimeError('Caller identity does not match a serialized entry/frame')
         frame, result, call = [code[site[k]] for k in ('frame_pc', 'result_pc', 'call_pc')]
         if (frame['op'], result['op'], call['op']) != (5, 39, 9): raise RuntimeError('PCs do not identify actual FRAME/LEA/MCALL bytes')
         if not 0 <= site['frame_descriptor'] < header[5] or frame['s'] != [site['frame_descriptor']]: raise RuntimeError('Wrong actual descriptor ordinal')
@@ -203,6 +204,29 @@ def verify_stores(data, records, diagnostics):
                 if store['kind'] != slot['kind'] or store['opcode'] != expected_opcode: raise RuntimeError('Wrong canonical value opcode')
             if store['destination'] != expected_destination or store['bytes'] != 8 or origin['d'] != [location['frame_slot'], expected_legacy]:
                 raise RuntimeError('Native destination does not match complete typed packing')
+        # Every non-NOP instruction before LEA must be accounted for. An owner
+        # cleanup follows a proven earlier root transfer and cannot feed a later read.
+        cleanups = program.get('cleanups', [])
+        storepcs = {store['legacy_pc'] for store in program['stores']}
+        if len(storepcs) != len(program['stores']) or len(set(cleanups)) != len(cleanups) or storepcs.intersection(cleanups):
+            raise RuntimeError('Duplicate store/cleanup instruction')
+        for pc in cleanups:
+            if not location['frame_pc'] < pc < location['result_pc']: raise RuntimeError('Cleanup escapes pending frame')
+            clear = code[pc]
+            if clear['op'] != 41 or clear['mode'] != 1 or clear['m'] is not None or len(clear['s']) != 1 or len(clear['d']) != 1:
+                raise RuntimeError('Cleanup is not a direct nil owner clear')
+            src, dst = clear['s'][0], clear['d'][0]
+            if initial.get(src) is not None: raise RuntimeError('Cleanup source is initialized data')
+            for offset, descriptor in ((src, 0), (dst, location['caller_descriptor'])):
+                extent, roots = types[descriptor]; bit = offset//4
+                if offset < (20 if descriptor else 0) or offset%4 or offset+4 > extent or not (bit//8 < len(roots) and roots[bit//8] & (128>>(bit%8))):
+                    raise RuntimeError('Cleanup owner is outside a mapped root')
+            if record['callee'] != 'Sys_fprint' or not any(store['legacy_pc'] < pc and store['opcode']==41 and store['fixed'] and store['ordinal']==0 and store['source_mode']=='fp' and store['source_value']==dst for store in program['stores']):
+                raise RuntimeError('Cleanup has no earlier ownership transfer')
+            if any(old['mode']>>3&7 == 1 and old['s']==[dst] for old in code[pc+1:location['result_pc']]):
+                raise RuntimeError('Cleanup source remains live')
+        actualpcs = {pc for pc in range(location['frame_pc']+1, location['result_pc']) if code[pc]['op'] != 0}
+        if actualpcs != storepcs.union(cleanups): raise RuntimeError('Unaccounted pending-frame instruction')
         bank = program['bank']
         if bank['evaluation'] != 'per-read': raise RuntimeError('Source storage aliases must not imply value caching')
         source_offsets = {}
@@ -556,6 +580,8 @@ def generate(limbo, work, env):
         header += ['static const unsigned int call'+label+'base = '+str(base)+';']
     header += emit_program('callmixedstores', programs[records[9]['id']])
     (work/'callsites-native64.h').write_text('\n'.join(header)+'\n')
+    import runpy
+    runpy.run_path(str(ROOT/'utils/tests/native64-emuinit-varargs.py'))['generate'](limbo,work,env)
     print('PASS source call-site plans: four Sys operations, 2/150/4096 slots, 4097 refusal, empty/mixed tails, complete maps, opaque-reference refusal, deterministic diagnostics, unchanged legacy bytecode and preserved Dis64 refusal, byte-decoded final PCs, nested FP/MP results and canonical native store programs', flush=True)
     return records
 
