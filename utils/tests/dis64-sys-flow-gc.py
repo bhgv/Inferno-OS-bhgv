@@ -37,12 +37,15 @@ def main():
         runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''))
         subprocess.run(common+[str(work/'test.c'),'-o',str(work/'test')],check=True)
         subprocess.run(runner+[str(work/'test')],check=True,timeout=90)
-        pilot=(ROOT/'include/dis64-pilot.h').read_text()
+        pilot=(ROOT/'include/dis64/pilot/operands.h').read_text()
         marker='16U|((*target & state)&239U)'
         if pilot.count(marker)!=1:raise RuntimeError('intersection control marker drift')
         # Override the actual included proof; the malformed diamond must hit the admission predicate.
         override=work/'override';override.mkdir()
-        (override/'dis64-pilot.h').write_text(pilot.replace(marker,'16U|((*target | state)&239U)'))
+        shadow=override/'dis64/pilot';shadow.mkdir(parents=True)
+        for name in ('dis64-pilot.h','dis64-code.h'):(override/name).write_text((ROOT/'include'/name).read_text())
+        (shadow/'flow.h').write_text((ROOT/'include/dis64/pilot/flow.h').read_text())
+        (shadow/'operands.h').write_text(pilot.replace(marker,'16U|((*target | state)&239U)'))
         subprocess.run(common[:1]+['-I'+str(override)]+common[1:]+[str(work/'test.c'),'-o',str(work/'control')],check=True)
         result=subprocess.run(runner+[str(work/'control')],capture_output=True,text=True,timeout=90)
         if result.returncode!=14 or result.stderr.strip()!='Sys flow admission predicate':raise RuntimeError('flow intersection control missed predicate: '+result.stdout+result.stderr)

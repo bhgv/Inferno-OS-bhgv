@@ -34,9 +34,9 @@ def main():
         subprocess.run(command,check=True,env=env)
         subprocess.run(runner+[str(binary)],check=True,env=env,timeout=120)
         production=(ROOT/'include/native64-local-bind.h').read_text()
-        for before,case in (('(width!=1 && width!=4 && width!=8)',0),('!=reference',9)):
+        for before,case in (('(width!=1 && width!=4 && width!=8)',0),('):reference))error(exBounds);',9)):
             assert production.count(before)==1
-            replacement='0'if case==0 else '!=reference && 0'
+            replacement='0'if case==0 else '):reference) && 0)error(exBounds);'
             (work/'native64-local-bind.h').write_text(production.replace(before,replacement))
             subprocess.run(command,check=True,env=env)
             result=subprocess.run(runner+[str(binary)],capture_output=True,text=True,env=env,timeout=120)
