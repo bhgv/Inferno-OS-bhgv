@@ -280,6 +280,17 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if o['op']in(OPCODES['ISEND'],OPCODES['IRECV']):
+            assert loads and op==o['op']and returned==188 and o['m']is None and mode==o['mode']
+            sending=op==OPCODES['ISEND'];cm=(mode&7)if sending else(mode>>3&7);vm=(mode>>3&7)if sending else(mode&7)
+            ca=o['d']if sending else o['s'];va=o['s']if sending else o['d'];assert cm in(0,1)and vm in(0,1,2)
+            assert next(l for l in r['frame'if cm else'data']['leaves']if l[0]==ca[0])[4]==6
+            width=m&15;assert m in(1,4,8,24)
+            if vm!=2:
+                leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==va[0]);assert leaf[3]==width and (leaf[4]in ROOTS+(20,))==(m==24)
+            value=va[0]if vm==2 else maps['frame'if vm else'data'][va[0]];channel=maps['frame'if cm else'data'][ca[0]]
+            assert r['code'][pc]==[op,mode,value if sending else channel,m,channel if sending else value,188]
+            continue
         if o['op']==OPCODES['INEWCMP']:
             assert loads and op==o['op']==OPCODES['INEWCMP']and mode==o['mode']and returned in(183,185)
             size,mapping=types[o['s'][0]];n=size//4;assert n in(2,3)and size==4*n and mapping==bytes([192 if n==2 else 224])

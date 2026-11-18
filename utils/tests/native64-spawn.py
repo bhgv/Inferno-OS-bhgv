@@ -22,7 +22,7 @@ def generate(limbo,w):
 def boundaries(limbo,w):
  for source in(
   'implement Closed;Closed:module{run:fn();};run(){spawn run();}',
-  'implement Closed;Closed:module{run:fn(c:chan of int);};run(c:chan of int){spawn child(c);}child(c:chan of int){n:= <-c;}',
+  'implement Closed;Closed:module{run:fn(c:chan of (int,int));};run(c:chan of (int,int)){spawn child(c);}child(c:chan of (int,int)){n:= <-c;}',
   'implement Closed;Service:module{child:fn();};Closed:module{run:fn(s:Service);};run(s:Service){spawn s->child();}'):
   _,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert not next(r for r in rows if r['name']=='run')['accepted'],rows
  print('PASS spawn boundary: recursive spawn, unsupported child and imported mspawn remain closed',flush=True)

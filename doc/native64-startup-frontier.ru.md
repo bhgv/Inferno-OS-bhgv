@@ -104,3 +104,5 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий этап: [checked local spawn](native64-spawn.ru.md): spawn выполняется в C/JIT для полностью проверенных void bodies. AWM/Wmsrv init sites остаются PC127/30 с причиной multi-callee; дальше блокируют command PC1392 и wm PC40.
 
 Следующий этап: [borrowed List prefixes](native64-list-prefix.ru.md): awm.command проходит Sh.run preparation PC1392 и доходит до ISEND PC1401. Spawned handlers пока не принимаются целиком; Wmsrv wm остаётся PC40.
+
+Следующий этап: [primitive channel SEND/RECV](native64-channel-transfer.ru.md): awm.command проходит ISEND PC1401 и доходит до ICONSW PC1404 (fd list). Проверен реальный scheduler/wakeup, но command и GUI целиком пока не принимаются.

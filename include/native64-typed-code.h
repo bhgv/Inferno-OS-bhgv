@@ -84,6 +84,18 @@ native64typedchannel(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
   (mm==AXNON?!s->m:native64typedwordoperand(mode,s->m,fp,mp) && (mm!=AXIMM || (s->m>=-32768 && s->m<=32767)));
 }
 
+static int
+native64typedtransfer(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int cm=s->op==ISEND?UDST(s->mode):USRC(s->mode),vm=s->op==ISEND?USRC(s->mode):UDST(s->mode),width=s->m&15;
+ long channel=s->op==ISEND?s->d:s->s,value=s->op==ISEND?s->s:s->d;
+ if(s->returned!=188 || (s->op!=ISEND && s->op!=IRECV) || s->mode>255 || (s->mode&ARM)!=AXNON ||
+    (s->m!=1 && s->m!=4 && s->m!=8 && s->m!=24) || !native64typedrootoperand(cm,channel,fp,mp))return 0;
+ if(s->m==24)return native64typedrootoperand(vm,value,fp,mp);
+ if(vm==AIMM)return s->op==ISEND && width<8 && value>=-536870912L && value<=536870911L && (width!=1 || (value>=0 && value<=255));
+ return (vm==AFP || vm==AMP) && native64typedcodeoperand(vm,value,fp,mp) && value%width==0 && width<=(vm==AFP?fp:mp)-value;
+}
+
 /* Payload root-count is a checked role, relocated to a private native Type. */
 static int
 native64typedmappedchannel(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
@@ -233,6 +245,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==173){if(!native64typedcontextcopy(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==172 || s->returned==174){if(!native64typedcontextnew(s,fpbytes))return 0;continue;}
         if(s->returned==171){if(!native64typedtriplecopy(s,fpbytes))return 0;continue;}
+        if(s->returned==188){if(!native64typedtransfer(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==183 || s->returned==185){if(!native64typedmappedchannel(s,fpbytes,mpbytes))return 0;continue;}
         if(native64typedchannelop(s->op)){if(!native64typedchannel(s,fpbytes,mpbytes))return 0;continue;}
 		switch(s->op){
@@ -304,6 +317,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 	for(i=0;i<count;i++){
 		s=steps+i;p=out+i;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;p->reg=s->m;
 		p->s.imm=s->s;
+        if(s->returned==188){p->reg=0;p->d.ind=s->d;continue;}
         if(s->returned==183){p->d.ind=s->d;continue;}
         if(s->returned==185){p->d.i.f=32;p->d.i.s=0;continue;}
         if(s->returned==172){p->d.ind=s->d;continue;}

@@ -63,3 +63,6 @@ PC40 перед своим event loop. Полный AWM, Sh service и Android U
 Регрессии: прежние String/List operations, checked spawn и полный emuinit/Arg.
 Чистая amd64 console, paired boot и 324 настоящих C/JIT boot-процесса прошли.
 Все 16 classic startup artifacts сохраняют обычные bytes.
+
+Продолжение: [primitive SEND/RECV](native64-channel-transfer.ru.md)
+открывает sync send и переносит command с PC1401 на ICONSW PC1404.
