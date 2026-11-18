@@ -2,8 +2,8 @@
 #define NATIVE64_TYPED_CODE_H
 /* Trusted checked-IR materialization only; no bytecode/file admission. */
 #include "native64-model.h"
-/* Private compiler annotations: exact Draw.Context/Wmclient.Window root fields. */
-enum { Native64TypedContext = 96, Native64TypedContextNil = 97, Native64TypedWindow = 100, Native64TypedWindowNil = 101 };
+/* Private compiler annotations: exact selected Draw/Wmclient root fields. */
+enum { Native64TypedContext = 96, Native64TypedContextNil = 97, Native64TypedWindow = 100, Native64TypedWindowNil = 101, Native64TypedDraw = 113, Native64TypedDrawNil = 114, Native64TypedFieldArg = 125 };
 typedef struct Native64TypedStep Native64TypedStep;
 struct Native64TypedStep {
 	unsigned int op,mode;
@@ -129,6 +129,32 @@ native64typedwindowstep(const Native64TypedStep*s,unsigned int fp,unsigned int m
     (dm==(AFP|AIND) || dm==(AMP|AIND)) && native64typedrootoperand(sm,s->s,fp,mp) && native64typedrootoperand(dm&~AIND,s->d,fp,mp));
 }
 
+static unsigned int
+native64drawfieldoffset(unsigned int index)
+{
+ static const unsigned int offsets[]={48,56,64,8,16,24,0,8,16,24,32};return index<11?offsets[index]:~0U;
+}
+static int
+native64typedfieldoffset(long offset,int wide)
+{
+ unsigned int i;if(wide && (offset==72 || offset==104))return 1;
+ for(i=0;i<11;i++)if(offset==native64drawfieldoffset(i))return 1;return 0;
+}
+static int
+native64typeddrawstep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int sm=USRC(s->mode),dm=UDST(s->mode);
+ if(s->returned>=Native64TypedDrawNil && s->returned<Native64TypedDrawNil+11){
+  return s->returned!=Native64TypedDrawNil+2 && (s->op==IBEQL || s->op==IBNEL) && s->mode==(SRC(sm)|AXINM|DST(AIMM)) &&
+   (sm==(AFP|AIND) || sm==(AMP|AIND)) && s->m<=65535 && native64typedrootoperand(sm&~AIND,s->s,fp,mp) && native64typedrootoperand(AMP,s->m,fp,mp);
+ }
+ if(s->returned!=Native64TypedDraw || !native64typedfieldoffset(s->m,0))return 0;
+ return s->op==IMOVP && s->mode<=255 && (s->mode&ARM)==AXNON &&
+  ((sm==(AFP|AIND) || sm==(AMP|AIND))?
+   native64typedrootoperand(sm&~AIND,s->s,fp,mp) && native64typedrootoperand(dm,s->d,fp,mp):
+   (dm==(AFP|AIND) || dm==(AMP|AIND)) && native64typedrootoperand(sm,s->s,fp,mp) && native64typedrootoperand(dm&~AIND,s->d,fp,mp));
+}
+
 /* Input, layouts and semantic operand roles were proved by the compiler and
  * remain immutable. This bridge checks native encoding and local branch ownership.
  * Output must be disjoint from input. Refusal leaves all output bytes untouched.
@@ -153,6 +179,9 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
             if(!native64typedwindowstep(s,fpbytes,mpbytes) ||
                (s->returned!=Native64TypedWindow && (s->d<0 || (unsigned long)s->d>=count)))return 0;
             continue;
+        }
+        if(s->returned>=Native64TypedDraw && s->returned<Native64TypedDrawNil+11){
+            if(!native64typeddrawstep(s,fpbytes,mpbytes) || (s->returned!=Native64TypedDraw && (s->d<0 || (unsigned long)s->d>=count)))return 0;continue;
         }
 		switch(s->op){
 		case INEWAZ:case ISLICEA:case ICVTAC:
@@ -227,7 +256,10 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned>=Native64TypedWindowNil && s->returned<Native64TypedWindowNil+6){
             p->s.i.f=s->s;p->s.i.s=native64windowfieldoffset(s->returned-Native64TypedWindowNil);p->d.ins=out+s->d;continue;
         }
-        if(s->returned==Native64TypedContext || s->returned==Native64TypedWindow){
+        if(s->returned>=Native64TypedDrawNil && s->returned<Native64TypedDrawNil+11){
+            p->s.i.f=s->s;p->s.i.s=native64drawfieldoffset(s->returned-Native64TypedDrawNil);p->d.ins=out+s->d;continue;
+        }
+        if(s->returned==Native64TypedContext || s->returned==Native64TypedWindow || s->returned==Native64TypedDraw){
             p->reg=0;
             if(USRC(s->mode)&AIND){p->s.i.f=s->s;p->s.i.s=s->m;p->d.ind=s->d;}
             else{p->s.ind=s->s;p->d.i.f=s->d;p->d.i.s=s->m;}

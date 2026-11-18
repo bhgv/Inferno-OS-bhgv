@@ -421,6 +421,7 @@ def main():
     run([sys.executable,str(tests/'native64-context-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'context-fields.log')
     run([sys.executable,str(tests/'native64-geometry-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'geometry-args.log')
     run([sys.executable,str(tests/'native64-window-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'window-fields.log')
+    run([sys.executable,str(tests/'native64-draw-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'draw-fields.log')
     run([sys.executable,str(tests/'native64-list-call.py'),'--limbo',str(tools/'limbo')],build,env,logs/'list-call.log')
     run([sys.executable, str(tests/'native64-typed-module.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'typed-module-exports-mcall.log')

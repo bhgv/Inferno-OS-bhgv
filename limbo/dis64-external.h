@@ -102,6 +102,8 @@ typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"external-geometry-argument");
 }
 
+static int typedrootargclear(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*);
+static int typedselectedfieldarg(Inst*,Dis64TypedBody*,unsigned int,unsigned int,int);
 static int typedexternalstringlist(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*);
 
 static int
@@ -136,6 +138,10 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
             listinit=in;
             if(!typedexternalstringlist(c,p,frame,end,&at) || at>=end || !(in=c->instructions[at]))return typedfail(p,"external-list-argument");
         }
+        if(c->loads && root && (in->sm==Afpind || in->sm==Ampind)){
+            if(in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || offset>65535-8 || !typedselectedfieldarg(in,p,at-p->first,offset,kind))return typedfail(p,"external-field-argument");
+            at++;offset+=8;continue;
+        }
         if(c->loads && kind==Tint && in->op==ILENA){
             if(in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
                !typedbytearrayaddr(&in->s) || !typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual) || offset>65535-4)
@@ -162,7 +168,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
                in->d.decl!=listinit->d.decl || in->d.reg!=listinit->d.reg || in->d.offset ||
                !typedinst(in,stop,p,p->code+at-p->first,p->returns+at-p->first))return typedfail(p,"external-list-clear");
             p->returns[at++-p->first]=112;
-        }
+        }else if(c->loads && root && !typedrootargclear(c,p,c->instructions[at-1],end,&at))return 0;
     }
     kind=fn->ty->tof->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
     if(kind!=Tnone){

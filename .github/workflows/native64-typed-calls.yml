@@ -26,6 +26,7 @@ on:
       - 'utils/tests/native64-context-fields*'
       - 'utils/tests/native64-geometry-args*'
       - 'utils/tests/native64-window-fields*'
+      - 'utils/tests/native64-draw-fields*'
       - 'utils/tests/native64-list-call*'
       - 'utils/tests/native64-emuinit-full*'
       - 'utils/tests/dis64-variadic*'
@@ -159,6 +160,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/geometry-args.log"
           python3 utils/tests/native64-window-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/window-fields.log"
+          python3 utils/tests/native64-draw-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/draw-fields.log"
           python3 utils/tests/native64-list-call.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/list-call.log"
       - uses: actions/upload-artifact@v4
@@ -258,6 +261,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/geometry-args.log"
           python3 utils/tests/native64-window-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/window-fields.log"
+          python3 utils/tests/native64-draw-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/draw-fields.log"
           python3 utils/tests/native64-list-call.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/list-call.log"
       - uses: actions/upload-artifact@v4

@@ -24,7 +24,17 @@ native64typedgeometryarg(const Native64TypedStep*s,unsigned int fp,unsigned int 
  return 1;
 }
 
-enum { Native64TypedListPrep=112 };
+static int
+native64typedfieldarg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const uchar*map,unsigned int np)
+{
+ unsigned int sm=USRC(s->mode),bit;
+ if(s->op!=IMOVP || s->returned!=Native64TypedFieldArg || s->mode!=(SRC(sm)|DST(AFP|AIND)) ||
+    (sm!=(AFP|AIND) && sm!=(AMP|AIND)) || !native64typedfieldoffset(s->m,1) || !native64typedrootoperand(sm&~AIND,s->s,fp,mp) ||
+    s->d<64 || s->d%8 || s->d>65535 || (unsigned long)s->d>bytes || 8>bytes-s->d || map==nil || map==H)return 0;
+ bit=s->d/8;return bit/8<np && (map[bit/8]&(128>>(bit%8)));
+}
+
+enum { Native64TypedListPrep=112, Native64TypedArgClear=126 };
 static int
 native64typedlistprep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
@@ -107,6 +117,13 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
             if(!s->returned){if(c->external || !native64typedargprep(s,fpbytes,mpbytes))return 0;continue;}
+            if(s->returned==Native64TypedFieldArg){
+                if(c->callee->np<0 || !native64typedfieldarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;continue;
+            }
+            if(s->returned==Native64TypedArgClear){
+                checkstep=*s;checkstep.returned=Native64TypedListPrep;
+                if(s->op!=IMOVP || !native64typedlistprep(&checkstep,fpbytes,mpbytes))return 0;continue;
+            }
             if(s->returned==Native64TypedListPrep){
                 if(!c->external || !native64typedlistprep(s,fpbytes,mpbytes))return 0;continue;
             }
@@ -156,6 +173,8 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 s=steps+j;p=out+j;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;
                 if(j==i){p->s.imm=c->external?c->moduleoffset:c->ordinal;p->reg=c->external?c->ordinal:0;p->d.ind=40;}
                 else if(j==c->end){p->s.ind=40;if(c->external){p->reg=c->ordinal;p->d.ind=c->moduleoffset;}else p->d.ins=c->target;}
+                else if(s->returned==Native64TypedFieldArg){p->s.i.f=s->s;p->s.i.s=s->m;p->d.i.f=40;p->d.i.s=s->d;}
+                else if(s->returned==Native64TypedArgClear){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
                 else if(s->returned==Native64TypedListPrep){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
                 else if(!s->returned){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
                 else{p->s.imm=s->s;p->d.i.f=40;p->d.i.s=s->d;if(s->op==IADDC || s->op==IMOVM)p->reg=s->m;if(c->contract && !c->inherited && j==c->end-1)p->reg=c->contract;}

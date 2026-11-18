@@ -30,6 +30,12 @@ def compile_source(limbo,work,source,interface=None,loads=False):
     assert ordinary.read_bytes()==traced.read_bytes()
     return traced.read_bytes(),[json.loads(x[12:])for x in result.stderr.splitlines()if x.startswith('DIS64_TYPED ')]
 
+def field_argument(original,step,new,maps):
+    sm=original['mode']>>3&7;oldfields={0:0,4:8,8:16,12:24,16:32,20:24,40:48,44:48,48:56,52:64,56:72,84:104}
+    assert original['op']==41 and sm in(4,5)and original['mode']==(sm<<3)|5 and original['m']is None and len(original['s'])==2
+    base,field=original['s'];assert field in oldfields
+    assert step==[41,original['mode'],maps['frame'if sm==5 else'data'][base],oldfields[field],new,125]
+
 def verify(data,r,imports,loads=False,rows=None):
     assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and (rows is not None or 'calls'not in r)
     _,old,types=BASE['READ']['legacy_instructions'](data,with_types=True)
@@ -54,7 +60,9 @@ def verify(data,r,imports,loads=False,rows=None):
                 preps.update((at,at+1,at+3));at+=2;o=original[at];prep=True
             sm=o['mode']>>3&7
             assert o['d']==[pending,next(x[0]for x in callee['frame']['leaves']if x[1]==arg[0])]
-            if o['op']==OPCODES['ICVTAC']:
+            if r['code'][at][5]==125:
+                assert loads and arg[1]in ROOTS;field_argument(o,r['code'][at],arg[0],maps)
+            elif o['op']==OPCODES['ICVTAC']:
                 assert loads and arg[1:]==[13,4,8]and sm in(0,1)and o['m']is None
                 assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0])[4]==3
                 assert r['code'][at]==[o['op'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],0,arg[0],64]
@@ -173,7 +181,9 @@ def verify(data,r,imports,loads=False,rows=None):
                 oldoffset+=oldbytes;continue
             assert j not in aggregates
             assert a['d']==[pending,oldoffset];oldoffset+=oldbytes
-            if a['op']==OPCODES['ILENA']:
+            if r['code'][at][5]==125:
+                assert loads and kind in ROOTS;field_argument(a,r['code'][at],new,maps)
+            elif a['op']==OPCODES['ILENA']:
                 assert loads and kind==9 and oldbytes==width==4 and sm in(0,1)and a['m']is None
                 assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==a['s'][0])[4]==3
                 assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm else'data'][a['s'][0]],0,new,64]
@@ -191,6 +201,11 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert clear['op']==41 and clear['mode']==1 and clear['m']is None
                 assert maps['data'][clear['s'][0]]==nilroot and maps['frame'][clear['d'][0]]==temp
                 assert r['code'][at]==[41,1,nilroot,0,temp,112];at+=1
+            if at<end and r['code'][at][5]==126:
+                assert loads and kind in ROOTS and a['op']==41 and sm==1
+                clear=original[at];assert clear['op']==41 and clear['mode']==1 and clear['m']is None and clear['d']==a['s']
+                assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
+                assert r['code'][at]==[41,1,maps['data'][clear['s'][0]],0,maps['frame'][clear['d'][0]],126];at+=1
         assert not aggregates
         contract=e['contract'];assert at+bool(contract)==end
         if contract:
@@ -203,6 +218,24 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if 113<=returned<125:
+            assert loads
+            oldfields=[44,48,52,4,8,12,0,4,8,12,16];newfields=[48,56,64,8,16,24,0,8,16,24,32];mapping=dict(zip(oldfields,newfields))
+            if returned==113:
+                assert op==o['op']==41 and mode==o['mode']and o['m']is None
+                sm=mode>>3&7;dm=mode&7;read=sm in(4,5)
+                assert (read and dm in(0,1))or(not read and sm in(0,1)and dm in(4,5))
+                field=o['s']if read else o['d'];direct=o['d']if read else o['s'];assert len(field)==2 and field[1]in mapping
+                bm=(sm if read else dm)&1;vm=dm if read else sm
+                assert m==mapping[field[1]]and (s if read else d)==maps['frame'if bm else'data'][field[0]]and (d if read else s)==maps['frame'if vm else'data'][direct[0]]
+                assert next(l for l in r['frame'if bm else'data']['leaves']if l[0]==field[0])[2:4]==[4,8]
+                leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==direct[0]);assert leaf[2:4]==[4,8]and (leaf[4]==(13 if field[1]==52 else 12)or(not read and vm==0 and leaf[4]==20))
+            else:
+                index=returned-114;assert index!=2
+                sm=o['mode']>>3&7;field=o['s'];assert sm in(4,5)and field[1]==oldfields[index]and o['mode']==(sm<<3)|192|2 and mode==o['mode']
+                assert o['op']in(93,94)and op==(OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'])
+                assert s==maps['frame'if sm==5 else'data'][field[0]]and m==maps['data'][o['m']]and d==o['d'][0]-r['first']and d not in inside
+            continue
         if 100<=returned<107:
             assert loads
             oldfields=[0,20,40,52,56,84];newfields=[0,24,48,64,72,104]

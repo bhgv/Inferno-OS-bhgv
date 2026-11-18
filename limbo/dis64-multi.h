@@ -76,6 +76,18 @@ typedexternalstringlist(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int en
  USED(start);return 1;
 }
 
+static int
+typedrootargclear(TypedMulti*c,Dis64TypedBody*p,Inst*store,unsigned int end,unsigned int*at)
+{
+ Inst*in;
+ if(*at>=end || store->sm!=Afp || !(in=c->instructions[*at]) || in->op!=IMOVP || in->dm!=Afp || in->d.reg!=store->s.reg)return 1;
+ if(!store->s.decl || store->s.decl->store!=Dlocal || !store->s.decl->sym || store->s.decl->sym->name[0]!='.' || store->s.decl->sym->name[1]!='t' ||
+    in->sm!=Amp || in->mm!=Anone || in->branch || in->d.decl!=store->s.decl || in->d.offset || !in->s.decl || in->s.decl->store!=Dglobal ||
+    !in->s.decl->ty || in->s.decl->ty->kind!=Tany || !in->s.decl->sym || strcmp(in->s.decl->sym->name,"nil") || in->s.reg!=in->s.decl->offset || in->s.offset ||
+    !typedinst(in,c->count,p,p->code+*at-p->first,p->returns+*at-p->first))return typedfail(p,"external-root-clear");
+ p->returns[(*at)++-p->first]=126;return 1;
+}
+
 /* Fixed Draw.Context geometry from trusted .m declarations, not a guessed C size. */
 static int
 typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
@@ -124,6 +136,7 @@ typedclientfield(Inst *in,Dis64TypedBody *p,unsigned int pc,int probe)
 }
 
 #include "dis64-window.h"
+#include "dis64-draw-fields.h"
 
 /* Immutable byte constants are immediate operands, never mutable MP storage. */
 static int
@@ -260,16 +273,17 @@ typedclientcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 static int
 typedloadcontextcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
 {
- Addr *left=&in->s,*right=&in->m;int lm=in->sm,rm=in->mm,actual;unsigned int mm,bm,index=0,window;long middle,base;Inst field=*in;
+ Addr *left=&in->s,*right=&in->m;int lm=in->sm,rm=in->mm,actual;unsigned int mm,bm,index=0,window,draw;long middle,base;Inst field=*in;
  if(in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc)return typedfail(p,"context-nil-branch");
  if(lm==Amp && (rm==Afpind || rm==Ampind)){left=&in->m;right=&in->s;lm=in->mm;rm=in->sm;}
  if((lm!=Afpind && lm!=Ampind) || rm!=Amp)return typedfail(p,"context-nil-roles");
  field.op=IMOVP;field.s=*left;field.sm=lm;field.mm=Anone;field.dm=Afp;field.branch=nil;
- window=typedwindowowner(left);
- if(!(window?typedwindowfield(&field,p,pc,1,&index):typedclientfield(&field,p,pc,1)) || !typedoperand(rm,right,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || mm!=AMP)return typedfail(p,"context-nil-roles");
+ window=typedwindowowner(left);draw=typeddrawowner(left);
+ if(!(window?typedwindowfield(&field,p,pc,1,&index):draw?typeddrawfield(&field,p,pc,1,&index):typedclientfield(&field,p,pc,1)) || !typedoperand(rm,right,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || mm!=AMP)return typedfail(p,"context-nil-roles");
  base=p->code[pc].source;bm=lm==Afpind?AFP:AMP;
  p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:IBNEL,SRC(bm|AIND)|AXINM|DST(AIMM),middle,base,in->branch->pc-p->first};
- p->returns[pc]=window?101+index:97+left->offset/4;return 1;
+ if(draw && index==2)return typedfail(p,"draw-string-nil-roles");
+ p->returns[pc]=window?101+index:draw?114+index:97+left->offset/4;return 1;
 }
 
 /* Comparing a direct ref ADT with nil only observes the root pointer.
@@ -387,6 +401,11 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             p->code[at-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,offset};
             p->returns[at++-p->first]=64;continue;
         }
+        if(c->loads && root && (in->sm==Afpind || in->sm==Ampind)){
+            if(in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
+               !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || offset>65535 || !typedselectedfieldarg(in,p,at-p->first,offset,kind))return typedfail(p,"multi-field-argument");
+            at++;continue;
+        }
         if((!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal) ||
            in->op!=op || in->mm!=Anone || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || in->branch!=nil ||
            !dis64layoutaddress(&child->frame,arg->offset,width,root,&offset) || offset>65535 ||
@@ -488,9 +507,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
                  (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && in->op==IMOVP && (in->sm==Afpind || in->sm==Ampind || (in->dm==Afpind && in->d.reg!=16) || in->dm==Ampind)){
-            int window=c->loads && typedwindowowner((in->sm==Afpind || in->sm==Ampind)?&in->s:&in->d);
-            if(!(window?typedwindowfield(in,p,pc-p->first,0,nil):typedclientfield(in,p,pc-p->first,0)))goto fail;
-            if(c->loads){p->returns[pc-p->first]=window?100:96;p->code[pc-p->first].middle=p->contextfields[pc-p->first];}pc++;
+            Addr*field=(in->sm==Afpind || in->sm==Ampind)?&in->s:&in->d;
+            int window=c->loads && typedwindowowner(field),draw=c->loads && typeddrawowner(field);
+            if(!(window?typedwindowfield(in,p,pc-p->first,0,nil):draw?typeddrawfield(in,p,pc-p->first,0,nil):typedclientfield(in,p,pc-p->first,0)))goto fail;
+            if(c->loads){p->returns[pc-p->first]=window?100:draw?113:96;p->code[pc-p->first].middle=p->contextfields[pc-p->first];}pc++;
         }else if(c->loads && (in->op==IBEQW || in->op==IBNEW) &&
           (in->sm==Afpind || in->sm==Ampind || in->mm==Afpind || in->mm==Ampind)){
             if(!typedloadcontextcompare(in,p,pc-p->first,stop))goto fail;pc++;
