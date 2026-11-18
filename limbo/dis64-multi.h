@@ -103,6 +103,24 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"client-context-geometry");
 }
 
+/* Primitive channel payloads retain their existing builtin Type/mover identity. */
+static int
+typedclientchannel(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
+{
+ Type*t;unsigned int dm,mm=AXNON,wire;long destination,capacity=0;int actual,kind;
+ if(in->sm!=Anone || in->branch)return typedfail(p,"channel-operands");
+ if(in->dm==Afpind){if(in->d.reg!=16 || in->d.offset)return typedfail(p,"channel-result");t=fn->ty->tof;destination=32;dm=AFP|AIND;*returned=1;}
+ else{
+  t=in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;
+  if(!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&destination,&dm,&actual) || actual!=Tchan)return typedfail(p,"channel-destination");
+ }
+ if(!t || t->kind!=Tchan || !t->tof)return typedfail(p,"channel-payload");kind=t->tof->kind;
+ if(!((in->op==INEWCB && kind==Tbyte) || (in->op==INEWCW && (kind==Tint || kind==Tfix)) || (in->op==INEWCL && kind==Tbig) || (in->op==INEWCF && kind==Treal) ||
+      (in->op==INEWCP && (kind==Tstring || kind==Tref || kind==Tchan || kind==Tarray || kind==Tlist || kind==Tmodule))))return typedfail(p,"channel-payload");
+ if(in->mm!=Anone){if(!typedoperand(in->mm,&in->m,Tint,1,1,p,&capacity,&wire,&actual))return typedfail(p,"channel-capacity");mm=wire==AIMM?AXIMM:wire==AFP?AXINF:AXINM;}
+ *out=(Dis64Instruction){in->op,SRC(AXXX)|mm|DST(dm),capacity,0,destination};return 1;
+}
+
 /* A scratch Decl retains its storage type after reuse. Indirect access needs
  * the original base owner, not the field value's type or the scratch's first type. */
 static Type*
@@ -587,6 +605,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
           ((in->s.decl && in->s.decl->ty && typedclientreferencekind(in->s.decl->ty->kind)) ||
            (in->m.decl && in->m.decl->ty && typedclientreferencekind(in->m.decl->ty->kind)))){
             if(!(c->loads?typedloadcompare(in,p,pc-p->first,stop):typedclientcompare(in,p,pc-p->first,stop)))goto fail;pc++;
+        }else if(c->loads && (in->op==INEWCB || in->op==INEWCW || in->op==INEWCL || in->op==INEWCF || in->op==INEWCP)){
+            if(!typedclientchannel(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && (in->op==INEW || in->op==INEWZ)){
             if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;
             if(c->loads){p->code[pc-p->first].source=0;p->returns[pc-p->first]=UDST(p->code[pc-p->first].mode)==(AFP|AIND)?174:172;}pc++;

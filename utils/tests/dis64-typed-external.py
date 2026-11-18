@@ -260,6 +260,13 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if op in [OPCODES[n]for n in('INEWCB','INEWCW','INEWCL','INEWCF','INEWCP')]:
+            assert loads and op==o['op']and mode==o['mode']and o['s']is None and returned in(0,24)
+            mm=mode&192;dm=mode&7;middle=0 if mm==0 else o['m']if mm==64 else maps['frame'if mm==128 else'data'][o['m']]
+            if returned:assert o['d']==[16,0]and r['result']==[6,8]
+            else:assert next(l for l in r['frame'if dm==1 else'data']['leaves']if l[0]==o['d'][0])[4]==6
+            assert r['code'][pc]==[op,mode,0,middle,32 if returned else maps['frame'if dm==1 else'data'][o['d'][0]],returned]
+            continue
         if returned==173:
             sm=o['mode']>>3&7;dm=o['mode']&7
             assert loads and o['op']==41 and sm in(4,5)and dm in(4,5)and o['m']is None and o['s'][1]==o['d'][1]and o['s'][1]in(0,4,8)

@@ -71,6 +71,20 @@ native64typedwordoperand(unsigned int mode,long offset,unsigned int fpbytes,unsi
 }
 
 static int
+native64typedchannelop(unsigned int op)
+{
+ return op==INEWCB || op==INEWCW || op==INEWCL || op==INEWCF || op==INEWCP;
+}
+static int
+native64typedchannel(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int mm=s->mode&ARM,dm=UDST(s->mode),mode=mm==AXIMM?AIMM:mm==AXINF?AFP:AMP;
+ return native64typedchannelop(s->op) && s->mode<=255 && USRC(s->mode)==AXXX && !s->s &&
+  ((s->returned==0 && native64typedrootoperand(dm,s->d,fp,mp)) || (s->returned==24 && dm==(AFP|AIND) && s->d==32)) &&
+  (mm==AXNON?!s->m:native64typedwordoperand(mode,s->m,fp,mp) && (mm!=AXIMM || (s->m>=-32768 && s->m<=32767)));
+}
+
+static int
 native64typedstringstep(const Native64TypedStep *s,unsigned int fpbytes,unsigned int mpbytes)
 {
  unsigned int mm=s->mode&ARM;
@@ -209,6 +223,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==173){if(!native64typedcontextcopy(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==172 || s->returned==174){if(!native64typedcontextnew(s,fpbytes))return 0;continue;}
         if(s->returned==171){if(!native64typedtriplecopy(s,fpbytes))return 0;continue;}
+        if(native64typedchannelop(s->op)){if(!native64typedchannel(s,fpbytes,mpbytes))return 0;continue;}
 		switch(s->op){
 		case INEWAZ:case ISLICEA:case ICVTAC:
             if(!native64typedbytestep(s,fpbytes,mpbytes))return 0;

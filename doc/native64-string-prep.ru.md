@@ -60,3 +60,6 @@ artifacts сохраняют прежние bytes. Полный AWM, его even
 emuinit/Arg. Чистая amd64 console, paired boot и 324 emuinit/Arg boot-процесса
 прошли. Сохранён отдельный materializer branch для IADDC: старый active
 control снова адресует ровно публикацию concat middle operand.
+
+Продолжение: [primitive channels](native64-channel-new.ru.md) открывает
+INEWCP и переносит первый compiler refusal AWM init на spawn setup PC127.

@@ -401,6 +401,12 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 if(!!(map[bit/8]&(0x80>>(bit%8)))!=roots[k])return 0;
             }
         }
+        for(j=0;j<f->count;j++)if(native64typedchannelop(f->code[j].op)){
+            unsigned int mode;step=f->code+j;if(!native64typedchannel(step,f->bytes,s->databytes) || (step->returned && f->resultcontract))return 0;
+            if(!step->returned){map=UDST(step->mode)==AFP?f->map:s->datamap;bit=step->d/8;if((map[bit/8]&(128>>(bit%8)))==0)return 0;}
+            mode=(step->mode&ARM)==AXINF?AFP:(step->mode&ARM)==AXINM?AMP:AIMM;
+            if(mode!=AIMM){map=mode==AFP?f->map:s->datamap;bit=step->m/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
+        }
         for(j=0;j<f->count;j++)if(f->code[j].op==ICVTWC && f->code[j].returned!=180){
             Inst probe;unsigned int mode;step=f->code+j;
             if(!native64typedcode(&probe,1,step,1,f->bytes,s->databytes))return 0;
