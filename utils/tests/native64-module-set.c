@@ -50,7 +50,7 @@ batchfaults(int outer)
 	const LimboNative64Entry *scalar[] = {&limbo_native64_Probe_add_entry};
 	const LimboNative64Entry *math[] = {&limbo_native64_Math_bits64real_entry, &limbo_native64_Math_realbits64_entry};
 	const LimboNative64Entry *wide[] = {&limbo_native64_Probe_many_entry};
-	Native64ModuleSpec specs[3];
+	Native64BuiltinSpec specs[3];
 	Module *output[3], *previous;
 	char names[3][16] = {"$SetA", "$SetMath", "$SetWide"};
 	int cutoff, owners, status, failed, succeeded, i;
@@ -61,9 +61,9 @@ batchfaults(int outer)
 		check(!outer || previous != nil);
 		owners=live;
 		memset(output, 0, sizeof(output));
-		specs[0]=(Native64ModuleSpec){names[0], limbo_native64_Probe_specs, 2, scalar, 1};
-		specs[1]=(Native64ModuleSpec){names[1], limbo_native64_Math_specs, limbo_native64_Math_spec_count, math, 2};
-		specs[2]=(Native64ModuleSpec){names[2], limbo_native64_Probe_specs, 2, wide, 1};
+		specs[0]=(Native64BuiltinSpec){names[0], limbo_native64_Probe_specs, 2, scalar, 1};
+		specs[1]=(Native64BuiltinSpec){names[1], limbo_native64_Math_specs, limbo_native64_Math_spec_count, math, 2};
+		specs[2]=(Native64BuiltinSpec){names[2], limbo_native64_Probe_specs, 2, wide, 1};
 		batchbase=modules; batchoutput=output; batchcount=3;
 		batchwatch=batchdisturb=1;
 		kwerrstr("%s", "original set diagnostic");
@@ -104,7 +104,7 @@ static void
 batchpreflight(void)
 {
 	const LimboNative64Entry *entries[] = {&limbo_native64_Probe_add_entry};
-	Native64ModuleSpec specs[2];
+	Native64BuiltinSpec specs[2];
 	Module *output[2];
 	LimboNative64Entry changed;
 	const LimboNative64Entry *bad[] = {&changed};
@@ -113,8 +113,8 @@ batchpreflight(void)
 	before=attempts;
 	check(builtinmods64(nil, 0, nil) && attempts == before);
 	for(mode=0; mode<9; mode++){
-		specs[0]=(Native64ModuleSpec){"$One", limbo_native64_Probe_specs, 2, entries, 1};
-		specs[1]=(Native64ModuleSpec){"$Two", limbo_native64_Probe_specs, 2, entries, 1};
+		specs[0]=(Native64BuiltinSpec){"$One", limbo_native64_Probe_specs, 2, entries, 1};
+		specs[1]=(Native64BuiltinSpec){"$Two", limbo_native64_Probe_specs, 2, entries, 1};
 		output[0]=output[1]=nil;
 		if(mode == 0) specs[1].name=specs[0].name;
 		if(mode == 1){ changed=*entries[0]; changed.legacy_signature^=1; specs[1].entries=bad; }
@@ -135,7 +135,7 @@ batchpreflight(void)
 static void
 batchbounds(void)
 {
-	Native64ModuleSpec specs[2];
+	Native64BuiltinSpec specs[2];
 	LimboNative64Entry *many;
 	char (*names)[16];
 	uchar map[] = {0};
@@ -150,8 +150,8 @@ batchbounds(void)
 		snprintf(names[i], sizeof(names[i]), "entry%u", i);
 		many[i]=(LimboNative64Entry){names[i], nil, 0, 64, 1, map};
 	}
-	specs[0]=(Native64ModuleSpec){"$Maximum", many, Native64BindEntries, nil, 0};
-	specs[1]=(Native64ModuleSpec){"$Overflow", limbo_native64_Probe_specs, 2, nil, 0};
+	specs[0]=(Native64BuiltinSpec){"$Maximum", many, Native64BindEntries, nil, 0};
+	specs[1]=(Native64BuiltinSpec){"$Overflow", limbo_native64_Probe_specs, 2, nil, 0};
 	before=attempts;
 	check(!builtinmods64(specs, 2, output) && attempts == before && output[0] == nil && output[1] == nil);
 	check(builtinmods64(specs, 1, output) && output[0]->ntype == 0 && output[0]->ext[0].name == nil);
@@ -172,7 +172,7 @@ main(void)
 	native64_single_main();
 #ifdef NATIVE64_REFUSED
 	before=attempts;
-	check(!builtinmods64((Native64ModuleSpec*)1, Native64BindEntries, (Module**)1));
+	check(!builtinmods64((Native64BuiltinSpec*)1, Native64BindEntries, (Module**)1));
 	check(attempts == before);
 	balanced();
 #else

@@ -1318,7 +1318,7 @@ typedef struct Native64BuiltinSet Native64BuiltinSet;
 
 struct Native64BuiltinSet
 {
-	const Native64ModuleSpec *specs; // Borrowed immutable complete construction requests.
+	const Native64BuiltinSpec *specs; // Borrowed immutable complete construction requests.
 	unsigned int count; // Number of independently owned modules to stage.
 	Module **staged; // Private zeroed module-owner vector, never published during allocation.
 	unsigned int completed; // Completed module owners in staged request order.
@@ -1328,7 +1328,7 @@ struct Native64BuiltinSet
 
 /* Check the entire set before allocating, including duplicate module names and aggregate resource bounds. */
 static int
-native64builtinsetcheck(const Native64ModuleSpec *specs, unsigned int count, Module **output)
+native64builtinsetcheck(const Native64BuiltinSpec *specs, unsigned int count, Module **output)
 {
 	unsigned int i, j, declarations, selected;
 
@@ -1359,7 +1359,7 @@ static int
 buildbuiltinset64(void *argument)
 {
 	Native64BuiltinSet *build;
-	const Native64ModuleSpec *spec;
+	const Native64BuiltinSpec *spec;
 	unsigned int i;
 
 	build = argument;
@@ -1405,7 +1405,7 @@ native64builtinsetclear(Native64BuiltinSet *build)
 
 /* Publish one complete chain only after every constructor returns; no callback or allocation occurs during commit. */
 static int
-native64builtinsetregister(const Native64ModuleSpec *specs, unsigned int count, Module **output, Module **staged)
+native64builtinsetregister(const Native64BuiltinSpec *specs, unsigned int count, Module **output, Module **staged)
 {
 	Native64BuiltinSet build;
 	Module *head;
@@ -1433,7 +1433,7 @@ native64builtinsetregister(const Native64ModuleSpec *specs, unsigned int count, 
 
 /* Atomically register a trusted native64 set; caller serializes registration and supplies disjoint nil output cells. */
 int
-builtinmods64(const Native64ModuleSpec *specs, unsigned int count, Module **output)
+builtinmods64(const Native64BuiltinSpec *specs, unsigned int count, Module **output)
 {
 	Module **staged;
 	char saved[ERRMAX];
@@ -1463,7 +1463,7 @@ Module*
 builtinmod64(char *name, const LimboNative64Entry *specs, unsigned int count,
 	const LimboNative64Entry *const *entries, unsigned int selected)
 {
-	Native64ModuleSpec request;
+	Native64BuiltinSpec request;
 	Module *output, *staged;
 
 	request.name = name;
@@ -1577,3 +1577,10 @@ utfnleng(char *s, int nb, int *ngood)
 		*ngood = s-starts;
 	return n;
 }
+
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+#include "native64-typed-module.h"
+#include "native64-sys-module.h"
+#include "emuinit-native64.h"
+#include "native64-emuinit-boot.h"
+#endif

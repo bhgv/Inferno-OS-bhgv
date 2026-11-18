@@ -1420,6 +1420,13 @@ disinit(void *a)
 	excinit();
 
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+	if(dis64bootemuinit){
+		root=native64emuinitboot(!!cflag);
+		if(root==nil)panic("constructing checked emuinit: %r");
+		p=schedmod(root);
+	}else
+#endif
 	if(dis64bootprovider != nil || dis64bootauto){
 		linked = read64pair(initmod, dis64bootprovider);
 		if(linked == nil){

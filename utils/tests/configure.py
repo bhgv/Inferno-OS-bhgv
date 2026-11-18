@@ -49,6 +49,19 @@ def main():
         bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch','arm64','--console','--native64-sys-io-boot','--output',str(work/'invalid-sys')],capture_output=True)
         if bad.returncode==0 or (work/'invalid-sys').exists():
             raise RuntimeError('Trusted Sys startup accepted the legacy ABI')
+        for arch in ('amd64','arm64','riscv64'):
+            selected=['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch',arch,'--console','--native64-scalar-boot','--native64-sys-io-boot','--native64-emuinit-boot','--output',str(output)]
+            subprocess.run(selected,check=True,capture_output=True)
+            text=output.read_text()
+            for item in ('-DDIS_NATIVE64_BOOT_EMUINIT=1','-DDIS_NATIVE64_FORMATTER=1','NATIVE64_BOOT_EMUINIT_HEADERS='+str(ROOT)+'/libinterp/emuinit-native64.h'):
+                if item not in text:raise RuntimeError('Checked emuinit startup lost coherent selection: '+item)
+            for missing in ('--native64-sys-io-boot','--native64-scalar-boot'):
+                invalid=selected.copy();invalid.remove(missing);invalid[-1]=str(work/'invalid-emuinit')
+                refused=subprocess.run(invalid,capture_output=True)
+                if refused.returncode==0 or (work/'invalid-emuinit').exists():raise RuntimeError('Checked emuinit admitted an incompatible profile')
+        # Deselection clears generated metadata and formatter/model flags.
+        selected.remove('--native64-emuinit-boot');subprocess.run(selected,check=True,capture_output=True)
+        if 'DIS_NATIVE64_BOOT_EMUINIT=1'in output.read_text() or 'NATIVE64_BOOT_EMUINIT_HEADERS=\n'not in output.read_text():raise RuntimeError('Checked emuinit deselection leaked optional dependencies')
         # Cover every 64-bit backend and optional Sys combination: a later flag must not erase the lease.
         for arch in ('amd64','arm64','riscv64'):
             for sysio in (False,True):

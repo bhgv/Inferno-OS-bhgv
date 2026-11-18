@@ -169,7 +169,7 @@ draw.$O: 	$ROOT/include/draw.h $ROOT/include/drawif.h $ROOT/include/tk.h $ROOT/i
 prefab.$O: 	$ROOT/include/draw.h\
 		$ROOT/include/prefab.h
 
-runt.$O:	sysmod.h $NATIVE64_BOOT_SYS_HEADERS
+runt.$O:	sysmod.h $NATIVE64_BOOT_SYS_HEADERS $NATIVE64_BOOT_EMUINIT_HEADERS
 prefab.$O:	prefabmod.h
 draw.$O:	drawmod.h
 tk.$O:		$ROOT/include/draw.h tkmod.h
@@ -192,7 +192,7 @@ comp-spim.c:N:	comp-mips.c
 #	it works only on UNIX and Plan 9.
 
 nuke:EV:	nuke-std
-	rm -f string-native64.h string-native64.h.tmp freetype-native64.h freetype-native64.h.tmp sys-native64.h sys-native64.h.tmp math-native64.h math-native64.h.tmp runt.h sysmod.h drawmod.h prefabmod.h tkmod.h mathmod.h keyring.h readimagemod.h loadermod.h freetypemod.h cryptmod.h keyringif.h ipintsmod.h
+	rm -f emuinit-native64.h emuinit-native64.h.tmp string-native64.h string-native64.h.tmp freetype-native64.h freetype-native64.h.tmp sys-native64.h sys-native64.h.tmp math-native64.h math-native64.h.tmp runt.h sysmod.h drawmod.h prefabmod.h tkmod.h mathmod.h keyring.h readimagemod.h loadermod.h freetypemod.h cryptmod.h keyringif.h ipintsmod.h
 
 comp-riscv.$O comp-riscv64.$O: riscv-emit.h comp-riscv.c
 
@@ -216,3 +216,8 @@ load64.$O: scalar-client.h $ROOT/include/dis64-scalar-client.h $ROOT/include/dis
 readmod.$O: $ROOT/include/dis64-command-binding.h
 
 load64.$O: $ROOT/include/dis64-client-literals.h $ROOT/include/dis64-managed-trial.h
+
+# Build trusted whole-source startup metadata only for explicit emuinit selection.
+$ROOT/libinterp/emuinit-native64.h:D: $ROOT/appl/cmd/emuinit.b $ROOT/module/sys.m $ROOT/module/arg.m $ROOT/module/sh.m $ROOT/module/draw.m $ROOT/utils/native64-emuinit.py $ROOT/utils/tests/native64-emuinit-full.py
+	python3 $ROOT/utils/native64-emuinit.py --limbo limbo --output $target.tmp && mv $target.tmp $target
+runt.$O: $ROOT/include/native64-emuinit-boot.h $ROOT/include/native64-sys-module.h $ROOT/include/native64-typed-module.h $ROOT/include/native64-sys-program.h

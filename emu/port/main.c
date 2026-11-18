@@ -17,6 +17,9 @@ char *dis64bootmanagedinput;
 int dis64bootmanaged; // Select the explicit managed file-pair trial.
 char *dis64bootprovider; // Explicit provider namespace path for paired startup.
 #endif
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+int dis64bootemuinit;
+#endif
 static int imodexplicit; // A selected call profile requires an explicit initial module.
 extern	char*	hosttype;
 char*	tkfont;	/* for libtk/utils.c */
@@ -167,6 +170,12 @@ option(int argc, char *argv[], void (*badusage)(void))
 #ifdef DIS64_PILOT_LOADER
 		cp = EARGF(badusage());
 #ifdef DIS_NATIVE64_SCALAR_BOOT
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+		if(strcmp(cp, "dis64-emuinit") == 0){
+			if(!dis64selectlaunch("dis64-calls"))badusage();
+			dis64bootemuinit=1;break;
+		}
+#endif
 		if(strcmp(cp, "dis64-pair") == 0){
 			dis64bootauto = 1;
 			break;
@@ -248,6 +257,9 @@ launchoptions(void)
 {
 #ifdef DIS64_PILOT_LOADER
 #if defined(DIS_NATIVE64_SCALAR_BOOT)
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+	if(dis64bootemuinit)return !imodexplicit && !dis64bootmanaged && !dis64bootprovider && !dis64bootauto && !dis64bootmanagedinput && dis64launchmode();
+#endif
 	if(dis64bootmanaged)
 		return imodexplicit && dis64bootprovider != nil && !dis64bootauto && !dis64launchmode() &&
 			(dis64bootprovider[0] != '$'
@@ -342,6 +354,9 @@ main(int argc, char *argv[])
 	option(argc, argv, usage);
 	if(!launchoptions()){
 		fprint(2, "emu: select one experimental profile and specify -d module.dis64\n");
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+		fprint(2, "emu: checked startup uses -X dis64-emuinit without -d\n");
+#endif
 		usage();
 	}
 #ifdef DIS_NATIVE64_SCALAR_BOOT

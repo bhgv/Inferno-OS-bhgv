@@ -74,3 +74,5 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий проверенный этап: [program-owned FRAME/MCALL и C/JIT](native64-sys-program.ru.md). Мост связывает exact original PCs с typed binder/trampoline; полные init/loadmod пока не исполняются.
 
 Следующий этап: [полный неизменённый emuinit](native64-emuinit-full.ru.md): 4/4 checked bodies, owning C/JIT и Limbo-вызов `Command.init(nil,args)` с управляемыми сервисами. Это ещё не загрузка настоящего AWM.
+
+Следующий этап: [настоящий emuinit boot](native64-emuinit-boot.ru.md): полный исходный startup в выбранном Linux профиле, реальные Sys/formatter/file reader и checked файловый Command. Arg и настоящий AWM ещё не допускаются.

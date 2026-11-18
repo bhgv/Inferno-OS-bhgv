@@ -47,6 +47,7 @@ def main():
     parser.add_argument('--runner', default='', help='target execution command, e.g. qemu-aarch64 -L /sysroot')
     parser.add_argument('--test-cflags', default='-O3 -g -DNDEBUG -fno-strict-aliasing', help='additional owning C gate flags; add UBSan where available')
     parser.add_argument('--styx-server',type=Path,help='optional native loopback fixture with count/user arguments for guest mount acceptance')
+    parser.add_argument('--emuinit-boot',action='store_true',help='include the explicit complete checked emuinit startup profile')
     parser.add_argument('--pair-boot-only', action='store_true', help='build the complete console and run only the paired boot gate')
     args = parser.parse_args()
     build = args.build_root.resolve()
@@ -80,6 +81,7 @@ def main():
                          '--root', str(build), '--console', '--native64-scalar-boot', '--native64-math-boot',
                          '--native64-sys-io-boot', '--native64-freetype-boot', '--native64-caller-guard', '--cross', args.cross,
                          '--output', str(build/'mkconfig')]
+    if args.emuinit_boot:configure_command+=['--native64-emuinit-boot']
     run(configure_command, build, env, logs/'configure.log')
     binary = build/'Linux'/args.arch/'bin'; binary.mkdir(parents=True, exist_ok=True)
     (binary.parent/'lib').mkdir(exist_ok=True)
@@ -111,6 +113,8 @@ def main():
     run([sys.executable, str(tests/'dis64-pair-boot.py'), '--root', str(build),
          '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--sys-clock', '--limbo', str(tools/'limbo')],
         build, env, logs/'pair-boot.log')
+    if args.emuinit_boot:
+        run([sys.executable,str(tests/'native64-emuinit-boot.py'),'--emu',str(build/'emu/Linux/o.emu-g'),'--limbo',str(tools/'limbo'),'--runner',args.runner],build,env,logs/'emuinit-boot.log')
     if args.pair_boot_only:
         print('PASS classic-mk console and Dis64 pair boot')
         return

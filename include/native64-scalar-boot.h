@@ -36,4 +36,9 @@
 #error native64 Freetype startup requires DIS_NATIVE64_SCALAR_BOOT=1
 #endif
 #endif
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+#if DIS_NATIVE64_BOOT_EMUINIT != 1 || !defined(DIS_NATIVE64_BOOT_SYS_IO) || !defined(DIS_NATIVE64_FORMATTER)
+#error checked emuinit boot requires selected Sys I/O and typed formatter
+#endif
+#endif
 #endif

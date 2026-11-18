@@ -58,3 +58,5 @@ CI включает gate для Linux amd64/arm64/riscv64 и Android ARM64 Bioni
 
 Следующая граница — применение того же owning пути в выбранном boot profile
 и загрузка настоящих зависимостей AWM/Draw/Tk; затем графический Android host.
+
+Следующий этап: [настоящий emuinit boot](native64-emuinit-boot.ru.md), реальные Sys и Command file reader, 18 целых C/JIT процессов. Реальный AWM остаётся следующим этапом.

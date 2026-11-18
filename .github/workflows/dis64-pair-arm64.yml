@@ -67,6 +67,9 @@ on:
       - 'utils/tests/dis64-scalar-client*'
       - 'libinterp/tests/dis64-scheduler.c'
       - 'utils/tests/native64-port.py'
+      - 'utils/native64-emuinit.py'
+      - 'utils/tests/native64-emuinit*'
+      - 'include/native64-emuinit-boot.h'
   workflow_dispatch:
 permissions:
   contents: read
@@ -154,7 +157,7 @@ jobs:
       - name: Build with classic mk and boot the paired console
         if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
         run: |
-          python3 utils/tests/native64-port.py --arch "$NATIVE64_ARCH" --pair-boot-only \
+          python3 utils/tests/native64-port.py --arch "$NATIVE64_ARCH" --pair-boot-only --emuinit-boot \
             --cross "$TARGET_CROSS" --runner "$NATIVE64_RUNNER" \
             --build-root "$RUNNER_TEMP/native64-pair" --host-tools "$RUNNER_TEMP/host-tools"
       - name: Execute source-compiled local calls on each target

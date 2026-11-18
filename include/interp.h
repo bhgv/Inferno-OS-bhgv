@@ -454,9 +454,9 @@ struct LimboNative64Entry;
 /* Explicit trusted native64 registration; installed legacy tables remain separate. */
 extern Module* builtinmod64(char*, const struct LimboNative64Entry*, unsigned int,
 	const struct LimboNative64Entry *const*, unsigned int);
-struct Native64ModuleSpec;
+struct Native64BuiltinSpec;
 /* Publish a complete trusted native64 module set or leave the existing registry unchanged. */
-extern int builtinmods64(const struct Native64ModuleSpec*, unsigned int, Module**);
+extern int builtinmods64(const struct Native64BuiltinSpec*, unsigned int, Module**);
 extern	void		cblock(Prog*);
 extern	void*		checktype(void*, Type*, char*, int);
 extern	void		cmovw(void*, void*);
@@ -687,3 +687,8 @@ extern	void		readimagemodinit(void);
 
 #pragma	varargck	type	"D"	Inst*
 #pragma varargck argpos errorf 1
+
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+extern int dis64bootemuinit;
+extern Module* native64emuinitboot(int);
+#endif

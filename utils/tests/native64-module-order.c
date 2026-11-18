@@ -14,7 +14,7 @@ moduleorder(void)
         {1, 2, 0}, {2, 0, 1}, {2, 1, 0}
     };
     const LimboNative64Entry *entries[] = {&limbo_native64_Probe_add_entry};
-    Native64ModuleSpec specs[3];
+    Native64BuiltinSpec specs[3];
     Module *output[3];
     Module *previous;
     Module *cursor;
@@ -50,7 +50,7 @@ moduleorder(void)
                 /* The zero-size transaction must neither inspect spans nor touch an existing chain. */
                 before = attempts;
                 cursor = modules;
-                check(builtinmods64((Native64ModuleSpec*)1, 0, (Module**)1));
+                check(builtinmods64((Native64BuiltinSpec*)1, 0, (Module**)1));
                 check(attempts == before && modules == cursor);
                 for(step = 0; step <= 3; step++){
                     cursor = modules;
