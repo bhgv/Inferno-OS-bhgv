@@ -184,13 +184,22 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             unsigned int k,modes[3],offsets[3],roots[3];
             step=f->code+j;
             if(!native64typedstringstep(step,f->bytes,s->databytes))return 0;
-            modes[0]=USRC(step->mode);modes[1]=(step->mode&ARM)==AXIMM?AIMM:(step->mode&ARM)==AXINF?AFP:AMP;modes[2]=AFP;
+            modes[0]=USRC(step->mode);modes[1]=(step->mode&ARM)==AXIMM?AIMM:(step->mode&ARM)==AXINF?AFP:AMP;modes[2]=UDST(step->mode);
             offsets[0]=step->s;offsets[1]=step->m;offsets[2]=step->d;
             roots[0]=step->op!=ISLICEC;roots[1]=step->op==IADDC;roots[2]=step->op!=IINDC;
             for(k=0;k<3;k++)if(modes[k]!=AIMM){
                 map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;
                 if(!!(map[bit/8]&(0x80>>(bit%8)))!=roots[k])return 0;
             }
+        }
+        for(j=0;j<f->count;j++)if(f->code[j].op==IBEQC || f->code[j].op==IBNEC || f->code[j].op==IBLTC || f->code[j].op==IBLEC || f->code[j].op==IBGTC || f->code[j].op==IBGEC){
+            unsigned int k,modes[2],offsets[2];Inst probe;step=f->code+j;
+            {Native64TypedStep local=*step;
+             if(step->d<0 || (unsigned long)step->d>=f->count)return 0;
+             local.d=0;if(!native64typedcode(&probe,1,&local,1,f->bytes,s->databytes))return 0;
+            }
+            modes[0]=USRC(step->mode);modes[1]=(step->mode&ARM)==AXINF?AFP:AMP;offsets[0]=step->s;offsets[1]=step->m;
+            for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
         }
         for(j=0;j<f->count;j++)if(f->code[j].op==INEWAZ || f->code[j].op==ISLICEA || (f->code[j].op==ICVTAC && f->code[j].returned!=64)){
             unsigned int k,modes[3],offsets[3],roots[3];step=f->code+j;

@@ -1,5 +1,19 @@
 #include <stdio.h>
 static void varircheck(int ok,char*why){if(!ok){fprintf(stderr,"variadic IR: %s\n",why);exit(10);}}
+static void stringflowcheck(void){
+ Type text={0},word={0},fn={0};Decl arg={0},global={0},caller={0},*functions[]={&caller};Desc frame={0},data={0};uchar fm[]={0,128},dm[]={128};Inst code[6]={{0}};Dis64TypedBody p={0};int i,j,branches[]={IBEQC,IBNEC,IBLTC,IBLEC,IBGTC,IBGEC};
+ text.kind=Tstring;text.size=text.align=4;word.kind=Tint;word.size=word.align=4;fn.kind=Tfn;fn.tof=&word;fn.ids=&arg;arg.ty=&text;arg.store=Darg;arg.offset=32;global.ty=&text;global.store=Dglobal;
+ frame.size=40;frame.map=fm;frame.nmap=2;data.size=4;data.map=dm;data.nmap=1;descriptors=&data;caller.ty=&fn;caller.desc=&frame;caller.pc=code;
+ for(i=0;i<6;i++){code[i].pc=i;code[i].op=INOP;code[i].sm=code[i].mm=code[i].dm=Anone;code[i].next=i<5?code+i+1:nil;}
+ code[0].op=IBEQC;code[0].sm=Afp;code[0].s.reg=32;code[0].s.decl=&arg;code[0].mm=Amp;code[0].m.decl=&global;code[0].dm=Apc;code[0].d.offset=4;code[0].branch=code+4;
+ code[1].op=IMOVW;code[1].sm=Aimm;code[1].s.offset=1;code[1].dm=Afpind;code[1].d.reg=16;
+ code[2].op=IJMP;code[2].dm=Apc;code[2].d.offset=5;code[2].branch=code+5;code[5].op=IRET;
+ for(j=0;j<6;j++){code[0].op=branches[j];code[4].op=INOP;code[4].sm=code[4].mm=code[4].dm=Anone;code[4].d.reg=code[4].s.offset=0;
+ varircheck(!dis64typedloads(&caller,&global,functions,1,code,6,6,&p)&&p.reason&&!strcmp(p.reason,"undefined-result"),"String branch cannot skip result definition");dis64typedfree(&p);
+ code[4]=code[1];code[4].pc=4;code[4].next=code+5;code[4].s.offset=2;
+ varircheck(dis64typedloads(&caller,&global,functions,1,code,6,6,&p),"String branch joins two defined results");dis64typedfree(&p);}
+ global.ty=&word;dm[0]=0;varircheck(!dis64typedloads(&caller,&global,functions,1,code,6,6,&p),"String comparison rejects scalar middle");dis64typedfree(&p);
+}
 int main(void){
  Type text={0},module={0},word={0},fn={0},actual={0},callerfn={0},ref={0};Decl formal={0},arg={0},temp={0},scratch={0},global={0},caller={0},callee={0},parent={0},iface={0},frameDecl={0},*fns[]={&caller};
  Sym sys={0},name={0},tmpname={0};Desc cd={0},fd={0},data={0};uchar cm[]={0,0xc0},fm[]={0,0x80},dm[]={0x80};Inst code[6]={{0}},saved;Dis64TypedBody p={0};int i;
@@ -40,5 +54,5 @@ int main(void){
  varircheck(!dis64typedexternal(&caller,&global,fns,1,code,5,5,&p),"temporary refinement LOAD-only");dis64typedfree(&p);
  tmpname.name="named";varircheck(!dis64typedloads(&caller,&global,fns,1,code,5,5,&p),"ordinary local cannot refine nominal root type");dis64typedfree(&p);tmpname.name=".t0";
  code[1].s.native64type=&word;varircheck(!dis64typedloads(&caller,&global,fns,1,code,5,5,&p),"scalar annotation cannot refine a root");dis64typedfree(&p);
- varircheck(!owners,"all compiler owners retired");puts("PASS variadic IR: exact instantiated layout, ten annotation/hash/map/operand refusals, temporary per-use types and old-profile closure");return 0;
+ stringflowcheck();varircheck(!owners,"all compiler owners retired");puts("PASS variadic IR: exact instantiated layout, ten annotation/hash/map/operand refusals, temporary per-use types and old-profile closure");return 0;
 }

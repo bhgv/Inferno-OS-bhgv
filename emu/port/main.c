@@ -19,6 +19,8 @@ char *dis64bootprovider; // Explicit provider namespace path for paired startup.
 #endif
 #ifdef DIS_NATIVE64_BOOT_EMUINIT
 int dis64bootemuinit;
+static char **native64originalargv;
+static int native64originalargc, native64skipoption=-1, native64skipvalue=-1;
 #endif
 static int imodexplicit; // A selected call profile requires an explicit initial module.
 extern	char*	hosttype;
@@ -47,6 +49,9 @@ usage(void)
 		"\t-c[0-9]\n"
 		"\t-d file.dis\n"
 		"\t-X dis64-calls (experimental; requires -d module.dis64)\n"
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+        "\t-X dis64-emuinit (checked emuinit/Arg startup; no -d)\n"
+#endif
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 		"\t-P provider.dis64 (experimental pair; requires -d consumer.dis64)\n"
 		"\t-X dis64-pair (find the provider beside the -d consumer.dis64 file)\n"
@@ -172,8 +177,14 @@ option(int argc, char *argv[], void (*badusage)(void))
 #ifdef DIS_NATIVE64_SCALAR_BOOT
 #ifdef DIS_NATIVE64_BOOT_EMUINIT
 		if(strcmp(cp, "dis64-emuinit") == 0){
+            if(dis64bootemuinit)badusage();
 			if(!dis64selectlaunch("dis64-calls"))badusage();
-			dis64bootemuinit=1;break;
+			dis64bootemuinit=1;
+            {int i;for(i=1;i<native64originalargc;i++){
+                if(cp==native64originalargv[i] && i>1 && !strcmp(native64originalargv[i-1],"-X")){native64skipoption=i-1;native64skipvalue=i;break;}
+                if(!strncmp(native64originalargv[i],"-X",2) && cp==native64originalargv[i]+2){native64skipoption=i;break;}
+            }}
+            break;
 		}
 #endif
 		if(strcmp(cp, "dis64-pair") == 0){
@@ -284,6 +295,9 @@ savestartup(int argc, char *argv[])
 {
 	int i;
 
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+    native64originalargv=argv;native64originalargc=argc;
+#endif
 	rebootargc = argc;
 	rebootargv = malloc((argc+1)*sizeof(char*));
 	if(rebootargv == nil)
@@ -295,6 +309,21 @@ savestartup(int argc, char *argv[])
 	}
 	rebootargv[i] = nil;
 }
+
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+/* Keep host-only startup selection out of the unchanged Limbo Arg parser.
+ * Indexes are captured from the actual parsed option, including attached -X;
+ * positional lookalikes and the separately retained reboot argv stay intact. */
+static void
+putemuinitargs(void)
+{
+    Fmt f;char *value;int i,n=0;
+    fmtstrinit(&f);
+    for(i=0;i<rebootargc;i++)if(i!=native64skipoption && i!=native64skipvalue)
+        fmtprint(&f,"%s%q",n++?" ":"",rebootargv[i]);
+    value=fmtstrflush(&f);ksetenv("emuargs",value,1);free(value);
+}
+#endif
 
 void
 putenvq(char *name, char *val, int conf)
@@ -442,6 +471,9 @@ emuinit(void *imod)
 
 	if(cputype != nil)
 		ksetenv("cputype", cputype, 1);
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+    if(dis64bootemuinit)putemuinitargs();else
+#endif
 	putenvqv("emuargs", rebootargv, rebootargc, 1);
 	putenvq("emuroot", rootdir, 1);
 	ksetenv("emuhost", hosttype, 1);

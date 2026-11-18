@@ -224,7 +224,8 @@ typedresults(Dis64TypedBody *p)
 		else{
 			if(p->code[pc].op==IBEQW || p->code[pc].op==IBNEW || p->code[pc].op==IBLTW || p->code[pc].op==IBLEW || p->code[pc].op==IBGTW || p->code[pc].op==IBGEW ||
 			   p->code[pc].op==IBEQL || p->code[pc].op==IBNEL || p->code[pc].op==IBLTL || p->code[pc].op==IBLEL || p->code[pc].op==IBGTL || p->code[pc].op==IBGEL ||
-			   p->code[pc].op==IBEQF || p->code[pc].op==IBNEF || p->code[pc].op==IBLTF || p->code[pc].op==IBLEF || p->code[pc].op==IBGTF || p->code[pc].op==IBGEF)edge[n++]=p->code[pc].destination;
+			   p->code[pc].op==IBEQF || p->code[pc].op==IBNEF || p->code[pc].op==IBLTF || p->code[pc].op==IBLEF || p->code[pc].op==IBGTF || p->code[pc].op==IBGEF ||
+               p->code[pc].op==IBEQC || p->code[pc].op==IBNEC || p->code[pc].op==IBLTC || p->code[pc].op==IBLEC || p->code[pc].op==IBGTC || p->code[pc].op==IBGEC)edge[n++]=p->code[pc].destination;
 			if(pc+1>=p->count){ok=typedfail(p,"result-fallthrough");break;}edge[n++]=pc+1;
 		}
 		for(i=0;i<n;i++){

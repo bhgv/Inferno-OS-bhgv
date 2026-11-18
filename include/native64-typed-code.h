@@ -16,7 +16,8 @@ native64typedbranch(unsigned int op)
 	case IJMP:
 	case IBEQW:case IBNEW:case IBLTW:case IBLEW:case IBGTW:case IBGEW:
 	case IBEQL:case IBNEL:case IBLTL:case IBLEL:case IBGTL:case IBGEL:
-	case IBEQF:case IBNEF:case IBLTF:case IBLEF:case IBGTF:case IBGEF:return 1;
+	case IBEQF:case IBNEF:case IBLTF:case IBLEF:case IBGTF:case IBGEF:
+    case IBEQC:case IBNEC:case IBLTC:case IBLEC:case IBGTC:case IBGEC:return 1;
 	}
 	return 0;
 }
@@ -48,7 +49,7 @@ static int
 native64typedstringstep(const Native64TypedStep *s,unsigned int fpbytes,unsigned int mpbytes)
 {
  unsigned int mm=s->mode&ARM;
- if(s->mode>255 || s->returned || UDST(s->mode)!=AFP)return 0;
+ if(s->mode>255 || s->returned || (UDST(s->mode)!=AFP && !(s->op==ISLICEC && UDST(s->mode)==AMP)))return 0;
  if(s->op==IADDC)return (mm==AXINF || mm==AXINM) &&
   native64typedrootoperand(USRC(s->mode),s->s,fpbytes,mpbytes) &&
   native64typedrootoperand(mm==AXINF?AFP:AMP,s->m,fpbytes,mpbytes) && s->m<=65535 &&
@@ -59,7 +60,7 @@ native64typedstringstep(const Native64TypedStep *s,unsigned int fpbytes,unsigned
  else if(s->m>65535 || !native64typedwordoperand(AFP,s->m,fpbytes,mpbytes))return 0;
  return s->op==IINDC?
   native64typedrootoperand(USRC(s->mode),s->s,fpbytes,mpbytes) && native64typedwordoperand(AFP,s->d,fpbytes,mpbytes):
-  native64typedwordoperand(USRC(s->mode),s->s,fpbytes,mpbytes) && native64typedrootoperand(AFP,s->d,fpbytes,mpbytes);
+  native64typedwordoperand(USRC(s->mode),s->s,fpbytes,mpbytes) && native64typedrootoperand(UDST(s->mode),s->d,fpbytes,mpbytes);
 }
 
 /* Byte arrays only. NEWAZ's zero is a private byte-Type token; the owning
@@ -99,6 +100,10 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
             continue;
 		case IADDC:case IINDC:case ISLICEC:
             if(!native64typedstringstep(s,fpbytes,mpbytes))return 0;
+            continue;
+        case IBEQC:case IBNEC:case IBLTC:case IBLEC:case IBGTC:case IBGEC:
+            if(s->returned || dm!=AIMM || s->d<0 || (unsigned long)s->d>=count || (mm!=AXINF && mm!=AXINM) || s->m>65535 ||
+               !native64typedrootoperand(sm,s->s,fpbytes,mpbytes) || !native64typedrootoperand(mm==AXINF?AFP:AMP,s->m,fpbytes,mpbytes))return 0;
             continue;
 		case IRAISE:
             if(dm!=AXXX || mm!=AXNON || s->m || s->d || s->returned ||

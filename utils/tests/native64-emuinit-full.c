@@ -1,4 +1,5 @@
 #include "full.h"
+#include "arg.h"
 static Module *fullbuiltins[3],*fullcurrent;
 static Type *fullfd;
 static int fullmode,fullloads[4],fullbinds,fullopens,fullfildes,fullprints,fullsprints,fullcommands,fullarginits,fullopts,fullargs,fullargvs;
@@ -102,15 +103,34 @@ static void fullrefusals(void){
  }
  puts("PASS complete emuinit metadata: 19 malformed maps/operations/contracts/slots/sites/branches refused before allocation");
 }
-static void fullconstruction(void){Native64ModuleOwner owner={0};REG before=R;int jit,i,n,base;
- for(jit=0;jit<2;jit++){base=allocations;fullcheck(native64sysmodule(&full_spec,full_variadics,3,jit,&owner),"constructor baseline");n=allocations-base;fullcheck(native64typedmoduleclear(&owner),"constructor clear");
-  for(i=1;i<=n;i++){failat=allocations+i;fullcheck(!native64sysmodule(&full_spec,full_variadics,3,jit,&owner),"constructor failure refused");failat=0;fullcheck(!owner.module&&!owner.rooted&&!owner.self&&!live&&!nlinkpins&&!memcmp(&R,&before,sizeof(R)),"constructor atomic rollback");}
-  printf("PASS complete emuinit constructor: jit=%d %d allocation failures, unchanged REG/output and complete rollback\n",jit,n);
+/* String branch operands and MP slice results must remain mapped roots. */
+static void argrefusals(void){Native64ModuleSpec spec;Native64ModuleFunction functions[8];Native64TypedStep code[1024];Native64ModuleOwner owner={0};REG saved=R;unsigned f,j,k,n,found=0;int before;
+ for(k=0;k<5;k++){
+  spec=arg_source_spec;memmove(functions,arg_source_functions,sizeof(functions));spec.functions=functions;
+  for(f=0;f<8;f++){n=functions[f].count;fullcheck(n<=nelem(code),"bounded Arg refusal fixture");memmove(code,functions[f].code,n*sizeof(*code));
+   for(j=0;j<n;j++)if(k<3?(code[j].op==IBEQC||code[j].op==IBNEC):(code[j].op==ISLICEC&&UDST(code[j].mode)==AMP))break;
+   if(j<n)break;
+  }
+  fullcheck(f<8,"Arg String boundary coverage");functions[f].code=code;
+  if(k==0){code[j].mode=(code[j].mode&~(7<<3))|SRC(AMP);code[j].s=arg_source_scalar;} /* Independent layout: scalar printusage. */
+  if(k==1)code[j].d=n;
+  if(k==2)code[j].mode=(code[j].mode&~ARM)|AXIMM;
+  if(k==3)code[j].d++;
+  if(k==4)code[j].d=arg_source_scalar;
+  before=allocations;fullcheck(!native64sysmodule(&spec,arg_source_variadics,1,0,&owner),"malformed Arg String roles refused");fullcheck(before==allocations&&!live&&!owner.module&&!memcmp(&R,&saved,sizeof(R)),"Arg String refusal before allocation/publication");found++;
+ }
+ printf("PASS Arg String metadata: %u branch root/target/middle and MP slice refusals before allocation\n",found);
+}
+static void fullconstruction(void){Native64ModuleOwner owner={0};REG before=R;int jit,i,n,base,kind;
+ const Native64ModuleSpec*specs[]={&full_spec,&arg_source_spec};const Native64ModuleVariadic*vars[]={full_variadics,arg_source_variadics};unsigned counts[]={3,1};
+ for(kind=0;kind<2;kind++)for(jit=0;jit<2;jit++){base=allocations;fullcheck(native64sysmodule(specs[kind],vars[kind],counts[kind],jit,&owner),"constructor baseline");n=allocations-base;fullcheck(native64typedmoduleclear(&owner),"constructor clear");
+  for(i=1;i<=n;i++){failat=allocations+i;fullcheck(!native64sysmodule(specs[kind],vars[kind],counts[kind],jit,&owner),"constructor failure refused");failat=0;fullcheck(!owner.module&&!owner.rooted&&!owner.self&&!live&&!nlinkpins&&!memcmp(&R,&before,sizeof(R)),"constructor atomic rollback");}
+  printf("PASS complete %s constructor: jit=%d %d allocation failures, unchanged REG/output and complete rollback\n",specs[kind]->name,jit,n);
  }
 }
 int main(void){int jit,q,m,total=0;int quanta[]={1,3,1000};
  rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;require(dis64selectlaunch("dis64-calls"));
  FULL_HANDLERS
  optab[ILOAD]=actual_iload;optab[IMOVP]=actual_movp;optab[ICONSP]=actual_consp;optab[IHEADP]=actual_headp;optab[ITAIL]=actual_tail;optab[ILENL]=actual_lenl;optab[ILENC]=actual_lenc;optab[ICASE]=actual_icase;optab[IRAISE]=actual_iraise;optab[IADDC]=actual_addc;
- fullrefusals();fullconstruction();for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(m=0;m<8;m++){fullrun(jit,quanta[q],m);total++;}
+ fullrefusals();argrefusals();fullconstruction();for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(m=0;m<8;m++){fullrun(jit,quanta[q],m);total++;}
  printf("PASS complete unchanged emuinit init/loadmod: %d C/JIT launches, Arg missing/available/options/argv, exact AWM-first LOAD, shell fallback, terminal raise, Limbo nil/argv init and full retirement; services controlled, no AWM window\n",total);return 0;}

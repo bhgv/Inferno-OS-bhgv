@@ -13,7 +13,7 @@ def main():
   (w/'allocator.h').write_text('#include "lib9.h"\n#undef calloc\n#undef free\n#define free typedfree\nvoid typedfree(void*);\n')
   binary=w/'unit';cmd=cc+['-include',str(w/'allocator.h'),str(ROOT/'limbo/dis64-layout.c'),str(w/'core.c'),str(w/'unit.c'),'-Wl,--gc-sections','-o',str(binary)]
   subprocess.run(cmd,check=True);subprocess.run(runner+[str(binary)],check=True)
-  for header,before,after,why in [('dis64-variadic.h','(unsigned int)sign(fn)==0x4c0624b6U','1','signature refused'),('core.c','p->sourceroles && reference','reference','temporary refinement LOAD-only')]:
+  for header,before,after,why in [('dis64-variadic.h','(unsigned int)sign(fn)==0x4c0624b6U','1','signature refused'),('core.c','p->sourceroles && reference','reference','temporary refinement LOAD-only'),('core.c','p->code[pc].op==IBEQC || p->code[pc].op==IBNEC || p->code[pc].op==IBLTC || p->code[pc].op==IBLEC || p->code[pc].op==IBGTC || p->code[pc].op==IBGEC','0','String branch cannot skip result definition')]:
    target=w/header;source=(ROOT/'limbo/dis64-typed.c').read_text()if header=='core.c'else(ROOT/'limbo'/header).read_text();assert source.count(before)==1;target.write_text(source.replace(before,after,1))
    subprocess.run(cmd,check=True);r=subprocess.run(runner+[str(binary)],capture_output=True,text=True)
    assert r.returncode==10 and 'variadic IR: '+why in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)

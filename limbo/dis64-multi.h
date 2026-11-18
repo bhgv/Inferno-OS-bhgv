@@ -178,7 +178,7 @@ typedclientstring(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
   int numeric=in->op!=IADDC;
   if(in->branch || !typedoperand(in->sm,&in->s,numeric?Tint:Tstring,numeric,0,p,&source,&sm,&actual) ||
      !typedoperand(in->mm==Anone?in->dm:in->mm,in->mm==Anone?&in->d:&in->m,numeric?Tint:Tstring,numeric,1,p,&middle,&mm,&actual) ||
-     !typedoperand(in->dm,&in->d,Tstring,0,0,p,&destination,&dm,&actual) || dm!=AFP ||
+     !typedoperand(in->dm,&in->d,Tstring,0,0,p,&destination,&dm,&actual) || (dm!=AFP && !(p->sourceroles && in->op==ISLICEC && dm==AMP)) ||
      (numeric?(mm!=AIMM && mm!=AFP):(mm!=AFP && mm!=AMP)))return typedfail(p,"string-write-roles");
   p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|(mm==AIMM?AXIMM:mm==AFP?AXINF:AXINM)|DST(dm),middle,source,destination};return 1;
  }
@@ -428,7 +428,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if((c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)) || (c->loads && in->op==ICVTAC)){
             if((c->loads && !typedloadbytes(in,p,pc-p->first)) || !typedclientcodec(in,p,pc-p->first))goto fail;pc++;
         }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
-                 (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC))){
+                 (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->external>=2 && in->op==IMOVP && (in->sm==Afpind || in->dm==Afpind)){
             if(!typedclientfield(in,p,pc-p->first,0))goto fail;pc++;

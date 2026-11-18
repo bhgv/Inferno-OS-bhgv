@@ -16,6 +16,8 @@ def generate(limbo,output):
   requests=sections[5];assert int.from_bytes(requests[:4],'big')==1 and requests[16:20]==bytes.fromhex('face0186')
   signature=int.from_bytes(requests[20:24],'big');assert '{"init",'+str(signature)+'U,80,'in text
   for name,values in [('boot_command_requests',sections[5]),('boot_command_names',sections[7])]:text+='static const uchar '+name+'[]={'+','.join(map(str,values))+'};\n'
+  gate['generate'](limbo,w,(ROOT/'appl/lib/arg.b').read_text(),'Arg')
+  text+='\n'+(w/'full.h').read_text().replace('fullload','native64argload').replace('full_','arg_source_')
   output.write_text('/* Generated from unchanged appl/cmd/emuinit.b; trusted native metadata, no file ABI. */\n'+text)
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();generate(Path(shutil.which(str(a.limbo)) or a.limbo).resolve(),a.output)
