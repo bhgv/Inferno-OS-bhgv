@@ -24,10 +24,10 @@ def boundaries(limbo,w):
  for payload in('array of byte','list of string','chan of int','ref Item','Service'):
   source='implement Probe;Item:adt{n:int;};Service:module{run:fn();};Probe:module{make:fn():chan of '+payload+';clear:fn();};saved:chan of '+payload+';make():chan of '+payload+'{return chan of '+payload+';}clear(){saved=nil;}'
   _,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert all(r['accepted']for r in rows),rows
- for payload in('(int,int)','(string,chan of string)'):
+ for payload in('(int,int)','(string,int)'):
   source='implement Closed;Closed:module{make:fn():chan of '+payload+';};make():chan of '+payload+'{return chan of '+payload+';}'
   _,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert len(rows)==1 and not rows[0]['accepted'],rows
- print('PASS channel payload boundary: all six builtin pointer classes accepted; raw/mapped aggregates remain closed',flush=True)
+ print('PASS channel payload boundary: all six builtin pointer classes accepted; raw/mixed aggregates remain closed',flush=True)
 def unit():
  src=TR['unit']().split('\n#line 1 "native64-channel-triples.c"')[0];src=src.replace('#include "tests/leaf-cons-stub.h"','#define cnewcscalar unused_channel_allocator\n#include "tests/leaf-cons-stub.h"\n#undef cnewcscalar');extract=CMD['NS']['S']['FILES']['FILES']['function'];vm=(ROOT/'libinterp/xec.c').read_text();heap=(ROOT/'libinterp/heap.c').read_text()
  for signature in('Heap*\nheaparray(','void\ninitarray('):src=src.replace(extract(src,signature),extract(heap,signature),1)

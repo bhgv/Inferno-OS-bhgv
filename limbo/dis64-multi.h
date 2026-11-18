@@ -103,22 +103,56 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"client-context-geometry");
 }
 
+/* Shared native channel result/capacity geometry, after nominal payload proof. */
+static int
+typedchanneloutput(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
+{
+ unsigned int dm,mm=AXNON,wire;long destination,capacity=0;int actual;
+ if(in->branch)return typedfail(p,"channel-operands");
+ if(in->dm==Afpind){if(in->d.reg!=16 || in->d.offset || fn->ty->tof->kind!=Tchan)return typedfail(p,"channel-result");destination=32;dm=AFP|AIND;*returned=1;}
+ else if(!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&destination,&dm,&actual) || actual!=Tchan)return typedfail(p,"channel-destination");
+ if(in->mm!=Anone){if(!typedoperand(in->mm,&in->m,Tint,1,1,p,&capacity,&wire,&actual))return typedfail(p,"channel-capacity");mm=wire==AIMM?AXIMM:wire==AFP?AXINF:AXINM;}
+ *out=(Dis64Instruction){in->op,SRC(in->op==INEWCMP?AIMM:AXXX)|mm|DST(dm),capacity,0,destination};return 1;
+}
+
 /* Primitive channel payloads retain their existing builtin Type/mover identity. */
 static int
 typedclientchannel(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {
- Type*t;unsigned int dm,mm=AXNON,wire;long destination,capacity=0;int actual,kind;
- if(in->sm!=Anone || in->branch)return typedfail(p,"channel-operands");
- if(in->dm==Afpind){if(in->d.reg!=16 || in->d.offset)return typedfail(p,"channel-result");t=fn->ty->tof;destination=32;dm=AFP|AIND;*returned=1;}
- else{
-  t=in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;
-  if(!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&destination,&dm,&actual) || actual!=Tchan)return typedfail(p,"channel-destination");
- }
+ Type*t=in->dm==Afpind?fn->ty->tof:in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;int kind;
+ if(in->sm!=Anone)return typedfail(p,"channel-operands");
  if(!t || t->kind!=Tchan || !t->tof)return typedfail(p,"channel-payload");kind=t->tof->kind;
  if(!((in->op==INEWCB && kind==Tbyte) || (in->op==INEWCW && (kind==Tint || kind==Tfix)) || (in->op==INEWCL && kind==Tbig) || (in->op==INEWCF && kind==Treal) ||
       (in->op==INEWCP && (kind==Tstring || kind==Tref || kind==Tchan || kind==Tarray || kind==Tlist || kind==Tmodule))))return typedfail(p,"channel-payload");
- if(in->mm!=Anone){if(!typedoperand(in->mm,&in->m,Tint,1,1,p,&capacity,&wire,&actual))return typedfail(p,"channel-capacity");mm=wire==AIMM?AXIMM:wire==AFP?AXINF:AXINM;}
- *out=(Dis64Instruction){in->op,SRC(AXXX)|mm|DST(dm),capacity,0,destination};return 1;
+ return typedchanneloutput(in,fn,p,out,returned);
+}
+
+/* Both source payload and canonical descriptor must prove this bounded geometry. */
+static int
+typedmappedpayload(Type*t,Dis64Layout*layout)
+{
+ Decl*field;unsigned int i,n;
+ if(!t || t->kind!=Ttuple || !dis64layouttype(t,layout))return 0;n=layout->count;
+ if((n!=2 && n!=3) || layout->legacybytes!=4*n || layout->bytes!=8*n || layout->alignment!=8)return 0;
+ for(i=0,field=t->ids;field;field=field->next,i++)if(i>=n || !field->ty || field->ty->kind!=layout->leaves[i].kind)return 0;
+ if(i!=n)return 0;
+ for(i=0;i<n;i++)if(layout->leaves[i].legacy!=4*i || layout->leaves[i].native!=8*i || layout->leaves[i].oldbytes!=4 || layout->leaves[i].bytes!=8 ||
+   (layout->leaves[i].kind!=Tstring && layout->leaves[i].kind!=Tref && layout->leaves[i].kind!=Tchan && layout->leaves[i].kind!=Tarray && layout->leaves[i].kind!=Tlist && layout->leaves[i].kind!=Tmodule))return 0;
+ return 1;
+}
+
+/* Descriptor deduplication may merge root classes with identical GC geometry. */
+static int
+typedclientmappedchannel(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
+{
+ Dis64Layout payload={0},descriptor={0};Decl*d=in->s.decl;Type*t;unsigned int n;int ok=0;
+ if(in->sm!=Adesc || !d || !d->desc || d->desc->id!=in->s.offset || !d->desc->map || d->desc->nmap!=1)goto done;
+ t=in->dm==Afpind?fn->ty->tof:in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;
+ if(!t || t->kind!=Tchan || !typedmappedpayload(t->tof,&payload) || !typedmappedpayload(d->ty,&descriptor))goto done;
+ n=payload.count;if(descriptor.count!=n || d->desc->size!=4*n || d->desc->map[0]!=(n==2?0xc0:0xe0))goto done;
+ if(!typedchanneloutput(in,fn,p,out,returned))goto done;
+ out->source=n;*returned=*returned?185:183;ok=1;
+ done:dis64layoutfree(&payload);dis64layoutfree(&descriptor);return ok?1:typedfail(p,"mapped-channel-layout");
 }
 
 /* A scratch Decl retains its storage type after reuse. Indirect access needs
@@ -605,6 +639,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
           ((in->s.decl && in->s.decl->ty && typedclientreferencekind(in->s.decl->ty->kind)) ||
            (in->m.decl && in->m.decl->ty && typedclientreferencekind(in->m.decl->ty->kind)))){
             if(!(c->loads?typedloadcompare(in,p,pc-p->first,stop):typedclientcompare(in,p,pc-p->first,stop)))goto fail;pc++;
+        }else if(c->loads && in->op==INEWCMP){
+            if(!typedclientmappedchannel(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==INEWCB || in->op==INEWCW || in->op==INEWCL || in->op==INEWCF || in->op==INEWCP)){
             if(!typedclientchannel(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && (in->op==INEW || in->op==INEWZ)){

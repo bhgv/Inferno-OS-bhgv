@@ -84,6 +84,16 @@ native64typedchannel(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
   (mm==AXNON?!s->m:native64typedwordoperand(mode,s->m,fp,mp) && (mm!=AXIMM || (s->m>=-32768 && s->m<=32767)));
 }
 
+/* Payload root-count is a checked role, relocated to a private native Type. */
+static int
+native64typedmappedchannel(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ Native64TypedStep copy=*s;
+ if(s->op!=INEWCMP || USRC(s->mode)!=AIMM || (s->s!=2 && s->s!=3) || (s->returned!=183 && s->returned!=185))return 0;
+ copy.op=INEWCP;copy.mode=(s->mode&~(7<<3))|SRC(AXXX);copy.s=0;copy.returned=s->returned==185?24:0;
+ return native64typedchannel(&copy,fp,mp);
+}
+
 static int
 native64typedstringstep(const Native64TypedStep *s,unsigned int fpbytes,unsigned int mpbytes)
 {
@@ -223,6 +233,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==173){if(!native64typedcontextcopy(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==172 || s->returned==174){if(!native64typedcontextnew(s,fpbytes))return 0;continue;}
         if(s->returned==171){if(!native64typedtriplecopy(s,fpbytes))return 0;continue;}
+        if(s->returned==183 || s->returned==185){if(!native64typedmappedchannel(s,fpbytes,mpbytes))return 0;continue;}
         if(native64typedchannelop(s->op)){if(!native64typedchannel(s,fpbytes,mpbytes))return 0;continue;}
 		switch(s->op){
 		case INEWAZ:case ISLICEA:case ICVTAC:
@@ -293,6 +304,8 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 	for(i=0;i<count;i++){
 		s=steps+i;p=out+i;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;p->reg=s->m;
 		p->s.imm=s->s;
+        if(s->returned==183){p->d.ind=s->d;continue;}
+        if(s->returned==185){p->d.i.f=32;p->d.i.s=0;continue;}
         if(s->returned==172){p->d.ind=s->d;continue;}
         if(s->returned==174){p->d.i.f=32;p->d.i.s=0;continue;}
         if(s->returned==173){p->reg=0;p->s.i.f=s->s;p->s.i.s = s->m;p->d.i.f=s->d;p->d.i.s=s->m;continue;}

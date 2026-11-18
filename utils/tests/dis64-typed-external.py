@@ -260,6 +260,14 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if o['op']==OPCODES['INEWCMP']:
+            assert loads and op==o['op']==OPCODES['INEWCMP']and mode==o['mode']and returned in(183,185)
+            size,mapping=types[o['s'][0]];n=size//4;assert n in(2,3)and size==4*n and mapping==bytes([192 if n==2 else 224])
+            mm=mode&192;dm=mode&7;middle=0 if mm==0 else o['m']if mm==64 else maps['frame'if mm==128 else'data'][o['m']]
+            if returned==185:assert o['d']==[16,0]and r['result']==[6,8]
+            else:assert next(l for l in r['frame'if dm==1 else'data']['leaves']if l[0]==o['d'][0])[4]==6
+            assert r['code'][pc]==[op,mode,n,middle,32 if returned==185 else maps['frame'if dm==1 else'data'][o['d'][0]],returned]
+            continue
         if op in [OPCODES[n]for n in('INEWCB','INEWCW','INEWCL','INEWCF','INEWCP')]:
             assert loads and op==o['op']and mode==o['mode']and o['s']is None and returned in(0,24)
             mm=mode&192;dm=mode&7;middle=0 if mm==0 else o['m']if mm==64 else maps['frame'if mm==128 else'data'][o['m']]

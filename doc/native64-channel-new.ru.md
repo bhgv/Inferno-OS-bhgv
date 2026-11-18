@@ -60,3 +60,7 @@ channel allocation не означает готовность серверног
 Регрессии: 318 Context cases с тремя controls, 400 channel-triple cases с
 четырьмя controls, полный emuinit/Arg и 324 настоящих C/JIT boot-процесса.
 Чистая amd64 console и paired boot также прошли.
+
+Продолжение: [mapped tuple channels](native64-mapped-channels.ru.md)
+открывает двух- и трёхкорневые tuple payload и переносит Wmsrv.init с PC27
+на spawn setup PC30. Mixed payload остаётся закрытым.

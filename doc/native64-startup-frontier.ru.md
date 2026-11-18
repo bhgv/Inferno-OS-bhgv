@@ -98,3 +98,5 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий этап: [String preparation и temporary clear](native64-string-prep.ru.md): настоящие kill/fatal принимаются целиком; AWM init доходит до PC120 INEWCP. Полный init и UI пока не запущены.
 
 Следующий этап: [primitive channel allocation](native64-channel-new.ru.md): AWM init проходит PC120 и останавливается на spawn setup PC127/ISPAWN PC131. Wmsrv mapped channel PC27 остаётся отдельным барьером.
+
+Следующий этап: [mapped tuple channels](native64-mapped-channels.ru.md): Wmsrv.init проходит PC27–29 и доходит до spawn setup PC30. AWM init остаётся на spawn setup PC127/131.
