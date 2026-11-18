@@ -71,3 +71,5 @@ Private annotations не меняют classic wire format и 32-bit пути.
 Свежая amd64 консоль, paired boot и 324 настоящих emuinit/Arg boot-процесса
 также прошли. Полный Android APK/UI и физические ARM64/RISC-V64 устройства
 этим результатом не проверены.
+
+Продолжение: [channel triple results](native64-channel-triples.ru.md) переносит следующий барьер init с PC97 на PC100.

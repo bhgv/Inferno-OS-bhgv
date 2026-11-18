@@ -38,6 +38,7 @@ def field_argument(original,step,new,maps):
 
 def verify(data,r,imports,loads=False,rows=None):
     assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and (rows is not None or 'calls'not in r)
+    if r.get('result')==[14,24]:assert r.get('result_channels')==[6,6,6]
     _,old,types=BASE['READ']['legacy_instructions'](data,with_types=True)
     layout=json.loads(json.dumps(r));layout.update(schema='inferno-typed-body-v2');BASE['verify'](data,layout,validate_code=False)
     maps={space:{leaf[0]+i:leaf[1]+i for leaf in r[space]['leaves']for i in range(leaf[2])}for space in ('frame','data')}
@@ -45,7 +46,7 @@ def verify(data,r,imports,loads=False,rows=None):
     for first,end,target,descriptor,offset,contract,inherited in r.get('calls',[]):
         assert rows is not None and previous<first<end<len(original);previous=end
         callee=next(x for x in rows if x['first']==target);assert callee['accepted']and callee['descriptor']==descriptor
-        assert contract==(48 if callee.get('result_pair')==[11,10]else callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
+        assert contract==(72 if callee.get('result_channels')==[6,6,6]else 48 if callee.get('result_pair')==[11,10]else callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
         at=first+1;preps=set()
         pending=original[first]['d'][0];assert original[first]['op']==5 and original[first]['s']==[descriptor]
         assert r['code'][first]==[5,17,descriptor,0,40,0]
@@ -220,6 +221,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert r['code'][at]==[41,1,maps['data'][clear['s'][0]],0,maps['frame'][clear['d'][0]],126];at+=1
         assert not aggregates
         contract=e['contract'];assert at+bool(contract)==end
+        assert (contract==72)==(e.get('result_channels')==[6,6,6])
         if contract:
             b=original[end-1];assert b['op']==39 and b['d']==[pending,16]
             if e['inherited']:assert b['s']==[16,0]and r['code'][end-1]==[118,13,32,0,32,64]
@@ -311,6 +313,21 @@ def verify(data,r,imports,loads=False,rows=None):
             assert loads and mode in(3,11)and m==d==returned==0
             address=mode>>3&7;leaves=r['frame'if address else'data']['leaves']
             assert any(leaf[1]==s and leaf[3:]==[8,13]for leaf in leaves)
+        if r.get('result_channels'):
+            assert r['result_channels']==[6,6,6]and r['result']==[14,24]
+            if o['op']==43:
+                assert o['mode']==77 and o['d']==[16,0]and types[o['m']]==(12,bytes([224]))
+                base=maps['frame'][o['s'][0]]
+                assert r['code'][pc]==[43,77,base,0,32,171]
+                for k in range(3):assert maps['frame'][o['s'][0]+4*k]==base+8*k
+                continue
+            if o['op']==41 and o['mode']&7==5:
+                assert o['d']in([16,0],[16,4],[16,8])and d==32+2*o['d'][1]and returned==168+o['d'][1]//4
+                address=mode>>3&7;assert address in(0,1)and o['m']is None
+                assert s==maps['frame'if address else'data'][o['s'][0]]
+                leaf=next(l for l in r['frame'if address else'data']['leaves']if l[0]==o['s'][0]);assert leaf[4]in(6,20)and leaf[3]==8
+                assert r['code'][pc]==[41,o['mode'],s,0,32+2*o['d'][1],168+o['d'][1]//4]
+                continue
         if r.get('result_pair'):
             assert r['result_pair']==[11,10]and r['result']==[14,16]
             if o['op']==41 and o['mode']&7==5:

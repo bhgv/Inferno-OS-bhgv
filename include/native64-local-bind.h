@@ -33,9 +33,9 @@ native64localbind(void)
         return fetched.module->native64casec();
     }
     if(fetched.op!=ILEA)return 0;
-    memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;width=contract==88?88:contract==48?16:contract&15;reference=!!(contract&16);
+    memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;width=contract==72?24:contract==88?88:contract==48?16:contract&15;reference=contract==72 || !!(contract&16);
     if(!native64model() || (instruction.add!=(SRC(AFP)|DST(AFP|AIND)) && !(contract==24 && instruction.add==(SRC(AMP)|DST(AFP|AIND)))) || instruction.d.i.f!=40 || instruction.d.i.s!=32 ||
-       (contract!=48 && contract!=88 && ((contract&~31) || (width!=1 && width!=4 && width!=8) || (reference && width!=8))) || R.FP==nil || R.FP==H)error(exBounds);
+       (contract!=48 && contract!=72 && contract!=88 && ((contract&~31) || (width!=1 && width!=4 && width!=8) || (reference && width!=8))) || R.FP==nil || R.FP==H)error(exBounds);
     base=(uintptr)R.FP;
     if(base%8 || base>(uintptr)-1-sizeof(Frame))error(exBounds);
     memmove(&caller,R.FP+O(Frame,t),sizeof(caller));
@@ -51,7 +51,7 @@ native64localbind(void)
         if(source==nil || source==H || source->ref<=0 || source->size<8 || source->size>1024*1024 || source->np<0 || source->np>(source->size+63)/64 || !sourcebase || R.MP==H || sourcebase%8 || sourcebase>(uintptr)-1-source->size)error(exBounds);
     }
     if(instruction.s.ind<(USRC(instruction.add)==AMP?0:64) ||
-       (unsigned int)instruction.s.ind>(unsigned int)source->size || width>(unsigned int)source->size-instruction.s.ind || instruction.s.ind%((contract==48 || contract==88)?8:width))error(exBounds);
+       (unsigned int)instruction.s.ind>(unsigned int)source->size || width>(unsigned int)source->size-instruction.s.ind || instruction.s.ind%((contract==48 || contract==72 || contract==88)?8:width))error(exBounds);
     for(at=instruction.s.ind;at<(unsigned int)instruction.s.ind+width;at++){
         bit=at/8;
         if(!!(bit/8<(unsigned int)source->np && (source->map[bit/8]&(0x80>>(bit%8))))!=(contract==88?(at>=(unsigned int)instruction.s.ind+8 && at<(unsigned int)instruction.s.ind+40):reference))error(exBounds);

@@ -90,3 +90,5 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий этап: [Draw payload roots и Image.display](native64-draw-fields.ru.md): makescreen проходит Display.color на PC1222; следующий отказ PC1227 — global result binding Screen.allocate. Init остаётся на PC93.
 
 Следующий этап: [makescreen и MP root results](native64-makescreen.ru.md): весь makescreen допускается (23 инструкции, 3 Draw calls); init проходит PC93 и останавливается на PC97 — triple-channel result Wmsrv.init.
+
+Следующий этап: [тройка каналов](native64-channel-triples.ru.md): AWM init проходит Wmsrv.init PC97 и останавливается на Draw.Context allocation PC100. Provider Wmsrv.init — на managed channel allocation PC27.

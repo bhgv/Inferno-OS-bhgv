@@ -41,6 +41,12 @@ native64typedrootoperand(unsigned int mode,long offset,unsigned int fpbytes,unsi
 }
 
 static int
+native64typedtriplecopy(const Native64TypedStep*s,unsigned int fp)
+{
+ return s->returned==171 && s->op==IMOVMP && s->mode==(SRC(AFP)|AXIMM|DST(AFP|AIND)) && !s->m && s->d==32 && s->s>=64 && s->s%8==0 && (unsigned long)s->s<=fp && 24<=fp-s->s;
+}
+
+static int
 native64typedwordoperand(unsigned int mode,long offset,unsigned int fpbytes,unsigned int mpbytes)
 {
  return native64typedcodeoperand(mode,offset,fpbytes,mpbytes) &&
@@ -183,6 +189,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned>=Native64TypedDraw && s->returned<Native64TypedDrawNil+11){
             if(!native64typeddrawstep(s,fpbytes,mpbytes) || (s->returned!=Native64TypedDraw && (s->d<0 || (unsigned long)s->d>=count)))return 0;continue;
         }
+        if(s->returned==171){if(!native64typedtriplecopy(s,fpbytes))return 0;continue;}
 		switch(s->op){
 		case INEWAZ:case ISLICEA:case ICVTAC:
             if(!native64typedbytestep(s,fpbytes,mpbytes))return 0;
@@ -235,6 +242,8 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 		if(!native64typedcodeoperand(sm,s->s,fpbytes,mpbytes))return 0;
 		if(native64typedbranch(s->op)){
 			if(dm!=AIMM || s->d<0 || (unsigned long)s->d>=count || s->returned)return 0;
+        }else if(s->returned>=168 && s->returned<=170){
+            if(s->op!=IMOVP || dm!=(AFP|AIND) || mm!=AXNON || s->m || s->d!=32+8*(s->returned-168) || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes))return 0;
 		}else if(s->returned==40 || s->returned==56){
             if(s->op!=IMOVP || dm!=(AFP|AIND) || mm!=AXNON || s->m || s->d!=(s->returned==40?32:40) ||
                !native64typedrootoperand(sm,s->s,fpbytes,mpbytes))return 0;
@@ -266,6 +275,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
             continue;
         }
 		if(native64typedbranch(s->op))p->d.ins=out+s->d;
+        else if(s->returned>=168 && s->returned<=170){p->d.i.f=32;p->d.i.s=8*(s->returned-168);}
 		else if(s->returned){p->d.i.f=32;p->d.i.s=s->returned==56?8:0;}
 		else p->d.ind=s->d;
 	}

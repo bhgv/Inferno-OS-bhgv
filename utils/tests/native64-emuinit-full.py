@@ -52,7 +52,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
   for j,e in enumerate(table):
    size,mapping=import_frames[(e['name'],e['signature'])]if import_frames is not None else(80,[0,192])if namespace=='Command'else frames[(namespace,e['name'])]
    frames[(ti,j)]=(size,mapping);array(f'full_import_map_{ti}_{j}',mapping)
-  lines+=['static const Native64ModuleImport full_import_'+str(ti)+'[]={']+['{'+json.dumps(e['name'])+f',{e["signature"]}U,{frames[(ti,j)][0]},full_import_map_{ti}_{j},{len(frames[(ti,j)][1])}'+'},'for j,e in enumerate(table)]+['};']
+  lines+=['static const Native64ModuleImport full_import_'+str(ti)+'[]={']+['{'+json.dumps(e['name'])+f',{e["signature"]}U,{frames[(ti,j)][0]},full_import_map_{ti}_{j},{len(frames[(ti,j)][1])},{72 if any(x.get('contract')==72 and x['name']==e['name']and x['signature']==e['signature']for r in rows for x in r.get('externals',[]))else 0}'+'},'for j,e in enumerate(table)]+['};']
  lines+=['static const Native64ModuleTable full_tables[]={']+[f'{{full_import_{ti},{len(t)}}},'for ti,t in enumerate(imports)]+['};']
  lines+=['static const uint full_namespaces[]={'+','.join(map(str,namespaces))+'};']
  for r in rows:
@@ -71,7 +71,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
  lines+=['static const Native64ModuleFunction full_functions[]={']
  for r in rows:
   n=r['name'];e=exports.get(n);nsites=len(r.get('externals',[]))+len(r.get('calls',[]));nt=len(r.get('tables',[]))
-  lines+=['{'+json.dumps(n)+f',{e["signature"]if e else 0}U,{int(e is not None)},full_code_{n},{len(r["code"])},{r["frame"]["bytes"]},full_map_{n},{len(r["frame"]["map"])},'+('full_sites_'+n if nsites else'nil')+f',{nsites},'+('full_cases_'+n if nt else'nil')+f',{nt},{48 if r.get("result_pair")else 0}'+'},']
+  lines+=['{'+json.dumps(n)+f',{e["signature"]if e else 0}U,{int(e is not None)},full_code_{n},{len(r["code"])},{r["frame"]["bytes"]},full_map_{n},{len(r["frame"]["map"])},'+('full_sites_'+n if nsites else'nil')+f',{nsites},'+('full_cases_'+n if nt else'nil')+f',{nt},{72 if r.get("result_channels")else 48 if r.get("result_pair")else 0}'+'},']
  lines+=['};'];array('full_data_map',rows[0]['data']['map']);initial=E['BASE']['READ']['legacy_instructions'](data,with_types=True,with_data=True)[3]
  strings=[];values=[];layout=rows[0]['data'];ranges=[(t['offset'],t['offset']+8+12*len(t['rows']))for r in rows for t in r.get('tables',[])]
  for old,cell in sorted(initial.items()):

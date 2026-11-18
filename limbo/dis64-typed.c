@@ -106,6 +106,19 @@ typedpairtype(Type *t)
  dis64layoutfree(&layout);return ok;
 }
 
+/* Three channel handles, regardless of their independently typed payloads. */
+static int
+typedchanneltriple(Type*t)
+{
+ Decl*d;Dis64Layout l={0};unsigned int i=0;int ok=0;
+ if(!t || t->kind!=Ttuple)return 0;
+ for(d=t->ids;d;d=d->next){if(!d->ty || d->ty->kind!=Tchan)return 0;i++;}
+ if(i!=3 || !dis64layouttype(t,&l) || l.legacybytes!=12 || l.bytes!=24 || l.alignment!=8 || l.count!=3)goto done;
+ for(i=0;i<3;i++)if(l.leaves[i].legacy!=4*i || l.leaves[i].native!=8*i || l.leaves[i].oldbytes!=4 || l.leaves[i].bytes!=8 || l.leaves[i].kind!=Tchan)goto done;
+ ok=1;
+ done:dis64layoutfree(&l);return ok;
+}
+
 static int
 typedraise(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
 {
@@ -171,7 +184,10 @@ typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out,
 		if(in->dm!=Apc || in->branch==nil || in->branch->pc<p->first || in->branch->pc>=stop || in->d.offset!=in->branch->pc)
 			return typedfail(p,"branch-owner");
 		out->destination=in->branch->pc-p->first; dm=AIMM;
-	}else if(in->dm==Afpind && p->resultpair){
+	}else if(in->dm==Afpind && p->resulttriple){
+        if(in->op!=IMOVP || in->mm!=Anone || in->d.reg!=16 || in->d.offset<0 || in->d.offset>8 || in->d.offset%4)return typedfail(p,"channel-result-destination");
+        out->destination=32+2*in->d.offset;dm=AFP|AIND;destkind=Tchan;*result=2<<(in->d.offset/4);
+    }else if(in->dm==Afpind && p->resultpair){
         if(in->op!=IMOVP || in->mm!=Anone || in->d.reg!=16 || (in->d.offset!=0 && in->d.offset!=4))return typedfail(p,"pair-result-destination");
         out->destination=in->d.offset?40:32;dm=AFP|AIND;destkind=in->d.offset?Tlist:Tmodule;*result=in->d.offset?16:8;
 	}else if(in->dm==Afpind){
@@ -202,10 +218,11 @@ typedresults(Dis64TypedBody *p)
 	int ok=1;
 	if(p->resultkind==Tnone) return 1;
 	state=allocmem(p->count);memset(state,0,p->count);
-	queue=allocmem(((p->resultpair?3:2)*p->count+1)*sizeof(*queue));state[0]=1;queue[tail++]=0;
+	queue=allocmem(((p->resulttriple?4:p->resultpair?3:2)*p->count+1)*sizeof(*queue));state[0]=1;queue[tail++]=0;
 	while(head<tail){
 		pc=queue[head++];flow=state[pc];
-        if(p->resultpair){if(p->returns[pc]==8)flow|=2;if(p->returns[pc]==16)flow|=4;if(p->returns[pc]==32)flow=7;}
+        if(p->resulttriple){if(p->returns[pc]==2 || p->returns[pc]==4 || p->returns[pc]==8)flow|=p->returns[pc];if(p->returns[pc]==32 || p->returns[pc]==171)flow=15;}
+        else if(p->resultpair){if(p->returns[pc]==8)flow|=2;if(p->returns[pc]==16)flow|=4;if(p->returns[pc]==32)flow=7;}
         else if(p->returns[pc] && p->returns[pc]<=32)flow=3;
         n=0;
 		if(p->code[pc].op==IRET || p->code[pc].op==IRAISE) continue;
@@ -233,7 +250,7 @@ typedresults(Dis64TypedBody *p)
 			if(joined!=state[edge[i]]){state[edge[i]]=joined;queue[tail++]=edge[i];}
 		}
 	}
-	if(ok)for(pc=0;pc<p->count;pc++)if(p->code[pc].op==IRET && (p->resultpair?(state[pc]!=0 && state[pc]!=7):state[pc]==1)){p->badpc=p->first+pc;ok=typedfail(p,"undefined-result");break;}
+	if(ok)for(pc=0;pc<p->count;pc++)if(p->code[pc].op==IRET && (p->resulttriple?(state[pc]!=0 && state[pc]!=15):p->resultpair?(state[pc]!=0 && state[pc]!=7):state[pc]==1)){p->badpc=p->first+pc;ok=typedfail(p,"undefined-result");break;}
 	free(state);free(queue);return ok;
 }
 
@@ -254,7 +271,7 @@ typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned in
 	case Tbyte:p->resultbytes=1;break;
 	case Tint:case Tfix:p->resultbytes=4;break;
 	case Tbig:case Treal:case Tstring:case Tref:case Tarray:case Tlist:case Tchan:case Tmodule:p->resultbytes=8;break;
-	case Ttuple:if(!loads || !typedpairtype(fn->ty->tof))return typedfail(p,"aggregate-result");p->resultbytes=16;p->resultpair=1;break;
+	case Ttuple:if(loads && typedchanneltriple(fn->ty->tof)){p->resultbytes=24;p->resulttriple=1;}else if(loads && typedpairtype(fn->ty->tof)){p->resultbytes=16;p->resultpair=1;}else return typedfail(p,"aggregate-result");break;
 	default:return typedfail(p,"aggregate-result");
 	}
 	p->first=fn->pc->pc;
@@ -566,7 +583,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             for(i=0;i<p.nexternal;i++){
                 Dis64TypedExternal *e=p.external+i;
                 fprint(2,"%s{\"first\":%ud,\"end\":%ud,\"binding\":%ud,\"module\":[%ud,%ud],\"resultoffset\":%ud,\"contract\":%ud,\"inherited\":%ud,\"signature\":%ud,\"name\":",i?",":"",e->first,e->end,e->binding,e->modulemode,e->moduleoffset,e->resultoffset,e->contract,e->inherited,(unsigned int)sign(e->callee));
-                typedexportname(e->callee);fprint(2,",\"args\":");typedbindings(e->callee->ty->ids,1);fprint(2,",\"aggregate_args\":");typedaggregatebindings(e->callee->ty->ids);fprint(2,"}");
+                typedexportname(e->callee);fprint(2,",\"args\":");typedbindings(e->callee->ty->ids,1);fprint(2,",\"aggregate_args\":");typedaggregatebindings(e->callee->ty->ids);if(typedchanneltriple(e->callee->ty->tof))fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);fprint(2,"}");
             }
             fprint(2,"]");
         }
@@ -604,12 +621,12 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             if((multi!=nil && strcmp(multi,"1")==0) || (external!=nil && strcmp(external,"1")==0) || (loads!=nil && strcmp(loads,"1")==0)){
                 fprint(2,",\"signature\":");typedsignature(fn);fprint(2,",\"export_name\":");typedexportname(fn);
             }
-			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair)fprint(2,",\"result_pair\":[%d,%d]",Tmodule,Tlist);
+			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair)fprint(2,",\"result_pair\":[%d,%d]",Tmodule,Tlist);if(p.resulttriple)fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);
 			fprint(2,",\"descriptor\":%d,\"data_descriptor\":%d,\"frame\":",fn->desc->id,descriptors->id);
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);
 			fprint(2,",\"code\":[");
-			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.resultpair && p.returns[i]==8?40:p.resultpair && p.returns[i]==16?56:p.returns[i]>=32?p.returns[i]:p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);
+			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.resulttriple && p.returns[i]==2?168:p.resulttriple && p.returns[i]==4?169:p.resulttriple && p.returns[i]==8?170:p.resultpair && p.returns[i]==8?40:p.resultpair && p.returns[i]==16?56:p.returns[i]>=32?p.returns[i]:p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);
 			fprint(2,"],\"globals\":");typedbindings(globals,0);
 		}
 		fprint(2,"}\n"); dis64typedfree(&p);

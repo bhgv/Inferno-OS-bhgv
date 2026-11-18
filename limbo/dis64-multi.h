@@ -339,6 +339,28 @@ typedpairslot(TypedMulti *c,Dis64TypedBody *p,Addr *a)
 }
 
 static int
+typedchannelslot(TypedMulti*c,Dis64TypedBody*p,Addr*a)
+{
+ unsigned int i,j,found=0;Decl*fn,*d;int pass;
+ if(!a->decl || !a->decl->ty || a->reg!=a->decl->offset || a->offset)return 0;
+ if(typedchanneltriple(a->decl->ty))return 1;
+ if(a->decl->ty->kind!=Tchan)return 0;
+ for(i=0;i<(unsigned int)c->nf;i++)if(c->functions[i]->pc->pc==(int)p->first){
+  fn=c->functions[i];for(j=0;j<3;j++)for(pass=0;pass<2;pass++)for(d=pass?fn->locals:fn->ty->ids;d;d=d->next)
+   if(d->offset==a->reg+4*j && d->ty && d->ty->kind==Tchan)found++;
+  return found==3;
+ }return 0;
+}
+static int
+typedchannelbinding(TypedMulti*c,Dis64TypedBody*p,Inst*binding,unsigned int*base)
+{
+ unsigned int i,at=0;
+ if(binding->sm!=Afp || !typedchannelslot(c,p,&binding->s))return typedfail(p,"channel-result-slot");
+ for(i=0;i<3;i++)if(!dis64layoutaddress(&p->frame,binding->s.reg+4*i,4,1,&at) || (i && at!=*base+8*i))return typedfail(p,"channel-result-layout");else if(!i)*base=at;
+ return 1;
+}
+
+static int
 typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int depth,unsigned int *next,unsigned int *height)
 {
     Inst *frame=c->instructions[pc],*call,*in,*binding;
@@ -418,9 +440,10 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(at+1!=end || (binding=c->instructions[at])==nil || binding->op!=ILEA || binding->mm!=Anone ||
            binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil)return typedfail(p,"multi-result");
         kind=child->resultkind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
-        contract=child->resultpair?48:child->resultbytes | (root?16:0);
+        contract=child->resulttriple?72:child->resultpair?48:child->resultbytes | (root?16:0);
         if(binding->sm==Afp){
-            if(child->resultpair){
+            if(child->resulttriple){if(!typedchannelbinding(c,p,binding,&local))return 0;source=local;sm=AFP;}
+            else if(child->resultpair){
                 unsigned int second;Addr *a=&binding->s;
                 if(!typedpairslot(c,p,a) ||
                    !dis64layoutaddress(&p->frame,a->reg,4,1,&offset) ||
@@ -433,7 +456,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             if(!binding->s.decl || binding->s.decl->store!=Dglobal || !typedoperand(Amp,&binding->s,TypedRoot,0,0,p,&source,&sm,&actual) || actual!=kind)return typedfail(p,"multi-global-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AMP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;
         }else{
-            if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || kind!=p->resultkind || child->resultpair!=p->resultpair)return typedfail(p,"multi-inherit");
+            if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || kind!=p->resultkind || child->resultpair!=p->resultpair || child->resulttriple!=p->resulttriple)return typedfail(p,"multi-inherit");
             inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;
         }
         at++;
@@ -483,6 +506,11 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
+        }else if(c->loads && p->resulttriple && in->op==IMOVMP){
+            Desc*d;unsigned int base=0;
+            for(d=descriptors;d && d->id!=in->m.offset;d=d->next);
+            if(in->sm!=Afp || in->mm!=Adesc || in->dm!=Afpind || in->d.reg!=16 || in->d.offset || in->branch || !in->m.decl || in->m.decl->desc!=d || !typedchanneltriple(in->m.decl->ty) || !d || d->size!=12 || d->nmap!=1 || d->map[0]!=0xe0 || !typedchannelbinding(c,p,in,&base)){typedfail(p,"channel-result-copy");goto fail;}
+            p->code[pc-p->first]=(Dis64Instruction){IMOVMP,SRC(AFP)|AXIMM|DST(AFP|AIND),0,base,32};p->returns[pc++-p->first]=171;
         }else if(c->external>=2 && in->op==IMOVP && in->dm==Afpind && in->d.reg==16 && in->d.offset==0){
             if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && (in->op==INEWA || in->op==INEWAZ || in->op==ISLICEA)){
