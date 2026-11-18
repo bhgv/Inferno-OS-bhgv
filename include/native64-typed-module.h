@@ -147,7 +147,7 @@ native64moduledrawfields(const Native64ModuleSpec*s,const Native64ModuleFunction
    if(i+2>=f->count || step->m!=16 || UDST(step->mode)!=AFP || (USRC(step->mode)!=(AFP|AIND) && USRC(step->mode)!=(AMP|AIND)) || !native64typeddrawstep(&copy,f->bytes,s->databytes))return 0;
    next=f->code+i+1;if(next->returned<160 || next->returned>165 || next->op!=IMOVM || USRC(next->mode)!=(AFP|AIND) || next->s!=step->d || f->code[i+2].returned!=Native64TypedArgClear || f->code[i+2].d!=step->d)return 0;
    found=0;for(k=0;k<f->nsites;k++)if(f->sites[k].first<i && i+2<f->sites[k].end && f->sites[k].external)found++;if(found!=1)return 0;
-   map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if((map[bit/8] & (128>>(bit%8)))==0)return 0;bit=step->d/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;continue;
+   map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if(0==(map[bit/8]&(128>>(bit%8))))return 0;bit=step->d/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;continue;
   }
   if(step->returned==Native64TypedFieldArg){
    found=0;
@@ -253,7 +253,7 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
   }
   if(!found)return 0;
   map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;
-  if(step->returned>=160 && step->returned<=165){bit=step->s/8;if((map[bit/8] & (128>>(bit%8)))==0)return 0;continue;}
+  if(step->returned>=160 && step->returned<=165){bit=step->s/8;if(0==(map[bit/8]&(128>>(bit%8))))return 0;continue;}
   for(j=0;j<(unsigned long)step->m;j+=4){bit=(step->s+j)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
  }
  return 1;
@@ -395,6 +395,16 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             map=at==AFP?f->map:s->datamap;bit=step->s/8;
             if(!(map[bit/8]&(0x80>>(bit%8))))return 0;
         }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==173){
+            unsigned int k;step=f->code+j;if(!native64typedcontextcopy(step,f->bytes,s->databytes))return 0;
+            for(k=0;k<2;k++){map=((k?UDST(step->mode):USRC(step->mode))&~AIND)==AFP?f->map:s->datamap;bit=(k?step->d:step->s)/8;if((map[bit/8]&(128>>(bit%8)))==0)return 0;}
+            for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
+        }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==172 || f->code[j].returned==174){
+            step=f->code+j;if(!native64typedcontextnew(step,f->bytes))return 0;
+            if(step->returned==172){bit=step->d/8;if((f->map[bit/8]&(128>>(bit%8)))==0)return 0;}else if(f->resultcontract)return 0;
+            for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
+        }
         for(j=0;j<f->count;j++)if(f->code[j].returned==171){
             step=f->code+j;if(f->resultcontract!=72 || !native64typedtriplecopy(step,f->bytes))return 0;
             for(at=step->s;at<(unsigned long)step->s+24;at+=8){bit=at/8;if((f->map[bit/8]&(128>>(bit%8)))==0)return 0;}
@@ -511,12 +521,13 @@ static int
 native64modulemake(void *arg)
 {
     Native64ModuleBuild *b=arg;const Native64ModuleSpec *s=b->spec;const Native64ModuleFunction *f;
-    Module *m;unsigned int i,j,k,pc=0,link=0,ordinal,bytes=0,triples=0;Import *imports;const Native64ModuleImport *request;const Native64ModuleTable *table;const Native64ModuleSite *site;const Native64ModuleInit *v;
+    Module *m;unsigned int i,j,k,pc=0,link=0,ordinal,bytes=0,triples=0,contexts=0;Import *imports;const Native64ModuleImport *request;const Native64ModuleTable *table;const Native64ModuleSite *site;const Native64ModuleInit *v;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].op==INEWAZ)bytes=1;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==171)triples=1;
+    for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==172 || s->functions[i].code[j].returned==174)contexts=1;
     m=b->module=mallocz(sizeof(*m),1);if(m==nil)error(exNomem);m->ref=1;m->origmp=H;m->rt=DONTCOMPILE;
     m->name=native64modulecopy(s->name);m->path=native64modulecopy(s->path);
-    m->type=mallocz((s->nfunctions+1+b->imports+bytes+triples)*sizeof(Type*),1);if(m->type==nil)error(exNomem);m->ntype=s->nfunctions+1+b->imports+bytes+triples;
+    m->type=mallocz((s->nfunctions+1+b->imports+bytes+triples+contexts)*sizeof(Type*),1);if(m->type==nil)error(exNomem);m->ntype=s->nfunctions+1+b->imports+bytes+triples+contexts;
     m->type[0]=dtype(freeheap,s->databytes,(uchar*)s->datamap,s->mapbytes);if(m->type[0]==nil)error(exNomem);
     for(i=0;i<s->nfunctions;i++){f=s->functions+i;m->type[i+1]=dtype(freeheap,f->bytes,(uchar*)f->map,f->mapbytes);if(m->type[i+1]==nil)error(exNomem);}
     ordinal=s->nfunctions+1;
@@ -529,7 +540,8 @@ native64modulemake(void *arg)
         }
     }
     if(bytes){m->type[ordinal]=dtype(freeheap,1,nil,0);if(m->type[ordinal++]==nil)error(exNomem);}
-    if(triples){uchar roots[]={0xe0};m->type[ordinal]=dtype(freeheap,24,roots,1);if(m->type[ordinal]==nil)error(exNomem);}
+    if(triples){uchar roots[]={0xe0};m->type[ordinal]=dtype(freeheap,24,roots,1);if(m->type[ordinal++]==nil)error(exNomem);}
+    if(contexts){uchar contextmap[]={0xe0};m->type[ordinal]=dtype(freeheap,24,contextmap,1);if(m->type[ordinal]==nil)error(exNomem);}
     m->nprog=b->code;m->prog=mallocz(b->code*sizeof(Inst),1);if(m->prog==nil)error(exNomem);
     b->offsets=mallocz(s->nfunctions*sizeof(*b->offsets),1);if(b->offsets==nil)error(exNomem);
     if(b->scratch){b->calls=mallocz(b->scratch*sizeof(*b->calls),1);if(b->calls==nil)error(exNomem);}
@@ -547,7 +559,8 @@ native64modulemake(void *arg)
         if(!native64typedmulticode(m->prog+b->offsets[i],f->count,f->code,f->count,f->bytes,s->databytes,b->calls,f->nsites))error(exInval);
         for(j=0;j<f->count;j++){
             if(f->code[j].op==INEWAZ)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports;
-            if(f->code[j].returned==171)m->prog[b->offsets[i]+j].reg=m->ntype-1;
+            if(f->code[j].returned==171)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes;
+            if(f->code[j].returned==172 || f->code[j].returned==174)m->prog[b->offsets[i]+j].s.imm=m->ntype-1;
         }
     }
     m->ext=mallocz((b->exports+1)*sizeof(Link),1);if(m->ext==nil)error(exNomem);

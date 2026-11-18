@@ -234,6 +234,17 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned==173:
+            sm=o['mode']>>3&7;dm=o['mode']&7
+            assert loads and o['op']==41 and sm in(4,5)and dm in(4,5)and o['m']is None and o['s'][1]==o['d'][1]and o['s'][1]in(0,4,8)
+            assert r['code'][pc]==[41,o['mode'],maps['frame'if sm==5 else'data'][o['s'][0]],2*o['s'][1],maps['frame'if dm==5 else'data'][o['d'][0]],173]
+            continue
+        if returned in(172,174):
+            assert loads and op==o['op']and op in(OPCODES['INEW'],OPCODES['INEWZ'])and mode==o['mode']==(17 if returned==172 else 21)and o['m']is None
+            assert types[o['s'][0]]==(12,bytes([224]))
+            if returned==174:assert o['d']==[16,0]and r['result']==[12,8]
+            assert r['code'][pc]==[op,mode,0,0,maps['frame'][o['d'][0]]if returned==172 else 32,returned]
+            continue
         if 113<=returned<125:
             assert loads
             oldfields=[44,48,52,4,8,12,0,4,8,12,16];newfields=[48,56,64,8,16,24,0,8,16,24,32];mapping=dict(zip(oldfields,newfields))

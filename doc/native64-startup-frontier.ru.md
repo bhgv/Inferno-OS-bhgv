@@ -92,3 +92,5 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий этап: [makescreen и MP root results](native64-makescreen.ru.md): весь makescreen допускается (23 инструкции, 3 Draw calls); init проходит PC93 и останавливается на PC97 — triple-channel result Wmsrv.init.
 
 Следующий этап: [тройка каналов](native64-channel-triples.ru.md): AWM init проходит Wmsrv.init PC97 и останавливается на Draw.Context allocation PC100. Provider Wmsrv.init — на managed channel allocation PC27.
+
+Следующий этап: [Context allocation/copy](native64-context-new.ru.md): AWM init проходит PC100 и доходит до PC116 (fatal -> kill -> computed Sys.open path).

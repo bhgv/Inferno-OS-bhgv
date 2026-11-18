@@ -74,3 +74,5 @@ Android APK/UI ещё не запущены. 32-bit пути сохраняют�
 regressions прошли. Чистая amd64 консоль, paired boot и 324 настоящих
 emuinit/Arg boot-процесса также прошли. Android UI и физические ARM64/RISC-V64
 устройства этим запуском не проверены.
+
+Продолжение: [создание Context](native64-context-new.ru.md) переносит первый отказ AWM init с PC100 на PC116.

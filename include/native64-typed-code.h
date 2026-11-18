@@ -41,6 +41,23 @@ native64typedrootoperand(unsigned int mode,long offset,unsigned int fpbytes,unsi
 }
 
 static int
+native64typedcontextcopy(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int sm=USRC(s->mode),dm=UDST(s->mode);
+ return s->returned==173 && s->op==IMOVP && s->mode==(SRC(sm)|DST(dm)) &&
+  (sm==(AFP|AIND) || sm==(AMP|AIND)) && (dm==(AFP|AIND) || dm==(AMP|AIND)) && (s->m==0 || s->m==8 || s->m==16) &&
+  native64typedrootoperand(sm&~AIND,s->s,fp,mp) && native64typedrootoperand(dm&~AIND,s->d,fp,mp);
+}
+
+static int
+native64typedcontextnew(const Native64TypedStep*s,unsigned int fp)
+{
+ return (s->op==INEW || s->op==INEWZ) && !s->s && !s->m &&
+  ((s->returned==172 && s->mode==(SRC(AIMM)|DST(AFP)) && native64typedrootoperand(AFP,s->d,fp,0)) ||
+   (s->returned==174 && s->mode==(SRC(AIMM)|DST(AFP|AIND)) && s->d==32));
+}
+
+static int
 native64typedtriplecopy(const Native64TypedStep*s,unsigned int fp)
 {
  return s->returned==171 && s->op==IMOVMP && s->mode==(SRC(AFP)|AXIMM|DST(AFP|AIND)) && !s->m && s->d==32 && s->s>=64 && s->s%8==0 && (unsigned long)s->s<=fp && 24<=fp-s->s;
@@ -189,6 +206,8 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned>=Native64TypedDraw && s->returned<Native64TypedDrawNil+11){
             if(!native64typeddrawstep(s,fpbytes,mpbytes) || (s->returned!=Native64TypedDraw && (s->d<0 || (unsigned long)s->d>=count)))return 0;continue;
         }
+        if(s->returned==173){if(!native64typedcontextcopy(s,fpbytes,mpbytes))return 0;continue;}
+        if(s->returned==172 || s->returned==174){if(!native64typedcontextnew(s,fpbytes))return 0;continue;}
         if(s->returned==171){if(!native64typedtriplecopy(s,fpbytes))return 0;continue;}
 		switch(s->op){
 		case INEWAZ:case ISLICEA:case ICVTAC:
@@ -259,6 +278,9 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 	for(i=0;i<count;i++){
 		s=steps+i;p=out+i;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;p->reg=s->m;
 		p->s.imm=s->s;
+        if(s->returned==172){p->d.ind=s->d;continue;}
+        if(s->returned==174){p->d.i.f=32;p->d.i.s=0;continue;}
+        if(s->returned==173){p->reg=0;p->s.i.f=s->s;p->s.i.s = s->m;p->d.i.f=s->d;p->d.i.s=s->m;continue;}
         if(s->returned>=Native64TypedContextNil && s->returned<Native64TypedContextNil+3){
             p->s.i.f=s->s;p->s.i.s=8*(s->returned-Native64TypedContextNil);p->d.ins=out+s->d;continue;
         }
