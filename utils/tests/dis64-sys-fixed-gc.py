@@ -118,9 +118,13 @@ def main():
         if result.returncode!=14 or result.stderr.strip()!='Sys fixed admission predicate':raise RuntimeError('pointer-fact control missed predicate: '+result.stdout+result.stderr)
         print('PASS active fixed Sys pointer-store fact pollution control',flush=True)
         (override/'dis64-sys-string.h').write_text(header)
-        pilot=(ROOT/'include/dis64-pilot.h').read_text();marker='in->middle == -1 ? 32 : 8'
+        pilot=(ROOT/'include/dis64/pilot/operands.h').read_text()
+        shadow=override/'dis64/pilot';shadow.mkdir(parents=True)
+        for name in ('dis64-pilot.h','dis64-code.h'):(override/name).write_text((ROOT/'include'/name).read_text())
+        (shadow/'flow.h').write_text((ROOT/'include/dis64/pilot/flow.h').read_text())
+        marker='in->middle == -1 ? 32 : 8'
         if pilot.count(marker)!=1:raise RuntimeError('FD result control marker drift')
-        (override/'dis64-pilot.h').write_text(pilot.replace(marker,'in->middle == -1 ? 40 : 8'))
+        (shadow/'operands.h').write_text(pilot.replace(marker,'in->middle == -1 ? 40 : 8'))
         subprocess.run(common[:1]+['-I'+str(override)]+common[1:]+[str(work/'test.c'),'-o',str(work/'fd-result-control')],check=True)
         result=subprocess.run(runner+[str(work/'fd-result-control')],capture_output=True,text=True,timeout=90)
         if result.returncode!=14 or result.stderr.strip()!='Sys fixed admission predicate':raise RuntimeError('FD result control missed predicate: '+result.stdout+result.stderr)
@@ -132,23 +136,23 @@ def main():
         result=subprocess.run(runner+[str(work/'permission-control')],capture_output=True,text=True,timeout=90)
         if result.returncode!=20 or result.stderr.strip()!='Sys open/create argument predicate':raise RuntimeError('permission mask control missed predicate: '+result.stdout+result.stderr)
         print('PASS active Sys create permission zero-extension removal control',flush=True)
-        marker='*need=64; *define=64;'
+        marker='*need = 64;\n        *define = 64;'
         if pilot.count(marker)!=1:raise RuntimeError('slice fact control marker drift')
-        (override/'dis64-pilot.h').write_text(pilot.replace(marker,'*need=0; *define=64;'))
+        (shadow/'operands.h').write_text(pilot.replace(marker,'*need = 0;\n        *define = 64;'))
         subprocess.run(common[:1]+['-I'+str(override)]+common[1:]+[str(work/'test.c'),'-o',str(work/'slice-control')],check=True)
         result=subprocess.run(runner+[str(work/'slice-control')],capture_output=True,text=True,timeout=90)
         if result.returncode!=14 or result.stderr.strip()!='Sys fixed admission predicate':raise RuntimeError('slice array fact control missed predicate: '+result.stdout+result.stderr)
         print('PASS active slice array-initialization removal control',flush=True)
-        marker='if(!bit || (bit&~15U))return 0;*need |= bit;'
+        marker='if(!bit || (bit&~15U))\n            {\n                return 0;\n            }\n            *need |= bit;'
         if pilot.count(marker)!=2:raise RuntimeError('slice bound control marker drift')
-        (override/'dis64-pilot.h').write_text(pilot.replace(marker,'if(!bit || (bit&~15U))return 0;'))
+        (shadow/'operands.h').write_text(pilot.replace(marker,marker.replace('*need |= bit;','')))
         subprocess.run(common[:1]+['-I'+str(override)]+common[1:]+[str(work/'test.c'),'-o',str(work/'slice-bound-control')],check=True)
         result=subprocess.run(runner+[str(work/'slice-bound-control')],capture_output=True,text=True,timeout=90)
         if result.returncode!=14 or result.stderr.strip()!='Sys fixed admission predicate':raise RuntimeError('slice bound fact control missed predicate: '+result.stdout+result.stderr)
         print('PASS active slice bound-initialization removal control',flush=True)
-        marker='*define = dis64clockbit(in->destination); if(!*define) return 0;'
+        marker='*define = dis64clockbit(in->destination);\n            if(!*define)\n            {\n                return 0;\n            }'
         if pilot.count(marker)!=1:raise RuntimeError('array result control marker drift')
-        (override/'dis64-pilot.h').write_text(pilot.replace(marker,marker+' if(in->destination >= 112)*define |= 8;'))
+        (shadow/'operands.h').write_text(pilot.replace(marker,marker+' if(in->destination >= 112)*define |= 8;'))
         subprocess.run(common[:1]+['-I'+str(override)]+common[1:]+[str(work/'test.c'),'-o',str(work/'array-result-control')],check=True)
         result=subprocess.run(runner+[str(work/'array-result-control')],capture_output=True,text=True,timeout=90)
         if result.returncode!=14 or result.stderr.strip()!='Sys fixed admission predicate':raise RuntimeError('array result control missed predicate: '+result.stdout+result.stderr)
@@ -165,7 +169,7 @@ def main():
 
 
 
-        (override/'dis64-pilot.h').write_text(pilot)
+        (shadow/'operands.h').write_text(pilot)
         (override/'dis64-sys-string.h').write_text(header)
         dialheader=(ROOT/'include/dis64-sys-dial.h').read_text()
         for label,marker,replacement in (('tuple roots','frame.map[1]!=0xdc','0'),('tuple result address','in.source!=80','0')):
