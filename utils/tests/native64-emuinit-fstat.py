@@ -59,8 +59,9 @@ def main():
         w=Path(td);CMD['generate'](a.limbo.resolve(),w,'Command',False,argv=True,local=True,pair=True,raises=True);generate(a.limbo.resolve(),w)
         frontier=runpy.run_path(str(ROOT/'utils/tests/awm-native64-preflight.py'))['checked_frontier'](a.limbo.resolve(),'appl/cmd/emuinit.b',w)
         getenv=next(f for f in frontier['functions']if f['name']=='getenv')
-        assert not getenv['accepted']and getenv['reason']=='unsupported-opcode'and getenv['instruction']['opcode']=='INEWA'
-        print('PASS unchanged real getenv: Sys.fstat result admitted after caller tuple repacking; next barrier byte-array allocation (no full startup execution)',flush=True)
+        assert not getenv['accepted']and getenv['reason']=='external-argument'and getenv['instruction']['opcode']=='IMFRAME'
+        assert any(i['opcode']=='ILENA'for i in getenv['following_instructions'])
+        print('PASS unchanged real getenv: Sys.fstat result admitted after caller tuple repacking; next barrier computed Sys.read length argument (no full startup execution)',flush=True)
         source=CMD['unit']().replace('int main(int argc,char **argv)','int old_command_main(int argc,char **argv)')
         extract=CMD['NS']['S']['FILES']['FILES']['function'];port=(ROOT/'emu/port/inferno.c').read_text()
         source+='\n#include "sys-native64.h"\nstatic Dir*statdirfstat(int);\nchar Ebadarg[]="bad arg";\nvoid seterror(char*s,...){kwerrstr("%s",s);}\n'

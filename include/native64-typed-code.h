@@ -62,6 +62,22 @@ native64typedstringstep(const Native64TypedStep *s,unsigned int fpbytes,unsigned
   native64typedwordoperand(USRC(s->mode),s->s,fpbytes,mpbytes) && native64typedrootoperand(AFP,s->d,fpbytes,mpbytes);
 }
 
+/* Byte arrays only. NEWAZ's zero is a private byte-Type token; the owning
+ * module builder resolves it to its separately retained primitive descriptor. */
+static int
+native64typedbytestep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int mm=s->mode&ARM;
+ if(s->mode>255)return 0;
+ if(s->returned){if(s->op!=ICVTAC || s->returned!=24 || UDST(s->mode)!=(AFP|AIND) || s->d!=32)return 0;}
+ else if(UDST(s->mode)!=AFP || !native64typedrootoperand(AFP,s->d,fp,mp))return 0;
+ if(s->op==ICVTAC)return mm==AXNON && !s->m && native64typedrootoperand(USRC(s->mode),s->s,fp,mp);
+ if(!native64typedwordoperand(USRC(s->mode),s->s,fp,mp))return 0;
+ if(s->op==INEWAZ)return mm==AXIMM && s->m==0;
+ if(s->op!=ISLICEA)return 0;
+ return mm==AXIMM?(s->m>=-32768 && s->m<=32767):mm==AXINF && s->m<=65535 && native64typedwordoperand(AFP,s->m,fp,mp);
+}
+
 /* Input, layouts and semantic operand roles were proved by the compiler and
  * remain immutable. This bridge checks native encoding and local branch ownership.
  * Output must be disjoint from input. Refusal leaves all output bytes untouched.
@@ -78,6 +94,9 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 		s=steps+i;sm=USRC(s->mode);dm=UDST(s->mode);mm=s->mode&ARM;
 		if(s->mode>255 || s->op>255)return 0;
 		switch(s->op){
+		case INEWAZ:case ISLICEA:case ICVTAC:
+            if(!native64typedbytestep(s,fpbytes,mpbytes))return 0;
+            continue;
 		case IADDC:case IINDC:case ISLICEC:
             if(!native64typedstringstep(s,fpbytes,mpbytes))return 0;
             continue;

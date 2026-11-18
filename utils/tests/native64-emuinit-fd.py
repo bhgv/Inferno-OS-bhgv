@@ -51,8 +51,9 @@ def main():
         w=Path(td);generate(a.limbo.resolve(),w)
         frontier=runpy.run_path(str(ROOT/'utils/tests/awm-native64-preflight.py'))['checked_frontier'](a.limbo.resolve(),'appl/cmd/emuinit.b',w)
         getenv=next(f for f in frontier['functions']if f['name']=='getenv')
-        assert not getenv['accepted']and getenv['reason']=='unsupported-opcode'and getenv['instruction']['opcode']=='INEWA'
-        print('PASS unchanged real emuinit frontier: FD/nil and Sys.fstat passed; remaining getenv refusal is byte-array allocation (no complete startup execution)',flush=True)
+        assert not getenv['accepted']and getenv['reason']=='external-argument'and getenv['instruction']['opcode']=='IMFRAME'
+        assert any(i['opcode']=='ILENA'for i in getenv['following_instructions'])
+        print('PASS unchanged real emuinit frontier: FD/nil and Sys.fstat passed; remaining getenv refusal is computed Sys.read length argument (no complete startup execution)',flush=True)
         source=runpy.run_path(str(ROOT/'utils/tests/native64-local-calls.py'))['unit']();source=source[:source.index('/* Keep scalar file admission separate')]
         source=source.replace('require(int condition)','requireline(int condition,int line)',1).replace('after %d predicates\\n", checks','after %d predicates at generated line %d\\n", checks,line',1).replace('checks++;\n}', 'checks++;\n}\n#define require(c) requireline(!!(c),__LINE__)',1)
         source+='\n#line 1 \"native64-emuinit-fd.c\"\n'+(ROOT/'utils/tests/native64-emuinit-fd.c').read_text();file=w/'unit.c';file.write_text(source)

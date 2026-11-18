@@ -62,3 +62,7 @@ aggregate (int, Dir). Полный emuinit/AWM всё ещё закрыт.
 Следующий участок: [Sys.fstat result и caller tuple layout](native64-emuinit-fstat.ru.md).
 getenv теперь проходит PC104 и останавливается на PC112 (INEWA byte array).
 Полный emuinit/AWM пока не исполняется; classic bytes сохранены.
+
+Следующий участок: [owned byte arrays](native64-emuinit-bytes.ru.md).
+getenv проходит INEWA PC112; первый отказ теперь PC113, вычисленный `len buf`
+в аргументах Sys.read. Полный startup пока не исполняется.

@@ -68,3 +68,6 @@ ARM64 Bionic. Целевые C/JIT прогоны добавлены в CI amd64
 Повторно прошли pairs, raises, primary, concat-args, imports, calls,
 unquoted, FD/nil и compiler multi/external units. Checked preflight всех
 16 startup sources сохраняет classic bytes. 32-битный ABI не изменён.
+
+Продолжение: [byte array allocation/slices/String conversion](native64-emuinit-bytes.ru.md).
+Текущий барьер getenv — вычисленный ILENA argument Sys.read (PC113).

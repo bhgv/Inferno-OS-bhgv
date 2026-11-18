@@ -123,6 +123,19 @@ typedclientindex(Inst *in,Inst *use,Dis64TypedBody *p,unsigned int pc)
 }
 
 static int
+typedloadbytes(Inst *in,Dis64TypedBody *p,unsigned int pc)
+{
+ Addr *a=in->op==ICVTAC?&in->s:&in->d;Type *t;
+ if(!a->decl || !(t=a->decl->ty) || t->kind!=Tarray || !t->tof || t->tof->kind!=Tbyte ||
+    a->reg!=a->decl->offset || a->offset)return typedfail(p,"load-byte-array-class");
+ if(in->op==INEWA || in->op==INEWAZ){
+  Decl*d=in->m.decl;
+  if(!d || !d->ty || d->ty->kind!=Tbyte)return typedfail(p,"load-byte-array-class");
+ }
+ return 1;
+}
+
+static int
 typedclientarray(Inst *in,Dis64TypedBody *p,unsigned int pc)
 {
  unsigned int sm,mm,dm;long source,middle,destination;int actual;Decl *d=in->m.decl;
@@ -367,15 +380,21 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             pc=next;
         }else if(c->external>=2 && in->op==IMOVP && in->dm==Afpind && in->d.reg==16 && in->d.offset==0){
             if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
-        }else if(c->external>=2 && (in->op==INEWA || in->op==INEWAZ || in->op==ISLICEA)){
-            if(!typedclientarray(in,p,pc-p->first))goto fail;pc++;
+        }else if((c->external>=2 || c->loads) && (in->op==INEWA || in->op==INEWAZ || in->op==ISLICEA)){
+            if((c->loads && !typedloadbytes(in,p,pc-p->first)) || !typedclientarray(in,p,pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==IINDB || in->op==IINDW)){
             if(pc+1>=stop || !typedclientindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;
             inside[pc+1-p->first]=1;pc+=2;
         }else if(c->external>=2 && (in->op==IMOVB || in->op==ICVTBW || in->op==ICVTWB)){
             if(!typedclientbyte(in,p,pc-p->first))goto fail;pc++;
-        }else if(c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)){
-            if(!typedclientcodec(in,p,pc-p->first))goto fail;pc++;
+        }else if(c->loads && in->op==ICVTAC && in->dm==Afpind){
+            long source;unsigned int sm;int actual;
+            if(!typedloadbytes(in,p,pc-p->first))goto fail;
+            if(p->resultkind!=Tstring || in->mm!=Anone || in->branch || in->d.reg!=16 || in->d.offset){typedfail(p,"load-byte-result");goto fail;}
+            if(!typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual))goto fail;
+            p->code[pc-p->first]=(Dis64Instruction){ICVTAC,SRC(sm)|DST(AFP|AIND),0,source,32};p->returns[pc-p->first]=1;pc++;
+        }else if((c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)) || (c->loads && in->op==ICVTAC)){
+            if((c->loads && !typedloadbytes(in,p,pc-p->first)) || !typedclientcodec(in,p,pc-p->first))goto fail;pc++;
         }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
                  (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
