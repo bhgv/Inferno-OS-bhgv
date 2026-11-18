@@ -61,6 +61,14 @@ struct Native64SysFrameSpec {
     int initial, limit;
 };
 int Sys_setframes64(Module*, const Native64SysFrameSpec*, unsigned int);
+/* Trusted original-Inst program PCs. Installation owns copies and never patches CODE. */
+typedef struct Native64SysProgramSpec Native64SysProgramSpec;
+struct Native64SysProgramSpec {
+    Native64SysFrameSpec frame;
+    unsigned int bindpc, callpc; // Exact adjacent LEA/MCALL in the owning bytecode module.
+};
+int Sys_setprogram64(Module*, const Native64SysProgramSpec*, unsigned int);
+void Sys_programcall64(void*); // Explicit native trampoline; not an ordinary Sys registry entry.
 int Sys_clearframes64(Module*); // Refuses retirement while an owned call is active.
 int Sys_bindsite64(Module*, unsigned int, Prog*, void*);
 int Sys_callsite64(Module*, unsigned int, Prog*, void*);

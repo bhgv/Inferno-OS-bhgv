@@ -98,16 +98,17 @@ def main():
                     source += (ROOT/'utils/tests/native64-sys-write.c').read_text().replace('int\nmain(int argc, char **argv)', 'int\nnative64_syswrite_main(int argc, char **argv)', 1)
                     vm = (ROOT/'libinterp/xec.c').read_text()
                     bodies = '#define OP(fn) void fn(void)\n'+'\n'.join(function(vm, signature) for signature in ('static Type*\nmoduletype(', 'static int\nmoduleentry(', 'static int\nframefits(', 'OP(frame)', 'OP(mframe)', 'OP(mcall)', 'OP(movb)', 'OP(movw)', 'OP(movp)', 'OP(movl)', 'OP(movf)', 'OP(cvtwl)', 'OP(cvtwf)', 'OP(cvtlf)'))
+                    bodies += '\n#include "native64-local-bind.h"\n'+function(vm,'int\nnative64typedlea8step(')+'\n'
                     bodies += '\n#define JMP(r) branchpc(R.r, exBounds)\n'+function(vm,'static void\nbranchpc(')+'\n'
                     bodies += '\n'.join(function(vm,'OP('+name+')') for name in ('addw','subw','addl','addf','jmp','beqw','bnew','bltw','blew','bgtw','bgew','lenl'))
                     bodies += '\n'+function(strings,'OP(lenc)')+'\n'
                     bodies += '\n'+function(vm,'List*\ncons(')+'\n'+function(vm,'OP(consp)')+'\n'
                     source += '\n'+function((ROOT/'libinterp/load.c').read_text(), 'void\nfreemod(').replace('void\nfreemod(', 'void\nnative64_owned_freemod(', 1)+'\n'
-                    source += (ROOT/'utils/tests/native64-sys-frame.c').read_text().replace('VM_FRAME_IMPLEMENTATION', bodies).replace('/* REAL_EMUINIT_PLANS */', (ROOT/'utils/tests/native64-emuinit-varargs.c').read_text())
+                    source += (ROOT/'utils/tests/native64-sys-frame.c').read_text().replace('VM_FRAME_IMPLEMENTATION', bodies).replace('/* REAL_EMUINIT_PLANS */', (ROOT/'utils/tests/native64-emuinit-varargs.c').read_text()).replace('/* OWNED_SYS_PROGRAM */', (ROOT/'utils/tests/native64-sys-program.c').read_text())
                     source += (ROOT/'utils/tests/native64-typed-body.c').read_text()
-                    for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64(', 'int\nSys_setframes64(', 'int\nSys_clearframes64(', 'int\nSys_bindsite64(', 'int\nSys_callsite64(', 'int\nSys_bindframe64(', 'int\nSys_sprintframe64(', 'int\nSys_aprintframe64(', 'int\nSys_printframe64(', 'int\nSys_fprintframe64('):
+                    for signature in ('int\nSys_sprint64(', 'int\nSys_aprint64(', 'int\nSys_print64(', 'int\nSys_fprint64(', 'int\nSys_setframes64(', 'int\nSys_setprogram64(', 'void\nSys_programcall64(', 'int\nSys_clearframes64(', 'int\nSys_bindsite64(', 'int\nSys_callsite64(', 'int\nSys_bindframe64(', 'int\nSys_sprintframe64(', 'int\nSys_aprintframe64(', 'int\nSys_printframe64(', 'int\nSys_fprintframe64('):
                         source += '\n'+function(runtime, signature)+'\n'
-                    extra = [str(ROOT/('lib9/'+name+'.c')) for name in ('rune','sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+['-pthread']
+                    extra = [str(ROOT/'libinterp/dec.c')]+[str(ROOT/('lib9/'+name+'.c')) for name in ('rune','sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+['-pthread']
                 unit.write_text(source)
                 binary = work/(label+'-'+port)
                 subprocess.run(command+[str(unit)]+objects+extra+['-Wl,--wrap=free', '-Wl,--gc-sections', '-lm', '-o', str(binary)], env=env, check=True)
@@ -144,6 +145,8 @@ def main():
                             ('fp-current-mp', '@unit', 'R.s = (uchar*)input.value+bases[1]+cell->setupoffset; // Actual MP input at defining PC.', 'R.s = &text; // Deliberately substitute the old String seed.'),
                             ('fp-order', '@unit', 'index = bank->order[i]; // Compiler-defined preparation order.', 'index = bank->order[bank->steps-1-i]; // Deliberately reverse preparation.'),
                             ('typed-field-origin', '@unit', 'origin=(uchar*)owner.value+bases[cell->space]+cell->offset; // Typed ADT field origin.', 'origin=(uchar*)owner.value+bases[cell->space]+store->source; // Deliberately reuse the legacy ADT field offset.'),
+                            ('program-contract', 'native64-sys-program.h', 'bind->reg!=(width==8?24:4)', '0'),
+                            ('program-return', 'native64-sys-program.h', 'active.lr!=site->callpc+1', '0'),
                             ('emuinit-clear', '@unit', 'value=H;R.s=&value;R.d=origin;movp();', 'value=H;R.s=&value;R.d=origin; /* Omit source FD retirement. */'),
                             ('typed-body-branch', '@unit', 'target=program+step->d;R.d=&target;', 'target=program+pc+1;R.d=&target;'),
                             ('typed-return-width', 'native64-typed-return.h', 'b->width!=width', '0'),

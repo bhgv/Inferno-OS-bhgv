@@ -9,6 +9,8 @@ struct Native64SysSite {
     Native64TailSlot *slots;
     unsigned int typed;
     int callerheld, calleeheld;
+    Inst *bindpc, *callpc; // Non-nil only for a trusted original-Inst program recipe.
+    Inst binding, call; // Immutable semantic snapshots, including module offset and ordinal.
 };
 typedef struct Native64SysSites Native64SysSites;
 struct Native64SysSites {
@@ -77,6 +79,7 @@ native64syssitesretire(Module *module)
     if(table != nil && (table->owner != module || table->busy)) abort(); // A live frame must retain its owning module.
     module->native64sysframes = nil;
     module->native64sysframesfree = nil;
+    module->native64sysstep = nil;
     native64syssitesdiscard(table);
 }
 
@@ -139,7 +142,7 @@ native64syssitesinstall(Module *module, const Native64SysFrameSpec *specs, unsig
     Native64SysSitesBuild build;
     unsigned int i, slots = 0;
     if(!native64model() || module == nil || module == H || specs == nil || count == 0 || count > 256 ||
-       module->native64sysframes != nil || module->native64sysframesfree != nil) return 0;
+       module->native64sysstep != nil || module->native64sysframes != nil || module->native64sysframesfree != nil) return 0;
     for(i=0; i<count; i++) {
         if(specs[i].count > 4096-slots || !native64sysspec(module, &specs[i])) return 0;
         slots += specs[i].count;

@@ -21,6 +21,7 @@ on:
       - 'utils/tests/awm-native64-*'
       - 'utils/tests/dis64-layout.py'
       - 'utils/tests/native64-callsites.py'
+      - 'utils/tests/native64-sys-program*'
       - 'utils/tests/classic-array-initializers.py'
       - 'appl/wm/awm.b'
       - 'appl/wm/atoolbar.b'
@@ -139,6 +140,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-bytes.log"
           python3 utils/tests/native64-emuinit-getenv.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-getenv.log"
+          python3 utils/tests/native64-sys-program.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/sys-program.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -224,6 +227,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-bytes.log"
           python3 utils/tests/native64-emuinit-getenv.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-getenv.log"
+          python3 utils/tests/native64-sys-program.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/sys-program.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

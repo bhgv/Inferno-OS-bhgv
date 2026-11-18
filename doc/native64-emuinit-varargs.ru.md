@@ -39,3 +39,5 @@ Sys_sprint64/Sys_fprint64 gateways. Девять исполнений прове
 остаётся 2/4; AWM не запущен. Нельзя добавлять обычные packed Sys_fprint
 или Sys_sprint в native64 registry вместо typed gateway. 32-битный код,
 формат файлов и admission не менялись.
+
+Следующий проверенный этап: [program-owned FRAME/MCALL и C/JIT](native64-sys-program.ru.md). Мост связывает exact original PCs с typed binder/trampoline; полные init/loadmod пока не исполняются.

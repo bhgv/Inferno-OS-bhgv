@@ -340,6 +340,7 @@ struct Module
 	int	mptype;		// Native MP descriptor ordinal; zero preserves ordinary Dis layout.
 	void* native64sysframes; // Private owned call-site table; never decoded from file flags.
 	void (*native64sysframesfree)(Module*); // Trusted nonthrowing teardown before Type retirement.
+	int (*native64sysstep)(void); // Trusted program-owned Sys binder; never selected by file metadata.
 	void* native64imports; // Owned structural requests; never a serialized native pointer.
 	Modlink* (*native64importload)(Module*, WORD, char*); // Trusted installer only; returns a pinned instance or nil.
     int (*native64casec)(void); // Private checked-module mixed-width String table step; never a file flag.

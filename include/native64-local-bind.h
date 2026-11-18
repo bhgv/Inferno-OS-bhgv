@@ -24,6 +24,10 @@ native64localbind(void)
     void *address,*destination;
     if(!vmfetch(&fetched))return 0;
     if(fetched.module->cstep!=native64typedlea8step)return 0;
+    if(fetched.module->native64sysstep!=nil){
+        if(fetched.module->native64sysstep==(int(*)(void))H)error(exCompile);
+        if(fetched.module->native64sysstep())return 1;
+    }
     if(fetched.op==ICASEC && fetched.module->native64casec!=nil){
         if(fetched.module->native64casec==(int(*)(void))H)error(exCompile);
         return fetched.module->native64casec();

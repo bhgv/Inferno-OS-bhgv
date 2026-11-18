@@ -555,6 +555,20 @@ Sys_setframes64(Module *module, const Native64SysFrameSpec *specs, unsigned int 
 {
     return native64syssitesinstall(module, specs, count);
 }
+#include "native64-sys-program.h"
+
+int
+Sys_setprogram64(Module *module, const Native64SysProgramSpec *specs, unsigned int count)
+{
+    return native64sysprograminstall(module, specs, count);
+}
+
+void
+Sys_programcall64(void *frame)
+{
+    native64sysprogramcall(frame);
+}
+
 int
 Sys_clearframes64(Module *module)
 {

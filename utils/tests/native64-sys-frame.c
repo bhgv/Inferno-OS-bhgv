@@ -1,8 +1,11 @@
 /* Real MFRAME/MCALL owners, with bounded current-extent and scheduler transports. */
 #include "native64-sys-frame.h"
 #include "native64-sys-sites.h"
+#include "native64-sys-program.h"
 #include "callsites-native64.h"
 #include "typedfield-native64.h"
+char exCompile[] = "compile";
+char exOp[] = "bad opcode";
 char exModule[] = "module";
 REG R;
 Prog *currun(void) { return &process; }
@@ -886,6 +889,7 @@ static void vmcase(int phase, int operation, int mode, int useframe)
 }
 
 /* REAL_EMUINIT_PLANS */
+/* OWNED_SYS_PROGRAM */
 
 int main(int argc, char **argv)
 {
@@ -899,6 +903,7 @@ int main(int argc, char **argv)
     vmseedstrings();
     vmtypedfields();
     vmemuinitplans();
+    vmprogramplans();
     typedbodytests();
     for(useframe=0; useframe<2; useframe++) for(phase=0; phase<3; phase++) for(operation=0; operation<4; operation++) for(mode=0; mode<32; mode++) {
         vmcase(phase, operation, mode, useframe); cases++;
