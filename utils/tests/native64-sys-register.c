@@ -4,7 +4,7 @@
 char exNilref[] = "dereference of nil", exBounds[] = "array bounds error"; // VM frame diagnostics.
 
 static int initialized, rejectinit, clockreads; // Bounded OS descriptor boundary and observed callback identities.
-static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite", "pctl", "file2chan", "millisec", "open", "fildes", "sleep", "dup", "werrstr", "chdir", "remove", "unmount", "bind", "iounit", "create", "dial", "mount"}; // Exact trusted profile.
+static const char *names[] = {"byte2char", "char2byte", "utfbytes", "read", "readn", "write", "pread", "pwrite", "pctl", "file2chan", "millisec", "open", "fildes", "sleep", "dup", "werrstr", "chdir", "remove", "unmount", "bind", "iounit", "create", "dial", "mount", "fstat"}; // Exact trusted profile.
 static int invoked[nelem(names)]; // One dispatch counter per expected export.
 
 
@@ -158,6 +158,7 @@ void Sys_iounit(void *frame){check(frame == &baseline);invoked[20]++;}
 void Sys_create(void *frame){check(frame == &baseline);invoked[21]++;}
 void Sys_dial(void *frame){check(frame == &baseline);invoked[22]++;}
 void Sys_mount(void *frame){check(frame == &baseline);invoked[23]++;}
+void Sys_fstat(void *frame){check(frame == &baseline);invoked[24]++;}
 
 int native64diallea8step(void){return 0;}
 int native64stringlea8step(void){return 0;} // No result-binding VM execution in this registration gate.
@@ -438,6 +439,20 @@ main(void)
 	}
 	owner = nil;
 	check(native64sysexport("fprint", &owner) == nil && owner == nil);
+	check(native64sysexport("sprint", &owner) == nil && owner == nil);
+	/* fstat has one FD root, an eight-byte return address and a mixed result. */
+	check(sizeof(F_Sys_fstat) == 72 && offsetof(F_Sys_fstat, fd) == 64 &&
+	   offsetof(F_Sys_fstat, ret) == 32 && sizeof(*((F_Sys_fstat*)0)->ret) == 88);
+	check(m->type[24]->size == 72 && m->type[24]->np == 2 &&
+	   m->type[24]->map[0] == 0 && m->type[24]->map[1] == 0x80);
+	m->type[24]->map[1] = 0;
+	check(native64sysexport("fstat", &owner) == nil);
+	m->type[24]->map[1] = 0x80;
+	m->ext[24].sig ^= 1;
+	check(native64sysexport("fstat", &owner) == nil);
+	m->ext[24].sig ^= 1;
+	check(native64sysexport("fstat", &owner) == &m->ext[24] && owner == m);
+	owner = nil;
 	check(native64sysexport("Millisec", &owner) == nil && owner == nil);
 	m->ext[11].sig ^= 1;
 	check(native64sysexport("open", &owner) == nil && owner == nil);
