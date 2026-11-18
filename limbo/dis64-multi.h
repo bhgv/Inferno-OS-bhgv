@@ -72,21 +72,22 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
 static int
 typedclientfield(Inst *in,Dis64TypedBody *p,unsigned int pc,int probe)
 {
- Addr *a;Type *t;Dis64Layout layout={0};unsigned int i,bm,vm;long base,value=0;int actual,read,kind,ok=0;vm=AFP;
- read=in->sm==Afpind;a=read?&in->s:&in->d;
- if(in->op!=IMOVP || in->mm!=Anone || in->branch || (read?in->dm!=Afp:in->dm!=Afpind) ||
+ Addr *a,owner;Type *t;Dis64Layout layout={0};unsigned int i,bm,vm;long base,value=0;int actual,read,kind,ok=0;vm=AFP;
+ read=in->sm==Afpind || in->sm==Ampind;a=read?&in->s:&in->d;
+ if(in->op!=IMOVP || in->mm!=Anone || in->branch || (read?(in->dm!=Afp && in->dm!=Amp):(in->dm!=Afpind && in->dm!=Ampind)) ||
     !a->decl || !(t=a->decl->ty) || t->kind!=Tref || !(t=t->tof) || t->kind!=Tadt ||
     !t->decl || !t->decl->sym || strcmp(t->decl->sym->name,"Context") || !t->decl->dot ||
     !t->decl->dot->sym || strcmp(t->decl->dot->sym->name,"Draw") ||
     a->offset<0 || a->offset>8 || a->offset%4 || !dis64layouttype(t,&layout) || layout.bytes!=24 || layout.count!=3)goto done;
  for(i=0;i<3;i++)if(layout.leaves[i].legacy!=4*i || layout.leaves[i].native!=8*i || layout.leaves[i].oldbytes!=4 || layout.leaves[i].bytes!=8 || layout.leaves[i].kind!=(i==2?Tchan:Tref))goto done;
- if(!typedoperand(Afp,a,TypedRoot,0,0,p,&base,&bm,&actual) || actual!=Tref)goto done;
+ owner=*a;owner.offset=0;
+ if(!typedoperand((read?in->sm:in->dm)==Afpind?Afp:Amp,&owner,TypedRoot,0,0,p,&base,&bm,&actual) || actual!=Tref)goto done;
  kind=a->offset==8?Tchan:Tref;
  if(!probe && (!typedoperand(read?in->dm:in->sm,read?&in->d:&in->s,TypedRoot,0,0,p,&value,&vm,&actual) ||
-    (actual!=kind && actual!=Tany) || (read?vm!=AFP:vm!=AFP && vm!=AMP)))goto done;
+    (actual!=kind && actual!=Tany) || (vm!=AFP && vm!=AMP)))goto done;
  if(!p->contextfields){p->contextfields=allocmem(p->count*sizeof(long));memset(p->contextfields,0,p->count*sizeof(long));}
  p->contextfields[pc]=2*a->offset;
- p->code[pc]=(Dis64Instruction){IMOVP,read?SRC(AFP|AIND)|DST(AFP):SRC(vm)|DST(AFP|AIND),0,read?base:value,read?value:base};ok=1;
+ p->code[pc]=(Dis64Instruction){IMOVP,read?SRC(bm|AIND)|DST(vm):SRC(vm)|DST(bm|AIND),0,read?base:value,read?value:base};ok=1;
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"context-field-roles");
 }
 
@@ -219,6 +220,21 @@ typedclientcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  if(!typedclientreferencekind(sk) || !typedclientreferencekind(mk) || sm!=AFP ||
     (mk==Tany?mm!=AMP:mm!=AFP || sk!=mk || sk==Tmodule))return typedfail(p,"reference-compare-roles");
  p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(sm)|(mm==AMP?AXINM:AXINF)|DST(AIMM),middle,source,in->branch->pc-p->first};return 1;
+}
+
+/* Exact Context field/nil tests in the checked LOAD path. */
+static int
+typedloadcontextcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
+{
+ Addr *left=&in->s,*right=&in->m;int lm=in->sm,rm=in->mm,actual;unsigned int mm,bm;long middle,base;Inst field=*in;
+ if(in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc)return typedfail(p,"context-nil-branch");
+ if(lm==Amp && (rm==Afpind || rm==Ampind)){left=&in->m;right=&in->s;lm=in->mm;rm=in->sm;}
+ if((lm!=Afpind && lm!=Ampind) || rm!=Amp)return typedfail(p,"context-nil-roles");
+ field.op=IMOVP;field.s=*left;field.sm=lm;field.mm=Anone;field.dm=Afp;field.branch=nil;
+ if(!typedclientfield(&field,p,pc,1) || !typedoperand(rm,right,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || mm!=AMP)return typedfail(p,"context-nil-roles");
+ base=p->code[pc].source;bm=lm==Afpind?AFP:AMP;
+ p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:IBNEL,SRC(bm|AIND)|AXINM|DST(AIMM),middle,base,in->branch->pc-p->first};
+ p->returns[pc]=97+left->offset/4;return 1;
 }
 
 /* Comparing a direct ref ADT with nil only observes the root pointer.
@@ -436,8 +452,12 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
                  (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
-        }else if(c->external>=2 && in->op==IMOVP && (in->sm==Afpind || in->dm==Afpind)){
-            if(!typedclientfield(in,p,pc-p->first,0))goto fail;pc++;
+        }else if((c->external>=2 || c->loads) && in->op==IMOVP && (in->sm==Afpind || in->sm==Ampind || (in->dm==Afpind && in->d.reg!=16) || in->dm==Ampind)){
+            if(!typedclientfield(in,p,pc-p->first,0))goto fail;
+            if(c->loads){p->returns[pc-p->first]=96;p->code[pc-p->first].middle=p->contextfields[pc-p->first];}pc++;
+        }else if(c->loads && (in->op==IBEQW || in->op==IBNEW) &&
+          (in->sm==Afpind || in->sm==Ampind || in->mm==Afpind || in->mm==Ampind)){
+            if(!typedloadcontextcompare(in,p,pc-p->first,stop))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && (in->op==IBEQW || in->op==IBNEW || in->op==IBEQL || in->op==IBNEL) &&
           ((in->s.decl && in->s.decl->ty && typedclientreferencekind(in->s.decl->ty->kind)) ||
            (in->m.decl && in->m.decl->ty && typedclientreferencekind(in->m.decl->ty->kind)))){

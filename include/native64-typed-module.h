@@ -97,6 +97,25 @@ native64modulelists(const Native64ModuleSpec *spec,const Native64ModuleFunction 
  return 1;
 }
 
+static int
+native64modulecontext(const Native64ModuleSpec*spec,const Native64ModuleFunction*fn)
+{
+ unsigned int i,k,mode,bit;long offsets[2];const uchar*map;const Native64TypedStep*step;
+ for(i=0;i<fn->count;i++){
+  step=fn->code+i;if(step->returned<Native64TypedContext || step->returned>=Native64TypedContextNil+3)continue;
+  if(!native64typedcontextstep(step,fn->bytes,spec->databytes) || (step->returned!=Native64TypedContext && (step->d<0 || (unsigned long)step->d>=fn->count)))return 0;
+  offsets[0]=step->s;offsets[1]=step->returned==Native64TypedContext?step->d:step->m;
+  for(k=0;k<2;k++){
+   mode=(k?(step->returned==Native64TypedContext?UDST(step->mode):AMP):USRC(step->mode))&~AIND;
+   map=mode==AFP?fn->map:spec->datamap;bit=offsets[k]/8;
+   if((map[bit/8] & (128>>(bit%8)))==0)return 0;
+  }
+  /* Field operations cannot be hidden inside a pending call setup. */
+  for(k=0;k<fn->nsites;k++)if(fn->sites[k].first<=i && i<=fn->sites[k].end)return 0;
+ }
+ return 1;
+}
+
 /* Immutable readable checked-compiler metadata, not untrusted file inputs. */
 static int
 native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsigned int *exports,unsigned int *scratch,unsigned int *imports)
@@ -124,7 +143,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
            !native64modulemap(f->bytes,f->map,f->mapbytes,1) || f->bytes>32*1024*1024-total ||
            f->nsites>f->count/2 || (f->nsites && f->sites==nil))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
-        if(!native64modulelists(s,f))return 0;
+        if(!native64modulelists(s,f) || !native64modulecontext(s,f))return 0;
         if(f->resultcontract && f->resultcontract!=48)return 0;
         for(j=0;j<f->nsites;j++){
             unsigned int k,r,modes[2],offsets[2];site=f->sites+j;

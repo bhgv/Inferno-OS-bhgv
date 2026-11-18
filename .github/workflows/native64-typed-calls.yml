@@ -23,6 +23,7 @@ on:
       - 'utils/tests/native64-callsites.py'
       - 'utils/tests/native64-sys-program*'
       - 'utils/tests/native64-coordinate-format*'
+      - 'utils/tests/native64-context-fields*'
       - 'utils/tests/native64-emuinit-full*'
       - 'utils/tests/dis64-variadic*'
       - 'utils/tests/classic-array-initializers.py'
@@ -149,6 +150,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-full.log"
           python3 utils/tests/native64-coordinate-format.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/coordinate-format.log"
+          python3 utils/tests/native64-context-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/context-fields.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -240,6 +243,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-full.log"
           python3 utils/tests/native64-coordinate-format.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/coordinate-format.log"
+          python3 utils/tests/native64-context-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/context-fields.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

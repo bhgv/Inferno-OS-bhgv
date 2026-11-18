@@ -157,6 +157,30 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if 97<=returned<100:
+            assert loads and o['op']in(93,94)and op==(OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'])and mode&192==192 and mode&7==2
+            sm=o['mode']>>3&7;left=o['s'];right=[o['m']]
+            assert o['mode']==(sm<<3)|192|2 and sm in(4,5)and len(left)==2 and left[1]in(0,4,8)
+            assert next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==left[0])[2:]==[4,8,12]
+            assert returned==97+left[1]//4 and mode==(sm<<3)|192|2
+            assert s==maps['frame'if sm==5 else'data'][left[0]]and m==maps['data'][right[0]]and d==o['d'][0]-r['first']and d not in inside
+            assert next(l for l in r['data']['leaves']if l[0]==right[0])[4]==20
+            continue
+        if returned==96:
+            # Independently prove exact classic root-field relocation. Context
+            # nominal identity is a compiler premise, native offsets are not.
+            assert loads and op==o['op']==41 and mode==o['mode']and o['m']is None
+            sm=mode>>3&7;dm=mode&7;read=sm in(4,5)
+            assert (read and dm in(0,1))or(not read and sm in(0,1)and dm in(4,5))
+            indirect=o['s']if read else o['d'];direct=o['d']if read else o['s']
+            assert len(indirect)==2 and indirect[1]in(0,4,8)and m==2*indirect[1]
+            bm=(sm if read else dm)&1;vm=dm if read else sm
+            assert (s if read else d)==maps['frame'if bm else'data'][indirect[0]]
+            assert (d if read else s)==maps['frame'if vm else'data'][direct[0]]
+            for space,old,kind in(('frame'if bm else'data',indirect[0],12),('frame'if vm else'data',direct[0],6 if indirect[1]==8 else 12)):
+                leaf=next(l for l in r[space]['leaves']if l[0]==old)
+                assert leaf[2:4]==[4,8]and (leaf[4]==kind or (not read and space=='data'and leaf[4]==20))
+            continue
         if loads and op==OPCODES['INEWAZ']and o['op']==OPCODES['INEWA']:
             assert m==0 and types[o['m']][0]==1 and not any(types[o['m']][1])
             o={**o,'op':op,'m':0}

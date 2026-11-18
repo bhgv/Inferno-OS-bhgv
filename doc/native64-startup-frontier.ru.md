@@ -80,3 +80,5 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий этап: [настоящий Arg](native64-arg.ru.md), 8/8 checked bodies и 324 реальных C/JIT процесса emuinit с нормальным разбором argv. AWM/Draw/Tk и Android window ещё впереди.
 
 Следующий этап: [форматирование координат WM](native64-coordinate-format.ru.md): неизменённые awm.r2s/wmclient.r2s, typed numeric tails и inherited Sys result; AWM 2/20, wmclient 5/21. Полный графический startup ещё не допускается.
+
+Следующий этап: [поля Draw.Context](native64-context-fields.ru.md): checked AWM init проходит PC51 и nil test wm, первый отказ теперь PC61 — Rect argument вызова reshape. Это ещё не runtime acceptance полного AWM.
