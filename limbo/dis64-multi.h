@@ -453,16 +453,18 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     Inst *frame=c->instructions[pc],*call,*in,*binding;
     Dis64TypedBody *child;Dis64TypedSite *site;
     Decl *arg;unsigned int end=pc+1,at,sm,offset,width,contract=0,local=0,inherit=0;
-    int target,kind,root,op,actual;long source;
+    int target,kind,root,op,actual,spawning;long source;
     if(frame->sm!=Adesc || frame->mm!=Anone || frame->dm!=Afp || frame->branch!=nil || frame->d.reg<32 ||
        frame->d.reg>(int)p->frame.legacybytes-4)return typedfail(p,"multi-frame");
     while(end<stop && c->instructions[end]!=nil && (c->instructions[end]->dm==Afpind ||
       (c->loads && ((c->instructions[end]->op==IMOVP && c->instructions[end]->dm==Afp) || c->instructions[end]->op==ISLICEA))))end++;
-    if(end>=stop || (call=c->instructions[end])==nil || call->op!=ICALL || call->sm!=Afp || call->s.reg!=frame->d.reg ||
+    if(end>=stop || (call=c->instructions[end])==nil || (call->op!=ICALL && !(c->loads && call->op==ISPAWN)) || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Anone || call->dm!=Apc || call->d.offset<0 || (unsigned long)call->d.offset>=c->count ||
        (target=c->entries[call->d.offset])<0)return typedfail(p,"multi-call");
     if(c->functions[target]->desc==nil || c->functions[target]->desc->id!=frame->s.offset ||
        (call->branch!=nil && call->branch!=c->functions[target]->pc))return typedfail(p,"multi-target");
+    spawning=call->op==ISPAWN;
+    if(spawning && (c->functions[target]->ty->tof->kind!=Tnone || c->state[target]==1))return typedfail(p,"spawn-callee");
     child=c->bodies+target;
     if(c->loads && child==p && c->state[target]==1){
         binding=c->instructions[end-1];
@@ -478,6 +480,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
+        if(spawning && (in->op!=op || (in->sm!=Afp && in->sm!=Amp && in->sm!=Aimm)))return typedfail(p,"spawn-argument");
         /* No later allocating argument may follow the pending String root. */
         if(c->loads && kind==Tstring && in->op==IMOVP && in->dm==Afp){
             Inst*slice,*convert,*clear;unsigned int view;
@@ -550,7 +553,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         at++;
     }
     if(at!=end)return typedfail(p,"multi-setup-length");
-    p->code[end-p->first]=(Dis64Instruction){ICALL,SRC(AFP)|DST(AIMM),0,40,call->d.offset};p->returns[end-p->first]=inherit?32:0;
+    p->code[end-p->first]=(Dis64Instruction){spawning?ISPAWN:ICALL,SRC(AFP)|DST(AIMM),0,40,call->d.offset};p->returns[end-p->first]=spawning?186:inherit?32:0;
     site=p->sites+p->nsites++;*site=(Dis64TypedSite){pc-p->first,end-p->first,call->d.offset,frame->s.offset,local,contract,inherit};
     *next=end+1;return 1;
 }

@@ -182,6 +182,8 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         s=steps+c->end;
         if(c->external){
             if(s->op!=IMCALL || s->mode!=(SRC(AFP)|AXIMM|DST(c->modulemode)) || s->m!=c->ordinal || s->s!=40 || s->d!=c->moduleoffset || s->returned!=(c->inherited?32:0))return 0;
+        }else if(s->op==ISPAWN){
+            if(c->contract || c->inherited || c->resultcontract || s->mode!=(SRC(AFP)|DST(AIMM)) || s->m || s->s!=40 || s->returned!=186)return 0;
         }else if(s->op!=ICALL || s->mode!=(SRC(AFP)|DST(AIMM)) || s->m || s->s!=40 || s->returned!=(c->inherited?32:0))return 0;
     }
     for(i=0;i<count;){

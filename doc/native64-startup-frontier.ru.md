@@ -100,3 +100,5 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий этап: [primitive channel allocation](native64-channel-new.ru.md): AWM init проходит PC120 и останавливается на spawn setup PC127/ISPAWN PC131. Wmsrv mapped channel PC27 остаётся отдельным барьером.
 
 Следующий этап: [mapped tuple channels](native64-mapped-channels.ru.md): Wmsrv.init проходит PC27–29 и доходит до spawn setup PC30. AWM init остаётся на spawn setup PC127/131.
+
+Следующий этап: [checked local spawn](native64-spawn.ru.md): spawn выполняется в C/JIT для полностью проверенных void bodies. AWM/Wmsrv init sites остаются PC127/30 с причиной multi-callee; дальше блокируют command PC1392 и wm PC40.

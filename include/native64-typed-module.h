@@ -492,6 +492,30 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].contract==88)found++;
             if(found!=1)return 0;
         }
+        for(j=0;j<f->count;j++)if(f->code[j].op==ISPAWN || f->code[j].returned==186){
+            unsigned int k,found=0,a;const Native64ModuleFunction*child;const Native64TypedStep*body;
+            step=f->code+j;if(step->op!=ISPAWN || step->returned!=186 || step->mode!=(SRC(AFP)|DST(AIMM)) || step->m || step->s!=40)return 0;
+            for(k=0;k<f->nsites;k++)if(f->sites[k].end==j){
+                site=f->sites+k;if(found++ || site->external || site->contract || site->inherited || site->target>=s->nfunctions)return 0;
+                child=s->functions+site->target;if(child->resultcontract || !child->code || child->count>65536)return 0;
+                if(!native64modulemap(child->bytes,child->map,child->mapbytes,1))return 0;
+                for(a=site->first+1;a<j;a++){
+                    unsigned int width,root,mode,extent;body=f->code+a;if(body->returned==182)continue;
+                    root=body->op==IMOVP;width=body->op==IMOVB?1:body->op==IMOVW?4:8;mode=USRC(body->mode);
+                    if(body->returned!=64 || (body->op!=IMOVB && body->op!=IMOVW && body->op!=IMOVL && body->op!=IMOVF && !root) || body->mode!=(SRC(mode)|DST(AFP|AIND)) || body->m ||
+                       body->d<64 || body->d%width || (unsigned long)body->d>child->bytes || width>child->bytes-body->d)return 0;
+                    bit=body->d/8;if(!!(child->map[bit/8]&(128>>(bit%8)))!=root)return 0;
+                    if(mode==AIMM){if(root || width==8 || body->s< -536870912L || body->s>536870911L || (width==1 && (body->s<0 || body->s>255)))return 0;}
+                    else{extent=mode==AFP?f->bytes:s->databytes;
+                        if((mode!=AFP && mode!=AMP) || !native64typedcodeoperand(mode,body->s,f->bytes,s->databytes) || body->s%width || (unsigned long)body->s>extent || width>extent-body->s)return 0;
+                        map=mode==AFP?f->map:s->datamap;bit=body->s/8;if(!!(map[bit/8]&(128>>(bit%8)))!=root)return 0;
+                    }
+                }
+
+                for(a=0;a<child->count;a++){body=child->code+a;if((body->returned && body->returned<=32) || body->returned==40 || body->returned==56 || (body->returned>=168 && body->returned<=170) || body->returned==171 || body->returned==174 || body->returned==185)return 0;}
+            }
+            if(found!=1)return 0;
+        }
         for(j=0;j<f->nsites;j++){
             site=f->sites+j;if(site->external>1)return 0;
             if(site->contract==72){

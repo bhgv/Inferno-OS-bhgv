@@ -68,3 +68,7 @@ emuinit/Arg со своими controls. Чистая amd64 console, paired boot 
 настоящих C/JIT emuinit/Arg boot-процесса прошли. Все 16 classic startup
 artifacts сохраняют обычные bytes. Bounded geometry proof не добавляет
 зависимости от полного type checker в автономные checked-IR fixtures.
+
+Продолжение: [checked local spawn](native64-spawn.ru.md). Scheduler path
+проверен на реальных детях/внуках; actual startup теперь требует admission
+полных spawned command/wm handlers.

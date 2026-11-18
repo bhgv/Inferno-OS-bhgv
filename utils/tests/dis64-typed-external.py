@@ -88,8 +88,11 @@ def verify(data,r,imports,loads=False,rows=None):
             else:
                 assert binding['mode']in(5,13)and (binding['mode']!=5 or contract==24)and offset==maps['frame'if binding['mode']==13 else'data'][binding['s'][0]]
                 assert r['code'][end-1]==[39,binding['mode'],offset,0,32,128|contract]
-        assert original[end]=={'op':4,'mode':10,'m':None,'s':[pending],'d':[target]}
-        assert r['code'][end]==[4,10,40,0,target,32 if inherited else 0]
+        spawn=original[end]['op']==OPCODES['ISPAWN']
+        if spawn:assert loads and not contract and not inherited and callee['result']==[0,0]
+        opcode=OPCODES['ISPAWN']if spawn else 4
+        assert original[end]=={'op':opcode,'mode':10,'m':None,'s':[pending],'d':[target]}
+        assert r['code'][end]==[opcode,10,40,0,target,186 if spawn else 32 if inherited else 0]
         covered.update(set(range(first,end+1))-preps);inside.update(range(first+1,end+1))
     previous=-1
     for v in r.get('variadics',[]):

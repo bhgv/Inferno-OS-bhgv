@@ -28,6 +28,7 @@ on:
       - 'utils/tests/native64-string-prep*'
       - 'utils/tests/native64-channel-new*'
       - 'utils/tests/native64-mapped-channels*'
+      - 'utils/tests/native64-spawn*'
       - 'utils/tests/native64-geometry-args*'
       - 'utils/tests/native64-window-fields*'
       - 'utils/tests/native64-draw-fields*'
@@ -161,6 +162,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/coordinate-format.log"
           python3 utils/tests/native64-context-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/context-fields.log"
+          python3 utils/tests/native64-spawn.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/spawn.log"
           python3 utils/tests/native64-mapped-channels.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/mapped-channels.log"
           python3 utils/tests/native64-channel-new.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -272,6 +275,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/coordinate-format.log"
           python3 utils/tests/native64-context-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/context-fields.log"
+          python3 utils/tests/native64-spawn.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/spawn.log"
           python3 utils/tests/native64-mapped-channels.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/mapped-channels.log"
           python3 utils/tests/native64-channel-new.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
