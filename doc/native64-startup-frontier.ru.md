@@ -94,3 +94,5 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий этап: [тройка каналов](native64-channel-triples.ru.md): AWM init проходит Wmsrv.init PC97 и останавливается на Draw.Context allocation PC100. Provider Wmsrv.init — на managed channel allocation PC27.
 
 Следующий этап: [Context allocation/copy](native64-context-new.ru.md): AWM init проходит PC100 и доходит до PC116 (fatal -> kill -> computed Sys.open path).
+
+Следующий этап: [String preparation и temporary clear](native64-string-prep.ru.md): настоящие kill/fatal принимаются целиком; AWM init доходит до PC120 INEWCP. Полный init и UI пока не запущены.

@@ -73,3 +73,6 @@ Sys.open (`/prog/` + string pid + `/ctl`). После fatal в init также �
 прошли. Тройка каналов и прежние Context fields также прошли. В двух старых
 root-map проверках сохранена уникальность адресного шаблона старого Context
 active control; сами predicates не ослаблены.
+
+Продолжение: [String preparation](native64-string-prep.ru.md) закрывает
+kill/fatal и переносит первый compiler refusal AWM init на PC120 INEWCP.

@@ -253,6 +253,29 @@ typedclientstring(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|(mm==AIMM?AXIMM:mm==AFP?AXINF:AXINM)|DST(dm),middle,source,destination};return 1;
 }
 
+/* One numeric String temporary, bounded in-place concatenation, argument, clear. */
+static int
+typedexternalstringexpr(TypedMulti*c,Dis64TypedBody*p,Inst*frame,Decl*arg,unsigned int end,unsigned int*at,unsigned int offset)
+{
+ Inst*in=c->instructions[*at],*first=in;unsigned int n=0,sm,mm;long source,middle;int actual;
+ if(in->op!=ICVTWC || in->dm!=Afp || !in->d.decl || in->d.decl->store!=Dlocal || !in->d.decl->sym || in->d.decl->sym->name[0]!='.' || in->d.decl->sym->name[1]!='t' || in->d.offset || !typedclientcodec(in,p,*at-p->first))return typedfail(p,"external-string-expression");
+ p->returns[(*at)++-p->first]=180;
+ while(*at<end && (in=c->instructions[*at]) && in->op==IADDC && in->dm==Afp){
+  if(n++>=8 || in->d.decl!=first->d.decl || in->d.reg!=first->d.reg || in->d.offset ||
+     !((in->sm==Afp && in->s.decl==first->d.decl && in->s.reg==first->d.reg && !in->s.offset) || in->mm==Anone || (in->mm==Afp && in->m.decl==first->d.decl && in->m.reg==first->d.reg && !in->m.offset)) || !typedclientstring(in,p,*at-p->first,end))return typedfail(p,"external-string-expression");
+  p->returns[(*at)++-p->first]=180;
+ }
+ if(*at>=end || !(in=c->instructions[*at]) || in->op!=IADDC || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || in->branch ||
+    !((in->sm==Afp && in->s.decl==first->d.decl && in->s.reg==first->d.reg && !in->s.offset) || (in->mm==Afp && in->m.decl==first->d.decl && in->m.reg==first->d.reg && !in->m.offset)) ||
+    !typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) || actual!=Tstring ||
+    !typedoperand(in->mm,&in->m,Tstring,0,1,p,&middle,&mm,&actual) || actual!=Tstring || (mm!=AFP && mm!=AMP))return typedfail(p,"external-string-argument");
+ p->code[*at-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,offset};p->returns[(*at)++-p->first]=64;
+ if(*at>=end || !(in=c->instructions[*at]) || in->op!=IMOVP || in->sm!=Amp || in->mm!=Anone || in->dm!=Afp || in->branch ||
+    !in->s.decl || in->s.decl->store!=Dglobal || !in->s.decl->ty || in->s.decl->ty->kind!=Tany || !in->s.decl->sym || strcmp(in->s.decl->sym->name,"nil") || in->s.reg!=in->s.decl->offset || in->s.offset ||
+    in->d.decl!=first->d.decl || in->d.reg!=first->d.reg || in->d.offset || !typedinst(in,end,p,p->code+*at-p->first,p->returns+*at-p->first))return typedfail(p,"external-string-clear");
+ p->returns[(*at)++-p->first]=181;return 1;
+}
+
 /* Pointer comparisons use the complete native reference, including fused
  * Context field reads. The nil constant remains a readonly mapped MP root. */
 static int
@@ -447,6 +470,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
              typedoperand(in->sm,&in->s,root?TypedRoot:kind,!root && width<8,0,p,&source,&sm,&actual)) ||
            (root && actual!=kind && actual!=Tany))return typedfail(p,"multi-argument");
         p->code[at-p->first]=(Dis64Instruction){op,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=64;
+        if(c->loads && root){unsigned int before=at;if(!typedrootargclear(c,p,in,end,&at))return 0;if(at!=before)p->returns[at-1-p->first]=182;}
     }
     if(child->resultkind!=Tnone){
         if(at+1!=end || (binding=c->instructions[at])==nil || binding->op!=ILEA || binding->mm!=Anone ||

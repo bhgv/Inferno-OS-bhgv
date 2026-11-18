@@ -75,6 +75,10 @@ def verify(data,r,imports,loads=False,rows=None):
             else:
                 assert r['code'][at]==[o['op'],o['mode'],o['s'][0]if sm==2 else maps['frame'if sm==1 else'data'][o['s'][0]],0,arg[0],64]
             at+=2 if prep else 1
+            if at<end and r['code'][at][5]==182:
+                clear=original[at];assert arg[1]in ROOTS and o['op']==41 and sm==1 and clear['op']==41 and clear['mode']==1 and clear['m']is None and clear['d']==o['s']
+                assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
+                assert r['code'][at]==[41,1,maps['data'][clear['s'][0]],0,maps['frame'][clear['d'][0]],182];at+=1
         assert at+bool(contract)==end
         if contract:
             binding=original[end-1];assert binding['op']==39 and binding['d']==[pending,16]and binding['m']is None
@@ -160,6 +164,23 @@ def verify(data,r,imports,loads=False,rows=None):
                         count+=1
                     assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm else'data'][a['s'][0]],0,target,112];at+=1
                 assert 0<count<=256 and original[at]['s']==[next(old for old,v in maps['frame'].items()if v==temp)]and original[at]['mode']==13
+            stringprep=None
+            if at<end and r['code'][at][5]==180:
+                assert loads and kind==13;oldtemp=original[at]['d'][0];temp=maps['frame'][oldtemp];nprep=0
+                while at<end and r['code'][at][5]==180:
+                    a=original[at];sm=a['mode']>>3&7;assert a['d']==[oldtemp]and a['mode']&7==1
+                    if not nprep:
+                        assert a['op']==OPCODES['ICVTWC']and a['m']is None and sm in(0,1,2)
+                        source=a['s'][0]if sm==2 else maps['frame'if sm else'data'][a['s'][0]]
+                        if sm!=2:assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==a['s'][0])[2:]==[4,4,9]
+                        assert r['code'][at]==[a['op'],a['mode'],source,0,temp,180]
+                    else:
+                        assert a['op']==OPCODES['IADDC']and sm in(0,1)
+                        mm=1 if a['mode']&192 in(0,128)else 0;middle=oldtemp if a['m']is None else a['m']
+                        assert (sm==1 and a['s']==[oldtemp])or(mm==1 and middle==oldtemp)
+                        assert r['code'][at]==[a['op'],(sm<<3)|(128 if mm else 192)|1,maps['frame'if sm else'data'][a['s'][0]],maps['frame'if mm else'data'][middle],temp,180]
+                    nprep+=1;at+=1
+                assert 1<=nprep<=9;stringprep=(temp,oldtemp)
             a=original[at];sm=a['mode']>>3&7
             alignment=8 if oldbytes==8 and kind!=1 else 4;oldoffset=(oldoffset+alignment-1)&~(alignment-1)
             if kind==1:
@@ -209,6 +230,11 @@ def verify(data,r,imports,loads=False,rows=None):
             else:
                 assert r['code'][at]==[a['op'],a['mode'],a['s'][0]if sm==2 else maps['frame'if sm==1 else 'data'][a['s'][0]],0,new,64]
             at+=1
+            if stringprep is not None:
+                temp,oldtemp=stringprep;assert a['op']==OPCODES['IADDC']and ((sm==1 and a['s']==[oldtemp])or(a['mode']&192==128 and a['m']==oldtemp))
+                clear=original[at];assert clear['op']==41 and clear['mode']==1 and clear['m']is None and clear['d']==[oldtemp]
+                assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
+                assert r['code'][at]==[41,1,maps['data'][clear['s'][0]],0,temp,181];at+=1
             if listclear is not None:
                 temp,nilroot=listclear;clear=original[at]
                 assert clear['op']==41 and clear['mode']==1 and clear['m']is None
