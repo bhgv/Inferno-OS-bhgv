@@ -64,3 +64,5 @@ format сохраняются; новые annotations относятся тол�
 Локально gate прошёл UBSan и ASan/UBSan, включая три active controls
 (LSan отключён; fixture считает собственные allocations). Чистая amd64
 консоль, paired boot и 324 настоящих emuinit/Arg boot-процесса прошли.
+
+Продолжение: [makescreen, global results и Image geometry](native64-makescreen.ru.md). Этот следующий gate расширяет описанный здесь checkpoint; makescreen теперь целиком допускается, следующий init barrier — Wmsrv.init на PC97.

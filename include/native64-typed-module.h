@@ -141,6 +141,14 @@ native64moduledrawfields(const Native64ModuleSpec*s,const Native64ModuleFunction
  unsigned int i,k,bit,mode,found,bytes,np;long offsets[2];const uchar*map;const Native64TypedStep*step;const Native64ModuleSite*site;const Native64ModuleImport*request;const Native64ModuleFunction*child;
  for(i=0;i<f->count;i++){
   step=f->code+i;
+  if(step->returned==166){
+   Native64TypedStep copy=*step;const Native64TypedStep*next;
+   copy.returned=Native64TypedDraw;
+   if(i+2>=f->count || step->m!=16 || UDST(step->mode)!=AFP || (USRC(step->mode)!=(AFP|AIND) && USRC(step->mode)!=(AMP|AIND)) || !native64typeddrawstep(&copy,f->bytes,s->databytes))return 0;
+   next=f->code+i+1;if(next->returned<160 || next->returned>165 || next->op!=IMOVM || USRC(next->mode)!=(AFP|AIND) || next->s!=step->d || f->code[i+2].returned!=Native64TypedArgClear || f->code[i+2].d!=step->d)return 0;
+   found=0;for(k=0;k<f->nsites;k++)if(f->sites[k].first<i && i+2<f->sites[k].end && f->sites[k].external)found++;if(found!=1)return 0;
+   map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if((map[bit/8] & (128>>(bit%8)))==0)return 0;bit=step->d/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;continue;
+  }
   if(step->returned==Native64TypedFieldArg){
    found=0;
    for(k=0;k<f->nsites;k++)if(f->sites[k].first<i && i<f->sites[k].end){
@@ -168,6 +176,7 @@ native64modulereadonlynil(const Native64ModuleSpec*s,long offset)
  if(s->nstrings>65536 || (s->nstrings && (s->strings==nil || s->strings==H)))return 0;
  for(i=0;i<s->nfunctions;i++){if(!s->functions[i].count || s->functions[i].count>65536-n || s->functions[i].code==nil || s->functions[i].code==H)return 0;n+=s->functions[i].count;}
  for(i=0;i<s->nstrings;i++)if(s->strings[i].offset==(unsigned long)offset)return 0;
+ for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].op==ILEA && USRC(s->functions[i].code[j].mode)==AMP && s->functions[i].code[j].s/8==offset/8)return 0;
  for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(UDST(s->functions[i].code[j].mode)==AMP && s->functions[i].code[j].d/8==offset/8)return 0;
  return 1;
 }
@@ -180,12 +189,16 @@ native64moduleargclears(const Native64ModuleSpec*s,const Native64ModuleFunction*
   copy=*step;copy.returned=Native64TypedListPrep;
   if(!i || step->op!=IMOVP || !native64typedlistprep(&copy,f->bytes,s->databytes) || !native64modulereadonlynil(s,step->s))return 0;
   before=f->code+i-1;
-  if(before->op!=IMOVP || before->returned!=64 || before->mode!=(SRC(AFP)|DST(AFP|AIND)) || before->m || before->s!=step->d)return 0;
+  if(before->s!=step->d || !((before->op==IMOVP && before->returned==64 && before->mode==(SRC(AFP)|DST(AFP|AIND)) && !before->m) ||
+     (before->op==IMOVM && before->returned>=160 && before->returned<=165 && USRC(before->mode)==(AFP|AIND))))return 0;
   found=0;for(k=0;k<f->nsites;k++)if(f->sites[k].first<i && i<f->sites[k].end){
    if(found++)return 0;site=f->sites+k;if(!site->external || site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
    request=s->tables[site->table].imports+site->target;
-   if(before->d<64 || before->d%8 || (unsigned long)before->d>request->bytes || 8>request->bytes-before->d)return 0;
-   bit=before->d/8;if((request->map[bit/8] & (128 >> (bit%8)))==0)return 0;
+   if(before->op==IMOVM){if(!native64typedgeometryarg(before,f->bytes,s->databytes,request->bytes,request->map,request->mapbytes))return 0;}
+   else{
+    if(before->d<64 || before->d%8 || (unsigned long)before->d>request->bytes || 8>request->bytes-before->d)return 0;
+    bit=before->d/8;if((request->map[bit/8] & (128 >> (bit%8)))==0)return 0;
+   }
   }
   if(!found)return 0;bit=step->d/8;if(!(f->map[bit/8]&(128 >> (bit%8))))return 0;bit=step->s/8;if(!(s->datamap[bit/8]&(128 >> (bit%8))))return 0;
  }
@@ -230,7 +243,7 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
 {
  unsigned int i,k,j,found,bit;const Native64TypedStep*step;const Native64ModuleSite*site;const Native64ModuleImport*request;const uchar*map;
  for(i=0;i<f->count;i++){
-  step=f->code+i;if(step->op!=IMOVM)continue;
+  step=f->code+i;if(step->op!=IMOVM && (step->returned<160 || step->returned>165))continue;
   found=0;
   for(k=0;k<f->nsites;k++){
    site=f->sites+k;if(i<=site->first || i>=site->end)continue;
@@ -239,7 +252,8 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
    if(!native64typedgeometryarg(step,f->bytes,s->databytes,request->bytes,request->map,request->mapbytes))return 0;
   }
   if(!found)return 0;
-  map=USRC(step->mode)==AFP?f->map:s->datamap;
+  map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;
+  if(step->returned>=160 && step->returned<=165){bit=step->s/8;if((map[bit/8] & (128>>(bit%8)))==0)return 0;continue;}
   for(j=0;j<(unsigned long)step->m;j+=4){bit=(step->s+j)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
  }
  return 1;
@@ -273,6 +287,13 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
            f->nsites>f->count/2 || (f->nsites && f->sites==nil))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
         if(!native64modulelists(s,f) || !native64modulecontext(s,f) || !native64modulewindow(s,f) || !native64moduledrawfields(s,f) || !native64moduleargclears(s,f) || !native64modulelistpreps(s,f) || !native64modulegeometry(s,f))return 0;
+        for(j=0;j<f->count;j++)if((f->code[j].op==ILEA && USRC(f->code[j].mode)==AMP) || (f->code[j].returned==(128|24) && USRC(f->code[j].mode)!=AFP)){
+            unsigned int k,found=0;step=f->code+j;
+            if(step->op!=ILEA || step->mode!=(SRC(AMP)|DST(AFP|AIND)) || step->returned!=(128|24) || step->m || step->d!=32 || !native64typedrootoperand(AMP,step->s,f->bytes,s->databytes))return 0;
+            bit=step->s/8;if(!(s->datamap[bit/8]&(128>>(bit%8))))return 0;
+            for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].first<j && f->sites[k].contract==24 && !f->sites[k].inherited)found++;
+            if(found!=1)return 0;
+        }
         if(f->resultcontract && f->resultcontract!=48)return 0;
         for(j=0;j<f->nsites;j++){
             unsigned int k,r,modes[2],offsets[2];site=f->sites+j;

@@ -75,14 +75,26 @@ typedwordgeometry(Type*t,Dis64Layout*layout)
  return 1;
 }
 
+static int typedrootargclear(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*);
+static int typedimagegeometryprep(Inst*,Inst*,Dis64TypedBody*,unsigned int);
+static int typedimagegeometry(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
+
 static int
 typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned int end,unsigned int*at,unsigned int*offset)
 {
- Dis64Layout layout={0};Inst*in;Addr sourceaddr;long source=0,part;unsigned int i,sm=0,wire,base;int actual,ok=0;
+ Dis64Layout layout={0};Inst*in;Addr sourceaddr;long source=0,part;unsigned int i,sm=0,wire,base;int actual,ok=0,prepared=0;
  if(!typedwordgeometry(arg->ty,&layout))goto done;
  base=(*offset+3)&~3U;if(base>65535-layout.bytes)goto done;
  in=c->instructions[*at];
- if(in->op==IMOVM){
+ if(c->loads && in->op==IMOVP && *at+1<end){
+  if(!typedimagegeometryprep(in,c->instructions[*at+1],p,*at-p->first))goto done;
+  in=c->instructions[++*at];prepared=1;
+ }
+ if(in->op==IMOVM && c->loads && (in->sm==Afpind || in->sm==Ampind)){
+  if(in->mm!=Aimm || in->m.offset!=layout.bytes || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !typedimagegeometry(in,p,*at-p->first,base))goto done;
+  (*at)++;
+  if(in->sm==Afpind){unsigned int clear=*at;Inst store=*in;store.op=IMOVP;store.sm=Afp;store.s.offset=0;if(!typedrootargclear(c,p,&store,end,at) || (prepared && clear==*at))goto done;}
+ }else if(in->op==IMOVM){
   if(in->mm!=Aimm || in->m.offset!=layout.bytes || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
      (in->sm!=Afp && in->sm!=Amp) || !in->s.decl || in->s.decl->ty!=arg->ty)goto done;
   for(i=0;i<layout.count;i++){
@@ -102,7 +114,6 @@ typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"external-geometry-argument");
 }
 
-static int typedrootargclear(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*);
 static int typedselectedfieldarg(Inst*,Dis64TypedBody*,unsigned int,unsigned int,int);
 static int typedexternalstringlist(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*);
 
@@ -183,6 +194,9 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
             if(!typedoperand(Afp,&binding->s,root?TypedRoot:kind,0,0,p,&source,&sm,&actual) ||
                (root && actual!=kind && actual!=Tany))return typedfail(p,"external-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;
+        }else if(c->loads && root && binding->sm==Amp){
+            if(!binding->s.decl || binding->s.decl->store!=Dglobal || !typedoperand(Amp,&binding->s,TypedRoot,0,0,p,&source,&sm,&actual) || actual!=kind)return typedfail(p,"external-global-result");
+            local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AMP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;
         }else{
             if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || kind!=p->resultkind)return typedfail(p,"external-inherit");
             inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;

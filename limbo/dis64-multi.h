@@ -429,6 +429,9 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             }else if(!typedoperand(Afp,&binding->s,root?TypedRoot:kind,0,0,p,&source,&sm,&actual) ||
                (root && actual!=kind && actual!=Tany))return typedfail(p,"multi-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;
+        }else if(c->loads && root && !child->resultpair && binding->sm==Amp){
+            if(!binding->s.decl || binding->s.decl->store!=Dglobal || !typedoperand(Amp,&binding->s,TypedRoot,0,0,p,&source,&sm,&actual) || actual!=kind)return typedfail(p,"multi-global-result");
+            local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AMP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;
         }else{
             if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || kind!=p->resultkind || child->resultpair!=p->resultpair)return typedfail(p,"multi-inherit");
             inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;

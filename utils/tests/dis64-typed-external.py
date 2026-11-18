@@ -81,8 +81,8 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert binding['mode']==45 and binding['s']==[16,0]and offset==32
                 assert r['code'][end-1]==[118,13,32,0,32,64]
             else:
-                assert binding['mode']==13 and offset==maps['frame'][binding['s'][0]]
-                assert r['code'][end-1]==[39,13,offset,0,32,128|contract]
+                assert binding['mode']in(5,13)and (binding['mode']!=5 or contract==24)and offset==maps['frame'if binding['mode']==13 else'data'][binding['s'][0]]
+                assert r['code'][end-1]==[39,binding['mode'],offset,0,32,128|contract]
         assert original[end]=={'op':4,'mode':10,'m':None,'s':[pending],'d':[target]}
         assert r['code'][end]==[4,10,40,0,target,32 if inherited else 0]
         covered.update(set(range(first,end+1))-preps);inside.update(range(first+1,end+1))
@@ -165,7 +165,15 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert loads and j in aggregates
                 layout=aggregates.pop(j);n=2 if oldbytes==8 else 4 if oldbytes==16 else 0
                 assert n and width==oldbytes and layout=={'legacy_bytes':oldbytes,'bytes':width,'map':[0],'leaves':[[4*k,4*k,4,4,9]for k in range(n)]}
-                if a['op']==OPCODES['IMOVM']:
+                if r['code'][at][5]==166:
+                    assert a['op']==41 and sm in(4,5)and a['mode']==(sm<<3)|1 and a['m']is None and a['s'][1]==8
+                    temp=maps['frame'][a['d'][0]]
+                    assert r['code'][at]==[41,a['mode'],maps['frame'if sm==5 else'data'][a['s'][0]],16,temp,166]
+                    at+=1;a=original[at];sm=a['mode']>>3&7;assert sm==5 and maps['frame'][a['s'][0]]==temp
+                if a['op']==OPCODES['IMOVM']and sm in(4,5):
+                    assert oldbytes in(8,16)and a['mode']==(sm<<3)|64|5 and a['m']==oldbytes and a['d']==[pending,oldoffset]and a['s'][1]in((0,16)if oldbytes==16 else(0,8,16,24))
+                    assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm==5 else'data'][a['s'][0]],oldbytes,new,(160+a['s'][1]//16)if oldbytes==16 else(162+a['s'][1]//8)];at+=1
+                elif a['op']==OPCODES['IMOVM']:
                     assert sm in(0,1)and a['mode']==(sm<<3)|64|5 and a['m']==oldbytes and a['d']==[pending,oldoffset]
                     source=maps['frame'if sm else'data'][a['s'][0]]
                     for k in range(n):
@@ -178,6 +186,10 @@ def verify(data,r,imports,loads=False,rows=None):
                         assert a['op']==OPCODES['IMOVW']and a['mode']==(sm<<3)|5 and sm in(0,1,2)and a['m']is None and a['d']==[pending,oldoffset+4*k]
                         source=a['s'][0]if sm==2 else maps['frame'if sm else'data'][a['s'][0]]
                         assert r['code'][at]==[a['op'],a['mode'],source,0,new+4*k,64];at+=1
+                if at<end and r['code'][at][5]==126:
+                    clear=original[at];assert sm==5 and a['op']==OPCODES['IMOVM']and clear['op']==41 and clear['mode']==1 and clear['m']is None and clear['d']==[a['s'][0]]
+                    assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
+                    assert r['code'][at]==[41,1,maps['data'][clear['s'][0]],0,maps['frame'][clear['d'][0]],126];at+=1
                 oldoffset+=oldbytes;continue
             assert j not in aggregates
             assert a['d']==[pending,oldoffset];oldoffset+=oldbytes
@@ -211,7 +223,9 @@ def verify(data,r,imports,loads=False,rows=None):
         if contract:
             b=original[end-1];assert b['op']==39 and b['d']==[pending,16]
             if e['inherited']:assert b['s']==[16,0]and r['code'][end-1]==[118,13,32,0,32,64]
-            else:assert r['code'][end-1]==[39,13,maps['frame'][b['s'][0]],0,32,128|contract]
+            else:
+                assert b['mode']in(5,13)and (b['mode']!=5 or contract==24)
+                assert r['code'][end-1]==[39,b['mode'],maps['frame'if b['mode']==13 else'data'][b['s'][0]],0,32,128|contract]
         assert original[end]=={'op':9,'mode':8|64|mode,'m':e['binding'],'s':[pending],'d':o['s']}
         assert r['code'][end]==[9,8|64|mode,40,e['binding'],offset,32 if e['inherited']else 0]
         covered.update(range(first,end+1));inside.update(range(first+1,end+1))

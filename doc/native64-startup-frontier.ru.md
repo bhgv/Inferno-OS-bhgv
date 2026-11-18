@@ -88,3 +88,5 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий этап: [Window roots и список startinput](native64-window-startup.ru.md): AWM init проходит PC72/84; следующий checked отказ PC93 — makescreen. Полного AWM окна ещё нет.
 
 Следующий этап: [Draw payload roots и Image.display](native64-draw-fields.ru.md): makescreen проходит Display.color на PC1222; следующий отказ PC1227 — global result binding Screen.allocate. Init остаётся на PC93.
+
+Следующий этап: [makescreen и MP root results](native64-makescreen.ru.md): весь makescreen допускается (23 инструкции, 3 Draw calls); init проходит PC93 и останавливается на PC97 — triple-channel result Wmsrv.init.

@@ -39,3 +39,23 @@ typedselectedfieldarg(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offs
  if(!(typedwindowowner(&in->s)?typedwindowfield(&field,p,pc,1,nil):typeddrawowner(&in->s)?typeddrawfield(&field,p,pc,1,nil):typedclientfield(&field,p,pc,1)))return 0;
  *out=(Dis64Instruction){IMOVP,SRC(USRC(out->mode))|DST(AFP|AIND),p->contextfields[pc],out->source,offset};p->returns[pc]=125;return 1;
 }
+
+/* Only Image.r/clipr and their Point halves; scalar offsets stay unchanged. */
+static int
+typedimagegeometry(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offset)
+{
+ Inst probe=*in;long field=in->s.offset;Dis64Layout layout={0};int ok;unsigned int bytes;
+ if(typeddrawowner(&in->s)!=1 || !typedwordgeometry(in->s.native64type,&layout) || in->m.offset!=layout.bytes || (layout.bytes==16?(field!=0 && field!=16):(field<0 || field>24 || field%8))){dis64layoutfree(&layout);return typedfail(p,"image-geometry-owner");}
+ bytes=layout.bytes;dis64layoutfree(&layout);probe.op=IMOVP;probe.mm=Anone;probe.dm=Afp;probe.s.offset=44;probe.branch=nil;
+ ok=typeddrawfield(&probe,p,pc,1,nil);if(!ok)return 0;
+ p->code[pc]=(Dis64Instruction){IMOVM,SRC(USRC(p->code[pc].mode))|AXIMM|DST(AFP|AIND),bytes,p->code[pc].source,offset};p->returns[pc]=bytes==16?160+field/16:162+field/8;return 1;
+}
+
+/* Exact Screen.fill temporary used immediately by Image Rect/Point copy. */
+static int
+typedimagegeometryprep(Inst*in,Inst*copy,Dis64TypedBody*p,unsigned int pc)
+{
+ if(!copy || typeddrawowner(&in->s)!=2 || in->s.offset!=8 || in->dm!=Afp || in->mm!=Anone || in->branch || !in->d.decl || in->d.decl->store!=Dlocal || !in->d.decl->sym || in->d.decl->sym->name[0]!='.' || in->d.decl->sym->name[1]!='t' || in->d.offset ||
+    copy->op!=IMOVM || copy->sm!=Afpind || copy->s.reg!=in->d.reg || copy->s.decl!=in->d.decl || typeddrawowner(&copy->s)!=1 || in->s.native64type!=typedfieldowner(&copy->s) || !typeddrawfield(in,p,pc,0,nil))return typedfail(p,"image-geometry-prep");
+ p->code[pc].middle=p->contextfields[pc];p->returns[pc]=166;return 1;
+}
