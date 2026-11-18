@@ -55,6 +55,26 @@ typedloadlist(Inst *in,Decl *fn,Dis64TypedBody *p,Dis64Instruction *out)
  return typedclientlist(in,p,out);
 }
 
+static int
+typedintlisttype(Addr*a)
+{
+ Type*t=a->decl?a->decl->ty:nil;
+ if(a->native64type && a->decl && a->decl->store==Dlocal && a->decl->sym && a->decl->sym->name[0]=='.' && a->decl->sym->name[1]=='t')t=a->native64type;
+ return a->decl && t && t->kind==Tlist && t->tof && t->tof->kind==Tint && a->reg==a->decl->offset && !a->offset;
+}
+static int
+typedclientintlist(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
+{
+ unsigned int sm,dm;long source,destination;int actual,head=in->op==IHEADW,cons=in->op==ICONSW,kind=cons?Tint:Tlist;
+ if(in->mm!=Anone || in->branch || (!cons&&!typedintlisttype(&in->s)) ||
+    !typedoperand(in->sm,&in->s,kind,cons,0,p,&source,&sm,&actual))return typedfail(p,"integer-list-source");
+ if(in->dm==Afpind){
+  if(cons || in->d.reg!=16 || in->d.offset || (head?fn->ty->tof->kind!=Tint:(fn->ty->tof->kind!=Tlist || !fn->ty->tof->tof || fn->ty->tof->tof->kind!=Tint)))return typedfail(p,"integer-list-result");
+  destination=32;dm=AFP|AIND;*returned=1;
+ }else if((!head&&!typedintlisttype(&in->d)) || !typedoperand(in->dm,&in->d,head?Tint:Tlist,0,0,p,&destination,&dm,&actual))return typedfail(p,"integer-list-destination");
+ *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,destination};return 1;
+}
+
 /* One bounded nil -> String cons chain in a local root, then its argument
  * store. Keep the pending frame rooted through all intervening allocations. */
 static int
@@ -683,6 +703,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if((c->external>=2 || c->loads) && (in->op==INEW || in->op==INEWZ)){
             if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;
             if(c->loads){p->code[pc-p->first].source=0;p->returns[pc-p->first]=UDST(p->code[pc-p->first].mode)==(AFP|AIND)?174:172;}pc++;
+        }else if(c->loads && (in->op==ICONSW || in->op==IHEADW || (in->op==ITAIL && typedintlisttype(&in->s)))){
+            if(!typedclientintlist(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
             if(!(c->loads?typedloadlist(in,fn,p,p->code+pc-p->first):typedclientlist(in,p,p->code+pc-p->first)))goto fail;
             if(UDST(p->code[pc-p->first].mode)==(AFP|AIND))p->returns[pc-p->first]=1;pc++;

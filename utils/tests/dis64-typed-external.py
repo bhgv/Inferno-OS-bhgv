@@ -280,6 +280,14 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if o['op']in(OPCODES['ICONSW'],OPCODES['IHEADW']):
+            assert loads and op==o['op']and mode==o['mode']and not m and o['m']is None
+            sm=mode>>3&7;dm=mode&7;cons=op==OPCODES['ICONSW'];assert sm in((0,1,2)if cons else(0,1))
+            source=o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]]
+            if returned:assert not cons and returned==4 and o['d']==[16,0]and r['result']==[9,4];destination=32
+            else:assert dm in(0,1);destination=maps['frame'if dm==1 else'data'][o['d'][0]]
+            assert r['code'][pc]==[op,mode,source,0,destination,returned]
+            continue
         if o['op']in(OPCODES['ISEND'],OPCODES['IRECV']):
             assert loads and op==o['op']and returned==188 and o['m']is None and mode==o['mode']
             sending=op==OPCODES['ISEND'];cm=(mode&7)if sending else(mode>>3&7);vm=(mode>>3&7)if sending else(mode&7)

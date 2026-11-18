@@ -267,6 +267,14 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
             if(dm!=AXXX || mm!=AXNON || s->m || s->d || s->returned ||
                !native64typedrootoperand(sm,s->s,fpbytes,mpbytes))return 0;
             continue;
+        case ICONSW:
+            if(s->returned || mm!=AXNON || s->m || !native64typedwordoperand(sm,s->s,fpbytes,mpbytes) || !native64typedrootoperand(dm,s->d,fpbytes,mpbytes))return 0;
+            continue;
+        case IHEADW:
+            if(mm!=AXNON || s->m || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes))return 0;
+            if(s->returned){if(s->returned!=4 || dm!=(AFP|AIND) || s->d!=32)return 0;}
+            else if(dm==AIMM || !native64typedwordoperand(dm,s->d,fpbytes,mpbytes))return 0;
+            continue;
 		case ICONSP:case IHEADP:case ITAIL:
             if(mm!=AXNON || s->m || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes))return 0;
             if(s->returned){

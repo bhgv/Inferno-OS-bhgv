@@ -106,3 +106,7 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий этап: [borrowed List prefixes](native64-list-prefix.ru.md): awm.command проходит Sh.run preparation PC1392 и доходит до ISEND PC1401. Spawned handlers пока не принимаются целиком; Wmsrv wm остаётся PC40.
 
 Следующий этап: [primitive channel SEND/RECV](native64-channel-transfer.ru.md): awm.command проходит ISEND PC1401 и доходит до ICONSW PC1404 (fd list). Проверен реальный scheduler/wakeup, но command и GUI целиком пока не принимаются.
+
+Следующий этап: [списки 32-битных int](native64-integer-lists.ru.md).
+AWM command проходит построение fd list для Sys.pctl на PC1404;
+следующий checked отказ — PC1457 IEXIT. Полного графического запуска ещё нет.

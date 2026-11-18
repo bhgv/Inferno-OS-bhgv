@@ -82,17 +82,18 @@ native64modulemap(unsigned int bytes,const uchar *map,unsigned int n,int frame)
 static int
 native64modulelists(const Native64ModuleSpec *spec,const Native64ModuleFunction *fn)
 {
- unsigned int i,k,bit,mode;long offset;const uchar *map;Inst probe;Native64TypedStep copy;const Native64TypedStep *step;
+ unsigned int i,k,bit,mode,root;long offset;const uchar *map;Inst probe;Native64TypedStep copy;const Native64TypedStep *step;
  for(i=0;i<fn->count;i++){
   step=fn->code+i;
-  if(step->op!=ICONSP && step->op!=IHEADP && step->op!=ITAIL)continue;
+  if(step->op!=ICONSP && step->op!=IHEADP && step->op!=ITAIL && step->op!=ICONSW && step->op!=IHEADW)continue;
   copy=*step;if(copy.returned==Native64TypedListPrep || copy.returned==187)copy.returned=0;
   if(!native64typedcode(&probe,1,&copy,1,fn->bytes,spec->databytes))return 0;
   for(k=0;k<2;k++){
    if(k && step->returned)continue;
    mode=k?UDST(step->mode):USRC(step->mode);offset=k?step->d:step->s;
+   if(mode==AIMM)continue;root=step->op==ICONSW?k==1:step->op==IHEADW?k==0:1;
    map=mode==AFP?fn->map:spec->datamap;bit=offset/8;
-   if((map[bit/8] & (0x80>>(bit%8)))==0)return 0;
+   if(!!(map[bit/8] & (0x80>>(bit%8)))!=root)return 0;
   }
  }
  return 1;

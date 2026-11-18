@@ -91,11 +91,11 @@ def main(lists=False):
         cc+=['-DDIS_NATIVE64_MANAGED_FILES=1','-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in ('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
         command=cc+[str(src),str(ROOT/'libinterp/dec.c')]+CMD['FILES']['releaseflags'](cc)+['-lm','-o',str(w/'test')]
         if lists:
-            bad='implement Bad;Bad:module{bad_tail:fn(xs:list of list of string):list of list of string;bad_cons:fn(s:int):list of int;};bad_tail(xs:list of list of string):list of list of string{return tl xs;}bad_cons(s:int):list of int{xs:=s::nil;return xs;}'
+            bad='implement Bad;Bad:module{bad_tail:fn(xs:list of list of string):list of list of string;bad_cons:fn(s:big):list of big;};bad_tail(xs:list of list of string):list of list of string{return tl xs;}bad_cons(s:big):list of big{xs:=s::nil;return xs;}'
             _,refused=EXT['compile_source'](a.limbo.resolve(),w,bad,interface='',loads=True)
             assert len(refused)==2 and all(not r['accepted'] for r in refused)
             assert next(r for r in refused if r['name']=='bad_tail')['reason']=='load-list-element-class'
-            print('PASS checked list source boundary: nested reference lists and scalar cons refused',flush=True)
+            print('PASS checked list source boundary: nested reference lists and big cons refused',flush=True)
         for args in [('Box','pack','unpack',False),('Other','zpack','ahead',True)]:
             image=generate(a.limbo.resolve(),w,*args,lists=lists);subprocess.run(command,check=True)
             r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(w/'test'),str(image)],capture_output=True,text=True,timeout=180)
@@ -122,7 +122,7 @@ def main(lists=False):
                 if lists:
                     extract=NS['S']['FILES']['FILES']['function'];src.write_text(source)
                     header=(ROOT/'include/native64-typed-module.h').read_text();body=extract(header,'static int\nnative64modulelists(')
-                    old='if((map[bit/8] & (0x80>>(bit%8)))==0)return 0;';assert body.count(old)==1
+                    old='if(!!(map[bit/8] & (0x80>>(bit%8)))!=root)return 0;';assert body.count(old)==1
                     controlled=w/'native64-typed-module.h';controlled.write_text(header.replace(body,body.replace(old,';',1),1))
                     subprocess.run(command,check=True)
                     r=subprocess.run(runner+[str(w/'test'),str(image),'list-only'],capture_output=True,text=True,timeout=180)
