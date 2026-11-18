@@ -110,3 +110,8 @@ getenv проходит INEWA PC112; первый отказ теперь PC113,
 Следующий этап: [списки 32-битных int](native64-integer-lists.ru.md).
 AWM command проходит построение fd list для Sys.pctl на PC1404;
 следующий checked отказ — PC1457 IEXIT. Полного графического запуска ещё нет.
+
+Следующий этап: [завершение процесса](native64-process-exit.ru.md).
+Весь настоящий awm.command принимается. AWM init проходит spawn PC127/131
+и доходит до PC136: computed String argument локального fatal.
+Полного графического запуска ещё нет; Wmsrv wm остаётся на PC40.

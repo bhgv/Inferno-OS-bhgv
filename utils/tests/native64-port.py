@@ -419,6 +419,7 @@ def main():
         build, env, logs/'emuinit-full.log')
     run([sys.executable,str(tests/'native64-coordinate-format.py'),'--limbo',str(tools/'limbo')],build,env,logs/'coordinate-format.log')
     run([sys.executable,str(tests/'native64-context-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'context-fields.log')
+    run([sys.executable,str(tests/'native64-process-exit.py'),'--limbo',str(tools/'limbo')],build,env,logs/'process-exit.log')
     run([sys.executable,str(tests/'native64-integer-lists.py'),'--limbo',str(tools/'limbo')],build,env,logs/'integer-lists.log')
     run([sys.executable,str(tests/'native64-channel-transfer.py'),'--limbo',str(tools/'limbo')],build,env,logs/'channel-transfer.log')
     run([sys.executable,str(tests/'native64-list-prefix.py'),'--limbo',str(tools/'limbo')],build,env,logs/'list-prefix.log')

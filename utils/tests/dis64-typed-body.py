@@ -213,7 +213,7 @@ def main():
             ('in->branch->pc>=stop','0','BRANCH_OWNER'),
             ('sourcekind!=Tany && sourcekind!=destkind','0','REF_CLASS'),
             ('reference || width==8 ||','reference ||','WIDE_IMMEDIATE'),
-            ('p->code[pc].op==IRET && (p->resultpair?(state[pc]!=0 && state[pc]!=7):state[pc]==1)','0','RESULT_DEFINED'),
+            ('p->code[pc].op==IRET && (p->resulttriple?(state[pc]!=0 && state[pc]!=15):p->resultpair?(state[pc]!=0 && state[pc]!=7):state[pc]==1)','0','RESULT_DEFINED'),
             ('state[edge[i]]&flow','state[edge[i]]|flow','RESULT_JOIN'),
         ):
             assert production.count(before)==1

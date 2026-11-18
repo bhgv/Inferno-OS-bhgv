@@ -294,7 +294,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
                width>(sm==AFP?fpbytes:mpbytes)-s->s || s->d<0 || s->d%4 ||
                (unsigned long)s->d>mpbytes || 4>mpbytes-s->d || (s->op==IGOTO && s->d<4))return 0;
             continue;
-		case INOP:case IRET:
+		case INOP:case IRET:case IEXIT:
 			if(s->mode!=(SRC(AXXX)|DST(AXXX)) || s->s || s->m || s->d || s->returned)return 0;
 			continue;
 		case IMOVB:case IMOVW:case IMOVL:case IMOVF:case IMOVP:

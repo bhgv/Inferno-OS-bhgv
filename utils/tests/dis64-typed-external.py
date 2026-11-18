@@ -280,6 +280,10 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if o['op']==OPCODES['IEXIT']:
+            assert loads and o['mode']==27 and o['s']is None and o['m']is None and o['d']is None
+            assert r['code'][pc]==[OPCODES['IEXIT'],27,0,0,0,0]
+            continue
         if o['op']in(OPCODES['ICONSW'],OPCODES['IHEADW']):
             assert loads and op==o['op']and mode==o['mode']and not m and o['m']is None
             sm=mode>>3&7;dm=mode&7;cons=op==OPCODES['ICONSW'];assert sm in((0,1,2)if cons else(0,1))
@@ -394,12 +398,20 @@ def verify(data,r,imports,loads=False,rows=None):
             assert loads and o['mode']&7==1
             o={**o,'mode':o['mode']|128,'m':o['d'][0]}
         assert op==o['op']and mode==o['mode']
+        if mode&7!=5:assert returned==0
         if op==8:
             assert loads and mode&192==64 and 0<=m<64 and returned==0
             for address,offset,kind in ((mode>>3&7,s,13),(mode&7,d,11)):
                 assert address in (0,1)
                 leaves=r['frame'if address else'data']['leaves']
-                assert any(leaf[1]==offset and leaf[3]==8 and leaf[4]==kind for leaf in leaves)
+                leaf=next(leaf for leaf in leaves if leaf[1]==offset);assert leaf[3]==8
+                if leaf[4]!=kind:
+                    # A reused mapped temporary is a String after this exact writer.
+                    assert kind==13 and address==1 and leaf[4]in ROOTS and pc>0
+                    writer=original[pc-1];assert writer['op']==OPCODES['IADDC']and writer['mode']&7==1 and writer['d']==o['s']and writer['mode']&192 in(128,192)
+                    for operandmode,old in((writer['mode']>>3&7,writer['s'][0]),(1 if writer['mode']&192==128 else 0,writer['m'])):
+                        assert operandmode in(0,1)and next(l for l in r['frame'if operandmode else'data']['leaves']if l[0]==old)[4]==13
+
         if op==RAISE:
             assert loads and mode in(3,11)and m==d==returned==0
             address=mode>>3&7;leaves=r['frame'if address else'data']['leaves']

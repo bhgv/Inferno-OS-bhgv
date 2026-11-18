@@ -138,7 +138,10 @@ typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out,
 	memset(out,0,sizeof(*out)); out->op=in->op;
 	switch(in->op){
 	case ICASE:case ICASEL:case IGOTO:case ICASEC:return typedtable(in,stop,p,out);
-	case IRET: case INOP:
+	case IEXIT:
+        if(!p->sourceroles)return typedfail(p,"unsupported-opcode");
+        /* Process termination has no result or fallthrough edge. */
+    case IRET: case INOP:
 		if(in->sm!=Anone || in->mm!=Anone || in->dm!=Anone || in->branch!=nil) return typedfail(p,"terminal-operands");
 		out->mode=SRC(AXXX)|DST(AXXX); return 1;
 	case IJMP:
@@ -225,7 +228,7 @@ typedresults(Dis64TypedBody *p)
         else if(p->resultpair){if(p->returns[pc]==8)flow|=2;if(p->returns[pc]==16)flow|=4;if(p->returns[pc]==32)flow=7;}
         else if((p->returns[pc] && p->returns[pc]<=32) || (p->returns[pc]==174 || p->returns[pc]==185))flow=3;
         n=0;
-		if(p->code[pc].op==IRET || p->code[pc].op==IRAISE) continue;
+		if(p->code[pc].op==IRET || p->code[pc].op==IRAISE || p->code[pc].op==IEXIT) continue;
         if(p->code[pc].op==ICASE || p->code[pc].op==ICASEL || p->code[pc].op==IGOTO || p->code[pc].op==ICASEC){
             Dis64TypedTable *t=nil;unsigned int j,target;
             for(j=0;j<p->ntables;j++)if(p->tables[j].pc==pc){t=p->tables+j;break;}
