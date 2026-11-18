@@ -86,7 +86,7 @@ native64modulelists(const Native64ModuleSpec *spec,const Native64ModuleFunction 
  for(i=0;i<fn->count;i++){
   step=fn->code+i;
   if(step->op!=ICONSP && step->op!=IHEADP && step->op!=ITAIL)continue;
-  copy=*step;if(copy.returned==Native64TypedListPrep)copy.returned=0;
+  copy=*step;if(copy.returned==Native64TypedListPrep || copy.returned==187)copy.returned=0;
   if(!native64typedcode(&probe,1,&copy,1,fn->bytes,spec->databytes))return 0;
   for(k=0;k<2;k++){
    if(k && step->returned)continue;
@@ -245,6 +245,38 @@ native64moduleargclears(const Native64ModuleSpec*s,const Native64ModuleFunction*
 }
 
 static int
+native64modulelistprefixes(const Native64ModuleSpec*s,const Native64ModuleFunction*f)
+{
+ unsigned int i,j,k,n,found,bit,mode;long slot;const Native64ModuleSite*site=nil;const Native64ModuleImport*request;const Native64TypedStep*step;const uchar*map;
+ for(i=0;i<f->count;i++){
+  step=f->code+i;if(step->returned!=187)continue;
+  if(step->op!=IMOVP || !native64typedlistprefix(step,f->bytes,s->databytes))return 0;
+  slot=step->d;found=0;
+  for(k=0;k<f->nsites;k++)if(f->sites[k].first<i && i<f->sites[k].end){if(found++)return 0;site=f->sites+k;}
+  if(!found || !site->external || site->end>=f->count || f->code[site->end].op!=IMCALL || site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
+  request=s->tables[site->table].imports+site->target;n=0;
+  for(j=i;j<site->end && f->code[j].returned==187;j++){
+   step=f->code+j;
+   if(!native64typedlistprefix(step,f->bytes,s->databytes) || step->d!=slot || (j==i?step->op!=IMOVP:step->op!=ICONSP) || j-i>256)return 0;
+   for(k=0;k<2;k++){
+    mode=k?AFP:USRC(step->mode);map=mode==AFP?f->map:s->datamap;bit=(k?step->d:step->s)/8;
+    if((map[bit/8] & (128 >> (bit%8)))==0)return 0;
+   }
+   if(j!=i)n++;
+  }
+  if(!n || j>=site->end)return 0;step=f->code+j;
+  if(step->op!=IMOVP || step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->returned!=64 || step->m || step->s!=slot || step->d<64 || step->d%8 ||
+     (unsigned long)step->d>request->bytes || 8>request->bytes-step->d)return 0;
+  bit=step->d/8;if(!(request->map[bit/8]&(128>>(bit%8))))return 0;
+  if(j+1>=site->end || f->code[j+1].op!=IMOVP || f->code[j+1].mode!=(SRC(AMP)|DST(AFP)) || f->code[j+1].returned!=187 ||
+     !native64modulereadonlynil(s,f->code[j+1].s) || f->code[j+1].d!=slot || !native64typedlistprefix(f->code+j+1,f->bytes,s->databytes))return 0;
+  bit=f->code[j+1].s/8;if((s->datamap[bit/8]&(128>>(bit%8)))==0)return 0;
+  i=j+1;
+ }
+ return 1;
+}
+
+static int
 native64modulelistpreps(const Native64ModuleSpec*s,const Native64ModuleFunction*f)
 {
  unsigned int i,j,k,n,found,bit,mode;long slot,nilslot=-1;const Native64ModuleSite*site=nil;const Native64ModuleImport*request;const Native64TypedStep*step;const uchar*map;
@@ -325,7 +357,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
            !native64modulemap(f->bytes,f->map,f->mapbytes,1) || f->bytes>32*1024*1024-total ||
            f->nsites>f->count/2 || (f->nsites && f->sites==nil))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
-        if(!native64modulelists(s,f) || !native64modulecontext(s,f) || !native64modulewindow(s,f) || !native64moduledrawfields(s,f) || !native64moduleargclears(s,f) || !native64modulestringpreps(s,f) || !native64modulelocalclears(s,f) || !native64modulelistpreps(s,f) || !native64modulegeometry(s,f))return 0;
+        if(!native64modulelists(s,f) || !native64modulecontext(s,f) || !native64modulewindow(s,f) || !native64moduledrawfields(s,f) || !native64moduleargclears(s,f) || !native64modulestringpreps(s,f) || !native64modulelocalclears(s,f) || !native64modulelistprefixes(s,f) || !native64modulelistpreps(s,f) || !native64modulegeometry(s,f))return 0;
         for(j=0;j<f->count;j++)if((f->code[j].op==ILEA && USRC(f->code[j].mode)==AMP) || (f->code[j].returned==(128|24) && USRC(f->code[j].mode)!=AFP)){
             unsigned int k,found=0;step=f->code+j;
             if(step->op!=ILEA || step->mode!=(SRC(AMP)|DST(AFP|AIND)) || step->returned!=(128|24) || step->m || step->d!=32 || !native64typedrootoperand(AMP,step->s,f->bytes,s->databytes))return 0;

@@ -117,13 +117,15 @@ typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned
 
 static int typedexternalstringexpr(TypedMulti*,Dis64TypedBody*,Inst*,Decl*,unsigned int,unsigned int*,unsigned int);
 static int typedselectedfieldarg(Inst*,Dis64TypedBody*,unsigned int,unsigned int,int);
+static int typedloadlisttype(Addr*);
+static int typedexternalstringprefix(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*);
 static int typedexternalstringlist(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*);
 
 static int
 typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int *next)
 {
     Inst *frame=c->instructions[pc],*call,*in,*binding,*listinit=nil;Decl *fn,*arg;
-    unsigned int end=pc+1,at,sm,offset=64,width,contract=0,local=0,inherit=0,ms,mo;
+    unsigned int end=pc+1,at,sm,offset=64,width,contract=0,local=0,inherit=0,ms,mo,listrole=112;
     int kind,root,op,actual;long source,module;
     if(frame->mm!=Aoff || frame->m.decl==nil || frame->m.decl->iface==nil ||
        frame->m.decl->iface->offset<0 || frame->m.decl->iface->offset>32767 ||
@@ -141,7 +143,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
     mo=module;p->code[pc-p->first]=(Dis64Instruction){IMFRAME,SRC(ms)|AXIMM|DST(AFP),fn->iface->offset,mo,40};at=pc+1;
     for(arg=fn->ty->ids;arg!=nil;arg=arg->next){
         if(at>=end || (in=c->instructions[at])==nil)return typedfail(p,"external-argument");
-        listinit=nil;kind=arg->ty->kind;
+        listinit=nil;listrole=112;kind=arg->ty->kind;
         if(c->loads && kind==Tadt){if(!typedexternalgeometry(c,p,arg,frame,end,&at,&offset))return 0;continue;}
         root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
@@ -153,7 +155,8 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         }
         if(c->loads && kind==Tlist && arg->ty->tof && arg->ty->tof->kind==Tstring && in->op==IMOVP && in->dm==Afp){
             listinit=in;
-            if(!typedexternalstringlist(c,p,frame,end,&at) || at>=end || !(in=c->instructions[at]))return typedfail(p,"external-list-argument");
+            if(typedloadlisttype(&in->s))listrole=187;
+            if(!(listrole==187?typedexternalstringprefix(c,p,frame,end,&at):typedexternalstringlist(c,p,frame,end,&at)) || at>=end || !(in=c->instructions[at]))return typedfail(p,"external-list-argument");
         }
         if(c->loads && root && (in->sm==Afpind || in->sm==Ampind)){
             if(in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || offset>65535-8 || !typedselectedfieldarg(in,p,at-p->first,offset,kind))return typedfail(p,"external-field-argument");
@@ -181,10 +184,10 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         p->code[at-p->first]=(Dis64Instruction){op,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=64;offset+=width;
         if(listinit){
             if(at>=end || !(in=c->instructions[at]) || in->op!=IMOVP || in->sm!=Amp || in->mm!=Anone || in->dm!=Afp || in->branch ||
-               in->s.decl!=listinit->s.decl || in->s.reg!=listinit->s.reg || in->s.offset ||
+               (listrole==112?(in->s.decl!=listinit->s.decl || in->s.reg!=listinit->s.reg):(!in->s.decl || in->s.decl->store!=Dglobal || !in->s.decl->ty || in->s.decl->ty->kind!=Tany || !in->s.decl->sym || strcmp(in->s.decl->sym->name,"nil") || in->s.reg!=in->s.decl->offset)) || in->s.offset ||
                in->d.decl!=listinit->d.decl || in->d.reg!=listinit->d.reg || in->d.offset ||
                !typedinst(in,stop,p,p->code+at-p->first,p->returns+at-p->first))return typedfail(p,"external-list-clear");
-            p->returns[at++-p->first]=112;
+            p->returns[at++-p->first]=listrole;
         }else if(c->loads && root && !typedrootargclear(c,p,c->instructions[at-1],end,&at))return 0;
     }
     kind=fn->ty->tof->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;

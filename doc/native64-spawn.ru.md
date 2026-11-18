@@ -65,3 +65,7 @@ wm (entry40) пока имеет typed-span на первом IMOVW.
 Регрессии: mapped channels со своими controls, полный emuinit/Arg и 324
 настоящих C/JIT boot-процесса. Чистая amd64 console и paired boot прошли;
 16 classic startup artifacts совпадают с обычной компиляцией.
+
+Продолжение: [borrowed List prefix](native64-list-prefix.ru.md) открывает
+настоящую подготовку Sh.run arguments и переносит command с PC1392 на
+ISEND PC1401. Admission полного command остаётся необходимым для AWM spawn.

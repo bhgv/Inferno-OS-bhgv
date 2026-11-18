@@ -167,6 +167,19 @@ def verify(data,r,imports,loads=False,rows=None):
                         count+=1
                     assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm else'data'][a['s'][0]],0,target,112];at+=1
                 assert 0<count<=256 and original[at]['s']==[next(old for old,v in maps['frame'].items()if v==temp)]and original[at]['mode']==13
+            if at<end and r['code'][at][5]==187:
+                assert loads and kind==10;temp=None;count=0
+                while at<end and r['code'][at][5]==187:
+                    a=original[at];sm=a['mode']>>3&7;assert a['m']is None and a['mode']&7==1 and sm in(0,1)
+                    target=maps['frame'][a['d'][0]]
+                    if temp is None:
+                        assert a['op']==41 and next(l for l in r['frame'if sm else'data']['leaves']if l[0]==a['s'][0])[4]in(10,20)
+                        temp=target;listclear=(temp,None)
+                    else:
+                        assert a['op']==OPCODES['ICONSP']and target==temp
+                        assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==a['s'][0])[4]in(13,20);count+=1
+                    assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm else'data'][a['s'][0]],0,target,187];at+=1
+                assert 0<count<=256 and original[at]['mode']==13 and maps['frame'][original[at]['s'][0]]==temp
             stringprep=None
             if at<end and r['code'][at][5]==180:
                 assert loads and kind==13;oldtemp=original[at]['d'][0];temp=maps['frame'][oldtemp];nprep=0
@@ -241,8 +254,12 @@ def verify(data,r,imports,loads=False,rows=None):
             if listclear is not None:
                 temp,nilroot=listclear;clear=original[at]
                 assert clear['op']==41 and clear['mode']==1 and clear['m']is None
-                assert maps['data'][clear['s'][0]]==nilroot and maps['frame'][clear['d'][0]]==temp
-                assert r['code'][at]==[41,1,nilroot,0,temp,112];at+=1
+                assert (nilroot is None or maps['data'][clear['s'][0]]==nilroot)and maps['frame'][clear['d'][0]]==temp
+                if nilroot is None:
+                    assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
+                    assert r['code'][at]==[41,1,maps['data'][clear['s'][0]],0,temp,187]
+                else:assert r['code'][at]==[41,1,nilroot,0,temp,112]
+                at+=1
             if at<end and r['code'][at][5]==126:
                 assert loads and kind in ROOTS and a['op']==41 and sm==1
                 clear=original[at];assert clear['op']==41 and clear['mode']==1 and clear['m']is None and clear['d']==a['s']

@@ -76,6 +76,24 @@ typedexternalstringlist(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int en
  USED(start);return 1;
 }
 
+/* Prepend a bounded String chain to a borrowed, typed List tail. */
+static int
+typedexternalstringprefix(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,unsigned int*at)
+{
+ Inst*in=c->instructions[*at];Addr temp;unsigned int n=0;
+ if(in->op!=IMOVP || in->mm!=Anone || in->branch || in->dm!=Afp || !typedloadlisttype(&in->s) || !typedloadlisttype(&in->d) ||
+    !in->d.decl || in->d.decl->store!=Dlocal || !in->d.decl->sym || in->d.decl->sym->name[0]!='.' || in->d.decl->sym->name[1]!='t' ||
+    !typedinst(in,c->count,p,p->code+*at-p->first,p->returns+*at-p->first))return typedfail(p,"external-list-prefix");
+ temp=in->d;p->returns[(*at)++-p->first]=187;
+ while(*at<end && (in=c->instructions[*at]) && in->op==ICONSP){
+  if(n++==256 || in->dm!=Afp || in->d.reg!=temp.reg || in->d.decl!=temp.decl || in->d.offset ||
+     !typedloadlisttype(&in->d) || !typedclientlist(in,p,p->code+*at-p->first))return typedfail(p,"external-list-prefix-cons");
+  p->returns[(*at)++-p->first]=187;
+ }
+ if(!n || *at>=end || !(in=c->instructions[*at]) || in->op!=IMOVP || in->sm!=Afp || in->s.reg!=temp.reg || in->s.decl!=temp.decl ||
+    in->s.offset || in->dm!=Afpind || in->d.reg!=frame->d.reg)return typedfail(p,"external-list-prefix-store");return 1;
+}
+
 static int
 typedrootargclear(TypedMulti*c,Dis64TypedBody*p,Inst*store,unsigned int end,unsigned int*at)
 {
