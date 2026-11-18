@@ -211,10 +211,11 @@ def main(argv=False,local=False,pair=False,raises=False):
         if argv:
             bad='implement Bad;R:adt{n:int;};P:module{f:fn();};Bad:module{nested:fn(x:list of list of string):int;arr:fn(x:array of byte):int;refnil:fn(x:ref R):int;mods:fn(a:P,b:P):int;};nested(x:list of list of string):int{if(x==nil)return 1;return 0;}arr(x:array of byte):int{if(x==nil)return 1;return 0;}refnil(x:ref R):int{if(x==nil)return 1;return 0;}mods(a:P,b:P):int{if(a==b)return 1;return 0;}'
             _,refused=EXT['compile_source'](a.limbo.resolve(),work,bad,interface='',loads=True)
-            assert len(refused)==4 and all(not row['accepted']and row['reason']=='load-nil-roles'for row in refused)
+            assert len(refused)==4 and next(row for row in refused if row['name']=='refnil')['accepted']
+            assert all(not row['accepted']and row['reason']=='load-nil-roles'for row in refused if row['name']!='refnil')
             _,old=EXT['compile_source'](a.limbo.resolve(),work,ARGV_SOURCE,interface=INTERFACE,loads=False)
             assert all(not row['accepted']for row in old if row['name']in('run','ready'))
-            print('PASS startup nil boundary: four nested/array/ref/module-pair refusals, external-only mode remains closed',flush=True)
+            print('PASS startup nil boundary: three nested/array/module-pair refusals, direct ref/nil allowed, external-only mode remains closed',flush=True)
         if local:
             pair_source='implement Pair;include "provider.m";Pair:module{pair:fn(p:Command,args:list of string):(Command,list of string);};pair(p:Command,args:list of string):(Command,list of string){return (p,args);}'
             _,refused=EXT['compile_source'](a.limbo.resolve(),work,pair_source,interface=INTERFACE,loads=False)

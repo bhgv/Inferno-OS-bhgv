@@ -37,7 +37,7 @@ jobs:
   calls:
     name: Typed module calls ${{ matrix.arch }}
     runs-on: ${{ matrix.host }}
-    timeout-minutes: 40
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -131,6 +131,8 @@ jobs:
           done
           python3 utils/tests/native64-emuinit-unquoted.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-unquoted.log"
+          python3 utils/tests/native64-emuinit-fd.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fd.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -141,7 +143,7 @@ jobs:
   bionic:
     name: Typed module calls Android ARM64 Bionic
     runs-on: ubuntu-22.04
-    timeout-minutes: 40
+    timeout-minutes: 90
     env:
       NATIVE64_ARCH: arm64
       NATIVE64_RUNNER: qemu-aarch64
@@ -208,6 +210,8 @@ jobs:
           done
           python3 utils/tests/native64-emuinit-unquoted.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-unquoted.log"
+          python3 utils/tests/native64-emuinit-fd.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fd.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

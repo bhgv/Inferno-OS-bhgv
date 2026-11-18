@@ -54,3 +54,7 @@ python3 utils/tests/awm-native64-preflight.py --limbo /path/to/limbo --checked-o
 Следующий проверенный участок: [неизменённая unquoted](native64-emuinit-unquoted.ru.md).
 Теперь её полное тело принимается checked compiler и исполняется в native
 module через C/JIT, включая self-tail recursion. Это не запуск полного emuinit.
+
+Следующий участок: [прямое сравнение Sys.FD с nil](native64-emuinit-fd.ru.md).
+getenv теперь проходит PC101 и останавливается на PC104: Sys.fstat возвращает
+aggregate (int, Dir). Полный emuinit/AWM всё ещё закрыт.

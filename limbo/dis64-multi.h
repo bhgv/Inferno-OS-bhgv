@@ -201,7 +201,17 @@ typedclientcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(sm)|(mm==AMP?AXINM:AXINF)|DST(AIMM),middle,source,in->branch->pc-p->first};return 1;
 }
 
-/* Checked native startup needs direct list-of-String and Module nil tests.
+/* Comparing a direct ref ADT with nil only observes the root pointer.
+ * It neither admits the ADT's fields nor assumes a C payload geometry. */
+static int
+typedloadreftype(Addr *a)
+{
+ Type *t;
+ return a->decl && (t=a->decl->ty) && t->kind==Tref && t->tof && t->tof->kind==Tadt &&
+  a->reg==a->decl->offset && a->offset==0;
+}
+
+/* Checked native startup needs direct ref ADT, list-of-String and Module nil tests.
  * Nil is the compiler's readonly Tany MP root; no aggregate dereference or
  * comparison of unrelated reference classes is admitted by this route. */
 static int
@@ -214,9 +224,9 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  }
  if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
     !value->decl || !value->decl->ty ||
-    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value)) ||
+    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedloadreftype(value)) ||
     !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
-    !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=value->decl->ty->kind ||
+    !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=value->decl->ty->kind || (typedloadreftype(value) && sm!=AFP) ||
     !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany ||
     in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop ||
     in->d.offset!=in->branch->pc)return typedfail(p,"load-nil-roles");
