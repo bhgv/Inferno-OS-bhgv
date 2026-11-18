@@ -481,6 +481,17 @@ typedbindings(Decl *decls, int frame)
 	fprint(2,"]");
 }
 
+static void
+typedaggregatebindings(Decl*decls)
+{
+ Decl*d;Dis64Layout layout={0};unsigned int i=0,n=0;
+ fprint(2,"[");
+ for(d=decls;d;d=d->next,i++)if(d->ty && d->ty->kind==Tadt && typedwordgeometry(d->ty,&layout)){
+  fprint(2,"%s{\"index\":%ud,\"layout\":",n++?",":"",i);typedlayout(&layout);fprint(2,"}");dis64layoutfree(&layout);
+ }else dis64layoutfree(&layout);
+ fprint(2,"]");
+}
+
 /* Diagnostic hashes must not sign an interface already narrowed by the
  * compiler. Walk readonly with bounded recursion; report unavailable rather
  * than inventing a legacy hash or mutating module linkage to compute one. */
@@ -555,7 +566,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             for(i=0;i<p.nexternal;i++){
                 Dis64TypedExternal *e=p.external+i;
                 fprint(2,"%s{\"first\":%ud,\"end\":%ud,\"binding\":%ud,\"module\":[%ud,%ud],\"resultoffset\":%ud,\"contract\":%ud,\"inherited\":%ud,\"signature\":%ud,\"name\":",i?",":"",e->first,e->end,e->binding,e->modulemode,e->moduleoffset,e->resultoffset,e->contract,e->inherited,(unsigned int)sign(e->callee));
-                typedexportname(e->callee);fprint(2,",\"args\":");typedbindings(e->callee->ty->ids,1);fprint(2,"}");
+                typedexportname(e->callee);fprint(2,",\"args\":");typedbindings(e->callee->ty->ids,1);fprint(2,",\"aggregate_args\":");typedaggregatebindings(e->callee->ty->ids);fprint(2,"}");
             }
             fprint(2,"]");
         }

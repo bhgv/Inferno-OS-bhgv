@@ -116,6 +116,26 @@ native64modulecontext(const Native64ModuleSpec*spec,const Native64ModuleFunction
  return 1;
 }
 
+static int
+native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f)
+{
+ unsigned int i,k,j,found,bit;const Native64TypedStep*step;const Native64ModuleSite*site;const Native64ModuleImport*request;const uchar*map;
+ for(i=0;i<f->count;i++){
+  step=f->code+i;if(step->op!=IMOVM)continue;
+  found=0;
+  for(k=0;k<f->nsites;k++){
+   site=f->sites+k;if(i<=site->first || i>=site->end)continue;
+   if(found++ || !site->external || site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
+   request=s->tables[site->table].imports+site->target;
+   if(!native64typedgeometryarg(step,f->bytes,s->databytes,request->bytes,request->map,request->mapbytes))return 0;
+  }
+  if(!found)return 0;
+  map=USRC(step->mode)==AFP?f->map:s->datamap;
+  for(j=0;j<(unsigned long)step->m;j+=4){bit=(step->s+j)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
+ }
+ return 1;
+}
+
 /* Immutable readable checked-compiler metadata, not untrusted file inputs. */
 static int
 native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsigned int *exports,unsigned int *scratch,unsigned int *imports)
@@ -143,7 +163,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
            !native64modulemap(f->bytes,f->map,f->mapbytes,1) || f->bytes>32*1024*1024-total ||
            f->nsites>f->count/2 || (f->nsites && f->sites==nil))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
-        if(!native64modulelists(s,f) || !native64modulecontext(s,f))return 0;
+        if(!native64modulelists(s,f) || !native64modulecontext(s,f) || !native64modulegeometry(s,f))return 0;
         if(f->resultcontract && f->resultcontract!=48)return 0;
         for(j=0;j<f->nsites;j++){
             unsigned int k,r,modes[2],offsets[2];site=f->sites+j;

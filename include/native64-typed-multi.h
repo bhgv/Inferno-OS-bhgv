@@ -11,6 +11,19 @@ struct Native64TypedCall {
     unsigned int external,modulemode,moduleoffset;
 };
 
+/* Numeric Draw.Point/Rect copies into a prepared imported frame. */
+static int
+native64typedgeometryarg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const uchar*map,unsigned int np)
+{
+ unsigned int sm=USRC(s->mode),i,bit,sourcebytes=sm==AFP?fp:mp;
+ if(s->op!=IMOVM || s->mode!=(SRC(sm)|AXIMM|DST(AFP|AIND)) || (sm!=AFP && sm!=AMP) || s->returned!=64 ||
+    (s->m!=8 && s->m!=16) || s->s<0 || s->s%4 || (sm==AFP && s->s<64) || (unsigned long)s->s>sourcebytes ||
+    (unsigned long)s->m>sourcebytes-s->s || s->d<64 || s->d%4 || s->d>65535 || (unsigned long)s->d>bytes || (unsigned long)s->m>bytes-s->d ||
+    map==nil || map==H || np!=(bytes+63)/64)return 0;
+ for(i=0;i<(unsigned long)s->m;i+=4){bit=(s->d+i)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
+ return 1;
+}
+
 /* One computed String argument in an already prepared imported frame. */
 static int
 native64typedconcatarg(const Native64TypedStep *s,unsigned int fpbytes,unsigned int mpbytes,unsigned int bytes,const uchar *map,unsigned int np)
@@ -83,6 +96,10 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
             if(!s->returned){if(c->external || !native64typedargprep(s,fpbytes,mpbytes))return 0;continue;}
+            if(s->op==IMOVM){
+                if(!c->external || c->callee->np<0 || !native64typedgeometryarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+                continue;
+            }
             if(s->op==ILENA || s->op==ICVTAC){
                 if((s->op==ILENA)!=c->external || c->callee->np<0 || !native64typedcomputedarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
@@ -126,7 +143,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 if(j==i){p->s.imm=c->external?c->moduleoffset:c->ordinal;p->reg=c->external?c->ordinal:0;p->d.ind=40;}
                 else if(j==c->end){p->s.ind=40;if(c->external){p->reg=c->ordinal;p->d.ind=c->moduleoffset;}else p->d.ins=c->target;}
                 else if(!s->returned){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
-                else{p->s.imm=s->s;p->d.i.f=40;p->d.i.s=s->d;if(s->op==IADDC)p->reg=s->m;if(c->contract && !c->inherited && j==c->end-1)p->reg=c->contract;}
+                else{p->s.imm=s->s;p->d.i.f=40;p->d.i.s=s->d;if(s->op==IADDC || s->op==IMOVM)p->reg=s->m;if(c->contract && !c->inherited && j==c->end-1)p->reg=c->contract;}
             }
             i=c->end+1;continue;
         }

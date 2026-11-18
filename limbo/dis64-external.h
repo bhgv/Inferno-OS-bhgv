@@ -62,6 +62,46 @@ typedstatframe(TypedMulti *c,Decl *owner,Dis64TypedBody *p,unsigned int stop)
  return 1;
 }
 
+/* Selected by-value Draw geometry: contiguous Word leaves only. No roots,
+ * tag/pick payloads, general tuples, implicit widening or nested references. */
+static int
+typedwordgeometry(Type*t,Dis64Layout*layout)
+{
+ unsigned int i,n;Decl*d=t?t->decl:nil;
+ if(!t || t->kind!=Tadt || !d || !d->sym || !d->dot || !d->dot->sym || strcmp(d->dot->sym->name,"Draw"))return 0;
+ n=!strcmp(d->sym->name,"Point")?2:!strcmp(d->sym->name,"Rect")?4:0;
+ if(!n || !dis64layouttype(t,layout) || layout->alignment!=4 || layout->legacybytes!=4*n || layout->bytes!=4*n || layout->count!=n)return 0;
+ for(i=0;i<n;i++)if(layout->leaves[i].legacy!=4*i || layout->leaves[i].native!=4*i || layout->leaves[i].oldbytes!=4 || layout->leaves[i].bytes!=4 || layout->leaves[i].kind!=Tint)return 0;
+ return 1;
+}
+
+static int
+typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned int end,unsigned int*at,unsigned int*offset)
+{
+ Dis64Layout layout={0};Inst*in;Addr sourceaddr;long source=0,part;unsigned int i,sm=0,wire,base;int actual,ok=0;
+ if(!typedwordgeometry(arg->ty,&layout))goto done;
+ base=(*offset+3)&~3U;if(base>65535-layout.bytes)goto done;
+ in=c->instructions[*at];
+ if(in->op==IMOVM){
+  if(in->mm!=Aimm || in->m.offset!=layout.bytes || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
+     (in->sm!=Afp && in->sm!=Amp) || !in->s.decl || in->s.decl->ty!=arg->ty)goto done;
+  for(i=0;i<layout.count;i++){
+   sourceaddr=in->s;sourceaddr.reg+=4*i;sourceaddr.offset=0;
+   if(!typedoperand(in->sm,&sourceaddr,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || (i && (wire!=sm || part!=source+4*i)))goto done;
+   if(!i){source=part;sm=wire;}
+  }
+  p->code[*at-p->first]=(Dis64Instruction){IMOVM,SRC(sm)|AXIMM|DST(AFP|AIND),layout.bytes,source,base};p->returns[(*at)++-p->first]=64;
+ }else{
+  for(i=0;i<layout.count;i++){
+   if(*at>=end || !(in=c->instructions[*at]) || in->op!=IMOVW || in->mm!=Anone || in->branch || in->dm!=Afpind ||
+      in->d.reg!=frame->d.reg || in->d.offset!=arg->offset+4*i || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual))goto done;
+   p->code[*at-p->first]=(Dis64Instruction){IMOVW,SRC(sm)|DST(AFP|AIND),0,source,base+4*i};p->returns[(*at)++-p->first]=64;
+  }
+ }
+ *offset=base+layout.bytes;ok=1;
+ done:dis64layoutfree(&layout);return ok?1:typedfail(p,"external-geometry-argument");
+}
+
 static int
 typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int *next)
 {
@@ -83,7 +123,9 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
     mo=module;p->code[pc-p->first]=(Dis64Instruction){IMFRAME,SRC(ms)|AXIMM|DST(AFP),fn->iface->offset,mo,40};at=pc+1;
     for(arg=fn->ty->ids;arg!=nil;arg=arg->next){
         if(at>=end || (in=c->instructions[at])==nil)return typedfail(p,"external-argument");
-        kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
+        kind=arg->ty->kind;
+        if(c->loads && kind==Tadt){if(!typedexternalgeometry(c,p,arg,frame,end,&at,&offset))return 0;continue;}
+        root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
         offset=(offset+width-1)&~(width-1);

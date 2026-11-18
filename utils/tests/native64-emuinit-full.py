@@ -4,12 +4,19 @@ import argparse,copy,json,os,re,runpy,shlex,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 CMD=runpy.run_path(str(ROOT/'utils/tests/native64-typed-command-files.py'));E=CMD['EXT']
-def generate(limbo,w,source=None,module='Emuinit',shape=None):
+def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,export_signatures=None):
  expected_functions,expected_tables,expected_sites,entry=shape or ((4,3,3,'0')if module=='Emuinit'else(8,1,1,'~0U'))
  source=(ROOT/'appl/cmd/emuinit.b').read_text()if source is None else source;data,rows=E['compile_source'](limbo,w,source,interface='',loads=True)
  assert len(rows)==expected_functions and all(r['accepted']for r in rows),[(r['name'],r.get('reason'),r.get('pc'))for r in rows]
  imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]
- E['MODULE']['check_exports'](data,rows)
+ proofs=copy.deepcopy(rows)
+ if export_signatures is not None:
+  for r in proofs:
+   if r['signature']is None:
+    assert r.get('signature_available')is False
+    r['signature']=export_signatures[r['export_name']]
+   else:assert r['signature']==export_signatures[r['export_name']]
+ E['MODULE']['check_exports'](data,proofs)
  for r in rows:CMD['verify_nilbranches'](data,r,imports,rows=rows)
  # Independent decoder must detect corruption in every new variadic record field.
  controls=0
@@ -43,7 +50,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None):
   namespace='Sys'if any(e['name']in('fprint','sprint')for e in table)else'Arg'if any(e['name']=='opt'for e in table)else'Command'
   namespaces.append({'Sys':0,'Arg':1,'Command':2}[namespace])
   for j,e in enumerate(table):
-   size,mapping=(80,[0,192])if namespace=='Command'else frames[(namespace,e['name'])]
+   size,mapping=import_frames[(e['name'],e['signature'])]if import_frames is not None else(80,[0,192])if namespace=='Command'else frames[(namespace,e['name'])]
    frames[(ti,j)]=(size,mapping);array(f'full_import_map_{ti}_{j}',mapping)
   lines+=['static const Native64ModuleImport full_import_'+str(ti)+'[]={']+['{'+json.dumps(e['name'])+f',{e["signature"]}U,{frames[(ti,j)][0]},full_import_map_{ti}_{j},{len(frames[(ti,j)][1])}'+'},'for j,e in enumerate(table)]+['};']
  lines+=['static const Native64ModuleTable full_tables[]={']+[f'{{full_import_{ti},{len(t)}}},'for ti,t in enumerate(imports)]+['};']

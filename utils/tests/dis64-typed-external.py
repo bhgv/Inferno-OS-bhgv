@@ -130,9 +130,30 @@ def verify(data,r,imports,loads=False,rows=None):
         assert offset==maps['frame'if mode else 'data'][o['s'][0]]
         pending=o['d'][0];assert r['code'][first]==[11,o['mode'],offset,e['binding'],40,0]and o['m']==e['binding']
         oldoffset=32
-        for at,(new,kind,oldbytes,width)in enumerate(e['args'],first+1):
+        at=first+1;aggregates={a['index']:a['layout']for a in e.get('aggregate_args',[])}
+        assert len(aggregates)==len(e.get('aggregate_args',[]))
+        for j,(new,kind,oldbytes,width)in enumerate(e['args']):
             a=original[at];sm=a['mode']>>3&7
-            alignment=8 if oldbytes==8 else 4;oldoffset=(oldoffset+alignment-1)&~(alignment-1)
+            alignment=8 if oldbytes==8 and kind!=1 else 4;oldoffset=(oldoffset+alignment-1)&~(alignment-1)
+            if kind==1:
+                assert loads and j in aggregates
+                layout=aggregates.pop(j);n=2 if oldbytes==8 else 4 if oldbytes==16 else 0
+                assert n and width==oldbytes and layout=={'legacy_bytes':oldbytes,'bytes':width,'map':[0],'leaves':[[4*k,4*k,4,4,9]for k in range(n)]}
+                if a['op']==OPCODES['IMOVM']:
+                    assert sm in(0,1)and a['mode']==(sm<<3)|64|5 and a['m']==oldbytes and a['d']==[pending,oldoffset]
+                    source=maps['frame'if sm else'data'][a['s'][0]]
+                    for k in range(n):
+                        assert maps['frame'if sm else'data'][a['s'][0]+4*k]==source+4*k
+                        assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==a['s'][0]+4*k)[2:]==[4,4,9]
+                    assert r['code'][at]==[a['op'],a['mode'],source,width,new,64];at+=1
+                else:
+                    for k in range(n):
+                        a=original[at];sm=a['mode']>>3&7
+                        assert a['op']==OPCODES['IMOVW']and a['mode']==(sm<<3)|5 and sm in(0,1,2)and a['m']is None and a['d']==[pending,oldoffset+4*k]
+                        source=a['s'][0]if sm==2 else maps['frame'if sm else'data'][a['s'][0]]
+                        assert r['code'][at]==[a['op'],a['mode'],source,0,new+4*k,64];at+=1
+                oldoffset+=oldbytes;continue
+            assert j not in aggregates
             assert a['d']==[pending,oldoffset];oldoffset+=oldbytes
             if a['op']==OPCODES['ILENA']:
                 assert loads and kind==9 and oldbytes==width==4 and sm in(0,1)and a['m']is None
@@ -146,7 +167,9 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm else'data'][a['s'][0]],maps['frame'if mm else'data'][a['m']],new,64]
             else:
                 assert r['code'][at]==[a['op'],a['mode'],a['s'][0]if sm==2 else maps['frame'if sm==1 else 'data'][a['s'][0]],0,new,64]
-        contract=e['contract'];assert end-first==len(e['args'])+1+bool(contract)
+            at+=1
+        assert not aggregates
+        contract=e['contract'];assert at+bool(contract)==end
         if contract:
             b=original[end-1];assert b['op']==39 and b['d']==[pending,16]
             if e['inherited']:assert b['s']==[16,0]and r['code'][end-1]==[118,13,32,0,32,64]
