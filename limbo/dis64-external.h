@@ -87,6 +87,12 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
         offset=(offset+width-1)&~(width-1);
+        if(c->loads && kind==Tint && in->op==ILENA){
+            if(in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
+               !typedbytearrayaddr(&in->s) || !typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual) || offset>65535-4)
+                return typedfail(p,"external-byte-length-argument");
+            p->code[at-p->first]=(Dis64Instruction){ILENA,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=64;offset+=4;continue;
+        }
         if(c->loads && kind==Tstring && in->op==IADDC){
             unsigned int mm;long middle;
             if(in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || in->branch ||

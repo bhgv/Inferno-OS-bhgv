@@ -27,8 +27,8 @@ def verify_nilbranches(data,row,imports,rows=None):
         sm=old['mode']>>3&7;mm=1 if old['mode']&192==128 else 0 if old['mode']&192==192 else -1
         if sm not in (0,1)or mm not in (0,1):continue
         a,ak=maps['frame'if sm else'data'][old['s'][0]];b,bk=maps['frame'if mm else'data'][old['m']]
-        if ak not in (10,11,20)and bk not in (10,11,20):continue
-        assert (ak in (10,11)and bk==20)or(ak==20 and bk in (10,11))
+        if ak not in (10,11,12,20)and bk not in (10,11,12,20):continue
+        assert (ak in (10,11,12)and bk==20)or(ak==20 and bk in (10,11,12))
         left,right,mode=a,b,sm
         if ak==20:left,right,mode=b,a,mm
         assert right==nil

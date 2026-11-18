@@ -126,6 +126,37 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
         if(!native64modulelists(s,f))return 0;
         if(f->resultcontract && f->resultcontract!=48)return 0;
+        for(j=0;j<f->nsites;j++){
+            unsigned int k,r,modes[2],offsets[2];site=f->sites+j;
+            if(site->first>=f->count || site->end>=f->count || site->end<=site->first)return 0;
+            for(k=site->first+1;k<site->end;k++)if(!f->code[k].returned){
+                step=f->code+k;if(site->external || !native64typedargprep(step,f->bytes,s->databytes))return 0;
+                if(step->op!=IMOVP)continue;
+                modes[0]=USRC(step->mode);modes[1]=AFP;offsets[0]=step->s;offsets[1]=step->d;
+                for(r=0;r<2;r++){map=modes[r]==AFP?f->map:s->datamap;bit=offsets[r]/8;if(!(map[bit/8]&(0x80>>(bit%8))))return 0;}
+            }
+        }
+        for(j=0;j<f->count;j++)if((f->code[j].op==ILENA || f->code[j].op==ICVTAC) && f->code[j].returned==64){
+            unsigned int k,found=0,bit;step=f->code+j;
+            for(k=0;k<f->nsites;k++){
+                site=f->sites+k;
+                if(site->first<j && j<site->end && (!site->contract || j<site->end-1)){
+                    if(found++ || ((step->op==ILENA)!=site->external))return 0;
+                    if(site->external){
+                        if(site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
+                        request=s->tables[site->table].imports+site->target;
+                        if(!native64typedcomputedarg(step,f->bytes,s->databytes,request->bytes,request->map,request->mapbytes))return 0;
+                    }else{
+                        const Native64ModuleFunction*child;
+                        if(site->target>=s->nfunctions)return 0;child=s->functions+site->target;
+                        if(!native64modulemap(child->bytes,child->map,child->mapbytes,1) || !native64typedcomputedarg(step,f->bytes,s->databytes,child->bytes,child->map,child->mapbytes))return 0;
+                    }
+                }
+            }
+            if(!found)return 0;
+            map=USRC(step->mode)==AFP?f->map:s->datamap;bit=step->s/8;
+            if(!(map[bit/8]&(0x80>>(bit%8))))return 0;
+        }
         for(j=0;j<f->count;j++)if(f->code[j].op==IADDC && f->code[j].returned==64){
             unsigned int k,found=0,modes[2],offsets[2];
             step=f->code+j;
@@ -161,7 +192,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 if(!!(map[bit/8]&(0x80>>(bit%8)))!=roots[k])return 0;
             }
         }
-        for(j=0;j<f->count;j++)if(f->code[j].op==INEWAZ || f->code[j].op==ISLICEA || f->code[j].op==ICVTAC){
+        for(j=0;j<f->count;j++)if(f->code[j].op==INEWAZ || f->code[j].op==ISLICEA || (f->code[j].op==ICVTAC && f->code[j].returned!=64)){
             unsigned int k,modes[3],offsets[3],roots[3];step=f->code+j;
             if(!native64typedbytestep(step,f->bytes,s->databytes))return 0;
             modes[0]=USRC(step->mode);offsets[0]=step->s;roots[0]=step->op==ICVTAC;

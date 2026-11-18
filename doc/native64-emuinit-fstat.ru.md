@@ -71,3 +71,5 @@ unquoted, FD/nil и compiler multi/external units. Checked preflight всех
 
 Продолжение: [byte array allocation/slices/String conversion](native64-emuinit-bytes.ru.md).
 Текущий барьер getenv — вычисленный ILENA argument Sys.read (PC113).
+
+Следующий проверенный этап: [полные getenv и unquoted](native64-emuinit-getenv.ru.md), C/JIT с настоящими телами Sys open/fstat/read и управляемым файловым транспортом. Полный startup ещё не запущен.

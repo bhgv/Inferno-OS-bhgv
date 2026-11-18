@@ -40,19 +40,33 @@ def verify(data,r,imports,loads=False,rows=None):
         assert rows is not None and previous<first<end<len(original);previous=end
         callee=next(x for x in rows if x['first']==target);assert callee['accepted']and callee['descriptor']==descriptor
         assert contract==(48 if callee.get('result_pair')==[11,10]else callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
-        assert end-first==len(callee['args'])+1+bool(contract)
+        at=first+1;preps=set()
         pending=original[first]['d'][0];assert original[first]['op']==5 and original[first]['s']==[descriptor]
         assert r['code'][first]==[5,17,descriptor,0,40,0]
-        for at,arg in enumerate(callee['args'],first+1):
-            o=original[at];sm=o['mode']>>3&7
+        for arg in callee['args']:
+            prep=False;o=original[at]
+            if loads and arg[1]==13 and o['op']==41 and o['mode']&7==1:
+                assert at+3<end and original[at+1]['op']==OPCODES['ISLICEA']and original[at+2]['op']==OPCODES['ICVTAC']
+                view=o['d'];assert original[at+1]['d']==view and original[at+2]['s']==view
+                clear=original[at+3];assert clear['op']==41 and clear['mode']==1 and clear['d']==view
+                for addr in(o['s'],view):assert next(l for l in r['frame']['leaves']if l[0]==addr[0])[4]==3
+                assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
+                preps.update((at,at+1,at+3));at+=2;o=original[at];prep=True
+            sm=o['mode']>>3&7
             assert o['d']==[pending,next(x[0]for x in callee['frame']['leaves']if x[1]==arg[0])]
-            if o['op']==OPCODES['IADDC']:
+            if o['op']==OPCODES['ICVTAC']:
+                assert loads and arg[1:]==[13,4,8]and sm in(0,1)and o['m']is None
+                assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0])[4]==3
+                assert r['code'][at]==[o['op'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],0,arg[0],64]
+            elif o['op']==OPCODES['IADDC']:
                 mm=1 if o['mode']&192==128 else 0 if o['mode']&192==192 else -1
                 assert loads and target==r['first']and inherited and arg[1:]==[13,4,8]and sm in(0,1)and mm in(0,1)
                 assert r['code'][end+1][0]==OPCODES['IRET']
                 assert r['code'][at]==[o['op'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],maps['frame'if mm else'data'][o['m']],arg[0],64]
             else:
                 assert r['code'][at]==[o['op'],o['mode'],o['s'][0]if sm==2 else maps['frame'if sm==1 else'data'][o['s'][0]],0,arg[0],64]
+            at+=2 if prep else 1
+        assert at+bool(contract)==end
         if contract:
             binding=original[end-1];assert binding['op']==39 and binding['d']==[pending,16]and binding['m']is None
             if inherited:
@@ -63,7 +77,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert r['code'][end-1]==[39,13,offset,0,32,128|contract]
         assert original[end]=={'op':4,'mode':10,'m':None,'s':[pending],'d':[target]}
         assert r['code'][end]==[4,10,40,0,target,32 if inherited else 0]
-        covered.update(range(first,end+1));inside.update(range(first+1,end+1))
+        covered.update(set(range(first,end+1))-preps);inside.update(range(first+1,end+1))
     previous=-1
     for e in r.get('externals',[]):
         first,end=e['first'],e['end'];assert previous<first<end<len(original)and not covered.intersection(range(first,end+1));previous=end
@@ -76,7 +90,11 @@ def verify(data,r,imports,loads=False,rows=None):
             a=original[at];sm=a['mode']>>3&7
             alignment=8 if oldbytes==8 else 4;oldoffset=(oldoffset+alignment-1)&~(alignment-1)
             assert a['d']==[pending,oldoffset];oldoffset+=oldbytes
-            if a['op']==OPCODES['IADDC']:
+            if a['op']==OPCODES['ILENA']:
+                assert loads and kind==9 and oldbytes==width==4 and sm in(0,1)and a['m']is None
+                assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==a['s'][0])[4]==3
+                assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm else'data'][a['s'][0]],0,new,64]
+            elif a['op']==OPCODES['IADDC']:
                 mm=1 if a['mode']&192==128 else 0 if a['mode']&192==192 else -1
                 assert loads and kind==13 and oldbytes==4 and width==8 and sm in(0,1)and mm in(0,1)
                 for space,old in (('frame'if sm else'data',a['s'][0]),('frame'if mm else'data',a['m'])):
@@ -95,6 +113,9 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if loads and op==OPCODES['INEWAZ']and o['op']==OPCODES['INEWA']:
+            assert m==0 and types[o['m']][0]==1 and not any(types[o['m']][1])
+            o={**o,'op':op,'m':0}
         if op==OPCODES['IADDC']and not o['mode']&192:
             assert loads and o['mode']&7==1
             o={**o,'mode':o['mode']|128,'m':o['d'][0]}

@@ -9,6 +9,13 @@ struct TypedMulti {
     unsigned int *height,count,cost;
 };
 
+static int
+typedbytearrayaddr(Addr *a)
+{
+ Type*t;
+ return a->decl && (t=a->decl->ty) && t->kind==Tarray && t->tof && t->tof->kind==Tbyte && a->reg==a->decl->offset && !a->offset;
+}
+
 #include "dis64-external.h"
 
 /* List primitives belong only to the selected importing-client lowering. */
@@ -125,9 +132,8 @@ typedclientindex(Inst *in,Inst *use,Dis64TypedBody *p,unsigned int pc)
 static int
 typedloadbytes(Inst *in,Dis64TypedBody *p,unsigned int pc)
 {
- Addr *a=in->op==ICVTAC?&in->s:&in->d;Type *t;
- if(!a->decl || !(t=a->decl->ty) || t->kind!=Tarray || !t->tof || t->tof->kind!=Tbyte ||
-    a->reg!=a->decl->offset || a->offset)return typedfail(p,"load-byte-array-class");
+ Addr *a=in->op==ICVTAC?&in->s:&in->d;
+ if(!typedbytearrayaddr(a))return typedfail(p,"load-byte-array-class");
  if(in->op==INEWA || in->op==INEWAZ){
   Decl*d=in->m.decl;
   if(!d || !d->ty || d->ty->kind!=Tbyte)return typedfail(p,"load-byte-array-class");
@@ -275,7 +281,8 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     int target,kind,root,op,actual;long source;
     if(frame->sm!=Adesc || frame->mm!=Anone || frame->dm!=Afp || frame->branch!=nil || frame->d.reg<32 ||
        frame->d.reg>(int)p->frame.legacybytes-4)return typedfail(p,"multi-frame");
-    while(end<stop && c->instructions[end]!=nil && c->instructions[end]->dm==Afpind)end++;
+    while(end<stop && c->instructions[end]!=nil && (c->instructions[end]->dm==Afpind ||
+      (c->loads && ((c->instructions[end]->op==IMOVP && c->instructions[end]->dm==Afp) || c->instructions[end]->op==ISLICEA))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || call->op!=ICALL || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Anone || call->dm!=Apc || call->d.offset<0 || (unsigned long)call->d.offset>=c->count ||
        (target=c->entries[call->d.offset])<0)return typedfail(p,"multi-call");
@@ -296,6 +303,28 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
+        /* No later allocating argument may follow the pending String root. */
+        if(c->loads && kind==Tstring && in->op==IMOVP && in->dm==Afp){
+            Inst*slice,*convert,*clear;unsigned int view;
+            if(arg!=c->functions[target]->ty->ids || arg->next || at+3>=end || !(slice=c->instructions[at+1]) || !(convert=c->instructions[at+2]) || !(clear=c->instructions[at+3]) ||
+               in->mm!=Anone || in->branch || in->sm!=Afp || !typedbytearrayaddr(&in->s) || !typedbytearrayaddr(&in->d) ||
+               slice->op!=ISLICEA || slice->dm!=Afp || slice->d.reg!=in->d.reg || slice->d.decl!=in->d.decl ||
+               convert->op!=ICVTAC || convert->sm!=Afp || convert->s.reg!=in->d.reg || convert->s.decl!=in->d.decl ||
+               convert->mm!=Anone || convert->branch || convert->dm!=Afpind || convert->d.reg!=frame->d.reg || convert->d.offset!=arg->offset ||
+               clear->op!=IMOVP || clear->sm!=Amp || clear->dm!=Afp || clear->mm!=Anone || clear->branch ||
+               clear->d.reg!=in->d.reg || clear->d.decl!=in->d.decl || !clear->s.decl || !clear->s.decl->ty || clear->s.decl->ty->kind!=Tany ||
+               !typedinst(in,stop,p,p->code+at-p->first,p->returns+at-p->first) || !typedloadbytes(slice,p,at+1-p->first) || !typedclientarray(slice,p,at+1-p->first) ||
+               !typedbytearrayaddr(&convert->s) || !typedoperand(convert->sm,&convert->s,Tarray,0,0,p,&source,&sm,&actual) ||
+               !dis64layoutaddress(&child->frame,arg->offset,4,1,&view) || view>65535 ||
+               !typedinst(clear,stop,p,p->code+at+3-p->first,p->returns+at+3-p->first))return typedfail(p,"local-slice-string-argument");
+            p->code[at+2-p->first]=(Dis64Instruction){ICVTAC,SRC(sm)|DST(AFP|AIND),0,source,view};p->returns[at+2-p->first]=64;at+=4;continue;
+        }
+        if(c->loads && kind==Tstring && in->op==ICVTAC){
+            if(arg!=c->functions[target]->ty->ids || arg->next || in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
+               !typedbytearrayaddr(&in->s) || !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || offset>65535 ||
+               !typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual))return typedfail(p,"local-byte-string-argument");
+            p->code[at-p->first]=(Dis64Instruction){ICVTAC,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=64;continue;
+        }
         if(c->loads && child==p && kind==Tstring && in->op==IADDC){
             unsigned int mm;long middle;
             if(in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || in->branch ||

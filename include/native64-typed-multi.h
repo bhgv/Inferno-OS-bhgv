@@ -25,6 +25,24 @@ native64typedconcatarg(const Native64TypedStep *s,unsigned int fpbytes,unsigned 
 }
 
 static int
+native64typedargprep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ if(s->returned)return 0;
+ if(s->op==ISLICEA)return native64typedbytestep(s,fp,mp);
+ return s->op==IMOVP && s->mode==(SRC(USRC(s->mode))|DST(AFP)) && !s->m &&
+  native64typedrootoperand(USRC(s->mode),s->s,fp,mp) && native64typedrootoperand(AFP,s->d,fp,mp);
+}
+
+static int
+native64typedcomputedarg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const uchar*map,unsigned int np)
+{
+ unsigned int bit,width=s->op==ILENA?4:8,root=s->op==ICVTAC;
+ if((s->op!=ILENA && s->op!=ICVTAC) || s->mode!=(SRC(USRC(s->mode))|DST(AFP|AIND)) || s->m || s->returned!=64 ||
+    !native64typedrootoperand(USRC(s->mode),s->s,fp,mp) || s->d<64 || s->d%width || (unsigned long)s->d>bytes || width>bytes-s->d || map==nil || map==H)return 0;
+ bit=s->d/8;return bit/8<np && !!(map[bit/8]&(0x80>>(bit%8)))==root;
+}
+
+static int
 native64typedblocked(unsigned int pc,const Native64TypedCall *calls,unsigned int n)
 {
     unsigned int lo=0,hi=n,mid;
@@ -64,6 +82,11 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         stop=c->end-(c->contract!=0);
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
+            if(!s->returned){if(c->external || !native64typedargprep(s,fpbytes,mpbytes))return 0;continue;}
+            if(s->op==ILENA || s->op==ICVTAC){
+                if((s->op==ILENA)!=c->external || c->callee->np<0 || !native64typedcomputedarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+                continue;
+            }
             if(s->op==IADDC){
                 if((!c->external && (!c->inherited || c->target!=out)) || c->callee->np<0 || !native64typedconcatarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
@@ -102,6 +125,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 s=steps+j;p=out+j;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;
                 if(j==i){p->s.imm=c->external?c->moduleoffset:c->ordinal;p->reg=c->external?c->ordinal:0;p->d.ind=40;}
                 else if(j==c->end){p->s.ind=40;if(c->external){p->reg=c->ordinal;p->d.ind=c->moduleoffset;}else p->d.ins=c->target;}
+                else if(!s->returned){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
                 else{p->s.imm=s->s;p->d.i.f=40;p->d.i.s=s->d;if(s->op==IADDC)p->reg=s->m;if(c->contract && !c->inherited && j==c->end-1)p->reg=c->contract;}
             }
             i=c->end+1;continue;

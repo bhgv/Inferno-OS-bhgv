@@ -45,3 +45,5 @@ ASan/UBSan -O1/NDEBUG и статическая host-сборка с Android hea
 helper и добавления смешанного result contract: sys-flow-gc следует
 operands.h через полное shadow include дерево; local/multi tests выбирают
 нынешний map-role predicate. Прежние semantic failure markers сохранены.
+
+Следующий проверенный этап: [полные getenv и unquoted](native64-emuinit-getenv.ru.md), C/JIT с настоящими телами Sys open/fstat/read и управляемым файловым транспортом. Полный startup ещё не запущен.
