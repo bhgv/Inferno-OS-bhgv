@@ -192,7 +192,9 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             }else{
                 if(s->m || s->d!=32)return 0;
                 if(!c->inherited && USRC(s->mode)==AMP){
-                    if(c->contract!=24 || s->op!=ILEA || s->mode!=(SRC(AMP)|DST(AFP|AIND)) || s->returned!=(128|24) || !native64typedrootoperand(AMP,s->s,fpbytes,mpbytes))return 0;
+                    if(native64geometryresultwidth(c->contract)){
+                        if(!c->external || s->op!=ILEA || s->mode!=(SRC(AMP)|DST(AFP|AIND)) || s->returned!=(128|c->contract) || s->s<0 || s->s%4 || (unsigned long)s->s>mpbytes || width>mpbytes-s->s)return 0;
+                    }else if(c->contract!=24 || s->op!=ILEA || s->mode!=(SRC(AMP)|DST(AFP|AIND)) || s->returned!=(128|24) || !native64typedrootoperand(AMP,s->s,fpbytes,mpbytes))return 0;
                 }else if(s->mode!=(SRC(AFP)|DST(AFP|AIND)))return 0;
                 else if(c->inherited){if(s->op!=IMOVL || s->s!=32 || s->returned!=64)return 0;}
                 else if(s->op!=ILEA || s->returned!=(128|c->contract) || s->s<64 || (unsigned long)s->s>fpbytes || width>fpbytes-s->s || s->s%(native64geometryresultwidth(c->contract)?4:(c->contract==48 || c->contract==72 || c->contract==88)?8:width))return 0;

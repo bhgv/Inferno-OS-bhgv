@@ -255,3 +255,8 @@ fitrect принята целиком; handlerequest проходит PC506–52
 PC521 multi-callee на newrect, которая останавливается на PC1340 CONSM
 для list of Rect. awm.init пока остаётся на PC303. Окно AWM и Android UI
 ещё не запущены.
+
+Следующий этап: [list of Rect и MP-результат](native64-rect-list.ru.md).
+newrect принята целиком; handlerequest проходит PC521–543. Новый отказ —
+PC544 load-nil-roles на c.wins == nil. awm.init пока остаётся на PC303.
+Окно AWM и Android UI ещё не запущены.

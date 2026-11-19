@@ -261,6 +261,7 @@ typedcontextcopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
 #include "dis64-client-channels.h"
 #include "dis64-window-list.h"
 #include "dis64-draw-fields.h"
+#include "dis64-rect-list.h"
 
 /* Immutable byte constants are immediate operands, never mutable MP storage. */
 static int
@@ -826,6 +827,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             }
             if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;
             if(c->loads){p->code[pc-p->first].source=0;p->returns[pc-p->first]=UDST(p->code[pc-p->first].mode)==(AFP|AIND)?174:172;}pc++;
+        }else if(c->loads && (in->op==ICONSM || in->op==IHEADM || (in->op==ITAIL && typedrectlisttype(&in->s)))){
+            if(!typedrectlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSW || in->op==IHEADW || (in->op==ITAIL && typedintlisttype(&in->s)))){
             if(!typedclientintlist(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) &&

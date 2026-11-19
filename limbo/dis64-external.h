@@ -145,15 +145,15 @@ typedpointerword(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
  return 1;
 }
 
-/* Only a local exact Draw.Point/Rect destination; no inherited/global ADT. */
+/* Exact direct Draw.Point/Rect storage; inherited ADT results stay closed. */
 static int
 typedgeometrybinding(Inst*binding,Type*result,Dis64TypedBody*p,unsigned int*base,unsigned int*contract)
 {
  Dis64Layout l={0};Addr a;Type*t;unsigned int i,wire;long part;int actual,ok=0;
  t=binding->s.native64type?binding->s.native64type:binding->s.decl?binding->s.decl->ty:nil;
- if(binding->sm!=Afp || t!=result || !typedwordgeometry(t,&l))goto done;
+ if((binding->sm!=Afp && binding->sm!=Amp) || (binding->sm==Amp && (!binding->s.decl || binding->s.decl->store!=Dglobal)) || t!=result || !typedwordgeometry(t,&l))goto done;
  for(i=0;i<l.bytes;i+=4){a=binding->s;a.reg+=i;a.offset=0;
-  if(!typedoperand(Afp,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || wire!=AFP || part<64 || (i && part!=*base+i))goto done;
+  if(!typedoperand(binding->sm,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || wire!=(binding->sm==Afp?AFP:AMP) || part<(binding->sm==Afp?64:0) || (i && part!=*base+i))goto done;
   if(!i)*base=part;
  }
  *contract=l.bytes==8?96:112;ok=1;
@@ -296,7 +296,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
            binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil)return typedfail(p,"external-result");
         if(c->loads && kind==Tadt){
             if(!typedgeometrybinding(binding,fn->ty->tof,p,&local,&contract))return typedfail(p,"external-geometry-result");
-            p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;
+            p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(binding->sm==Afp?AFP:AMP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;
         }else if(c->loads && kind==Ttuple && typedchanneltriple(fn->ty->tof)){
             contract=72;
             if(binding->sm==Afp){if(!typedchannelbinding(c,p,binding,&local))return 0;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;}

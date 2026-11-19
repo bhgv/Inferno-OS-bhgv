@@ -350,13 +350,13 @@ def verify(data,r,imports,loads=False,rows=None):
         if contract:
             b=original[end-1];assert b['op']==39 and b['d']==[pending,16]
             if contract in(96,112):
-                assert loads and not e['inherited']and b['mode']==13
-                width={96:8,112:16}[contract];old=b['s'][0];native=maps['frame'][old]
-                assert e['resultoffset']==native and native>=64 and native%4==0
+                assert loads and not e['inherited']and b['mode']in(5,13)
+                space='frame'if b['mode']==13 else'data';width={96:8,112:16}[contract];old=b['s'][0];native=maps[space][old]
+                assert e['resultoffset']==native and native>=(64 if space=='frame'else 0)and native%4==0
                 for i in range(0,width,4):
-                    leaf=next(l for l in r['frame']['leaves']if l[0]==old+i)
+                    leaf=next(l for l in r[space]['leaves']if l[0]==old+i)
                     assert leaf==[old+i,native+i,4,4,9]
-                    assert not(r['frame']['map'][(native+i)//64]&(128>>((native+i)//8%8)))
+                    assert not(r[space]['map'][(native+i)//64]&(128>>((native+i)//8%8)))
 
             if r['code'][end-1][5]==245:
                 assert loads and contract==4 and not e['inherited']and b['mode']==45 and b['m']is None and b['s'][1]==12
@@ -372,7 +372,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert r['code'][end-1]==[39,45,source,24,32,220]
             elif e['inherited']:assert b['s']==[16,0]and r['code'][end-1]==[118,13,32,0,32,64]
             else:
-                assert b['mode']in(5,13)and (b['mode']!=5 or contract==24)
+                assert b['mode']in(5,13)and (b['mode']!=5 or contract in(24,96,112))
                 assert r['code'][end-1]==[39,b['mode'],maps['frame'if b['mode']==13 else'data'][b['s'][0]],0,32,128|contract]
         assert original[end]=={'op':9,'mode':8|64|mode,'m':e['binding'],'s':[pending],'d':o['s']}
         assert r['code'][end]==[9,8|64|mode,40,e['binding'],offset,32 if e['inherited']else 0]
@@ -412,6 +412,22 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert(s if read else d)==maps['frame'if cm==5 else'data'][ca[0]]
                 leaves=r['frame'if vm else'data']['leaves'];value=d if read else s
                 for i in range(0,width,4):assert next(l for l in leaves if l[0]==va[0]+i)==[va[0]+i,value+i,4,4,9]
+            continue
+        if returned in(248,249,250):
+            sm=o['mode']>>3&7;dm=o['mode']&7;cons=returned==248;head=returned==249
+            assert loads and op==o['op']==OPCODES['ICONSM'if cons else'IHEADM'if head else'ITAIL']and mode==o['mode']and dm in(0,1)
+            if not cons:assert sm in(0,1)
+            if returned==250:
+                assert o['m']is None and m==0
+                assert r['code'][pc]==[op,mode,maps['frame'if sm else'data'][o['s'][0]],0,maps['frame'if dm else'data'][o['d'][0]],250]
+            else:
+                assert o['m']==m==16 and mode&192==64
+                value=o['s']if cons else o['d'];vm=sm if cons else dm;space='frame'if (vm&~4)else'data';base=maps[space][value[0]]
+                if vm in(4,5):assert cons and value[1]==4 and next(l for l in r[space]['leaves']if l[0]==value[0])[2:]==[4,8,12]
+                else:
+                    for i in range(0,16,4):assert next(l for l in r[space]['leaves']if l[0]==value[0]+i)==[value[0]+i,base+i,4,4,9]
+                root=maps['frame'if (dm if cons else sm)else'data'][(o['d']if cons else o['s'])[0]]
+                assert r['code'][pc]==[op,mode,base if cons else root,16,root if cons else base,returned]
             continue
         if returned in(246,247):
             width=16 if returned==246 else 8;sm=o['mode']>>3&7

@@ -6,13 +6,14 @@ ROOT=Path(__file__).resolve().parents[2]
 BASE=runpy.run_path(str(ROOT/'utils/tests/native64-alt-pairs.py'));G,CMD,E=BASE['G'],BASE['CMD'],BASE['E']
 PREFIX='include "sys.m";include "draw.m";include "wmsrv.m";'
 METHODS=('Rect_subpt','Rect_addpt','Rect_inset','Point_add','Point_sub','Point_mul')
-NAMES=('rectsub','rectadd','rectinset','pointadd','pointsub','pointmul','windowrect','windowmin','windowmax','chain')
+NAMES=('rectsub','rectadd','rectinset','pointadd','pointsub','pointmul','windowrect','windowmin','windowmax','chain')+tuple('mp'+n for n in('rectsub','rectadd','rectinset','pointadd','pointsub','pointmul','windowrect','windowmin','windowmax'))
 DECL='Results:module{'+''.join(n+':fn(w:ref Wmsrv->Window);'for n in NAMES)+'open:fn(path:string);};'
 SOURCE='implement Results;'+PREFIX+DECL+'draw:Draw;Point,Rect:import draw;pad:int;rectin,rectout:Draw->Rect;pointin,step,pointout:Draw->Point;guard:int;'
 EXPR=('rectin.subpt(pointin)','rectin.addpt(pointin)','rectin.inset(3)','pointin.add(step)','pointin.sub(step)','pointin.mul(3)','w.r.subpt(pointin)','w.r.min.add(step)','w.r.max.sub(step)')
 for i,n in enumerate(NAMES[:9]):
  SOURCE+=n+'(w:ref Wmsrv->Window){local:='+EXPR[i]+';'+('rectout'if i in(0,1,2,6)else'pointout')+'=local;if(guard== -99)guard=pad;}'
 SOURCE+='chain(w:ref Wmsrv->Window){a:=w.r.subpt(pointin);local:=a.addpt(step);rectout=local;if(guard== -99)guard=pad;}'
+for i,n in enumerate(NAMES[10:]):SOURCE+=n+'(w:ref Wmsrv->Window){'+('rectout'if i in(0,1,2,6)else'pointout')+'='+EXPR[i]+';if(guard== -99)guard=pad;}'
 SOURCE+='open(path:string){draw=load Draw path;}'
 def generate(limbo,w):
  m=w/'results.m';m.write_text(PREFIX+DECL)
@@ -21,13 +22,13 @@ def generate(limbo,w):
  h=subprocess.check_output([str(limbo),'-H','-M','Draw','-I',str(ROOT/'module'),str(m)],text=True);(w/'draw-native.h').write_text(h);frames={}
  for n in METHODS:
   size=int(re.search(r'^#define F_Draw_'+n+r'_size (\d+)',h,re.M)[1]);mapping=[int(v,0)for v in re.search(r'^#define F_Draw_'+n+r'_map \{([^}]*)\}',h,re.M)[1].split(',')if v];sig=int(re.search(r'^#define LIMBO_NATIVE64_SIGNATURE_Draw_'+n+r' (0x[0-9a-f]+)U',h,re.M)[1],16);frames[(n.replace('_','.'),sig)]=(size,mapping)
- rows=G['generate'](limbo,w,SOURCE,'Results',(11,1,0,'~0U'),import_frames=frames,export_signatures=signatures)
+ rows=G['generate'](limbo,w,SOURCE,'Results',(20,1,0,'~0U'),import_frames=frames,export_signatures=signatures)
  p=w/'full.h';s=p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','');gl={g[0]:g[1]for g in rows[0]['globals']};p.write_text(s+'\nstatic const uint result_globals[]={'+','.join(str(gl[n])for n in('draw','pad','rectin','rectout','pointin','step','pointout','guard'))+'};\n')
  h=subprocess.check_output([str(limbo),'-H','-M','Wmsrv','-I',str(ROOT/'module'),str(m)],text=True);(w/'window-native.h').write_text('typedef struct Wmsrv_Window Wmsrv_Window;\n'+re.search(r'struct Wmsrv_Window \{.*?\n\};',h,re.S)[0]+'\n'+next(l for l in h.splitlines()if l.startswith('#define Wmsrv_Window_map '))+'\n')
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];controls=0;roles=set()
  for row in records:
   for j,e in enumerate(row.get('externals',[])):
-   assert e['contract']in(96,112)and e['resultoffset']%8==4;roles.add(e['contract'])
+   assert e['contract']in(96,112)and e['resultoffset']%4==0;roles.add(e['contract'])
    for key in('contract','result_geometry','resultoffset','inherited'):
     bad=copy.deepcopy(row);bad['externals'][j][key]+=1
     try:CMD['verify_nilbranches'](data,bad,imports,rows=records)
@@ -41,11 +42,11 @@ def generate(limbo,w):
     else:raise AssertionError(('geometry binding oracle missed',row['name'],k))
  assert roles=={96,112},roles
  print('PASS geometry result oracle:',controls,'corruptions detected; canonical signatures/layouts and unchanged classic bytes',flush=True)
- for extra,result,body in(('Other:adt{x:int;y:int;};','Other','v:=draw->take();'),('','Draw->Rect','out=draw->take();'),('','Draw->Rect','return draw->take();')):
+ for extra,result,body in(('Other:adt{x:int;y:int;};','Other','v:=draw->take();'),('','Draw->Rect','return draw->take();')):
   tail=':Draw->Rect'if body.startswith('return')else''
   source='implement Closed;'+PREFIX+extra+'Fake:module{take:fn():'+result+';};Closed:module{run:fn()'+tail+';};draw:Fake;out:Draw->Rect;run()'+tail+'{'+body+'}'
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert len(closed)==1 and not closed[0]['accepted'],closed
- print('PASS geometry result boundary: foreign ADT, global and inherited results refused',flush=True)
+ print('PASS geometry result boundary: foreign ADT and inherited results refused; direct MP results exercised',flush=True)
  _,records=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True)
  r=next(r for r in records if r['name']=='reshaped');assert r['accepted']or r['pc']>783,r;print('AWM reshaped frontier:',r.get('pc'),r.get('reason'),flush=True)
 def unit():
