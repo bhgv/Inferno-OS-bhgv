@@ -316,13 +316,21 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
 {
  unsigned int i,k,j,found,bit;const Native64TypedStep*step;const Native64ModuleSite*site;const Native64ModuleImport*request;const uchar*map;
  for(i=0;i<f->count;i++){
-  step=f->code+i;if((step->returned>=208 && step->returned<=212)||step->returned==215)continue;if(step->op!=IMOVM && native64imagegeometryoffset(step->returned)==~0U)continue;
+  step=f->code+i;if((step->returned>=208 && step->returned<=212)||step->returned==215)continue;if(step->op!=IMOVM && !(step->returned==64 && (step->mode&ARM)==AXIMM && UDST(step->mode)==(AFP|AIND)) && native64imagegeometryoffset(step->returned)==~0U)continue;
   found=0;
   for(k=0;k<f->nsites;k++){
    site=f->sites+k;if(i<=site->first || i>=site->end)continue;
-   if(found++ || !site->external || site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
-   request=s->tables[site->table].imports+site->target;
-   if(!native64typedgeometryarg(step,f->bytes,s->databytes,request->bytes,request->map,request->mapbytes))return 0;
+   if(found++)return 0;
+   if(site->external){
+    if(site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
+    request=s->tables[site->table].imports+site->target;
+    if(!native64typedgeometryarg(step,f->bytes,s->databytes,request->bytes,request->map,request->mapbytes))return 0;
+   }else{
+    const Native64ModuleFunction*child;
+    if(site->target>=s->nfunctions || site->first>=f->count || f->code[site->first].op!=IFRAME || site->end>=f->count || f->code[site->end].op!=ICALL)return 0;
+    child=s->functions+site->target;
+    if(!native64modulemap(child->bytes,child->map,child->mapbytes,1) || !native64typedgeometryarg(step,f->bytes,s->databytes,child->bytes,child->map,child->mapbytes))return 0;
+   }
   }
   if(!found)return 0;
   map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;

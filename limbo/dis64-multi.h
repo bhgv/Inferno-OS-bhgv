@@ -518,6 +518,21 @@ typedchannelbinding(TypedMulti*c,Dis64TypedBody*p,Inst*binding,unsigned int*base
  return 1;
 }
 
+/* Exact by-value Draw geometry in a normal local CALL, not SPAWN. */
+static int
+typedlocalgeometryarg(Inst*in,Inst*frame,Decl*arg,Dis64TypedBody*p,Dis64TypedBody*child,unsigned int pc)
+{
+ Dis64Layout l={0};Addr a;Type*t;unsigned int i,base=0,at,wire,sm=0;long source=0,part;int actual,ok=0;
+ if(!typedwordgeometry(arg->ty,&l) || in->op!=IMOVM || in->mm!=Aimm || in->m.offset!=l.bytes || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset)goto done;
+ for(i=0;i<l.bytes;i+=4){if(!dis64layoutaddress(&child->frame,arg->offset+i,4,0,&at) || at<64 || at>65535 || (i && at!=base+i))goto done;if(!i)base=at;}
+ if(in->sm==Afpind || in->sm==Ampind){ok=typedimagegeometry(in,p,pc,base);goto done;}
+ t=in->s.native64type?in->s.native64type:in->s.decl?in->s.decl->ty:nil;
+ if((in->sm!=Afp && in->sm!=Amp) || t!=arg->ty)goto done;
+ for(i=0;i<l.bytes;i+=4){a=in->s;a.reg+=i;a.offset=0;if(!typedoperand(in->sm,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || (i && (wire!=sm || part!=source+i)))goto done;if(!i){source=part;sm=wire;}}
+ p->code[pc]=(Dis64Instruction){IMOVM,SRC(sm)|AXIMM|DST(AFP|AIND),l.bytes,source,base};p->returns[pc]=64;ok=1;
+ done:dis64layoutfree(&l);return ok?1:typedfail(p,"local-geometry-argument");
+}
+
 static int
 typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int depth,unsigned int *next,unsigned int *height)
 {
@@ -551,6 +566,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
+        if(c->loads && !spawning && kind==Tadt){if(!typedlocalgeometryarg(in,frame,arg,p,child,at-p->first))return 0;at++;continue;}
         if(spawning && (in->op!=op || (in->sm!=Afp && in->sm!=Amp && in->sm!=Aimm)))return typedfail(p,"spawn-argument");
         /* No later allocating argument may follow the pending String root. */
         if(c->loads && kind==Tstring && in->op==IMOVP && in->dm==Afp){

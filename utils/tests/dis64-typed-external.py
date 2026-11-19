@@ -61,7 +61,26 @@ def verify(data,r,imports,loads=False,rows=None):
                 preps.update((at,at+1,at+3));at+=2;o=original[at];prep=True
             sm=o['mode']>>3&7
             assert o['d']==[pending,next(x[0]for x in callee['frame']['leaves']if x[1]==arg[0])]
-            if r['code'][at][5]==125:
+            if arg[1]==1:
+                assert loads and arg[2]==arg[3]and arg[3]in(8,16)
+                assert o['op']==OPCODES['IMOVM']and o['mode']==(sm<<3)|64|5 and o['m']==arg[3]
+                width=arg[3];role=r['code'][at][5]
+                oldtarget=o['d'][1]
+                for i in range(0,width,4):
+                    assert next(l for l in callee['frame']['leaves']if l[0]==oldtarget+i)==[oldtarget+i,arg[0]+i,4,4,9]
+                    assert not(callee['frame']['map'][(arg[0]+i)//64]&(128>>((arg[0]+i)//8%8)))
+                if sm in(0,1):
+                    source=maps['frame'if sm else'data'][o['s'][0]];assert role==64
+                    for i in range(0,width,4):assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0]+i)==[o['s'][0]+i,source+i,4,4,9]
+                else:
+                    assert sm in(4,5);field=o['s'][1];source=maps['frame'if sm==5 else'data'][o['s'][0]]
+                    if field%8==4:
+                        assert field in((4,)if width==16 else(4,12));assert role==(217 if width==16 else 218+(field-4)//8)
+                    else:
+                        assert field in((0,16)if width==16 else(0,8,16,24));assert role==(160+field//16 if width==16 else 162+field//8)
+                    assert r['frame'if sm==5 else'data']['map'][source//64]&(128>>(source//8%8))
+                assert r['code'][at]==[o['op'],o['mode'],source,width,arg[0],role]
+            elif r['code'][at][5]==125:
                 assert loads and arg[1]in ROOTS;field_argument(o,r['code'][at],arg[0],maps)
             elif o['op']==OPCODES['ICVTAC']:
                 assert loads and arg[1:]==[13,4,8]and sm in(0,1)and o['m']is None

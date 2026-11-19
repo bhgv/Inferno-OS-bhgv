@@ -184,3 +184,9 @@ awm.init остаётся на PC180 multi-callee. Command accepted;
 Компилятор проходит screen.newwindow и обновление w.r в настоящем reshaped.
 Следующий отказ — PC791 multi-argument: Rect для локальной r2s в сообщении
 reshape. awm.init остаётся на PC180 multi-callee; графический AWM пока не запущен.
+
+Следующий этап: [Point/Rect в локальном CALL](native64-local-geometry-args.ru.md).
+Компилятор проходит r2s(nr) на PC791–794 настоящего reshaped.
+Следующий отказ — PC795 indirect-or-reserved-operand: подготовка Sys.sprint
+с w.tag и результатом r2s. awm.init остаётся на PC180 multi-callee;
+графический AWM и Android UI пока не запущены.
