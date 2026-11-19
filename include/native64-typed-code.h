@@ -86,6 +86,17 @@ native64typedchannel(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 }
 
 static int
+native64typedlocalgeometry(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int sm=USRC(s->mode),dm=UDST(s->mode),width=s->m&255,field=(unsigned long)s->m>>8,read=s->returned==208||s->returned==209;unsigned int mode;long value,owner;
+ if(s->returned<208 || s->returned>212 || s->op!=IMOVM || s->mode>255 || (s->mode&ARM)!=AXIMM || s->m<0 || (unsigned long)s->m>0x1810UL)return 0;
+ if(s->returned==212)return (sm==AFP||sm==AMP) && (dm==AFP||dm==AMP) && (s->m==8||s->m==16) && native64typedwordoperand(sm,s->s,fp,mp) && native64typedwordoperand(dm,s->d,fp,mp) && width<=(sm==AFP?fp:mp)-s->s && width<=(dm==AFP?fp:mp)-s->d;
+ if(width!=((s->returned==208||s->returned==210)?16:8) || (width==16?(field!=0&&field!=16):(field>24||field%8)))return 0;
+ mode=read?sm:dm;owner=read?s->s:s->d;value=read?s->d:s->s;
+ return (mode==(AFP|AIND)||mode==(AMP|AIND)) && ((read?dm:sm)==AFP || (read?dm:sm)==AMP) && native64typedrootoperand(mode&~AIND,owner,fp,mp) && native64typedwordoperand(read?dm:sm,value,fp,mp) && width<=((read?dm:sm)==AFP?fp:mp)-value;
+}
+
+static int
 native64typedfieldreference(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
  unsigned int sm=USRC(s->mode),mm=(s->mode&ARM)==AXINF?AFP:AMP,family=(unsigned long)s->m>>24,field=((unsigned long)s->m>>16)&255,other=s->m&65535;int valid=0;
@@ -289,6 +300,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==171){if(!native64typedtriplecopy(s,fpbytes))return 0;continue;}
         if(s->returned==194 || s->returned==196 || s->returned==201 || s->returned==202){unsigned int span=s->returned==201?32:s->returned==194?16:24;if(s->op!=IMOVMP || s->mode>255 || (s->mode&ARM)!=AXIMM || s->m || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes) || !native64typedrootoperand(dm,s->d,fpbytes,mpbytes) || span>(sm==AFP?fpbytes:mpbytes)-s->s || span>(dm==AFP?fpbytes:mpbytes)-s->d)return 0;continue;}
         if((s->returned>=189 && s->returned<=193) || s->returned==195 || s->returned==197 || s->returned==198 || s->returned==199 || s->returned==203){if(!native64typedaltstep(s,fpbytes,mpbytes))return 0;continue;}
+        if(s->returned>=208 && s->returned<=212){if(!native64typedlocalgeometry(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==207){if(!native64typedfieldreference(s,fpbytes,mpbytes) || s->d<0 || (unsigned long)s->d>=count)return 0;continue;}
         if(s->returned==205 || s->returned==206){if(!native64typedclientfield(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==188 || s->returned==204){if(!native64typedtransfer(s,fpbytes,mpbytes))return 0;continue;}
@@ -373,6 +385,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 		p->s.imm=s->s;
         if(s->returned==194 || s->returned==196 || s->returned==201 || s->returned==202){p->reg=0;p->d.ind=s->d;continue;}
         if((s->returned>=189 && s->returned<=193) || s->returned==195 || s->returned==197 || s->returned==198 || s->returned==199 || s->returned==203){p->reg=(s->returned==190 || s->returned==195 || s->returned==197 || s->returned==199 || s->returned==203)?256|s->m:0;p->d.ind=s->d;if(s->returned==192 || s->returned==193 || s->returned==198){p->s.i.f=s->s;p->s.i.s=s->returned==192?64:s->m;}continue;}
+        if(s->returned>=208 && s->returned<=212){p->reg=s->m&255;if(s->returned==208 || s->returned==209){p->s.i.f=s->s;p->s.i.s=s->m>>8;p->d.ind=s->d;}else if(s->returned==212)p->d.ind=s->d;else{p->d.i.f=s->d;p->d.i.s=s->m>>8;}continue;}
         if(s->returned==207){p->reg=s->m&65535;p->s.i.f=s->s;p->s.i.s=(s->m>>16)&255;p->d.ins=out+s->d;continue;}
         if(s->returned==205 || s->returned==206){p->reg=0;if(USRC(s->mode)&AIND){p->s.i.f=s->s;p->s.i.s=s->m;p->d.ind=s->d;}else{p->d.i.f=s->d;p->d.i.s=s->m;}continue;}
         if(s->returned==204){p->reg=0;if(s->op==ISEND){p->d.i.f=s->d;p->d.i.s=s->m>>8;}else{p->s.i.f=s->s;p->s.i.s=s->m>>8;p->d.ind=s->d;}continue;}

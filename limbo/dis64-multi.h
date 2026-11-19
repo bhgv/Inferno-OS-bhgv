@@ -672,6 +672,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedaltinst(in,fn,p,pc-p->first))goto fail;
             if(in->op==IALT){unsigned int start=pc-p->first-2-2*p->code[pc-p->first].middle;for(i=start+1;i<=pc-p->first;i++)inside[i]=1;}
             pc++;
+        }else if(c->loads && in->op==IMOVM){
+            if(!typedlocalgeometry(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && p->resulttriple && in->op==IMOVMP){
             Desc*d;unsigned int base=0;
             for(d=descriptors;d && d->id!=in->m.offset;d=d->next);

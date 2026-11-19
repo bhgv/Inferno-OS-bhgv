@@ -46,11 +46,11 @@ def refusals(limbo,w):
  for declaration,owner,expression,kind in (
   ('Other:adt{display:ref Display;};','Other','obj.display','ref Display'),
   ('Fake:module{Image:adt{display:ref Draw->Display;};};','Fake->Image','obj.display','ref Display'),
-  ('','Image','obj.r','Draw->Rect')):
+  ('','Image','obj.depth','int')):
   text='implement Closed;'+PREFIX+declaration+'Closed:module{run:fn(obj:ref '+owner+');};value:'+kind+';run(obj:ref '+owner+'){value='+expression+';}'
   _,rows=E['compile_source'](limbo,w,text,interface='',loads=True)
   assert len(rows)==1 and not rows[0]['accepted'],rows
- print('PASS Draw compiler boundary: foreign owner, wrong namespace and aggregate field refused; classic bytes preserved',flush=True)
+ print('PASS Draw compiler boundary: foreign owner, wrong namespace and scalar field refused; classic bytes preserved',flush=True)
  text='implement FieldLocal;'+PREFIX+'FieldLocal:module{run:fn(obj:ref Image);};value:ref Display;sink(v:ref Display){value=v;}run(obj:ref Image){sink(obj.display);}'
  data,rows=E['compile_source'](limbo,w,text,interface='',loads=True);imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]
  assert all(r['accepted']for r in rows)and any(c[5]==125 for r in rows for c in r['code']),rows

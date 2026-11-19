@@ -281,6 +281,24 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned in(208,209,210,211,212):
+            assert loads and op==o['op']==OPCODES['IMOVM']and mode==o['mode']and mode&192==64
+            width=16 if returned in(208,210)else 8 if returned in(209,211)else m
+            assert width in(8,16)and o['m']==width
+            sm=mode>>3&7;dm=mode&7
+            if returned==212:
+                assert sm in(0,1)and dm in(0,1)and m==width
+                for address,old,new in((sm,o['s'][0],s),(dm,o['d'][0],d)):
+                    leaves=r['frame'if address else'data']['leaves']
+                    for i in range(0,width,4):assert next(l for l in leaves if l[0]==old+i)==[old+i,new+i,4,4,9]
+            else:
+                read=returned in(208,209);cm=sm if read else dm;vm=dm if read else sm;ca=o['s']if read else o['d'];va=o['d']if read else o['s']
+                assert cm in(4,5)and vm in(0,1)and ca[1]in((0,16)if width==16 else(0,8,16,24))and m==(ca[1]<<8)|width
+                assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]==12
+                assert(s if read else d)==maps['frame'if cm==5 else'data'][ca[0]]
+                leaves=r['frame'if vm else'data']['leaves'];value=d if read else s
+                for i in range(0,width,4):assert next(l for l in leaves if l[0]==va[0]+i)==[va[0]+i,value+i,4,4,9]
+            continue
         if returned==207:
             assert loads and o['op']in(93,94)and op==(OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'])and mode==o['mode']
             sm=mode>>3&7;mm=mode&192;assert sm in(4,5)and mm in(128,192)and mode&7==2

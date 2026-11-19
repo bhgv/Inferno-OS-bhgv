@@ -425,6 +425,7 @@ def main():
     run([sys.executable,str(tests/'native64-fileio-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'fileio-alt.log')
     run([sys.executable,str(tests/'native64-client-channels.py'),'--limbo',str(tools/'limbo')],build,env,logs/'client-channels.log')
     run([sys.executable,str(tests/'native64-field-reference.py'),'--limbo',str(tools/'limbo')],build,env,logs/'field-reference.log')
+    run([sys.executable,str(tests/'native64-local-image-geometry.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-image-geometry.log')
     run([sys.executable,str(tests/'native64-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'alt.log')
     run([sys.executable,str(tests/'native64-local-concat.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-concat.log')
     run([sys.executable,str(tests/'native64-process-exit.py'),'--limbo',str(tools/'limbo')],build,env,logs/'process-exit.log')

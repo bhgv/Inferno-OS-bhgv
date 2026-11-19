@@ -59,3 +59,34 @@ typedimagegeometryprep(Inst*in,Inst*copy,Dis64TypedBody*p,unsigned int pc)
     copy->op!=IMOVM || copy->sm!=Afpind || copy->s.reg!=in->d.reg || copy->s.decl!=in->d.decl || typeddrawowner(&copy->s)!=1 || in->s.native64type!=typedfieldowner(&copy->s) || !typeddrawfield(in,p,pc,0,nil))return typedfail(p,"image-geometry-prep");
  p->code[pc].middle=p->contextfields[pc];p->returns[pc]=166;return 1;
 }
+
+/* Numeric Image geometry copied to/from ordinary FP/MP geometry, not a call frame. */
+static int
+typedlocalgeometry(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
+{
+ Dis64Layout l={0},other={0};Addr a,*image=nil,*direct;Inst probe=*in;Type*t;long base=0,value=0,part,field=0;unsigned int mode,wire,i,bytes=0,read,indirect;int actual,ok=0;
+ read=in->sm==Afpind || in->sm==Ampind;indirect=read || in->dm==Afpind || in->dm==Ampind;
+ if(in->op!=IMOVM || in->mm!=Aimm || in->branch || (read && (in->dm==Afpind || in->dm==Ampind)))goto done;
+ if(indirect){
+  image=read?&in->s:&in->d;direct=read?&in->d:&in->s;mode=read?in->dm:in->sm;field=image->offset;
+  t=image->native64type?image->native64type:image->decl?image->decl->ty:nil;
+  if(typeddrawowner(image)!=1 || !typedwordgeometry(t,&l))goto done;bytes=l.bytes;
+  if(in->m.offset!=bytes || (bytes==16?(field!=0 && field!=16):(field<0 || field>24 || field%8)))goto done;
+  probe.op=IMOVP;probe.s=*image;probe.sm=read?in->sm:in->dm;probe.s.offset=44;probe.mm=Anone;probe.dm=Afp;probe.branch=nil;
+  if(!typeddrawfield(&probe,p,in->pc-p->first,1,nil))goto done;base=p->code[in->pc-p->first].source;
+  t=direct->native64type?direct->native64type:direct->decl?direct->decl->ty:nil;
+  if(!typedwordgeometry(t,&other) || other.bytes!=bytes || (mode!=Afp && mode!=Amp))goto done;
+  for(i=0;i<bytes;i+=4){a=*direct;a.reg+=i;a.offset=0;if(!typedoperand(mode,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || (i && part!=value+i))goto done;if(!i)value=part;}
+  *out=(Dis64Instruction){IMOVM,read?SRC((in->sm==Afpind?AFP:AMP)|AIND)|AXIMM|DST(mode==Afp?AFP:AMP):SRC(mode==Afp?AFP:AMP)|AXIMM|DST((in->dm==Afpind?AFP:AMP)|AIND),(field<<8)|bytes,read?base:value,read?value:base};
+  *returned=read?(bytes==16?208:209):(bytes==16?210:211);
+ }else{
+  if((in->sm!=Afp && in->sm!=Amp) || (in->dm!=Afp && in->dm!=Amp))goto done;
+  t=in->s.native64type?in->s.native64type:in->s.decl?in->s.decl->ty:nil;if(!typedwordgeometry(t,&l))goto done;bytes=l.bytes;
+  t=in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;if(!typedwordgeometry(t,&other) || other.bytes!=bytes || in->m.offset!=bytes)goto done;
+  for(i=0;i<bytes;i+=4){a=in->s;a.reg+=i;a.offset=0;if(!typedoperand(in->sm,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || (i && part!=base+i))goto done;if(!i)base=part;
+   a=in->d;a.reg+=i;a.offset=0;if(!typedoperand(in->dm,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || (i && part!=value+i))goto done;if(!i)value=part;}
+  *out=(Dis64Instruction){IMOVM,SRC(in->sm==Afp?AFP:AMP)|AXIMM|DST(in->dm==Afp?AFP:AMP),bytes,base,value};*returned=212;
+ }
+ ok=1;
+ done:dis64layoutfree(&l);dis64layoutfree(&other);return ok?1:typedfail(p,"local-image-geometry");
+}

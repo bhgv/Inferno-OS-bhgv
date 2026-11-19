@@ -157,3 +157,8 @@ Command остаётся accepted; графический AWM ещё не зап
 Настоящий awm.init проходит win.image/screen.image на PC178. Следующий отказ —
 PC180 multi-callee: reshaped пока отказывается на PC716, IMOVM локального Rect
 из Image.r. Command остаётся accepted; графический AWM ещё не запущен.
+
+Следующий этап: [локальная Image geometry](native64-local-image-geometry.ru.md).
+Настоящий reshaped проходит PC716 и доходит до PC762 load-nil-roles для списка
+z.wins. Пока этот callee не принят целиком, awm.init остаётся на PC180
+multi-callee. Command остаётся accepted; графический AWM ещё не запущен.

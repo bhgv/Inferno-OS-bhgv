@@ -315,7 +315,7 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
 {
  unsigned int i,k,j,found,bit;const Native64TypedStep*step;const Native64ModuleSite*site;const Native64ModuleImport*request;const uchar*map;
  for(i=0;i<f->count;i++){
-  step=f->code+i;if(step->op!=IMOVM && (step->returned<160 || step->returned>165))continue;
+  step=f->code+i;if(step->returned>=208 && step->returned<=212)continue;if(step->op!=IMOVM && (step->returned<160 || step->returned>165))continue;
   found=0;
   for(k=0;k<f->nsites;k++){
    site=f->sites+k;if(i<=site->first || i>=site->end)continue;
@@ -446,6 +446,12 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;
                 if(!!(map[bit/8]&(0x80>>(bit%8)))!=roots[k])return 0;
             }
+        }
+        for(j=0;j<f->count;j++)if(f->code[j].returned>=208 && f->code[j].returned<=212){
+            unsigned int k,modes[2],offsets[2],width;step=f->code+j;if(!native64typedlocalgeometry(step,f->bytes,s->databytes))return 0;width=step->m&255;
+            modes[0]=USRC(step->mode);modes[1]=UDST(step->mode);offsets[0]=step->s;offsets[1]=step->d;
+            for(k=0;k<2;k++){map=(modes[k]&~AIND)==AFP?f->map:s->datamap;if(modes[k]&AIND){bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}else for(at=0;at<width;at++){bit=(offsets[k]+at)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}}
+            for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
         for(j=0;j<f->count;j++)if(f->code[j].returned==207 || ((f->code[j].op==IBEQL || f->code[j].op==IBNEL) && (USRC(f->code[j].mode)&AIND) && f->code[j].m>=0x1000000L)){
             unsigned int k,modes[2],offsets[2];step=f->code+j;if(!native64typedfieldreference(step,f->bytes,s->databytes) || step->d<0 || (unsigned long)step->d>=f->count)return 0;
