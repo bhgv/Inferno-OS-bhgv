@@ -40,7 +40,17 @@ typedselectedfieldarg(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offs
   if(in->s.offset!=20 || !typedclientaddress(&in->s,in->sm,p,&base,&wire,&part,&actual) || part!=40 || actual!=Tstring)return typedfail(p,"client-cursor-argument");
   *out=(Dis64Instruction){IMOVP,SRC(wire)|DST(AFP|AIND),40,base,offset};p->returns[pc]=233;return 1;
  }
+ if(kind==Tchan && typedwmref(typedfieldowner(&in->s),"Draw","Wmcontext")){
+  long base,part;unsigned int wire;
+  if(in->s.offset!=4 || !typedwmcontextchannel(&in->s,in->sm,p,&base,&wire,&part) || part!=8)return typedfail(p,"wmcontext-pointer-argument");
+  *out=(Dis64Instruction){IMOVP,SRC(wire)|DST(AFP|AIND),8,base,offset};p->returns[pc]=125;return 1;
+ }
  field.dm=Afp;field.d=in->s;
+ if(typedwmsrvwindow(typedfieldowner(&in->s))){
+  long base;unsigned int wire;
+  if((kind==Tstring?in->s.offset!=0:kind!=Tref || in->s.offset!=20) || !typedwmsrvwindowbase(&in->s,in->sm,p,&base,&wire))return typedfail(p,"window-field-argument");
+  *out=(Dis64Instruction){IMOVP,SRC(wire)|DST(AFP|AIND),kind==Tstring?0:24,base,offset};p->returns[pc]=125;return 1;
+ }
  if(!(typedwindowowner(&in->s)?typedwindowfield(&field,p,pc,1,nil):typeddrawowner(&in->s)?typeddrawfield(&field,p,pc,1,nil):typedclientfield(&field,p,pc,1)))return 0;
  *out=(Dis64Instruction){IMOVP,SRC(USRC(out->mode))|DST(AFP|AIND),p->contextfields[pc],out->source,offset};p->returns[pc]=125;return 1;
 }
@@ -66,13 +76,16 @@ typedimagegeometry(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offset)
  p->code[pc]=(Dis64Instruction){IMOVM,SRC(USRC(p->code[pc].mode))|AXIMM|DST(AFP|AIND),bytes,p->code[pc].source,offset};p->returns[pc]=bytes==16?160+field/16:162+field/8;return 1;
 }
 
-/* Exact Screen.fill temporary used immediately by Image Rect/Point copy. */
+/* Screen.fill or Wmsrv.Window.img rooted for an immediate Image geometry copy. */
 static int
 typedimagegeometryprep(Inst*in,Inst*copy,Dis64TypedBody*p,unsigned int pc)
 {
- if(!copy || typeddrawowner(&in->s)!=2 || in->s.offset!=8 || in->dm!=Afp || in->mm!=Anone || in->branch || !in->d.decl || in->d.decl->store!=Dlocal || !in->d.decl->sym || in->d.decl->sym->name[0]!='.' || in->d.decl->sym->name[1]!='t' || in->d.offset ||
-    copy->op!=IMOVM || copy->sm!=Afpind || copy->s.reg!=in->d.reg || copy->s.decl!=in->d.decl || typeddrawowner(&copy->s)!=1 || in->s.native64type!=typedfieldowner(&copy->s) || !typeddrawfield(in,p,pc,0,nil))return typedfail(p,"image-geometry-prep");
- p->code[pc].middle=p->contextfields[pc];p->returns[pc]=166;return 1;
+ int window=typedwmsrvwindow(typedfieldowner(&in->s));uchar role;
+ if(!copy || (window?in->s.offset!=20:typeddrawowner(&in->s)!=2 || in->s.offset!=8) || in->dm!=Afp || in->mm!=Anone || in->branch || !in->d.decl || in->d.decl->store!=Dlocal || !in->d.decl->sym || in->d.decl->sym->name[0]!='.' || in->d.decl->sym->name[1]!='t' || in->d.offset ||
+    copy->op!=IMOVM || copy->sm!=Afpind || copy->s.reg!=in->d.reg || copy->s.decl!=in->d.decl || typeddrawowner(&copy->s)!=1 || in->s.native64type!=typedfieldowner(&copy->s))return typedfail(p,"image-geometry-prep");
+ if(window){if(!typedwmsrvwindowfield(in,p,p->code+pc,&role))return 0;}
+ else{if(!typeddrawfield(in,p,pc,0,nil))return 0;p->code[pc].middle=p->contextfields[pc];}
+ p->returns[pc]=166;return 1;
 }
 
 /* Screen.image rooted temporarily for a numeric argument of a local CALL. */

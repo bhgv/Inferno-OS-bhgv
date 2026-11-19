@@ -146,8 +146,8 @@ native64moduledrawfields(const Native64ModuleSpec*s,const Native64ModuleFunction
   step=f->code+i;
   if(step->returned==166 || step->returned==235){
    Native64TypedStep copy=*step;const Native64TypedStep*next;
-   copy.returned=Native64TypedDraw;
-   if(i+2>=f->count || step->m!=(step->returned==235?8:16) || UDST(step->mode)!=AFP || (USRC(step->mode)!=(AFP|AIND) && USRC(step->mode)!=(AMP|AIND)) || !native64typeddrawstep(&copy,f->bytes,s->databytes))return 0;
+   copy.returned=step->m==24?214:Native64TypedDraw;
+   if(i+2>=f->count || (step->returned==235?step->m!=8:step->m!=16 && step->m!=24) || UDST(step->mode)!=AFP || (USRC(step->mode)!=(AFP|AIND) && USRC(step->mode)!=(AMP|AIND)) || !(step->m==24?native64typedwmsrvwindow(&copy,f->bytes,s->databytes):native64typeddrawstep(&copy,f->bytes,s->databytes)))return 0;
    next=f->code+i+1;if(next->returned<160 || next->returned>165 || next->op!=IMOVM || USRC(next->mode)!=(AFP|AIND) || next->s!=step->d || f->code[i+2].returned!=Native64TypedArgClear || f->code[i+2].d!=step->d)return 0;
    found=0;for(k=0;k<f->nsites;k++)if(f->sites[k].first<i && i+2<f->sites[k].end && f->sites[k].external==(step->returned==166))found++;if(found!=1)return 0;
    map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if(0==(map[bit/8]&(128>>(bit%8))))return 0;bit=step->d/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;continue;

@@ -430,6 +430,7 @@ def main():
     run([sys.executable,str(tests/'native64-window-geometry-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'window-geometry-args.log')
     run([sys.executable,str(tests/'native64-geometry-results.py'),'--limbo',str(tools/'limbo')],build,env,logs/'geometry-results.log')
     run([sys.executable,str(tests/'native64-window-image-result.py'),'--limbo',str(tools/'limbo')],build,env,logs/'window-image-result.log')
+    run([sys.executable,str(tests/'native64-window-image-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'window-image-args.log')
     run([sys.executable,str(tests/'native64-local-geometry-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-geometry-args.log')
     run([sys.executable,str(tests/'native64-local-geometry-results.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-geometry-results.log')
     run([sys.executable,str(tests/'native64-rect-list.py'),'--limbo',str(tools/'limbo')],build,env,logs/'rect-list.log')

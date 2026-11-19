@@ -304,9 +304,9 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert nominals[j]in(None,'Draw.Pointer') and (nominals[j]!='Draw.Pointer' or r['code'][at][5]==227)
                 assert n and width==oldbytes and layout=={'legacy_bytes':oldbytes,'bytes':width,'map':[0],'leaves':[[4*k,4*k,4,4,9]for k in range(n)]}
                 if r['code'][at][5]==166:
-                    assert a['op']==41 and sm in(4,5)and a['mode']==(sm<<3)|1 and a['m']is None and a['s'][1]==8
+                    assert a['op']==41 and sm in(4,5)and a['mode']==(sm<<3)|1 and a['m']is None and a['s'][1]in(8,20)
                     temp=maps['frame'][a['d'][0]]
-                    assert r['code'][at]==[41,a['mode'],maps['frame'if sm==5 else'data'][a['s'][0]],16,temp,166]
+                    assert r['code'][at]==[41,a['mode'],maps['frame'if sm==5 else'data'][a['s'][0]],16 if a['s'][1]==8 else 24,temp,166]
                     at+=1;a=original[at];sm=a['mode']>>3&7;assert sm==5 and maps['frame'][a['s'][0]]==temp
                 if a['op']==OPCODES['IMOVM']and sm in(4,5):
                     field=a['s'][1]

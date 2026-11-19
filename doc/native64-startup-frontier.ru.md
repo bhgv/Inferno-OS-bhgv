@@ -273,3 +273,10 @@ handlerequest проходит PC596–606, включая преобразов�
 останавливается на PC859 context-field-roles, sizewin — PC901
 load-byte-array-class. awm.init пока на PC303. Окно AWM и Android UI
 ещё не запущены.
+
+Следующий этап: [Window.img и аргументы локальных вызовов](native64-window-image-args.ru.md).
+Причина отказа PC859 уточнена: Window.img в Image.origin, а не Context.
+dragwin принята целиком; Window.tag передаётся в reshape, Wmcontext.ptr —
+в dragwin. handlerequest проходит PC607 и останавливается на PC618
+multi-call при подготовке Point для sizewin. sizewin пока на PC901
+load-byte-array-class, awm.init — PC303. Окно AWM и Android UI не запущены.
