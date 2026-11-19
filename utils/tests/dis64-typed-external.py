@@ -210,8 +210,16 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert r['code'][at]==[41,a['mode'],maps['frame'if sm==5 else'data'][a['s'][0]],16,temp,166]
                     at+=1;a=original[at];sm=a['mode']>>3&7;assert sm==5 and maps['frame'][a['s'][0]]==temp
                 if a['op']==OPCODES['IMOVM']and sm in(4,5):
-                    assert oldbytes in(8,16)and a['mode']==(sm<<3)|64|5 and a['m']==oldbytes and a['d']==[pending,oldoffset]and a['s'][1]in((0,16)if oldbytes==16 else(0,8,16,24))
-                    assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm==5 else'data'][a['s'][0]],oldbytes,new,(160+a['s'][1]//16)if oldbytes==16 else(162+a['s'][1]//8)];at+=1
+                    field=a['s'][1]
+                    assert oldbytes in(8,16)and a['mode']==(sm<<3)|64|5 and a['m']==oldbytes and a['d']==[pending,oldoffset]
+                    # Window.r has classic offset4 and native offset8; Image starts at0.
+                    if field%8==4:
+                        assert field in((4,)if oldbytes==16 else(4,12))
+                        role=217 if oldbytes==16 else 218+(field-4)//8
+                    else:
+                        assert field in((0,16)if oldbytes==16 else(0,8,16,24))
+                        role=(160+field//16)if oldbytes==16 else(162+field//8)
+                    assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm==5 else'data'][a['s'][0]],oldbytes,new,role];at+=1
                 elif a['op']==OPCODES['IMOVM']:
                     assert sm in(0,1)and a['mode']==(sm<<3)|64|5 and a['m']==oldbytes and a['d']==[pending,oldoffset]
                     source=maps['frame'if sm else'data'][a['s'][0]]

@@ -96,8 +96,10 @@ typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned
   (*at)++;
   if(in->sm==Afpind){unsigned int clear=*at;Inst store=*in;store.op=IMOVP;store.sm=Afp;store.s.offset=0;if(!typedrootargclear(c,p,&store,end,at) || (prepared && clear==*at))goto done;}
  }else if(in->op==IMOVM){
+  /* A selected Point can belong to a Rect declaration; prove the expression
+   * type, then every contiguous relocated Tint leaf below. */
   if(in->mm!=Aimm || in->m.offset!=layout.bytes || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
-     (in->sm!=Afp && in->sm!=Amp) || !in->s.decl || in->s.decl->ty!=arg->ty)goto done;
+     (in->sm!=Afp && in->sm!=Amp) || !in->s.decl || (in->s.native64type?in->s.native64type:in->s.decl->ty)!=arg->ty)goto done;
   for(i=0;i<layout.count;i++){
    sourceaddr=in->s;sourceaddr.reg+=4*i;sourceaddr.offset=0;
    if(!typedoperand(in->sm,&sourceaddr,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || (i && (wire!=sm || part!=source+4*i)))goto done;

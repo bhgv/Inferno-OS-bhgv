@@ -40,11 +40,17 @@ typedselectedfieldarg(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offs
  *out=(Dis64Instruction){IMOVP,SRC(USRC(out->mode))|DST(AFP|AIND),p->contextfields[pc],out->source,offset};p->returns[pc]=125;return 1;
 }
 
-/* Only Image.r/clipr and their Point halves; scalar offsets stay unchanged. */
+/* Exact Image.r/clipr or Wmsrv.Window.r and their Point halves. */
 static int
 typedimagegeometry(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offset)
 {
  Inst probe=*in;long field=in->s.offset;Dis64Layout layout={0};int ok;unsigned int bytes;
+ long base;unsigned int wire;
+ if(typedwmsrvwindow(typedfieldowner(&in->s))){
+  if(!typedwordgeometry(in->s.native64type,&layout) || in->m.offset!=layout.bytes || (layout.bytes==16?field!=4:(field!=4 && field!=12)) || !typedwmsrvwindowbase(&in->s,in->sm,p,&base,&wire)){dis64layoutfree(&layout);return typedfail(p,"window-geometry-owner");}
+  bytes=layout.bytes;dis64layoutfree(&layout);
+  p->code[pc]=(Dis64Instruction){IMOVM,SRC(wire)|AXIMM|DST(AFP|AIND),bytes,base,offset};p->returns[pc]=bytes==16?217:field==4?218:219;return 1;
+ }
  if(typeddrawowner(&in->s)!=1 || !typedwordgeometry(in->s.native64type,&layout) || in->m.offset!=layout.bytes || (layout.bytes==16?(field!=0 && field!=16):(field<0 || field>24 || field%8))){dis64layoutfree(&layout);return typedfail(p,"image-geometry-owner");}
  bytes=layout.bytes;dis64layoutfree(&layout);probe.op=IMOVP;probe.mm=Anone;probe.dm=Afp;probe.s.offset=44;probe.branch=nil;
  ok=typeddrawfield(&probe,p,pc,1,nil);if(!ok)return 0;

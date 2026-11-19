@@ -167,3 +167,9 @@ multi-callee. Command остаётся accepted; графический AWM ещ
 Настоящий reshaped проходит PC762–764 (nil/hd/w.img=nil) и доходит до PC765:
 image-geometry-owner для передачи w.r в геометрический вызов. awm.init пока
 остаётся на PC180 multi-callee; Command accepted, графический AWM не запущен.
+
+Следующий этап: [аргументы геометрии Wmsrv.Window](native64-window-geometry-args.ru.md).
+Настоящий reshaped проходит подготовку w.r и oldr.min для Rect.subpt.
+На PC765 остаётся external-result-kind: нужен возврат Draw.Rect из импорта.
+awm.init остаётся на PC180 multi-callee. Command accepted;
+графический AWM и Android UI пока не запущены.

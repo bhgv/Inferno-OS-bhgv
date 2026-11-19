@@ -11,11 +11,11 @@ struct Native64TypedCall {
     unsigned int external,modulemode,moduleoffset,resultcontract; /* Separate callee proof for contract72. */
 };
 
-/* Image.r/clipr and their Point halves keep scalar offsets unchanged. */
+/* Exact numeric Image/Window field displacements; Word leaves stay 32-bit. */
 static unsigned int
 native64imagegeometryoffset(unsigned int tag)
 {
- static const unsigned int offsets[]={0,16,0,8,16,24};return tag>=160 && tag<=165?offsets[tag-160]:~0U;
+ static const unsigned int offsets[]={0,16,0,8,16,24};return tag>=160 && tag<=165?offsets[tag-160]:tag==217 || tag==218?8:tag==219?16:~0U;
 }
 
 /* Numeric Draw.Point/Rect copies into a prepared imported frame. */
@@ -23,8 +23,8 @@ static int
 native64typedgeometryarg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const uchar*map,unsigned int np)
 {
  unsigned int sm=USRC(s->mode),i,bit,sourcebytes=sm==AFP?fp:mp;
- if((s->returned>=160 && s->returned<=165) && (sm==(AFP|AIND) || sm==(AMP|AIND))){
-  if(s->op!=IMOVM || s->mode!=(SRC(sm)|AXIMM|DST(AFP|AIND)) || s->m!=(s->returned<162?16:8) || !native64typedrootoperand(sm&~AIND,s->s,fp,mp) || s->d<64 || s->d%4 || s->d>65535 || (unsigned long)s->d>bytes || (unsigned long)s->m>bytes-s->d || map==nil || map==H || np!=(bytes+63)/64)return 0;
+ if((native64imagegeometryoffset(s->returned)!=~0U) && (sm==(AFP|AIND) || sm==(AMP|AIND))){
+  if(s->op!=IMOVM || s->mode!=(SRC(sm)|AXIMM|DST(AFP|AIND)) || s->m!=(s->returned<162 || s->returned==217?16:8) || !native64typedrootoperand(sm&~AIND,s->s,fp,mp) || s->d<64 || s->d%4 || s->d>65535 || (unsigned long)s->d>bytes || (unsigned long)s->m>bytes-s->d || map==nil || map==H || np!=(bytes+63)/64)return 0;
  }else if(s->op!=IMOVM || s->mode!=(SRC(sm)|AXIMM|DST(AFP|AIND)) || (sm!=AFP && sm!=AMP) || s->returned!=64 ||
     (s->m!=8 && s->m!=16) || s->s<0 || s->s%4 || (sm==AFP && s->s<64) || (unsigned long)s->s>sourcebytes ||
     (unsigned long)s->m>sourcebytes-s->s || s->d<64 || s->d%4 || s->d>65535 || (unsigned long)s->d>bytes || (unsigned long)s->m>bytes-s->d ||
@@ -213,7 +213,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 s=steps+j;p=out+j;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;
                 if(j==i){p->s.imm=c->external?c->moduleoffset:c->ordinal;p->reg=c->external?c->ordinal:0;p->d.ind=40;}
                 else if(j==c->end){p->s.ind=40;if(c->external){p->reg=c->ordinal;p->d.ind=c->moduleoffset;}else p->d.ins=c->target;}
-                else if(s->op==IMOVM && (s->returned>=160 && s->returned<=165)){p->s.i.f=s->s;p->s.i.s=native64imagegeometryoffset(s->returned);p->reg=s->m;p->d.i.f=40;p->d.i.s=s->d;}
+                else if(s->op==IMOVM && (native64imagegeometryoffset(s->returned)!=~0U)){p->s.i.f=s->s;p->s.i.s=native64imagegeometryoffset(s->returned);p->reg=s->m;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==Native64TypedFieldArg){p->s.i.f=s->s;p->s.i.s=s->m;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==187){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
                 else if(s->returned==182){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
