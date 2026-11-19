@@ -141,18 +141,22 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"client-context-geometry");
 }
 
+static int typedclientchanneladdress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
+
 /* Primitive channel transfer; aggregate payloads and borrowed outputs stay closed. */
 static int
 typedclienttransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {
  Addr*ca=in->op==ISEND?&in->d:&in->s;Addr*va=in->op==ISEND?&in->s:&in->d;int cm=in->op==ISEND?in->dm:in->sm,vm=in->op==ISEND?in->sm:in->dm,actual,kind,root;
- Type*t=ca->native64type?ca->native64type:ca->decl?ca->decl->ty:nil;unsigned int cw,vw,width;long channel,value;
- if(in->mm!=Anone || in->branch || !t || t->kind!=Tchan || !t->tof || !typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&cw,&actual) || actual!=Tchan)return typedfail(p,"channel-transfer-owner");
- kind=t->tof->kind;root=kind==Tstring || kind==Tref || kind==Tchan || kind==Tarray || kind==Tlist || kind==Tmodule;
+ Type*t=ca->native64type?ca->native64type:ca->decl?ca->decl->ty:nil;unsigned int cw,vw,width;long channel,value,field=0;int indirect=cm==Afpind || cm==Ampind;
+ if(in->mm!=Anone || in->branch)return typedfail(p,"channel-transfer-owner");
+ if(indirect){if(!typedclientchanneladdress(ca,cm,p,&channel,&cw,&field,&kind))return typedfail(p,"client-channel-field");}
+ else{if(!t || t->kind!=Tchan || !t->tof || !typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&cw,&actual) || actual!=Tchan)return typedfail(p,"channel-transfer-owner");kind=t->tof->kind;}
+ root=kind==Tstring || kind==Tref || kind==Tchan || kind==Tarray || kind==Tlist || kind==Tmodule;
  if(!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal)return typedfail(p,"channel-transfer-payload");
  width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
  if(!typedoperand(vm,va,root?TypedRoot:kind==Tfix?Tint:kind,in->op==ISEND&&!root&&width<8,0,p,&value,&vw,&actual) || (root && actual!=kind && actual!=Tany))return typedfail(p,"channel-transfer-value");
- *out=(Dis64Instruction){in->op,in->op==ISEND?SRC(vw)|DST(cw):SRC(cw)|DST(vw),width|(root?16:0),in->op==ISEND?value:channel,in->op==ISEND?channel:value};*returned=188;return 1;
+ *out=(Dis64Instruction){in->op,in->op==ISEND?SRC(vw)|DST(cw):SRC(cw)|DST(vw),(field<<8)|width|(root?16:0),in->op==ISEND?value:channel,in->op==ISEND?channel:value};*returned=indirect?204:188;return 1;
 }
 
 /* Shared native channel result/capacity geometry, after nominal payload proof. */
@@ -253,6 +257,7 @@ typedcontextcopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
 
 #include "dis64-window.h"
 #include "dis64-wmcontext.h"
+#include "dis64-client-channels.h"
 #include "dis64-draw-fields.h"
 
 /* Immutable byte constants are immediate operands, never mutable MP storage. */
@@ -691,6 +696,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->loads && in->op==IMOVP && (in->sm==Afpind || in->sm==Ampind) && (in->dm==Afpind || in->dm==Ampind)){
             if(!typedcontextcopy(in,p,pc-p->first))goto fail;pc++;
+        }else if(c->loads && (in->op==IMOVP || in->op==IMOVW) &&
+          (in->sm==Afpind || in->sm==Ampind || in->dm==Afpind || in->dm==Ampind) &&
+          typedwmref(typedfieldowner((in->sm==Afpind || in->sm==Ampind)?&in->s:&in->d),"Wmsrv","Client")){
+            if(!typedclientfieldmove(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && in->op==IMOVP && (in->sm==Afpind || in->sm==Ampind || (in->dm==Afpind && in->d.reg!=16) || in->dm==Ampind)){
             Addr*field=(in->sm==Afpind || in->sm==Ampind)?&in->s:&in->d;
             int window=c->loads && typedwindowowner(field),draw=c->loads && typeddrawowner(field);

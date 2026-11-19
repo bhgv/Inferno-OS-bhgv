@@ -281,6 +281,29 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned in(205,206):
+            assert loads and op==o['op']==OPCODES['IMOVP'if returned==205 else'IMOVW']and o['m']is None and mode==o['mode']
+            sm=mode>>3&7;dm=mode&7;read=sm in(4,5);cm=sm if read else dm;vm=dm if read else sm;ca=o['s']if read else o['d'];va=o['d']if read else o['s']
+            assert cm in(4,5)and vm in(0,1,2)
+            fields=[0,8,16,24,32,40,48,56,64,72,76,80,88];assert ca[1]%4==0 and 0<=ca[1]<=48
+            assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]==12
+            assert (ca[1]//4 in(4,9,10,11))==(returned==206)
+            if vm!=2:
+                leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==va[0]);assert leaf[3]==(8 if returned==205 else 4)and (leaf[4]in ROOTS+(20,))==(returned==205)
+            value=va[0]if vm==2 else maps['frame'if vm else'data'][va[0]];owner=maps['frame'if cm==5 else'data'][ca[0]]
+            assert r['code'][pc]==[op,mode,owner if read else value,fields[ca[1]//4],value if read else owner,returned]
+            continue
+        if returned==204:
+            assert loads and op==o['op']and op in(OPCODES['ISEND'],OPCODES['IRECV'])and mode==o['mode']and o['m']is None
+            sending=op==OPCODES['ISEND'];cm=(mode&7)if sending else(mode>>3&7);vm=(mode>>3&7)if sending else(mode&7)
+            ca=o['d']if sending else o['s'];va=o['s']if sending else o['d'];assert cm in(4,5)and vm in(0,1,2)and ca[1]in(0,4,8,12)
+            assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]==12
+            contract=24 if ca[1]in(4,8)else 4
+            if vm!=2:
+                leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==va[0]);assert leaf[3]==(contract&15)and (leaf[4]in ROOTS+(20,))==(contract==24)
+            value=va[0]if vm==2 else maps['frame'if vm else'data'][va[0]];owner=maps['frame'if cm==5 else'data'][ca[0]]
+            assert r['code'][pc]==[op,mode,value if sending else owner,(2*ca[1]<<8)|contract,owner if sending else value,204]
+            continue
         if returned in(201,202):
             write=returned==201
             assert loads and o['op']==op==OPCODES['IMOVMP']and o['mode']==mode and mode&192==64 and o['m']is not None and m==0

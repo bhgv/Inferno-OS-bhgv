@@ -63,7 +63,7 @@ def main():
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')];binary=w/'unit';command=cc+[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+CMD['FILES']['releaseflags'](cc)+['-lm','-o',str(binary)];subprocess.run(command,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],check=True,timeout=180)
   for name,path,before,after,predicate in (
    ('payload-offset','native64-typed-code.h','if(s->returned==188){p->reg=0;p->d.ind=s->d;continue;}','if(s->returned==188){p->reg=0;p->d.ind=s->d;if(s->m==4){if(s->op==ISEND)p->s.ind+=4;else p->d.ind+=4;}continue;}','exact payload, count and adjacent MP bytes'),
-   ('mapped-value','native64-typed-module.h','if(!!(map[bit/8]&(128>>(bit%8)))!=((step->op==ISEND?k==1:k==0)||step->m==24))return 0;','if(0)return 0;','malformed transfer metadata refused')):
+   ('mapped-value','native64-typed-module.h','if(!!(map[bit/8]&(128>>(bit%8)))!=((step->op==ISEND?k==1:k==0)||(step->m&255)==24))return 0;','if(0)return 0;','malformed transfer metadata refused')):
    original=(ROOT/'include'/path).read_text();assert original.count(before)==1
    for parent in('native64-typed-module.h','native64-typed-multi.h','native64-typed-code.h'):(w/parent).write_text((ROOT/'include'/parent).read_text())
    (w/path).write_text(original.replace(before,after,1));subprocess.run(command,check=True);r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],capture_output=True,text=True,timeout=180)

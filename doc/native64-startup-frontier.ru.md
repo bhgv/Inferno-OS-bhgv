@@ -147,3 +147,8 @@ accepted; FileIO channel fields и mixed payloads — следующий уча�
 ALT с IGOTO. Следующий отказ — PC168 indirect-or-reserved-operand внутри
 обработки события: z.ctl <-= "exit" через Client.ctl. Command остаётся
 accepted; графический AWM ещё не запущен.
+
+Следующий этап: [поля и каналы Client](native64-client-channels.ru.md).
+Настоящий awm.init проходит z.ctl SEND и чтение z.znext (PC168/169).
+Следующий отказ — PC178 context-nil-roles: сравнение win.image/screen.image.
+Command остаётся accepted; графический AWM ещё не запущен.
