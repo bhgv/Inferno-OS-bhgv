@@ -454,6 +454,15 @@ typedloadreftype(Addr *a)
   a->reg==a->decl->offset && a->offset==0;
 }
 
+/* Only complete nominal Wmsrv.Client globals join the earlier FP ref route. */
+static int
+typedloadglobalclient(Addr*a,Dis64TypedBody*p)
+{
+ long base,field;unsigned int wire;int kind;
+ return a->decl && a->decl->store==Dglobal && typedloadreftype(a) &&
+  typedclientaddress(a,Ampind,p,&base,&wire,&field,&kind) && wire==(AMP|AIND) && field==0 && kind==Tchan;
+}
+
 /* Checked native startup needs direct ref ADT, list-of-String and Module nil tests.
  * Nil is the compiler's readonly Tany MP root; no aggregate dereference or
  * comparison of unrelated reference classes is admitted by this route. */
@@ -469,7 +478,7 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
     !value->decl || !value->decl->ty ||
     (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedwindowlisttype(value) && !typedloadreftype(value)) ||
     !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
-    !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=value->decl->ty->kind || (typedloadreftype(value) && sm!=AFP) ||
+    !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=value->decl->ty->kind || (typedloadreftype(value) && sm!=AFP && !(sm==AMP && typedloadglobalclient(value,p))) ||
     !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany ||
     in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop ||
     in->d.offset!=in->branch->pc)return typedfail(p,"load-nil-roles");
@@ -720,8 +729,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
                !typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) ||
                !typedoperand(in->mm,&in->m,Tstring,0,1,p,&middle,&mm,&actual))goto fail;
             p->code[pc-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,32};p->returns[pc-p->first]=1;pc++;
-        }else if((c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)) || (c->loads && (in->op==ICVTAC || in->op==ICVTWC))){
-            if((c->loads && in->op!=ICVTWC && !typedloadbytes(in,p,pc-p->first)) || !typedclientcodec(in,p,pc-p->first))goto fail;pc++;
+        }else if((c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)) || (c->loads && (in->op==ICVTAC || in->op==ICVTWC || in->op==ICVTCW))){
+            if((c->loads && in->op==ICVTAC && !typedloadbytes(in,p,pc-p->first)) || !typedclientcodec(in,p,pc-p->first))goto fail;pc++;
         }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
                  (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;

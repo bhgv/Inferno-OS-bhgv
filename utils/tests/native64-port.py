@@ -432,6 +432,8 @@ def main():
     run([sys.executable,str(tests/'native64-window-image-result.py'),'--limbo',str(tools/'limbo')],build,env,logs/'window-image-result.log')
     run([sys.executable,str(tests/'native64-local-geometry-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-geometry-args.log')
     run([sys.executable,str(tests/'native64-format-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'format-fields.log')
+    run([sys.executable,str(tests/'native64-string-word.py'),'--limbo',str(tools/'limbo')],build,env,logs/'string-word.log')
+    run([sys.executable,str(tests/'native64-mp-client-nil.py'),'--limbo',str(tools/'limbo')],build,env,logs/'mp-client-nil.log')
     run([sys.executable,str(tests/'native64-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'alt.log')
     run([sys.executable,str(tests/'native64-local-concat.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-concat.log')
     run([sys.executable,str(tests/'native64-process-exit.py'),'--limbo',str(tools/'limbo')],build,env,logs/'process-exit.log')

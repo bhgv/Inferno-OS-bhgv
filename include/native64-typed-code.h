@@ -325,6 +325,10 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 		case INEWAZ:case ISLICEA:case ICVTAC:
             if(!native64typedbytestep(s,fpbytes,mpbytes))return 0;
             continue;
+        case ICVTCW:
+            if(s->returned || dm!=AFP || mm!=AXNON || s->m || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes) ||
+               !native64typedwordoperand(AFP,s->d,fpbytes,mpbytes))return 0;
+            continue;
         case ICVTWC:
             if(s->returned || dm!=AFP || mm!=AXNON || s->m || !native64typedwordoperand(sm,s->s,fpbytes,mpbytes) ||
                !native64typedrootoperand(AFP,s->d,fpbytes,mpbytes))return 0;

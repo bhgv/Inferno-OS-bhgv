@@ -500,6 +500,13 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             mode=(step->mode&ARM)==AXINF?AFP:(step->mode&ARM)==AXINM?AMP:AIMM;
             if(mode!=AIMM){map=mode==AFP?f->map:s->datamap;bit=step->m/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
         }
+        for(j=0;j<f->count;j++)if(f->code[j].op==ICVTCW){
+            Inst probe;unsigned int mode,k;step=f->code+j;
+            if(!native64typedcode(&probe,1,step,1,f->bytes,s->databytes))return 0;
+            mode=USRC(step->mode);map=mode==AFP?f->map:s->datamap;bit=step->s/8;
+            if(!(map[bit/8]&(128>>(bit%8))))return 0;
+            for(k=0;k<4;k++){bit=(step->d+k)/8;if(f->map[bit/8]&(128>>(bit%8)))return 0;}
+        }
         for(j=0;j<f->count;j++)if(f->code[j].op==ICVTWC && f->code[j].returned!=180){
             Inst probe;unsigned int mode;step=f->code+j;
             if(!native64typedcode(&probe,1,step,1,f->bytes,s->databytes))return 0;

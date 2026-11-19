@@ -195,3 +195,9 @@ reshape. awm.init остаётся на PC180 multi-callee; графически
 Настоящий reshaped теперь accepted целиком. awm.init проходит PC180;
 следующий отказ — PC187 unsupported-opcode, ICVTCW (String в int).
 Графический AWM и Android UI пока не запущены.
+
+Следующий этап: [String → int и глобальный kbdfocus](native64-string-word-focus.ru.md).
+awm.init проходит PC187 и PC189. Новый отказ — PC192
+external-geometry-argument: Draw.Pointer по значению в win.pointer(*p).
+Настоящий reshaped остаётся accepted целиком; графический AWM и Android UI
+пока не запущены.

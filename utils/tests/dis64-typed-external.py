@@ -598,6 +598,14 @@ def verify(data,r,imports,loads=False,rows=None):
                     for operandmode,old in((writer['mode']>>3&7,writer['s'][0]),(1 if writer['mode']&192==128 else 0,writer['m'])):
                         assert operandmode in(0,1)and next(l for l in r['frame'if operandmode else'data']['leaves']if l[0]==old)[4]==13
 
+        if op==OPCODES['ICVTCW']:
+            assert loads and mode in(1,9)and o['m']is None and m==returned==0
+            space='frame'if mode==9 else'data'
+            source=next(l for l in r[space]['leaves']if l[0]==o['s'][0]);destination=next(l for l in r['frame']['leaves']if l[0]==o['d'][0])
+            assert source[1]==s and source[2:4]==[4,8]and source[4]in(set(ROOTS)|{20})
+            assert destination==[o['d'][0],d,4,4,9]
+            assert r[space]['map'][s//64]&(128>>(s//8%8))
+            assert not(r['frame']['map'][d//64]&(128>>(d//8%8)))
         if op==RAISE:
             assert loads and mode in(3,11)and m==d==returned==0
             address=mode>>3&7;leaves=r['frame'if address else'data']['leaves']
