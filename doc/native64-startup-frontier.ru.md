@@ -120,3 +120,8 @@ AWM command проходит построение fd list для Sys.pctl на P
 AWM init проходит fatal PC136 и доходит до PC140 IMOVW (typed-span),
 чтения win.ctl при подготовке ALT. Весь command остаётся accepted.
 Графического запуска пока нет.
+
+Следующий этап: [блокирующий ALT](native64-alt.ru.md): простые int/String
+guards работают в C/JIT с настоящими очередями. AWM init проходит PC140
+Window.ctl и доходит до PC142 Wmcontext.ctl; command остаётся accepted.
+Полного графического event loop ещё нет.

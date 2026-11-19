@@ -20,7 +20,7 @@ static int
 native64localbind(void)
 {
     VmFetch fetched;Inst instruction;Frame *pending;Type *caller,*callee,*source;Stkext *extent;
-    uintptr base,start,top,target,at,bit,sourcebase;unsigned int width,reference,contract;
+    uintptr base,start,top,target,at,bit,sourcebase;unsigned int width,reference,contract,altaddress;
     void *address,*destination;
     if(!vmfetch(&fetched))return 0;
     if(fetched.module->cstep!=native64typedlea8step)return 0;
@@ -33,8 +33,9 @@ native64localbind(void)
         return fetched.module->native64casec();
     }
     if(fetched.op!=ILEA)return 0;
-    memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;width=contract==72?24:contract==88?88:contract==48?16:contract&15;reference=contract==72 || !!(contract&16);
-    if(!native64model() || (instruction.add!=(SRC(AFP)|DST(AFP|AIND)) && !(contract==24 && instruction.add==(SRC(AMP)|DST(AFP|AIND)))) || instruction.d.i.f!=40 || instruction.d.i.s!=32 ||
+    memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;altaddress=!!(contract&256);if(altaddress)contract&=~256;width=contract==72?24:contract==88?88:contract==48?16:contract&15;reference=contract==72 || !!(contract&16);
+    if(!native64model() || (altaddress?((instruction.add!= (SRC(AFP)|DST(AFP)) && instruction.add!=(SRC(AMP)|DST(AFP))) || (contract!=4 && contract!=24)):
+        ((instruction.add!=(SRC(AFP)|DST(AFP|AIND)) && !(contract==24 && instruction.add==(SRC(AMP)|DST(AFP|AIND)))) || instruction.d.i.f!=40 || instruction.d.i.s!=32)) ||
        (contract!=48 && contract!=72 && contract!=88 && ((contract&~31) || (width!=1 && width!=4 && width!=8) || (reference && width!=8))) || R.FP==nil || R.FP==H)error(exBounds);
     base=(uintptr)R.FP;
     if(base%8 || base>(uintptr)-1-sizeof(Frame))error(exBounds);
@@ -55,6 +56,18 @@ native64localbind(void)
     for(at=instruction.s.ind;at<(unsigned int)instruction.s.ind+width;at++){
         bit=at/8;
         if(!!(bit/8<(unsigned int)source->np && (source->map[bit/8]&(0x80>>(bit%8))))!=(contract==88?(at>=(unsigned int)instruction.s.ind+8 && at<(unsigned int)instruction.s.ind+40):reference))error(exBounds);
+    }
+    if(altaddress){
+        extent=(Stkext*)R.EX;top=(uintptr)R.SP;
+        if(extent==nil || extent==H || (uintptr)extent%sizeof(void*) || (uintptr)extent>(uintptr)-1-OA(Stkext,reg.tos.fu) ||
+           R.TS==nil || R.TS==H || top>(uintptr)R.TS)error(exBounds);
+        start=(uintptr)extent+OA(Stkext,reg.tos.fu);
+        if(base<start || base>top || (uintptr)caller->size>top-base || base+caller->size!=top)error(exBounds);
+        if(instruction.d.ind<64 || instruction.d.ind%8 || (unsigned int)instruction.d.ind>(unsigned int)caller->size || 8>(unsigned int)caller->size-instruction.d.ind)error(exBounds);
+        bit=instruction.d.ind/8;if(bit/8<(unsigned int)caller->np && (caller->map[bit/8]&(0x80>>(bit%8))))error(exBounds);
+        address=(void*)(sourcebase+instruction.s.ind);destination=R.FP+instruction.d.ind;
+        vmdecode(&fetched);if(R.s!=address || R.d!=destination)error(exBounds);
+        memmove(destination,&address,sizeof(address));return 1;
     }
     extent=(Stkext*)R.EX;top=(uintptr)R.SP;
     if(extent==nil || extent==H || (uintptr)extent%sizeof(void*) ||

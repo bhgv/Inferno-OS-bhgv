@@ -32,6 +32,7 @@ HFILES=	limbo.h\
 	dis64-layout.h\
 	dis64-typed.h\
 	dis64-multi.h\
+	dis64-alt.h\
 	dis64-external.h\
 	dis64-variadic.h\
 	dis64-dial.h\

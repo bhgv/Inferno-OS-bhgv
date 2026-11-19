@@ -610,6 +610,8 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     *next=end+1;return 1;
 }
 
+#include "dis64-alt.h"
+
 static int
 typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
 {
@@ -649,6 +651,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;
             for(i=pc+1;i<next;i++)inside[i-p->first]=1;
             pc=next;
+        }else if(c->loads && (in->op==IALT || in->op==INBALT || ((in->op==IMOVW || in->op==ILEA) && in->dm==Afp && in->d.reg>=0 && typedaltslot(&in->d,fn)))){
+            if(!typedaltinst(in,fn,p,pc-p->first))goto fail;
+            if(in->op==IALT){unsigned int start=pc-p->first-2-2*p->code[pc-p->first].middle;for(i=start+1;i<=pc-p->first;i++)inside[i]=1;}
+            pc++;
         }else if(c->loads && p->resulttriple && in->op==IMOVMP){
             Desc*d;unsigned int base=0;
             for(d=descriptors;d && d->id!=in->m.offset;d=d->next);

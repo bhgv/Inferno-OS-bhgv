@@ -163,7 +163,7 @@ keyringif.h:D:	$MODULES keyringif.m
 bench.h:D:../module/bench.m
 	rm -f $target && limbo -a -I../module ../module/bench.m > $target
 
-xec.$O:		optab.h  $ROOT/include/pool.h
+xec.$O:		optab.h  $ROOT/include/pool.h $ROOT/include/native64-local-bind.h
 tk.$O:		$ROOT/include/tk.h  $ROOT/include/pool.h
 draw.$O: 	$ROOT/include/draw.h $ROOT/include/drawif.h $ROOT/include/tk.h $ROOT/include/pool.h
 prefab.$O: 	$ROOT/include/draw.h\
@@ -220,4 +220,4 @@ load64.$O: $ROOT/include/dis64-client-literals.h $ROOT/include/dis64-managed-tri
 # Build trusted whole-source startup metadata only for explicit emuinit selection.
 $ROOT/libinterp/emuinit-native64.h:D: $ROOT/appl/cmd/emuinit.b $ROOT/appl/lib/arg.b $ROOT/module/sys.m $ROOT/module/arg.m $ROOT/module/sh.m $ROOT/module/draw.m $ROOT/utils/native64-emuinit.py $ROOT/utils/tests/native64-emuinit-full.py
 	python3 $ROOT/utils/native64-emuinit.py --limbo limbo --output $target.tmp && mv $target.tmp $target
-runt.$O: $ROOT/include/native64-emuinit-boot.h $ROOT/include/native64-sys-module.h $ROOT/include/native64-typed-module.h $ROOT/include/native64-typed-code.h $ROOT/include/native64-typed-multi.h $ROOT/include/native64-typed-tables.h $ROOT/include/native64-string-tables.h $ROOT/include/native64-sys-program.h
+runt.$O: $ROOT/include/native64-typed-alt.h $ROOT/include/native64-emuinit-boot.h $ROOT/include/native64-sys-module.h $ROOT/include/native64-typed-module.h $ROOT/include/native64-typed-code.h $ROOT/include/native64-typed-multi.h $ROOT/include/native64-typed-tables.h $ROOT/include/native64-string-tables.h $ROOT/include/native64-sys-program.h

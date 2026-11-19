@@ -332,6 +332,8 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
 }
 
 /* Immutable readable checked-compiler metadata, not untrusted file inputs. */
+#include "native64-typed-alt.h"
+
 static int
 native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsigned int *exports,unsigned int *scratch,unsigned int *imports)
 {
@@ -358,6 +360,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
            !native64modulemap(f->bytes,f->map,f->mapbytes,1) || f->bytes>32*1024*1024-total ||
            f->nsites>f->count/2 || (f->nsites && f->sites==nil))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
+        if(!native64modulealts(s,f))return 0;
         if(!native64modulelists(s,f) || !native64modulecontext(s,f) || !native64modulewindow(s,f) || !native64moduledrawfields(s,f) || !native64moduleargclears(s,f) || !native64modulestringpreps(s,f) || !native64modulelocalclears(s,f) || !native64modulelistprefixes(s,f) || !native64modulelistpreps(s,f) || !native64modulegeometry(s,f))return 0;
         for(j=0;j<f->count;j++)if((f->code[j].op==ILEA && USRC(f->code[j].mode)==AMP) || (f->code[j].returned==(128|24) && USRC(f->code[j].mode)!=AFP)){
             unsigned int k,found=0;step=f->code+j;

@@ -70,6 +70,9 @@ typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out)
     if((unsigned int)c->nlab>65536-rows)return typedfail(p,"table-row-budget");
     for(i=0;i<(unsigned int)c->nlab;i++){
         l=c->labs+i;
+        if(in->op==IGOTO && p->sourceroles && in->pc>p->first && p->returns[in->pc-p->first-1]==191 && p->code[in->pc-p->first-1].op==IALT && c->iwild==nil &&
+           c->nlab==p->code[in->pc-p->first-1].middle &&
+           l->inst && l->inst->pc>=p->first && l->inst->pc<stop)continue;
         if(in->op==ICASEC){
             Sym *a,*b;
             if(l->start==nil || l->stop==nil || l->start->op!=Oconst || l->stop->op!=Oconst ||
@@ -88,6 +91,7 @@ typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out)
             return typedfail(p,"table-row-owner-or-order");
     }
     if(!typedoperand(in->sm,&in->s,in->op==ICASEL?Tbig:in->op==ICASEC?Tstring:Tint,0,0,p,&value,&sm,&actual))return 0;
+    if(in->op==IGOTO && in->pc>p->first && p->returns[in->pc-p->first-1]==191 && (sm!=AFP || value!=p->code[in->pc-p->first-1].destination))return typedfail(p,"alt-selection-table");
     p->tables[p->ntables++]=(Dis64TypedTable){in->pc-p->first,base,in->op,c};
     *out=(Dis64Instruction){in->op,SRC(sm)|DST(AMP),0,value,base+(in->op==IGOTO?4:0)};return 1;
 }
@@ -615,7 +619,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
                             fprint(2,"%s[",k?",":"");typedquote(l->start->decl->sym);fprint(2,",");
                             if(l->start==l->stop)fprint(2,"null");else typedquote(l->stop->decl->sym);
                             fprint(2,",%ld]",l->inst->pc-p.first);
-                        }else fprint(2,"%s[%lld,%lld,%ld]",k?",":"",l->start->val,l->stop->val,l->inst->pc-p.first);
+                        }else fprint(2,"%s[%lld,%lld,%ld]",k?",":"",(t->op==IGOTO && t->pc && p.returns[t->pc-1]==191)?(vlong)k:l->start->val,(t->op==IGOTO && t->pc && p.returns[t->pc-1]==191)?(vlong)k:l->stop->val,l->inst->pc-p.first);
                     }
                     fprint(2,"]}");
                 }

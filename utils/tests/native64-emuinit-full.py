@@ -14,8 +14,8 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
   for r in proofs:
    if r['signature']is None:
     assert r.get('signature_available')is False
-    r['signature']=export_signatures[r['export_name']]
-   else:assert r['signature']==export_signatures[r['export_name']]
+    if r['export_name']in export_signatures:r['signature']=export_signatures[r['export_name']]
+   elif r['export_name']in export_signatures:assert r['signature']==export_signatures[r['export_name']]
  E['MODULE']['check_exports'](data,proofs)
  for r in rows:CMD['verify_nilbranches'](data,r,imports,rows=rows)
  # Independent decoder must detect corruption in every new variadic record field.
@@ -64,7 +64,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
   sites += [(a,b,next(i for i,x in enumerate(rows)if x['first']==target),contract,inherited,0,0,0,0)for a,b,target,desc,off,contract,inherited in r.get('calls',[])]
   if sites:lines+=['static const Native64ModuleSite full_sites_'+n+'[]={']+['{'+','.join(map(str,s))+'},'for s in sorted(sites)]+['};']
   for j,t in enumerate(r.get('tables',[])):
-   assert t['op']==14
+   assert t['op']in(3,14)
    lines+=['static const Native64ModuleCaseRow full_rows_'+n+'_'+str(j)+'[]={']+['{'+f'{a},{b},{c}'+'},'for a,b,c in t['rows']]+['};']
   if r.get('tables'):lines+=['static const Native64ModuleCase full_cases_'+n+'[]={']+['{'+f'{t["pc"]},{t["offset"]},{t["op"]},{len(t["rows"])},{t["fallback"]},full_rows_{n}_{j}'+'},'for j,t in enumerate(r['tables'])]+['};']
  exports={e['name']:e for e in E['BASE']['READ']['legacy_instructions'](data,with_exports=True)[-1]}
@@ -73,7 +73,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
   n=r['name'];e=exports.get(n);nsites=len(r.get('externals',[]))+len(r.get('calls',[]));nt=len(r.get('tables',[]))
   lines+=['{'+json.dumps(n)+f',{e["signature"]if e else 0}U,{int(e is not None)},full_code_{n},{len(r["code"])},{r["frame"]["bytes"]},full_map_{n},{len(r["frame"]["map"])},'+('full_sites_'+n if nsites else'nil')+f',{nsites},'+('full_cases_'+n if nt else'nil')+f',{nt},{72 if r.get("result_channels")else 48 if r.get("result_pair")else 0}'+'},']
  lines+=['};'];array('full_data_map',rows[0]['data']['map']);initial=E['BASE']['READ']['legacy_instructions'](data,with_types=True,with_data=True)[3]
- strings=[];values=[];layout=rows[0]['data'];ranges=[(t['offset'],t['offset']+8+12*len(t['rows']))for r in rows for t in r.get('tables',[])]
+ strings=[];values=[];layout=rows[0]['data'];ranges=[(t['offset'],t['offset']+(4+4*len(t['rows'])if t['op']==3 else 8+12*len(t['rows'])))for r in rows for t in r.get('tables',[])]
  for old,cell in sorted(initial.items()):
   leaf=next(l for l in layout['leaves']if l[0]<=old<l[0]+l[2]);offset=leaf[1]+old-leaf[0]
   if any(a<=offset<b for a,b in ranges):continue

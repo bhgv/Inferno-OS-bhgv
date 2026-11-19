@@ -281,6 +281,29 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned in(189,190,191,192):
+            assert loads and o['m']is None
+            sm=o['mode']>>3&7;assert o['mode']&7==1
+            destination=maps['frame'][o['d'][0]]
+            if returned==189:
+                assert o['op']==OPCODES['IMOVW']and sm in(0,1)
+                source=maps['frame'if sm else'data'][o['s'][0]]
+                assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0])[4]==6
+                assert r['code'][pc]==[OPCODES['IMOVL'],o['mode'],source,0,destination,189]
+            elif returned==192:
+                assert o['op']==OPCODES['IMOVW']and sm in(4,5)and o['s'][1]==52
+                assert next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0])[4]==12
+                assert r['code'][pc]==[OPCODES['IMOVL'],o['mode'],maps['frame'if sm==5 else'data'][o['s'][0]],64,destination,192]
+            elif returned==190:
+                assert o['op']==OPCODES['ILEA']and sm in(0,1)
+                leaf=next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0]);contract=24 if leaf[4]==13 else leaf[3]
+                assert r['code'][pc]==[OPCODES['ILEA'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],contract,destination,190]
+            else:
+                assert o['op']==OPCODES['IALT']and sm==1
+                headers=original[pc-2:pc];assert all(h['op']==OPCODES['IMOVW']and h['mode']==17 for h in headers)
+                n=sum(h['s'][0]for h in headers)
+                assert r['code'][pc]==[OPCODES['IALT'],o['mode'],maps['frame'][o['s'][0]],n,destination,191]
+            continue
         if o['op']==OPCODES['IEXIT']:
             assert loads and o['mode']==27 and o['s']is None and o['m']is None and o['d']is None
             assert r['code'][pc]==[OPCODES['IEXIT'],27,0,0,0,0]
