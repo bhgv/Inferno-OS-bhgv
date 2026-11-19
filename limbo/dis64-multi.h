@@ -734,6 +734,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
                  (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
+        }else if(c->loads && (in->op==IMOVW || in->op==IBEQW || in->op==IBNEW) && (in->sm==Afpind || in->sm==Ampind) && typedwmref(typedfieldowner(&in->s),"Draw","Pointer")){
+            if(!typedpointerword(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->loads && in->op==IMOVP && (in->sm==Afpind || in->sm==Ampind) && (in->dm==Afpind || in->dm==Ampind)){
             if(!typedcontextcopy(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==IMOVP && (in->sm==Afpind || in->sm==Ampind || in->dm==Afpind || in->dm==Ampind) &&

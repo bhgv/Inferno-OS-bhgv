@@ -110,6 +110,15 @@ native64typedlocalgeometry(const Native64TypedStep*s,unsigned int fp,unsigned in
 }
 
 static int
+native64typedpointerword(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int sm=USRC(s->mode),dm=UDST(s->mode);
+ if((s->returned!=228 && s->returned!=229) || s->mode>255 || (sm!=(AFP|AIND) && sm!=(AMP|AIND)) || !native64typedrootoperand(sm&~AIND,s->s,fp,mp) || s->m<0 || s->m>12 || s->m%4)return 0;
+ if(s->returned==229)return (s->op==IBEQW || s->op==IBNEW) && s->mode==(SRC(sm)|AXIMM|DST(AIMM));
+ return s->op==IMOVW && s->mode==(SRC(sm)|DST(dm)) && (dm==AFP || dm==AMP) && native64typedwordoperand(dm,s->d,fp,mp);
+}
+
+static int
 native64typedfieldreference(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
  unsigned int sm=USRC(s->mode),mm=(s->mode&ARM)==AXINF?AFP:AMP,family=(unsigned long)s->m>>24,field=((unsigned long)s->m>>16)&255,other=s->m&65535;int valid=0;
@@ -316,6 +325,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==213){if(!native64typedwindowlist(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==214){if(!native64typedwmsrvwindow(s,fpbytes,mpbytes))return 0;continue;}
         if((s->returned>=208 && s->returned<=212) || s->returned==215){if(!native64typedlocalgeometry(s,fpbytes,mpbytes))return 0;continue;}
+        if(s->returned==228 || s->returned==229){if(!native64typedpointerword(s,fpbytes,mpbytes) || (s->returned==229 && (s->d<0 || (unsigned long)s->d>=count)))return 0;continue;}
         if(s->returned==207){if(!native64typedfieldreference(s,fpbytes,mpbytes) || s->d<0 || (unsigned long)s->d>=count)return 0;continue;}
         if(s->returned==205 || s->returned==206){if(!native64typedclientfield(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==188 || s->returned==204){if(!native64typedtransfer(s,fpbytes,mpbytes))return 0;continue;}
@@ -407,6 +417,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if((s->returned>=208 && s->returned<=212)||s->returned==215){p->reg=s->m&255;if(s->returned==208 || s->returned==209 || (s->returned==215 && (USRC(s->mode)&AIND))){p->s.i.f=s->s;p->s.i.s=s->m>>8;p->d.ind=s->d;}else if(s->returned==212)p->d.ind=s->d;else{p->d.i.f=s->d;p->d.i.s=s->m>>8;}continue;}
         if(s->returned==213){p->reg=0;p->d.ind=s->d;continue;}
         if(s->returned==214){p->reg=0;if(USRC(s->mode)&AIND){p->s.i.f=s->s;p->s.i.s=s->m;p->d.ind=s->d;}else{p->d.i.f=s->d;p->d.i.s=s->m;}continue;}
+        if(s->returned==228 || s->returned==229){p->reg=0;p->s.i.f=s->s;p->s.i.s=s->m;if(s->returned==229)p->d.ins=out+s->d;else p->d.ind=s->d;continue;}
         if(s->returned==207){p->reg=s->m&65535;p->s.i.f=s->s;p->s.i.s=(s->m>>16)&255;p->d.ins=out+s->d;continue;}
         if(s->returned==205 || s->returned==206){p->reg=0;if(USRC(s->mode)&AIND){p->s.i.f=s->s;p->s.i.s=s->m;p->d.ind=s->d;}else{p->d.i.f=s->d;p->d.i.s=s->m;}continue;}
         if(s->returned==204){p->reg=0;if(s->op==ISEND){p->d.i.f=s->d;p->d.i.s=s->m>>8;}else{p->s.i.f=s->s;p->s.i.s=s->m>>8;p->d.ind=s->d;}continue;}

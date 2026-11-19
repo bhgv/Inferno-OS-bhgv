@@ -92,6 +92,32 @@ typedpointerlayout(Type*t,Dis64Layout*l)
  done:dis64layoutfree(&point);return ok;
 }
 
+static Type*typedfieldowner(Addr*);
+/* Selected raw Pointer leaves, keeping the reference slot at native width. */
+static int
+typedpointeraddress(Addr*a,int mode,Dis64TypedBody*p,long*base,unsigned int*wire)
+{
+ Addr owner=*a;Dis64Layout l={0};Type*t=typedfieldowner(a);int actual,ok=0;
+ if((mode!=Afpind && mode!=Ampind) || !t || t->kind!=Tref || !typedpointerlayout(t->tof,&l))goto done;
+ owner.offset=0;owner.native64type=t;
+ ok=typedoperand(mode==Afpind?Afp:Amp,&owner,TypedRoot,0,0,p,base,wire,&actual) && actual==Tref;
+ done:dis64layoutfree(&l);return ok;
+}
+static int
+typedpointerword(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
+{
+ long base,value;unsigned int wire,vm;int actual,branch=in->op==IBEQW || in->op==IBNEW;
+ if(!in->s.native64type || in->s.native64type->kind!=Tint || in->s.offset<0 || in->s.offset>12 || in->s.offset%4 || !typedpointeraddress(&in->s,in->sm,p,&base,&wire))return typedfail(p,"pointer-word-owner");
+ if(branch){
+  if(in->mm!=Aimm || in->m.offset || in->dm!=Apc || !in->branch || in->d.offset!=in->branch->pc || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop)return typedfail(p,"pointer-word-branch");
+  p->code[pc]=(Dis64Instruction){in->op,SRC(wire|AIND)|AXIMM|DST(AIMM),in->s.offset,base,in->branch->pc-p->first};p->returns[pc]=229;
+ }else{
+  if(in->op!=IMOVW || in->mm!=Anone || in->branch || !typedoperand(in->dm,&in->d,Tint,0,0,p,&value,&vm,&actual) || actual!=Tint || (vm!=AFP && vm!=AMP))return typedfail(p,"pointer-word-destination");
+  p->code[pc]=(Dis64Instruction){IMOVW,SRC(wire|AIND)|DST(vm),in->s.offset,base,value};p->returns[pc]=228;
+ }
+ return 1;
+}
+
 /* Only a local exact Draw.Point/Rect destination; no inherited/global ADT. */
 static int
 typedgeometrybinding(Inst*binding,Type*result,Dis64TypedBody*p,unsigned int*base,unsigned int*contract)

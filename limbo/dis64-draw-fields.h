@@ -46,6 +46,10 @@ typedimagegeometry(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offset)
 {
  Inst probe=*in;long field=in->s.offset;Dis64Layout layout={0};int ok;unsigned int bytes;
  long base;unsigned int wire;
+ if(typedwmref(typedfieldowner(&in->s),"Draw","Pointer")){
+  if(field!=4 || !typedwordgeometry(in->s.native64type,&layout) || layout.bytes!=8 || in->m.offset!=8 || !typedpointeraddress(&in->s,in->sm,p,&base,&wire)){dis64layoutfree(&layout);return typedfail(p,"pointer-point-owner");}
+  dis64layoutfree(&layout);p->code[pc]=(Dis64Instruction){IMOVM,SRC(wire|AIND)|AXIMM|DST(AFP|AIND),8,base,offset};p->returns[pc]=230;return 1;
+ }
  if(typedwmsrvwindow(typedfieldowner(&in->s))){
   if(!typedwordgeometry(in->s.native64type,&layout) || in->m.offset!=layout.bytes || (layout.bytes==16?field!=4:(field!=4 && field!=12)) || !typedwmsrvwindowbase(&in->s,in->sm,p,&base,&wire)){dis64layoutfree(&layout);return typedfail(p,"window-geometry-owner");}
   bytes=layout.bytes;dis64layoutfree(&layout);

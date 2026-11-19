@@ -435,6 +435,7 @@ def main():
     run([sys.executable,str(tests/'native64-string-word.py'),'--limbo',str(tools/'limbo')],build,env,logs/'string-word.log')
     run([sys.executable,str(tests/'native64-mp-client-nil.py'),'--limbo',str(tools/'limbo')],build,env,logs/'mp-client-nil.log')
     run([sys.executable,str(tests/'native64-pointer-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-args.log')
+    run([sys.executable,str(tests/'native64-pointer-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-fields.log')
     run([sys.executable,str(tests/'native64-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'alt.log')
     run([sys.executable,str(tests/'native64-local-concat.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-concat.log')
     run([sys.executable,str(tests/'native64-process-exit.py'),'--limbo',str(tools/'limbo')],build,env,logs/'process-exit.log')

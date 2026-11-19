@@ -16,7 +16,7 @@ struct Native64TypedCall {
 static unsigned int
 native64imagegeometryoffset(unsigned int tag)
 {
- static const unsigned int offsets[]={0,16,0,8,16,24};return tag>=160 && tag<=165?offsets[tag-160]:tag==217 || tag==218?8:tag==219?16:tag==227?0:~0U;
+ static const unsigned int offsets[]={0,16,0,8,16,24};return tag>=160 && tag<=165?offsets[tag-160]:tag==217 || tag==218?8:tag==219?16:tag==227?0:tag==230?4:~0U;
 }
 
 /* Numeric Draw.Point/Rect copies into a prepared imported frame. */
@@ -165,7 +165,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 if(!c->external || !native64typedlistprep(s,fpbytes,mpbytes))return 0;continue;
             }
             if(s->op==IMOVM){
-                if((s->returned==227 && !c->external) || (!c->external && steps[c->end].op!=ICALL) || c->callee->np<0 || !native64typedgeometryarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+                if(((s->returned==227 || s->returned==230) && !c->external) || (!c->external && steps[c->end].op!=ICALL) || c->callee->np<0 || !native64typedgeometryarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
             }
             if(s->op==ILENA || s->op==ICVTAC){

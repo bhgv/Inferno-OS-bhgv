@@ -251,6 +251,12 @@ def verify(data,r,imports,loads=False,rows=None):
                         assert next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==a['s'][0])[4]==12
                         assert r['frame'if sm==5 else'data']['map'][root//64]&(128>>(root//8%8))
                         role=227
+                    elif r['code'][at][5]==230:
+                        assert oldbytes==8 and field==4 and nominals[j]is None
+                        root=maps['frame'if sm==5 else'data'][a['s'][0]]
+                        assert next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==a['s'][0])[4]==12
+                        assert r['frame'if sm==5 else'data']['map'][root//64]&(128>>(root//8%8))
+                        role=230
                     elif field%8==4:
                         assert field in((4,)if oldbytes==16 else(4,12))
                         role=217 if oldbytes==16 else 218+(field-4)//8
@@ -375,6 +381,19 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert(s if read else d)==maps['frame'if cm==5 else'data'][ca[0]]
                 leaves=r['frame'if vm else'data']['leaves'];value=d if read else s
                 for i in range(0,width,4):assert next(l for l in leaves if l[0]==va[0]+i)==[va[0]+i,value+i,4,4,9]
+            continue
+        if returned in(228,229):
+            sm=o['mode']>>3&7;dm=o['mode']&7;assert loads and sm in(4,5)and len(o['s'])==2 and o['s'][1]in(0,4,8,12)
+            leaf=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0]);assert leaf[2:]==[4,8,12]
+            source=leaf[1];assert r['frame'if sm==5 else'data']['map'][source//64]&(128>>(source//8%8))
+            if returned==229:
+                assert o['op']in(93,94)and o['m']==0 and o['mode']==(sm<<3)|64|2
+                target=o['d'][0]-r['first'];assert 0<=target<len(original)
+            else:
+                assert o['op']==OPCODES['IMOVW']and o['m']is None and o['mode']==(sm<<3)|dm and dm in(0,1)
+                destination=next(l for l in r['frame'if dm else'data']['leaves']if l[0]==o['d'][0]);assert destination[2:]==[4,4,9]
+                target=destination[1];assert not(r['frame'if dm else'data']['map'][target//64]&(128>>(target//8%8)))
+            assert r['code'][pc]==[o['op'],o['mode'],source,o['s'][1],target,returned]
             continue
         if returned==207:
             assert loads and o['op']in(93,94)and op==(OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'])and mode==o['mode']

@@ -207,3 +207,9 @@ awm.init проходит win.pointer(*p) на PC192–196. Новый отка�
 context-nil-roles, проверка p.buttons. Это Word32-поле объекта Pointer;
 доступ к нему пока не открыт. reshaped остаётся accepted целиком;
 графический AWM и Android UI пока не запущены.
+
+Следующий этап: [Поля Pointer и аргумент Pointer.xy](native64-pointer-fields.ru.md).
+awm.init проходит p.buttons и wmsrv.find(p.xy). Новый отказ — PC210
+multi-callee на setfocus(win,c); сам setfocus пока отвергается на PC1189
+load-nil-roles. reshaped остаётся accepted целиком; графический AWM и
+Android UI пока не запущены.
