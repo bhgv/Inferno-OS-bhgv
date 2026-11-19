@@ -671,9 +671,10 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(at+1!=end || (binding=c->instructions[at])==nil || binding->op!=ILEA || binding->mm!=Anone ||
            binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil)return typedfail(p,"multi-result");
         kind=child->resultkind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
-        contract=child->resulttriple?72:child->resultpair?48:child->resultbytes | (root?16:0);
+        contract=child->resultgeometry?(child->resultgeometry==8?96:112):child->resulttriple?72:child->resultpair?48:child->resultbytes | (root?16:0);
         if(binding->sm==Afp){
-            if(child->resulttriple){if(!typedchannelbinding(c,p,binding,&local))return 0;source=local;sm=AFP;}
+            if(child->resultgeometry){if(!typedgeometrybinding(binding,c->functions[target]->ty->tof,p,&local,&contract))return typedfail(p,"local-geometry-result");source=local;sm=AFP;}
+            else if(child->resulttriple){if(!typedchannelbinding(c,p,binding,&local))return 0;source=local;sm=AFP;}
             else if(child->resultpair){
                 unsigned int second;Addr *a=&binding->s;
                 if(!typedpairslot(c,p,a) ||
@@ -687,7 +688,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             if(!binding->s.decl || binding->s.decl->store!=Dglobal || !typedoperand(Amp,&binding->s,TypedRoot,0,0,p,&source,&sm,&actual) || actual!=kind)return typedfail(p,"multi-global-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AMP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;
         }else{
-            if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || kind!=p->resultkind || child->resultpair!=p->resultpair || child->resulttriple!=p->resulttriple)return typedfail(p,"multi-inherit");
+            if(child->resultgeometry || binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || kind!=p->resultkind || child->resultpair!=p->resultpair || child->resulttriple!=p->resulttriple)return typedfail(p,"multi-inherit");
             inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;
         }
         at++;
@@ -743,6 +744,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedaltinst(in,fn,p,pc-p->first))goto fail;
             if(in->op==IALT){unsigned int start=pc-p->first-2-2*p->code[pc-p->first].middle;for(i=start+1;i<=pc-p->first;i++)inside[i]=1;}
             pc++;
+        }else if(c->loads && p->resultgeometry && in->op==IMOVM && in->dm==Afpind && in->d.reg==16){
+            if(!typedlocalgeometryreturn(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==IMOVM){
             if(!typedlocalgeometry(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && p->resulttriple && in->op==IMOVMP){

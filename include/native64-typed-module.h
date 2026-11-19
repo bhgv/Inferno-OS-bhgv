@@ -38,7 +38,7 @@ struct Native64ModuleFunction {
     const Native64ModuleSite *sites;
     unsigned int nsites;
     const Native64ModuleCase *cases;unsigned int ncases;
-    unsigned int resultcontract; /* Native-only 48: Module/List pair; 72: three channel roots. Zero keeps legacy contracts. */
+    unsigned int resultcontract; /* Native-only 48: Module/List pair; 72: channel roots; 96/112: raw Point/Rect. */
 };
 
 struct Native64ModuleInit {unsigned int offset,width;uvlong bits;};
@@ -323,7 +323,7 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
 {
  unsigned int i,k,j,found,bit;const Native64TypedStep*step;const Native64ModuleSite*site;const Native64ModuleImport*request;const uchar*map;
  for(i=0;i<f->count;i++){
-  step=f->code+i;if((step->returned>=208 && step->returned<=212)||step->returned==215)continue;if(step->op!=IMOVM && !(step->returned==64 && (step->mode&ARM)==AXIMM && UDST(step->mode)==(AFP|AIND)) && native64imagegeometryoffset(step->returned)==~0U)continue;
+  step=f->code+i;if((step->returned>=208 && step->returned<=212)||step->returned==215 || step->returned==246 || step->returned==247)continue;if(step->op!=IMOVM && !(step->returned==64 && (step->mode&ARM)==AXIMM && UDST(step->mode)==(AFP|AIND)) && native64imagegeometryoffset(step->returned)==~0U)continue;
   found=0;
   for(k=0;k<f->nsites;k++){
    site=f->sites+k;if(i<=site->first || i>=site->end)continue;
@@ -390,7 +390,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             if(!native64typedcode(&probe,1,step,1,f->bytes,s->databytes))return 0;
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
-        if(f->resultcontract && f->resultcontract!=48 && f->resultcontract!=72)return 0;
+        if(f->resultcontract && f->resultcontract!=48 && f->resultcontract!=72 && !native64geometryresultwidth(f->resultcontract))return 0;
         for(j=0;j<f->nsites;j++){
             unsigned int k,r,modes[2],offsets[2];site=f->sites+j;
             if(site->first>=f->count || site->end>=f->count || site->end<=site->first)return 0;
@@ -670,6 +670,13 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].contract==88)found++;
             if(found!=1)return 0;
         }
+        for(j=0;j<f->count;j++)if(f->code[j].op==IMOVM && UDST(f->code[j].mode)==(AFP|AIND) && f->code[j].d==32 && f->code[j].returned!=246 && f->code[j].returned!=247)return 0;
+        for(j=0;j<f->count;j++)if(f->code[j].returned==246 || f->code[j].returned==247){
+            unsigned int width;step=f->code+j;width=step->returned==246?16:8;
+            if(native64geometryresultwidth(f->resultcontract)!=width || !native64typedgeometryreturn(step,f->bytes,s->databytes))return 0;
+            map=USRC(step->mode)==AFP?f->map:s->datamap;for(at=0;at<width;at++){bit=(step->s+at)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
+            for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
+        }
         for(j=0;j<f->count;j++)if(f->code[j].returned==245){
             unsigned int k,found=0;step=f->code+j;
             if(step->op!=ILEA || step->mode!=(SRC(AFP|AIND)|DST(AFP|AIND)) || step->m!=12 || step->d!=32 || !native64typedrootoperand(AFP,step->s,f->bytes,s->databytes))return 0;
@@ -714,9 +721,9 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         for(j=0;j<f->nsites;j++){
             site=f->sites+j;if(site->external>1)return 0;
             if(native64geometryresultwidth(site->contract)){
-                if(!site->external || site->inherited || site->table>=s->ntables || site->target>=s->tables[site->table].count || site->end<2 || site->end>=f->count)return 0;
-                request=s->tables[site->table].imports+site->target;
-                if(request->resultcontract!=site->contract)return 0;
+                if(site->inherited || site->end<2 || site->end>=f->count)return 0;
+                if(site->external){if(site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;request=s->tables[site->table].imports+site->target;if(request->resultcontract!=site->contract)return 0;}
+                else if(site->target>=s->nfunctions || s->functions[site->target].resultcontract!=site->contract)return 0;
                 step=f->code+site->end-1;
                 if(step->op!=ILEA || step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->m || step->d!=32 || step->returned!=(128|site->contract) ||
                    !native64geometryresultmap(f->bytes,f->map,f->mapbytes,step->s,site->contract))return 0;
@@ -739,6 +746,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             }
             if(site->external && site->table<s->ntables && site->target<s->tables[site->table].count && (site->contract==72)!=(s->tables[site->table].imports[site->target].resultcontract==72))return 0;
             if(!site->external && site->target<s->nfunctions && (site->contract==72)!=(s->functions[site->target].resultcontract==72))return 0;
+            if(!site->external && site->target<s->nfunctions && (native64geometryresultwidth(site->contract) || native64geometryresultwidth(s->functions[site->target].resultcontract)) && site->contract!=s->functions[site->target].resultcontract)return 0;
             if(site->contract==88){
                 if(!site->external || site->inherited || site->table>=s->ntables || site->target>=s->tables[site->table].count || site->end<2 || site->end>=f->count)return 0;
                 request=s->tables[site->table].imports+site->target;

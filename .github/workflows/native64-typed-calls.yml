@@ -47,6 +47,7 @@ on:
       - 'utils/tests/native64-geometry-results*'
       - 'utils/tests/native64-window-image-result*'
       - 'utils/tests/native64-local-geometry-args*'
+      - 'utils/tests/native64-local-geometry-results*'
       - 'utils/tests/native64-format-fields*'
       - 'utils/tests/native64-string-word*'
       - 'utils/tests/native64-mp-client-nil*'
@@ -216,6 +217,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/window-image-result.log"
           python3 utils/tests/native64-local-geometry-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/local-geometry-args.log"
+          python3 utils/tests/native64-local-geometry-results.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-geometry-results.log"
           python3 utils/tests/native64-format-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/format-fields.log"
           python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -391,6 +394,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/window-image-result.log"
           python3 utils/tests/native64-local-geometry-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/local-geometry-args.log"
+          python3 utils/tests/native64-local-geometry-results.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-geometry-results.log"
           python3 utils/tests/native64-format-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/format-fields.log"
           python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

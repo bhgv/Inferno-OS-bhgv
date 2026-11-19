@@ -249,3 +249,9 @@ handlerequest проходит PC438–441, включая импортиров�
 отправку Pointer в c.ptr. Новый отказ — PC506 multi-callee на fitrect;
 fitrect и newrect требуют aggregate-result для Draw.Rect. awm.init пока
 остаётся на PC303. Окно AWM и Android UI ещё не запущены.
+
+Следующий этап: [Локальный результат Point/Rect](native64-local-geometry-results.ru.md).
+fitrect принята целиком; handlerequest проходит PC506–520. Новый отказ —
+PC521 multi-callee на newrect, которая останавливается на PC1340 CONSM
+для list of Rect. awm.init пока остаётся на PC303. Окно AWM и Android UI
+ещё не запущены.

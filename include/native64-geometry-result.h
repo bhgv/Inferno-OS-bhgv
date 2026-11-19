@@ -1,6 +1,6 @@
 #ifndef NATIVE64_GEOMETRY_RESULT_H
 #define NATIVE64_GEOMETRY_RESULT_H
-/* Private imported-result contracts: raw Word32 Draw.Point/Rect, never roots. */
+/* Private result contracts: raw Word32 Draw.Point/Rect, never roots. */
 static unsigned int
 native64geometryresultwidth(unsigned int contract)
 {

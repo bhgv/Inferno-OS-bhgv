@@ -110,6 +110,14 @@ native64typedlocalgeometry(const Native64TypedStep*s,unsigned int fp,unsigned in
 }
 
 static int
+native64typedgeometryreturn(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int mode=USRC(s->mode),width=s->returned==246?16:8;
+ return (s->returned==246 || s->returned==247) && s->op==IMOVM && s->mode==(SRC(mode)|AXIMM|DST(AFP|AIND)) && (mode==AFP || mode==AMP) && s->m==width && s->d==32 &&
+  native64typedwordoperand(mode,s->s,fp,mp) && width<=(mode==AFP?fp:mp)-s->s;
+}
+
+static int
 native64typedpointerstore(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
  unsigned int sm=USRC(s->mode),dm=UDST(s->mode);
@@ -374,6 +382,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
             if(!native64typeddrawstep(s,fpbytes,mpbytes) || (s->returned!=Native64TypedDraw && (s->d<0 || (unsigned long)s->d>=count)))return 0;continue;
         }
         if(s->returned==173){if(!native64typedcontextcopy(s,fpbytes,mpbytes))return 0;continue;}
+        if(s->returned==246 || s->returned==247){if(!native64typedgeometryreturn(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==242){if((s->op!=INEW && s->op!=INEWZ) || s->mode!=(SRC(AIMM)|DST(AFP)) || s->s || s->m || !native64typedrootoperand(AFP,s->d,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==243 || s->returned==244){if(!native64typedpointerstore(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==172 || s->returned==174){if(!native64typedcontextnew(s,fpbytes))return 0;continue;}
@@ -494,6 +503,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==188){p->reg=0;p->d.ind=s->d;continue;}
         if(s->returned==183){p->d.ind=s->d;continue;}
         if(s->returned==185){p->d.i.f=32;p->d.i.s=0;continue;}
+        if(s->returned==246 || s->returned==247){p->s.ind=s->s;p->d.i.f=32;p->d.i.s=0;continue;}
         if(s->returned==242){p->d.ind=s->d;continue;}
         if(s->returned==243 || s->returned==244){p->reg=0;p->d.i.f=s->d;p->d.i.s=s->m;continue;}
         if(s->returned==172){p->d.ind=s->d;continue;}

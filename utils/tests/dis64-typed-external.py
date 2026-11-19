@@ -50,7 +50,7 @@ def verify(data,r,imports,loads=False,rows=None):
     for first,end,target,descriptor,offset,contract,inherited in r.get('calls',[]):
         assert rows is not None and previous<first<end<len(original);previous=end
         callee=next(x for x in rows if x['first']==target);assert callee['accepted']and callee['descriptor']==descriptor
-        assert contract==(72 if callee.get('result_channels')==[6,6,6]else 48 if callee.get('result_pair')==[11,10]else callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
+        assert contract==(96 if callee.get('result_geometry')==8 else 112 if callee.get('result_geometry')==16 else 72 if callee.get('result_channels')==[6,6,6]else 48 if callee.get('result_pair')==[11,10]else callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
         at=first+1;preps=set()
         pending=original[first]['d'][0];assert original[first]['op']==5 and original[first]['s']==[descriptor]
         assert r['code'][first]==[5,17,descriptor,0,40,0]
@@ -412,6 +412,15 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert(s if read else d)==maps['frame'if cm==5 else'data'][ca[0]]
                 leaves=r['frame'if vm else'data']['leaves'];value=d if read else s
                 for i in range(0,width,4):assert next(l for l in leaves if l[0]==va[0]+i)==[va[0]+i,value+i,4,4,9]
+            continue
+        if returned in(246,247):
+            width=16 if returned==246 else 8;sm=o['mode']>>3&7
+            assert loads and r.get('result_geometry')==width and r['result']==[1,width]and op==o['op']==OPCODES['IMOVM']and mode==o['mode']==(sm<<3)|64|5 and sm in(0,1)and o['m']==width and o['d']==[16,0]
+            base=maps['frame'if sm else'data'][o['s'][0]]
+            for i in range(0,width,4):
+                leaf=next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0]+i);assert leaf==[o['s'][0]+i,base+i,4,4,9]
+                assert not(r['frame'if sm else'data']['map'][(base+i)//64]&(128>>((base+i)//8%8)))
+            assert r['code'][pc]==[op,mode,base,width,32,returned]
             continue
         if returned==242:
             assert loads and op==o['op']and op in(OPCODES['INEW'],OPCODES['INEWZ'])and mode==o['mode']==17 and o['m']is None

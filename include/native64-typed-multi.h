@@ -9,7 +9,7 @@ struct Native64TypedCall {
     Type *callee;
     Inst *target;
     unsigned int ordinal,contract,inherited;
-    unsigned int external,modulemode,moduleoffset,resultcontract; /* Separate imported result proof: roots72 or raw geometry96/112. */
+    unsigned int external,modulemode,moduleoffset,resultcontract; /* Separate result proof: roots72 or raw geometry96/112. */
 };
 
 /* Exact numeric Image/Window field displacements; Word leaves stay 32-bit. */
@@ -136,7 +136,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
            8>(c->modulemode==AFP?fpbytes:mpbytes)-c->moduleoffset)) ||
            c->callee->size<64 || c->callee->size>65536 || c->callee->size%8 ||
            ((c->contract==72)!=(c->resultcontract==72)) || (c->resultcontract && c->resultcontract!=48 && c->resultcontract!=72 && !native64geometryresultwidth(c->resultcontract)) ||
-           ((native64geometryresultwidth(c->contract) || native64geometryresultwidth(c->resultcontract)) && (!c->external || c->inherited || c->contract!=c->resultcontract)) ||
+           ((native64geometryresultwidth(c->contract) || native64geometryresultwidth(c->resultcontract)) && (c->inherited || c->contract!=c->resultcontract)) ||
            (c->contract==48 && c->external) || (c->contract==88 && (!c->external || c->inherited || c->callee->size!=72 || c->callee->np!=2 || c->callee->map[0] || c->callee->map[1]!=0x80)) || (c->contract && !native64geometryresultwidth(c->contract) && c->contract!=48 && c->contract!=72 && c->contract!=88 && ((c->contract&~31) || (width!=1 && width!=4 && width!=8) || ((c->contract&16) && width!=8))) ||
            (c->inherited && !c->contract) || (c->contract && c->end<c->first+2))return 0;
         s=steps+c->first;

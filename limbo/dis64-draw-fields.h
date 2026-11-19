@@ -85,6 +85,17 @@ typedlocalscreenimageprep(Inst*in,Inst*copy,Dis64TypedBody*p,unsigned int pc)
 }
 
 /* Numeric Image geometry copied to/from ordinary FP/MP geometry, not a call frame. */
+/* A whole raw geometry value, never a heap owner or a partially written result. */
+static int
+typedlocalgeometryreturn(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
+{
+ Dis64Layout l={0};Type*t=in->s.native64type?in->s.native64type:in->s.decl?in->s.decl->ty:nil;Addr a;unsigned int i,wire,mode=0;long base=0,part;int actual,ok=0;
+ if(!p->resultgeometry || in->op!=IMOVM || in->mm!=Aimm || in->m.offset!=p->resultgeometry || in->dm!=Afpind || in->d.reg!=16 || in->d.offset || in->branch || (in->sm!=Afp && in->sm!=Amp) || !typedwordgeometry(t,&l) || l.bytes!=p->resultgeometry)goto done;
+ for(i=0;i<l.bytes;i+=4){a=in->s;a.reg+=i;a.offset=0;if(!typedoperand(in->sm,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || (i && part!=base+i))goto done;if(!i){base=part;mode=wire;}}
+ *out=(Dis64Instruction){IMOVM,SRC(mode)|AXIMM|DST(AFP|AIND),l.bytes,base,32};*returned=l.bytes==16?246:247;ok=1;
+ done:dis64layoutfree(&l);return ok?1:typedfail(p,"local-geometry-return");
+}
+
 static int
 typedlocalgeometry(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {

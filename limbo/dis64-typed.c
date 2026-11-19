@@ -230,7 +230,7 @@ typedresults(Dis64TypedBody *p)
 		pc=queue[head++];flow=state[pc];
         if(p->resulttriple){if(p->returns[pc]==2 || p->returns[pc]==4 || p->returns[pc]==8)flow|=p->returns[pc];if(p->returns[pc]==32 || p->returns[pc]==171)flow=15;}
         else if(p->resultpair){if(p->returns[pc]==8)flow|=2;if(p->returns[pc]==16)flow|=4;if(p->returns[pc]==32)flow=7;}
-        else if((p->returns[pc] && p->returns[pc]<=32) || (p->returns[pc]==174 || p->returns[pc]==185))flow=3;
+        else if((p->returns[pc] && p->returns[pc]<=32) || (p->returns[pc]==174 || p->returns[pc]==185 || p->returns[pc]==246 || p->returns[pc]==247))flow=3;
         n=0;
 		if(p->code[pc].op==IRET || p->code[pc].op==IRAISE || p->code[pc].op==IEXIT) continue;
         if(p->code[pc].op==ICASE || p->code[pc].op==ICASEL || p->code[pc].op==IGOTO || p->code[pc].op==ICASEC){
@@ -261,6 +261,8 @@ typedresults(Dis64TypedBody *p)
 	free(state);free(queue);return ok;
 }
 
+static int typedwordgeometry(Type*,Dis64Layout*);
+
 static int
 typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned int stop, Dis64TypedBody *p,int loads)
 {
@@ -278,6 +280,7 @@ typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned in
 	case Tbyte:p->resultbytes=1;break;
 	case Tint:case Tfix:p->resultbytes=4;break;
 	case Tbig:case Treal:case Tstring:case Tref:case Tarray:case Tlist:case Tchan:case Tmodule:p->resultbytes=8;break;
+    case Tadt:{Dis64Layout layout={0};int ok=loads && typedwordgeometry(fn->ty->tof,&layout);if(ok)p->resultgeometry=p->resultbytes=layout.bytes;dis64layoutfree(&layout);if(!ok)return typedfail(p,"aggregate-result");break;}
 	case Ttuple:if(loads && typedchanneltriple(fn->ty->tof)){p->resultbytes=24;p->resulttriple=1;}else if(loads && typedpairtype(fn->ty->tof)){p->resultbytes=16;p->resultpair=1;}else return typedfail(p,"aggregate-result");break;
 	default:return typedfail(p,"aggregate-result");
 	}
@@ -628,7 +631,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             if((multi!=nil && strcmp(multi,"1")==0) || (external!=nil && strcmp(external,"1")==0) || (loads!=nil && strcmp(loads,"1")==0)){
                 fprint(2,",\"signature\":");typedsignature(fn);fprint(2,",\"export_name\":");typedexportname(fn);
             }
-			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair)fprint(2,",\"result_pair\":[%d,%d]",Tmodule,Tlist);if(p.resulttriple)fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);
+			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair)fprint(2,",\"result_pair\":[%d,%d]",Tmodule,Tlist);if(p.resulttriple)fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);if(p.resultgeometry)fprint(2,",\"result_geometry\":%d",p.resultgeometry);
 			fprint(2,",\"descriptor\":%d,\"data_descriptor\":%d,\"frame\":",fn->desc->id,descriptors->id);
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);
