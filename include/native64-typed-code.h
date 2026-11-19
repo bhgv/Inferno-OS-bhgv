@@ -1,3 +1,4 @@
+#include "native64-fileio-layout.h"
 #ifndef NATIVE64_TYPED_CODE_H
 #define NATIVE64_TYPED_CODE_H
 /* Trusted checked-IR materialization only; no bytecode/file admission. */
@@ -221,12 +222,12 @@ native64typeddrawstep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 static int
 native64typedaltstep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
- unsigned int sm=USRC(s->mode),dm=UDST(s->mode),w=s->m==72?24:s->m==48?16:s->m&15;
+ unsigned int sm=USRC(s->mode),dm=UDST(s->mode),w=native64fileiowidth(s->m)?native64fileiowidth(s->m):s->m==72?24:s->m==48?16:s->m&15;
  if(s->mode>255 || (s->mode&ARM)!=AXNON || dm!=AFP)return 0;
- if(s->returned==189 || s->returned==192 || s->returned==193)return s->op==IMOVL && native64typedrootoperand(AFP,s->d,fp,mp) &&
-  (s->returned==189?(!s->m && native64typedrootoperand(sm,s->s,fp,mp)):((s->returned==192?s->m==64:(s->m>=0 && s->m<=32 && s->m%8==0)) && (sm==(AFP|AIND) || sm==(AMP|AIND)) && native64typedrootoperand(sm&~AIND,s->s,fp,mp)));
- if(s->returned==190 || s->returned==195 || s->returned==197)return s->op==ILEA && (s->returned==197?s->m==72:s->returned==195?s->m==48:(s->m==4 || s->m==24)) && native64typedrootoperand(AFP,s->d,fp,mp) &&
-  (sm==AFP || sm==AMP) && s->s>=0 && !(s->s%((s->m==48 || s->m==72)?8:w)) && native64typedcodeoperand(sm,s->s,fp,mp) && w<=(sm==AFP?fp:mp)-s->s;
+ if(s->returned==189 || s->returned==192 || s->returned==193 || s->returned==198)return s->op==IMOVL && native64typedrootoperand(AFP,s->d,fp,mp) &&
+  (s->returned==189?(!s->m && native64typedrootoperand(sm,s->s,fp,mp)):((s->returned==198?(s->m==0 || s->m==8):s->returned==192?s->m==64:(s->m>=0 && s->m<=32 && s->m%8==0)) && (sm==(AFP|AIND) || sm==(AMP|AIND)) && native64typedrootoperand(sm&~AIND,s->s,fp,mp)));
+ if(s->returned==190 || s->returned==195 || s->returned==197 || s->returned==199 || s->returned==203)return s->op==ILEA && (s->returned==199?s->m==104:s->returned==203?s->m==120:s->returned==197?s->m==72:s->returned==195?s->m==48:(s->m==4 || s->m==24)) && native64typedrootoperand(AFP,s->d,fp,mp) &&
+  (sm==AFP || sm==AMP) && s->s>=0 && !(s->s%((s->m==48 || s->m==72 || native64fileiowidth(s->m))?8:w)) && native64typedcodeoperand(sm,s->s,fp,mp) && w<=(sm==AFP?fp:mp)-s->s;
  return s->returned==191 && s->op==IALT && sm==AFP && s->m>=1 && s->m<=32 &&
   native64typedrootoperand(AFP,s->s,fp,mp) && 8+16*s->m<=fp-s->s && native64typedwordoperand(AFP,s->d,fp,mp);
 }
@@ -258,8 +259,8 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==173){if(!native64typedcontextcopy(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==172 || s->returned==174){if(!native64typedcontextnew(s,fpbytes))return 0;continue;}
         if(s->returned==171){if(!native64typedtriplecopy(s,fpbytes))return 0;continue;}
-        if(s->returned==194 || s->returned==196){unsigned int span=s->returned==194?16:24;if(s->op!=IMOVMP || s->mode>255 || (s->mode&ARM)!=AXIMM || s->m || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes) || !native64typedrootoperand(dm,s->d,fpbytes,mpbytes) || span>(sm==AFP?fpbytes:mpbytes)-s->s || span>(dm==AFP?fpbytes:mpbytes)-s->d)return 0;continue;}
-        if((s->returned>=189 && s->returned<=193) || s->returned==195 || s->returned==197){if(!native64typedaltstep(s,fpbytes,mpbytes))return 0;continue;}
+        if(s->returned==194 || s->returned==196 || s->returned==201 || s->returned==202){unsigned int span=s->returned==201?32:s->returned==194?16:24;if(s->op!=IMOVMP || s->mode>255 || (s->mode&ARM)!=AXIMM || s->m || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes) || !native64typedrootoperand(dm,s->d,fpbytes,mpbytes) || span>(sm==AFP?fpbytes:mpbytes)-s->s || span>(dm==AFP?fpbytes:mpbytes)-s->d)return 0;continue;}
+        if((s->returned>=189 && s->returned<=193) || s->returned==195 || s->returned==197 || s->returned==198 || s->returned==199 || s->returned==203){if(!native64typedaltstep(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==188){if(!native64typedtransfer(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==183 || s->returned==185){if(!native64typedmappedchannel(s,fpbytes,mpbytes))return 0;continue;}
         if(native64typedchannelop(s->op)){if(!native64typedchannel(s,fpbytes,mpbytes))return 0;continue;}
@@ -340,8 +341,8 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 	for(i=0;i<count;i++){
 		s=steps+i;p=out+i;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;p->reg=s->m;
 		p->s.imm=s->s;
-        if(s->returned==194 || s->returned==196){p->reg=0;p->d.ind=s->d;continue;}
-        if((s->returned>=189 && s->returned<=193) || s->returned==195 || s->returned==197){p->reg=(s->returned==190 || s->returned==195 || s->returned==197)?256|s->m:0;p->d.ind=s->d;if(s->returned==192 || s->returned==193){p->s.i.f=s->s;p->s.i.s=s->returned==192?64:s->m;}continue;}
+        if(s->returned==194 || s->returned==196 || s->returned==201 || s->returned==202){p->reg=0;p->d.ind=s->d;continue;}
+        if((s->returned>=189 && s->returned<=193) || s->returned==195 || s->returned==197 || s->returned==198 || s->returned==199 || s->returned==203){p->reg=(s->returned==190 || s->returned==195 || s->returned==197 || s->returned==199 || s->returned==203)?256|s->m:0;p->d.ind=s->d;if(s->returned==192 || s->returned==193 || s->returned==198){p->s.i.f=s->s;p->s.i.s=s->returned==192?64:s->m;}continue;}
         if(s->returned==188){p->reg=0;p->d.ind=s->d;continue;}
         if(s->returned==183){p->d.ind=s->d;continue;}
         if(s->returned==185){p->d.i.f=32;p->d.i.s=0;continue;}

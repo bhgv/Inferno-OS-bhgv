@@ -141,3 +141,9 @@ frontier; полный AWM event loop и Android UI ещё не запущены
 alt-field-channel для wmrectIO.write через Sys.FileIO. Command остаётся
 accepted; FileIO channel fields и mixed payloads — следующий участок.
 Полный AWM/Android UI пока не запущен.
+
+Следующий этап: [Sys.FileIO и mixed ALT payloads](native64-fileio-alt.ru.md).
+Настоящий awm.init проходит оба FileIO guard’а и полную подготовку внешнего
+ALT с IGOTO. Следующий отказ — PC168 indirect-or-reserved-operand внутри
+обработки события: z.ctl <-= "exit" через Client.ctl. Command остаётся
+accepted; графический AWM ещё не запущен.
