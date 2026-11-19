@@ -447,6 +447,12 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 if(!!(map[bit/8]&(0x80>>(bit%8)))!=roots[k])return 0;
             }
         }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==207 || ((f->code[j].op==IBEQL || f->code[j].op==IBNEL) && (USRC(f->code[j].mode)&AIND) && f->code[j].m>=0x1000000L)){
+            unsigned int k,modes[2],offsets[2];step=f->code+j;if(!native64typedfieldreference(step,f->bytes,s->databytes) || step->d<0 || (unsigned long)step->d>=f->count)return 0;
+            modes[0]=USRC(step->mode)&~AIND;modes[1]=(step->mode&ARM)==AXINF?AFP:AMP;offsets[0]=step->s;offsets[1]=step->m&65535;
+            for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
+            for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
+        }
         for(j=0;j<f->count;j++)if(f->code[j].returned==205 || f->code[j].returned==206){
             unsigned int k,modes[2],offsets[2],root;step=f->code+j;if(!native64typedclientfield(step,f->bytes,s->databytes))return 0;
             modes[0]=USRC(step->mode);modes[1]=UDST(step->mode);offsets[0]=step->s;offsets[1]=step->d;

@@ -418,17 +418,28 @@ typedclientcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 static int
 typedloadcontextcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
 {
- Addr *left=&in->s,*right=&in->m;int lm=in->sm,rm=in->mm,actual;unsigned int mm,bm,index=0,window,draw;long middle,base;Inst field=*in;
+ Addr *left=&in->s,*right=&in->m;int lm=in->sm,rm=in->mm,actual,kind;unsigned int mm,bm,index=0,window,draw,family;long middle,base,offset;Inst field=*in;
  if(in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc)return typedfail(p,"context-nil-branch");
- if(lm==Amp && (rm==Afpind || rm==Ampind)){left=&in->m;right=&in->s;lm=in->mm;rm=in->sm;}
- if((lm!=Afpind && lm!=Ampind) || rm!=Amp)return typedfail(p,"context-nil-roles");
+ if((lm==Afp || lm==Amp) && (rm==Afpind || rm==Ampind)){left=&in->m;right=&in->s;lm=in->mm;rm=in->sm;}
+ if((lm!=Afpind && lm!=Ampind) || (rm!=Afp && rm!=Amp))return typedfail(p,"context-nil-roles");
+ if(!typedoperand(rm,right,TypedRoot,0,1,p,&middle,&mm,&actual) || (actual!=Tany && actual!=Tref))return typedfail(p,"field-reference-roles");
  field.op=IMOVP;field.s=*left;field.sm=lm;field.mm=Anone;field.dm=Afp;field.branch=nil;
  window=typedwindowowner(left);draw=typeddrawowner(left);
- if(!(window?typedwindowfield(&field,p,pc,1,&index):draw?typeddrawfield(&field,p,pc,1,&index):typedclientfield(&field,p,pc,1)) || !typedoperand(rm,right,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || mm!=AMP)return typedfail(p,"context-nil-roles");
- base=p->code[pc].source;bm=lm==Afpind?AFP:AMP;
- p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:IBNEL,SRC(bm|AIND)|AXINM|DST(AIMM),middle,base,in->branch->pc-p->first};
- if(draw && index==2)return typedfail(p,"draw-string-nil-roles");
- p->returns[pc]=window?101+index:draw?114+index:97+left->offset/4;return 1;
+ if(actual!=Tany && typedwmref(typedfieldowner(left),"Wmsrv","Client")){
+  if(!typedclientaddress(left,lm,p,&base,&bm,&offset,&kind) || kind!=Tref)return typedfail(p,"client-reference-field");family=4;
+ }else{
+  if(!(window?typedwindowfield(&field,p,pc,1,&index):draw?typeddrawfield(&field,p,pc,1,&index):typedclientfield(&field,p,pc,1)))return typedfail(p,"context-nil-roles");
+  base=p->code[pc].source;offset=p->contextfields[pc];bm=lm==Afpind?AFP:AMP;family=draw?1:window?2:3;
+ }
+ if(actual==Tany){
+  if(mm!=AMP || (!draw && !window && family!=3))return typedfail(p,"context-nil-roles");
+  if(draw && index==2)return typedfail(p,"draw-string-nil-roles");
+  p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:IBNEL,SRC(bm|AIND)|AXINM|DST(AIMM),middle,base,in->branch->pc-p->first};
+  p->returns[pc]=window?101+index:draw?114+index:97+left->offset/4;return 1;
+ }
+ if((draw && index==2) || (window && index==3) || (family==3 && left->offset==8) || middle<0 || middle>65535 || offset<0 || offset>255 || (mm!=AFP && mm!=AMP))return typedfail(p,"field-reference-class");
+ p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:IBNEL,SRC(lm==Afpind?AFP|AIND:AMP|AIND)|(mm==AFP?AXINF:AXINM)|DST(AIMM),(family<<24)|(offset<<16)|middle,base,in->branch->pc-p->first};
+ p->returns[pc]=207;return 1;
 }
 
 /* Comparing a direct ref ADT with nil only observes the root pointer.

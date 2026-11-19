@@ -281,6 +281,16 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned==207:
+            assert loads and o['op']in(93,94)and op==(OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'])and mode==o['mode']
+            sm=mode>>3&7;mm=mode&192;assert sm in(4,5)and mm in(128,192)and mode&7==2
+            family=m>>24;offset=(m>>16)&255;other=m&65535
+            mappings={1:{0:0,4:8,8:16,12:24,16:32,44:48,48:56},2:{0:0,20:24,40:48,56:72,84:104},3:{0:0,4:8},4:{28:56,48:88}}
+            assert family in mappings and mappings[family][o['s'][1]]==offset
+            assert next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0])[4]==12
+            assert next(l for l in r['frame'if mm==128 else'data']['leaves']if l[0]==o['m'])[4]==12
+            assert s==maps['frame'if sm==5 else'data'][o['s'][0]]and other==maps['frame'if mm==128 else'data'][o['m']]and d==o['d'][0]-r['first']and d not in inside
+            continue
         if returned in(205,206):
             assert loads and op==o['op']==OPCODES['IMOVP'if returned==205 else'IMOVW']and o['m']is None and mode==o['mode']
             sm=mode>>3&7;dm=mode&7;read=sm in(4,5);cm=sm if read else dm;vm=dm if read else sm;ca=o['s']if read else o['d'];va=o['d']if read else o['s']

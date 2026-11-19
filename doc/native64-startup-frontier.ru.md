@@ -152,3 +152,8 @@ accepted; графический AWM ещё не запущен.
 Настоящий awm.init проходит z.ctl SEND и чтение z.znext (PC168/169).
 Следующий отказ — PC178 context-nil-roles: сравнение win.image/screen.image.
 Command остаётся accepted; графический AWM ещё не запущен.
+
+Следующий этап: [field reference identity](native64-field-reference.ru.md).
+Настоящий awm.init проходит win.image/screen.image на PC178. Следующий отказ —
+PC180 multi-callee: reshaped пока отказывается на PC716, IMOVM локального Rect
+из Image.r. Command остаётся accepted; графический AWM ещё не запущен.

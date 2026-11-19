@@ -73,7 +73,7 @@ def main():
   if arch in('arm64','riscv64'):cc+=['-DDIS64_TEST_'+arch.upper()+'=1','-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')];binary=w/'unit';command=cc+[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+CMD['FILES']['releaseflags'](cc)+['-lm','-o',str(binary)];subprocess.run(command,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],check=True,timeout=180)
   for name,path,before,after,predicate in (
-   ('field-displacement','native64-typed-code.h','p->s.i.s=s->m;','p->s.i.s=s->m==48?56:s->m;','exact MP field value'),
+   ('field-displacement','native64-typed-code.h','p->s.i.s=s->m;p->d.ind=s->d;}\n            else','p->s.i.s=s->m==48?56:s->m;p->d.ind=s->d;}\n            else','exact MP field value'),
    ('field-argument','native64-typed-multi.h','p->s.i.f=s->s;p->s.i.s=s->m;p->d.i.f=40;','p->s.i.f=s->s;p->s.i.s=s->m==48?56:s->m;p->d.i.f=40;','actual Display.color prefix/receiver'),
    ('temporary-clear','native64-typed-multi.h','else if(s->returned==Native64TypedArgClear){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}',
     'else if(s->returned==Native64TypedArgClear){checkstep=*s;checkstep.returned=0;checkstep.mode=SRC(AFP)|DST(AFP);checkstep.s=checkstep.d;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}', 'temporary fill cleared before allocate'),

@@ -57,7 +57,7 @@ def main():
   binary=w/'unit';command=cc+[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+CMD['FILES']['releaseflags'](cc)+['-lm','-o',str(binary)]
   subprocess.run(command,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],check=True,timeout=180)
   for name,path,before,after,predicate in (
-   ('field-displacement','native64-typed-code.h','p->s.i.s=s->m;','p->s.i.s=0;','exact MP field value'),
+   ('field-displacement','native64-typed-code.h','p->s.i.s=s->m;p->d.ind=s->d;}\n            else','p->s.i.s=0;p->d.ind=s->d;}\n            else','exact MP field value'),
    ('branch-displacement','native64-typed-code.h','p->s.i.s=8*(s->returned-Native64TypedContextNil);','p->s.i.s=0;','exact MP field value'),
    ('mapped-roots','native64-typed-module.h','if((map[bit/8] & (128>>(bit%8)))==0)return 0;','if(0)return 0;','malformed Context metadata refused')):
    original=(ROOT/'include'/path).read_text();assert original.count(before)==1
