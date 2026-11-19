@@ -53,6 +53,7 @@ on:
       - 'utils/tests/native64-pointer-args*'
       - 'utils/tests/native64-pointer-fields*'
       - 'utils/tests/native64-pointer-new*'
+      - 'utils/tests/native64-pointer-result*'
       - 'utils/tests/native64-client-compare*'
       - 'utils/tests/native64-client-flags*'
       - 'utils/tests/native64-client-id*'
@@ -227,6 +228,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/pointer-fields.log"
           python3 utils/tests/native64-pointer-new.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/pointer-new.log"
+          python3 utils/tests/native64-pointer-result.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/pointer-result.log"
           python3 utils/tests/native64-client-compare.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/client-compare.log"
           python3 utils/tests/native64-client-cursor.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -400,6 +403,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/pointer-fields.log"
           python3 utils/tests/native64-pointer-new.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/pointer-new.log"
+          python3 utils/tests/native64-pointer-result.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/pointer-result.log"
           python3 utils/tests/native64-client-compare.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/client-compare.log"
           python3 utils/tests/native64-client-cursor.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

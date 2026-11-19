@@ -243,3 +243,9 @@ handlerequest проходит PC427–437: выделение Pointer, buttons 
 координаты. Новый отказ — PC438 external-inherit, подготовка millisec
 с результатом в p.msec. awm.init остаётся на PC303, пока handlerequest
 не принят целиком. Графический AWM и Android UI ещё не запущены.
+
+Следующий этап: [millisec в Pointer.msec](native64-pointer-result.ru.md).
+handlerequest проходит PC438–441, включая импортированный результат и
+отправку Pointer в c.ptr. Новый отказ — PC506 multi-callee на fitrect;
+fitrect и newrect требуют aggregate-result для Draw.Rect. awm.init пока
+остаётся на PC303. Окно AWM и Android UI ещё не запущены.

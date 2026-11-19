@@ -437,6 +437,7 @@ def main():
     run([sys.executable,str(tests/'native64-pointer-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-args.log')
     run([sys.executable,str(tests/'native64-pointer-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-fields.log')
     run([sys.executable,str(tests/'native64-pointer-new.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-new.log')
+    run([sys.executable,str(tests/'native64-pointer-result.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-result.log')
     run([sys.executable,str(tests/'native64-client-compare.py'),'--limbo',str(tools/'limbo')],build,env,logs/'client-compare.log')
     run([sys.executable,str(tests/'native64-client-cursor.py'),'--limbo',str(tools/'limbo')],build,env,logs/'client-cursor.log')
     run([sys.executable,str(tests/'native64-client-cursor-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'client-cursor-args.log')

@@ -304,6 +304,11 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         }else if(c->loads && kind==Ttuple){
             if(!typedstatresult(fn,binding,p,&local,0))return typedfail(p,"external-result-kind");
             contract=88;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;
+        }else if(c->loads && kind==Tint && binding->sm==Afpind && binding->s.reg!=16){
+            unsigned int wire;long base;
+            if(binding->s.offset!=12 || !binding->s.native64type || binding->s.native64type->kind!=Tint ||
+               !typedpointeraddress(&binding->s,Afpind,p,&base,&wire) || wire!=AFP)return typedfail(p,"pointer-word-result");
+            local=base;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),12,base,32};p->returns[at-p->first]=245;
         }else if(c->loads && root && binding->sm==Afpind && binding->s.reg!=16){
             unsigned int wire;long base;
             if(kind!=Tref || !typedwmref(fn->ty->tof,"Draw","Image") || binding->s.offset!=20 ||

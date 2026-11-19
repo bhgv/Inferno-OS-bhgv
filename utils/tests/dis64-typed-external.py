@@ -358,7 +358,13 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert leaf==[old+i,native+i,4,4,9]
                     assert not(r['frame']['map'][(native+i)//64]&(128>>((native+i)//8%8)))
 
-            if r['code'][end-1][5]==220:
+            if r['code'][end-1][5]==245:
+                assert loads and contract==4 and not e['inherited']and b['mode']==45 and b['m']is None and b['s'][1]==12
+                source=maps['frame'][b['s'][0]];assert source==e['resultoffset']
+                leaf=next(l for l in r['frame']['leaves']if l[0]==b['s'][0]);assert leaf[2:]==[4,8,12]
+                assert r['frame']['map'][source//64]&(128>>(source//8%8))
+                assert r['code'][end-1]==[39,45,source,12,32,245]
+            elif r['code'][end-1][5]==220:
                 assert loads and contract==24 and not e['inherited']and b['mode']==45 and b['m']is None and b['s'][1]==20
                 source=maps['frame'][b['s'][0]];assert source==e['resultoffset']
                 leaf=next(l for l in r['frame']['leaves']if l[0]==b['s'][0]);assert leaf[3:]==[8,12]

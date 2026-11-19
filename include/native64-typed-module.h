@@ -394,6 +394,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         for(j=0;j<f->nsites;j++){
             unsigned int k,r,modes[2],offsets[2];site=f->sites+j;
             if(site->first>=f->count || site->end>=f->count || site->end<=site->first)return 0;
+            if(site->contract){step=f->code+site->end-1;if(step->op==ILEA && (USRC(step->mode)&AIND) && step->returned!=220 && step->returned!=245)return 0;}
             for(k=site->first+1;k<site->end;k++)if(!f->code[k].returned){
                 step=f->code+k;if(site->external || !native64typedargprep(step,f->bytes,s->databytes))return 0;
                 if(step->op!=IMOVP)continue;
@@ -667,6 +668,13 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         for(j=0;j<f->count;j++)if(f->code[j].returned==(128|88)){
             unsigned int k,found=0;
             for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].contract==88)found++;
+            if(found!=1)return 0;
+        }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==245){
+            unsigned int k,found=0;step=f->code+j;
+            if(step->op!=ILEA || step->mode!=(SRC(AFP|AIND)|DST(AFP|AIND)) || step->m!=12 || step->d!=32 || !native64typedrootoperand(AFP,step->s,f->bytes,s->databytes))return 0;
+            bit=step->s/8;if(!(f->map[bit/8]&(0x80>>(bit%8))))return 0;
+            for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].external && f->sites[k].contract==4 && !f->sites[k].inherited)found++;
             if(found!=1)return 0;
         }
         for(j=0;j<f->count;j++)if(f->code[j].returned==220){
