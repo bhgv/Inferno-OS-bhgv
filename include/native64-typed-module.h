@@ -85,11 +85,12 @@ native64modulelists(const Native64ModuleSpec *spec,const Native64ModuleFunction 
  unsigned int i,k,bit,mode,root;long offset;const uchar *map;Inst probe;Native64TypedStep copy;const Native64TypedStep *step;
  for(i=0;i<fn->count;i++){
   step=fn->code+i;
+  if(step->returned==213 && !native64typedwindowlist(step,fn->bytes,spec->databytes))return 0;
   if(step->op!=ICONSP && step->op!=IHEADP && step->op!=ITAIL && step->op!=ICONSW && step->op!=IHEADW)continue;
-  copy=*step;if(copy.returned==Native64TypedListPrep || copy.returned==187)copy.returned=0;
+  copy=*step;if(copy.returned==Native64TypedListPrep || copy.returned==187 || copy.returned==213)copy.returned=0;
   if(!native64typedcode(&probe,1,&copy,1,fn->bytes,spec->databytes))return 0;
   for(k=0;k<2;k++){
-   if(k && step->returned)continue;
+   if(k && step->returned && step->returned!=213)continue;
    mode=k?UDST(step->mode):USRC(step->mode);offset=k?step->d:step->s;
    if(mode==AIMM)continue;root=step->op==ICONSW?k==1:step->op==IHEADW?k==0:1;
    map=mode==AFP?fn->map:spec->datamap;bit=offset/8;
@@ -315,7 +316,7 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
 {
  unsigned int i,k,j,found,bit;const Native64TypedStep*step;const Native64ModuleSite*site;const Native64ModuleImport*request;const uchar*map;
  for(i=0;i<f->count;i++){
-  step=f->code+i;if(step->returned>=208 && step->returned<=212)continue;if(step->op!=IMOVM && (step->returned<160 || step->returned>165))continue;
+  step=f->code+i;if((step->returned>=208 && step->returned<=212)||step->returned==215)continue;if(step->op!=IMOVM && (step->returned<160 || step->returned>165))continue;
   found=0;
   for(k=0;k<f->nsites;k++){
    site=f->sites+k;if(i<=site->first || i>=site->end)continue;
@@ -447,7 +448,14 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 if(!!(map[bit/8]&(0x80>>(bit%8)))!=roots[k])return 0;
             }
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned>=208 && f->code[j].returned<=212){
+        for(j=0;j<f->count;j++)if(f->code[j].returned==214){
+            unsigned int k,modes[2],offsets[2];step=f->code+j;if(!native64typedwmsrvwindow(step,f->bytes,s->databytes))return 0;
+            modes[0]=USRC(step->mode)&~AIND;modes[1]=UDST(step->mode)&~AIND;offsets[0]=step->s;offsets[1]=step->d;
+            for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
+            for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
+        }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==213)for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
+        for(j=0;j<f->count;j++)if((f->code[j].returned>=208 && f->code[j].returned<=212)||f->code[j].returned==215){
             unsigned int k,modes[2],offsets[2],width;step=f->code+j;if(!native64typedlocalgeometry(step,f->bytes,s->databytes))return 0;width=step->m&255;
             modes[0]=USRC(step->mode);modes[1]=UDST(step->mode);offsets[0]=step->s;offsets[1]=step->d;
             for(k=0;k<2;k++){map=(modes[k]&~AIND)==AFP?f->map:s->datamap;if(modes[k]&AIND){bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}else for(at=0;at<width;at++){bit=(offsets[k]+at)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}}

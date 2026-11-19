@@ -65,7 +65,7 @@ def main():
   subprocess.run(command,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],check=True,timeout=180)
   for name,header,before,after,predicate in (
    ('wide Client Word store','native64-typed-code.h','if(s->returned==205 || s->returned==206){p->reg=0;', 'if(s->returned==205 || s->returned==206){p->reg=0;if(s->returned==206 && s->m==32 && (UDST(s->mode)&AIND))p->op=IMOVL;','all Client fields and padding preserved'),
-   ('wrong Client channel field','native64-typed-code.h','p->d.i.s=s->m>>8;', 'p->d.i.s=s->m>>8;if((s->m>>8)==0)p->d.i.s=24;','all Client channel peers resumed and retired'),
+   ('wrong Client channel field','native64-typed-code.h','if(s->returned==204){p->reg=0;if(s->op==ISEND){p->d.i.f=s->d;p->d.i.s=s->m>>8;', 'if(s->returned==204){p->reg=0;if(s->op==ISEND){p->d.i.f=s->d;p->d.i.s=s->m>>8;if((s->m>>8)==0)p->d.i.s=24;','all Client channel peers resumed and retired'),
    ('missing scalar GC proof','native64-typed-module.h','root=!!(modes[k]&AIND) || step->returned==205;map=', 'root=!!(modes[k]&AIND) || step->returned==205;if(!root)continue;map=','malformed Client metadata refused')):
    for parent in('native64-typed-module.h','native64-typed-multi.h','native64-typed-code.h','native64-typed-alt.h'):(w/parent).write_text((ROOT/'include'/parent).read_text())
    text=(w/header).read_text();assert text.count(before)==1;(w/header).write_text(text.replace(before,after,1));subprocess.run(command,check=True);result=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],capture_output=True,text=True,timeout=180)

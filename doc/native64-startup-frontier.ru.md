@@ -162,3 +162,8 @@ PC180 multi-callee: reshaped пока отказывается на PC716, IMOVM
 Настоящий reshaped проходит PC716 и доходит до PC762 load-nil-roles для списка
 z.wins. Пока этот callee не принят целиком, awm.init остаётся на PC180
 multi-callee. Command остаётся accepted; графический AWM ещё не запущен.
+
+Следующий этап: [списки и поля Wmsrv.Window](native64-window-list.ru.md).
+Настоящий reshaped проходит PC762–764 (nil/hd/w.img=nil) и доходит до PC765:
+image-geometry-owner для передачи w.r в геометрический вызов. awm.init пока
+остаётся на PC180 multi-callee; Command accepted, графический AWM не запущен.

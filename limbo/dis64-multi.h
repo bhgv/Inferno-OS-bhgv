@@ -18,6 +18,7 @@ typedbytearrayaddr(Addr *a)
 
 #include "dis64-external.h"
 #include "dis64-variadic.h"
+static int typedwindowlisttype(Addr*);
 
 /* List primitives belong only to the selected importing-client lowering. */
 static int
@@ -258,6 +259,7 @@ typedcontextcopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
 #include "dis64-window.h"
 #include "dis64-wmcontext.h"
 #include "dis64-client-channels.h"
+#include "dis64-window-list.h"
 #include "dis64-draw-fields.h"
 
 /* Immutable byte constants are immediate operands, never mutable MP storage. */
@@ -465,7 +467,7 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  }
  if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
     !value->decl || !value->decl->ty ||
-    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedloadreftype(value)) ||
+    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedwindowlisttype(value) && !typedloadreftype(value)) ||
     !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
     !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=value->decl->ty->kind || (typedloadreftype(value) && sm!=AFP) ||
     !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany ||
@@ -709,6 +711,9 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->loads && in->op==IMOVP && (in->sm==Afpind || in->sm==Ampind) && (in->dm==Afpind || in->dm==Ampind)){
             if(!typedcontextcopy(in,p,pc-p->first))goto fail;pc++;
+        }else if(c->loads && in->op==IMOVP && (in->sm==Afpind || in->sm==Ampind || in->dm==Afpind || in->dm==Ampind) &&
+          typedwmsrvwindow(typedfieldowner((in->sm==Afpind || in->sm==Ampind)?&in->s:&in->d))){
+            if(!typedwmsrvwindowfield(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==IMOVP || in->op==IMOVW) &&
           (in->sm==Afpind || in->sm==Ampind || in->dm==Afpind || in->dm==Ampind) &&
           typedwmref(typedfieldowner((in->sm==Afpind || in->sm==Ampind)?&in->s:&in->d),"Wmsrv","Client")){
@@ -736,6 +741,9 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(c->loads){p->code[pc-p->first].source=0;p->returns[pc-p->first]=UDST(p->code[pc-p->first].mode)==(AFP|AIND)?174:172;}pc++;
         }else if(c->loads && (in->op==ICONSW || in->op==IHEADW || (in->op==ITAIL && typedintlisttype(&in->s)))){
             if(!typedclientintlist(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+        }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) &&
+          ((in->op!=ICONSP && typedwindowlisttype(&in->s)) || (in->op!=IHEADP && typedwindowlisttype(&in->d)))){
+            if(!typedwindowlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
             if(!(c->loads?typedloadlist(in,fn,p,p->code+pc-p->first):typedclientlist(in,p,p->code+pc-p->first)))goto fail;
             if(UDST(p->code[pc-p->first].mode)==(AFP|AIND))p->returns[pc-p->first]=1;pc++;
