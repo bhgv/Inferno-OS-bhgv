@@ -373,9 +373,26 @@ typedclientstring(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|(mm==AIMM?AXIMM:mm==AFP?AXINF:AXINM)|DST(dm),middle,source,destination};return 1;
 }
 
-/* One numeric String temporary, bounded in-place concatenation, argument, clear. */
-/* A bounded String-list tail chain, head into a mapped pending argument,
- * then exact nil clear. No arbitrary instruction replay in call setup. */
+/* Bounded String-list traversal, rooted head, raw Word32 argument, nil clear. */
+static int
+typedexternalinthead(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,unsigned int*at,unsigned int oldoffset,unsigned int offset)
+{
+ Inst*in;Addr temp;unsigned int n=0,wire;long source;int actual;
+ if(*at>=end || !(in=c->instructions[*at]) || (in->op!=ITAIL && in->op!=IHEADP) || in->dm!=Afp || !in->d.decl || in->d.decl->store!=Dlocal || !in->d.decl->sym || in->d.decl->sym->name[0]!='.' || in->d.decl->sym->name[1]!='t' || in->d.offset)return typedfail(p,"external-int-head-temp");
+ temp=in->d;
+ while(*at<end && (in=c->instructions[*at]) && in->op==ITAIL){
+  if(n++==32 || in->dm!=Afp || in->d.decl!=temp.decl || in->d.reg!=temp.reg || in->d.offset || !typedloadlisttype(&in->s) || !typedloadlisttype(&in->d) || (n>1 && (in->sm!=Afp || in->s.decl!=temp.decl || in->s.reg!=temp.reg || in->s.offset)) || !typedclientlist(in,p,p->code+*at-p->first))return typedfail(p,"external-int-head-tail");
+  p->returns[(*at)++-p->first]=253;
+ }
+ if(*at>=end || !(in=c->instructions[*at]) || in->op!=IHEADP || in->dm!=Afp || in->d.decl!=temp.decl || in->d.reg!=temp.reg || in->d.offset || !typedloadlisttype(&in->s) || (n && (in->sm!=Afp || in->s.decl!=temp.decl || in->s.reg!=temp.reg || in->s.offset)) || !typedclientlist(in,p,p->code+*at-p->first))return typedfail(p,"external-int-head-read");
+ p->returns[(*at)++-p->first]=253;
+ if(*at>=end || !(in=c->instructions[*at]) || in->op!=ICVTCW || in->mm!=Anone || in->branch || in->sm!=Afp || in->s.decl!=temp.decl || in->s.reg!=temp.reg || in->s.offset || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=oldoffset || !typedoperand(Afp,&in->s,Tstring,0,0,p,&source,&wire,&actual) || actual!=Tstring)return typedfail(p,"external-int-head-convert");
+ p->code[*at-p->first]=(Dis64Instruction){ICVTCW,SRC(AFP)|DST(AFP|AIND),0,source,offset};p->returns[(*at)++-p->first]=253;
+ if(*at>=end || !(in=c->instructions[*at]) || in->op!=IMOVP || in->sm!=Amp || in->mm!=Anone || in->branch || in->dm!=Afp || in->d.decl!=temp.decl || in->d.reg!=temp.reg || in->d.offset || !in->s.decl || !in->s.decl->ty || in->s.decl->ty->kind!=Tany || !in->s.decl->sym || strcmp(in->s.decl->sym->name,"nil") || in->s.reg!=in->s.decl->offset || in->s.offset || !typedinst(in,c->count,p,p->code+*at-p->first,p->returns+*at-p->first))return typedfail(p,"external-int-head-clear");
+ p->returns[(*at)++-p->first]=253;return 1;
+}
+
+/* Bounded tail chain, head into a mapped argument, exact nil clear. */
 static int
 typedexternalheadarg(TypedMulti*c,Dis64TypedBody*p,Inst*frame,Decl*arg,unsigned int end,unsigned int*at,unsigned int offset)
 {

@@ -266,3 +266,10 @@ PC544 load-nil-roles на tl args == nil. awm.init пока остаётся н�
 handlerequest проходит PC544–595. Новый отказ — PC596 external-call на
 int hd args / int hd tl args в аргументах Point.sub. awm.init остаётся
 на PC303. Окно AWM и Android UI ещё не запущены.
+
+Следующий этап: [Числовой head в аргументах Point](native64-int-head-args.ru.md).
+handlerequest проходит PC596–606, включая преобразование строковых координат
+и Point.sub. Новый отказ — PC607 multi-callee на dragwin; сама dragwin
+останавливается на PC859 context-field-roles, sizewin — PC901
+load-byte-array-class. awm.init пока на PC303. Окно AWM и Android UI
+ещё не запущены.

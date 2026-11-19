@@ -166,6 +166,7 @@ static int typedrootargclear(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsi
 static int typedimagegeometryprep(Inst*,Inst*,Dis64TypedBody*,unsigned int);
 static int typedimagegeometry(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
 
+static int typedexternalinthead(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
 static int
 typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned int end,unsigned int*at,unsigned int*offset)
 {
@@ -204,6 +205,9 @@ typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned
   p->code[*at-p->first]=(Dis64Instruction){IMOVM,SRC(sm)|AXIMM|DST(AFP|AIND),layout.bytes,source,base};p->returns[(*at)++-p->first]=64;
  }else{
   for(i=0;i<layout.count;i++){
+   if(*at<end && (in=c->instructions[*at]) && (in->op==ITAIL || in->op==IHEADP)){
+    if(!c->loads || !typedexternalinthead(c,p,frame,end,at,arg->offset+4*i,base+4*i))goto done;continue;
+   }
    if(*at>=end || !(in=c->instructions[*at]) || in->op!=IMOVW || in->mm!=Anone || in->branch || in->dm!=Afpind ||
       in->d.reg!=frame->d.reg || in->d.offset!=arg->offset+4*i || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual))goto done;
    p->code[*at-p->first]=(Dis64Instruction){IMOVW,SRC(sm)|DST(AFP|AIND),0,source,base+4*i};p->returns[(*at)++-p->first]=64;
@@ -235,7 +239,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
     if(fn->ty==nil || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys!=nil || fn->ty->tof==nil)
         return typedfail(p,"external-signature");
     while(end<stop && c->instructions[end]!=nil && (c->instructions[end]->dm==Afpind ||
-      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
+      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || call->op!=IMCALL || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Aoff || call->m.decl!=fn || call->dm!=frame->sm || call->d.reg!=frame->s.reg ||
        call->d.decl!=frame->s.decl || call->branch!=nil)return typedfail(p,"external-call");
@@ -248,6 +252,10 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
         offset=(offset+width-1)&~(width-1);
+        if(c->loads && kind==Tint && (in->op==ITAIL || in->op==IHEADP)){
+            if(offset>65535-4 || !typedexternalinthead(c,p,frame,end,&at,arg->offset,offset))return 0;
+            offset+=4;continue;
+        }
         if(c->loads && kind==Tstring && in->op==ITAIL){
             if(offset>65535-8 || !typedexternalheadarg(c,p,frame,arg,end,&at,offset))return 0;
             offset+=8;continue;

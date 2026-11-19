@@ -40,6 +40,24 @@ def field_argument(original,step,new,maps):
     assert field in oldfields
     assert step==[41,original['mode'],maps['frame'if sm==5 else'data'][base],oldfields[field],new,125]
 
+def inthead_argument(original,code,at,maps,pending,oldoffset,offset,r):
+    temp=None;tails=0
+    while original[at]['op']==OPCODES['ITAIL']:
+        a=original[at];sm=a['mode']>>3&7;assert sm in(0,1)and a['mode']==(sm<<3)|1 and a['m']is None
+        source=maps['frame'if sm else'data'][a['s'][0]];dest=maps['frame'][a['d'][0]]
+        if tails:assert sm==1 and source==dest==temp
+        assert code[at]==[a['op'],a['mode'],source,0,dest,253];temp=dest;tails+=1;at+=1
+    assert tails<=32
+    a=original[at];sm=a['mode']>>3&7;assert a['op']==OPCODES['IHEADP']and sm in(0,1)and a['mode']==(sm<<3)|1 and a['m']is None
+    source=maps['frame'if sm else'data'][a['s'][0]];dest=maps['frame'][a['d'][0]]
+    if tails:assert sm==1 and source==dest==temp
+    assert code[at]==[a['op'],a['mode'],source,0,dest,253];temp=dest;at+=1
+    a=original[at];assert a['op']==OPCODES['ICVTCW']and a['mode']==13 and a['m']is None and maps['frame'][a['s'][0]]==temp and a['d']==[pending,oldoffset]
+    assert code[at]==[a['op'],13,temp,0,offset,253];at+=1
+    a=original[at];assert a['op']==41 and a['mode']==1 and a['m']is None and maps['frame'][a['d'][0]]==temp and next(l for l in r['data']['leaves']if l[0]==a['s'][0])[4]==20
+    assert code[at]==[41,1,maps['data'][a['s'][0]],0,temp,253]
+    return at+1
+
 def verify(data,r,imports,loads=False,rows=None):
     assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and (rows is not None or 'calls'not in r)
     if r.get('result')==[14,24]:assert r.get('result_channels')==[6,6,6]
@@ -206,6 +224,10 @@ def verify(data,r,imports,loads=False,rows=None):
         at=first+1;aggregates={a['index']:a['layout']for a in e.get('aggregate_args',[])};nominals={a['index']:a.get('nominal')for a in e.get('aggregate_args',[])}
         assert len(aggregates)==len(e.get('aggregate_args',[]))
         for j,(new,kind,oldbytes,width)in enumerate(e['args']):
+            if at<end and r['code'][at][5]==253 and kind==9:
+                assert loads and oldbytes==width==4
+                oldoffset=(oldoffset+3)//4*4;at=inthead_argument(original,r['code'],at,maps,pending,oldoffset,new,r);oldoffset+=4
+                continue
             if at<end and r['code'][at][5]==252:
                 assert loads and kind==13 and oldbytes==4 and width==8
                 temp=None;tails=0
@@ -318,6 +340,8 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert r['code'][at]==[a['op'],a['mode'],source,width,new,64];at+=1
                 else:
                     for k in range(n):
+                        if r['code'][at][5]==253:
+                            at=inthead_argument(original,r['code'],at,maps,pending,oldoffset+4*k,new+4*k,r);continue
                         a=original[at];sm=a['mode']>>3&7
                         assert a['op']==OPCODES['IMOVW']and a['mode']==(sm<<3)|5 and sm in(0,1,2)and a['m']is None and a['d']==[pending,oldoffset+4*k]
                         source=a['s'][0]if sm==2 else maps['frame'if sm else'data'][a['s'][0]]

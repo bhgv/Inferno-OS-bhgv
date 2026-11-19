@@ -110,6 +110,13 @@ native64typedlocalgeometry(const Native64TypedStep*s,unsigned int fp,unsigned in
 }
 
 static int
+native64typedinthead(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int sm=USRC(s->mode);
+ return s->returned==253 && !s->m && ((s->op==ITAIL || s->op==IHEADP)?s->mode==(SRC(sm)|DST(AFP)) && native64typedrootoperand(sm,s->s,fp,mp):s->op==IMOVP && s->mode==(SRC(AMP)|DST(AFP)) && native64typedrootoperand(AMP,s->s,fp,mp)) && native64typedrootoperand(AFP,s->d,fp,mp);
+}
+
+static int
 native64typedheadprep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
  unsigned int sm=USRC(s->mode);
@@ -401,6 +408,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
             if(!native64typeddrawstep(s,fpbytes,mpbytes) || (s->returned!=Native64TypedDraw && (s->d<0 || (unsigned long)s->d>=count)))return 0;continue;
         }
         if(s->returned==173){if(!native64typedcontextcopy(s,fpbytes,mpbytes))return 0;continue;}
+        if(s->returned==253){if(!native64typedinthead(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==252){if(!native64typedheadprep(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned>=248 && s->returned<=250){if(!native64typedrectlist(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==246 || s->returned==247){if(!native64typedgeometryreturn(s,fpbytes,mpbytes))return 0;continue;}
@@ -524,6 +532,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==188){p->reg=0;p->d.ind=s->d;continue;}
         if(s->returned==183){p->d.ind=s->d;continue;}
         if(s->returned==185){p->d.i.f=32;p->d.i.s=0;continue;}
+        if(s->returned==253){p->s.ind=s->s;p->d.ind=s->d;continue;}
         if(s->returned==252){p->s.ind=s->s;p->d.ind=s->d;continue;}
         if(s->returned>=248 && s->returned<=250){p->d.ind=s->d;if(s->returned==248 && (USRC(s->mode)&AIND)){p->s.i.f=s->s;p->s.i.s=8;}else p->s.ind=s->s;continue;}
         if(s->returned==246 || s->returned==247){p->s.ind=s->s;p->d.i.f=32;p->d.i.s=0;continue;}

@@ -147,6 +147,19 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
             if(!s->returned){if(c->external || !native64typedargprep(s,fpbytes,mpbytes))return 0;continue;}
+            if(s->returned==253){
+                if(!c->external)return 0;
+                if(s->op==ICVTCW){
+                    unsigned int at,bit;if(c->callee->np<0 || (unsigned int)c->callee->np>((unsigned int)c->callee->size+63)/64)return 0;if(s->mode!=(SRC(AFP)|DST(AFP|AIND)) || s->m || !native64typedrootoperand(AFP,s->s,fpbytes,mpbytes) || !native64typedwordoperand(AFP,s->d,c->callee->size,0) || s->d>65535 || j==c->first+1 || j+1>=stop || steps[j-1].returned!=253 || steps[j-1].op!=IHEADP || steps[j-1].d!=s->s || steps[j+1].returned!=253 || steps[j+1].op!=IMOVP || steps[j+1].d!=s->s)return 0;
+                    for(at=0;at<4;at++){bit=(s->d+at)/8;if(bit/8<(unsigned int)c->callee->np && (c->callee->map[bit/8]&(128>>(bit%8))))return 0;}
+                }else{
+                    if(!native64typedinthead(s,fpbytes,mpbytes))return 0;
+                    if(s->op==ITAIL){if(j>c->first+1 && steps[j-1].returned==253 && steps[j-1].op==ITAIL && (USRC(s->mode)!=AFP || s->s!=steps[j-1].d || s->d!=steps[j-1].d))return 0;if(j+1>=stop || steps[j+1].returned!=253 || (steps[j+1].op!=ITAIL && steps[j+1].op!=IHEADP) || steps[j+1].s!=s->d || steps[j+1].d!=s->d)return 0;}
+                    else if(s->op==IHEADP){if(j>c->first+1 && steps[j-1].returned==253 && steps[j-1].op==ITAIL && (USRC(s->mode)!=AFP || s->s!=steps[j-1].d || s->d!=steps[j-1].d))return 0;if(j+1>=stop || steps[j+1].returned!=253 || steps[j+1].op!=ICVTCW || steps[j+1].s!=s->d)return 0;}
+                    else if(j==c->first+1 || steps[j-1].returned!=253 || steps[j-1].op!=ICVTCW || steps[j-1].s!=s->d)return 0;
+                }
+                continue;
+            }
             if(s->returned==252){
                 if(!c->external)return 0;
                 if(s->op==IHEADP){
@@ -237,6 +250,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 if(j==i){p->s.imm=c->external?c->moduleoffset:c->ordinal;p->reg=c->external?c->ordinal:0;p->d.ind=40;}
                 else if(j==c->end){p->s.ind=40;if(c->external){p->reg=c->ordinal;p->d.ind=c->moduleoffset;}else p->d.ins=c->target;}
                 else if(s->op==IMOVM && (native64imagegeometryoffset(s->returned)!=~0U)){p->s.i.f=s->s;p->s.i.s=native64imagegeometryoffset(s->returned);p->reg=s->m;p->d.i.f=40;p->d.i.s=s->d;}
+                else if(s->returned==253){if(s->op==ICVTCW){p->s.ind=s->s;p->d.i.f=40;p->d.i.s=s->d;}else native64typedcode(p,1,s,1,fpbytes,mpbytes);}
                 else if(s->returned==252){if(s->op==IHEADP){p->s.ind=s->s;p->d.i.f=40;p->d.i.s=s->d;}else native64typedcode(p,1,s,1,fpbytes,mpbytes);}
                 else if(s->returned==245){p->s.i.f=s->s;p->s.i.s=12;p->reg=512|4;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==220){p->s.i.f=s->s;p->s.i.s=24;p->reg=512|24;p->d.i.f=40;p->d.i.s=32;}
