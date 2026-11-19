@@ -92,6 +92,17 @@ typedpointerlayout(Type*t,Dis64Layout*l)
  done:dis64layoutfree(&point);return ok;
 }
 
+/* Only the canonical root-free Draw.Pointer receives this allocation role. */
+static int
+typedpointernew(Inst*in,Dis64TypedBody*p,Dis64Instruction*out)
+{
+ Decl*d=in->s.decl;Dis64Layout l={0};unsigned int mode;long dst;int actual,ok=0;
+ if(in->sm!=Adesc || in->mm!=Anone || in->branch || !d || !d->desc || d->desc->id!=in->s.offset || d->desc->size!=16 || d->desc->nmap || !typedpointerlayout(d->ty,&l))goto done;
+ if(!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&dst,&mode,&actual) || actual!=Tref || mode!=AFP)goto done;
+ *out=(Dis64Instruction){in->op,SRC(AIMM)|DST(AFP),0,0,dst};ok=1;
+ done:dis64layoutfree(&l);return ok?1:typedfail(p,"pointer-allocation-geometry");
+}
+
 static Type*typedfieldowner(Addr*);
 /* Selected raw Pointer leaves, keeping the reference slot at native width. */
 static int
@@ -102,6 +113,22 @@ typedpointeraddress(Addr*a,int mode,Dis64TypedBody*p,long*base,unsigned int*wire
  owner.offset=0;owner.native64type=t;
  ok=typedoperand(mode==Afpind?Afp:Amp,&owner,TypedRoot,0,0,p,base,wire,&actual) && actual==Tref;
  done:dis64layoutfree(&l);return ok;
+}
+static int
+typedpointerparse(Inst*in,Dis64TypedBody*p,unsigned int pc)
+{
+ long base,value;unsigned int wire,vm;int actual;
+ if(in->op!=ICVTCW || in->mm!=Anone || in->branch || !in->d.native64type || in->d.native64type->kind!=Tint || in->d.offset<0 || in->d.offset>12 || in->d.offset%4 || !typedpointeraddress(&in->d,in->dm,p,&base,&wire) ||
+    !typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&value,&vm,&actual) || actual!=Tstring || (vm!=AFP && vm!=AMP))return typedfail(p,"pointer-word-parse");
+ p->code[pc]=(Dis64Instruction){ICVTCW,SRC(vm)|DST(wire|AIND),in->d.offset,value,base};p->returns[pc]=244;return 1;
+}
+static int
+typedpointerstore(Inst*in,Dis64TypedBody*p,unsigned int pc)
+{
+ long base,value;unsigned int wire,vm;int actual;
+ if(in->op!=IMOVW || in->mm!=Anone || in->branch || !in->d.native64type || in->d.native64type->kind!=Tint || in->d.offset<0 || in->d.offset>12 || in->d.offset%4 || !typedpointeraddress(&in->d,in->dm,p,&base,&wire) ||
+    !typedoperand(in->sm,&in->s,Tint,1,0,p,&value,&vm,&actual) || actual!=Tint || (vm!=AFP && vm!=AMP && vm!=AIMM))return typedfail(p,"pointer-word-store");
+ p->code[pc]=(Dis64Instruction){IMOVW,SRC(vm)|DST(wire|AIND),in->d.offset,value,base};p->returns[pc]=243;return 1;
 }
 static int
 typedpointerword(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)

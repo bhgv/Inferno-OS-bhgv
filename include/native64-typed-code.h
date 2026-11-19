@@ -110,6 +110,14 @@ native64typedlocalgeometry(const Native64TypedStep*s,unsigned int fp,unsigned in
 }
 
 static int
+native64typedpointerstore(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int sm=USRC(s->mode),dm=UDST(s->mode);
+ return ((s->returned==243 && s->op==IMOVW) || (s->returned==244 && s->op==ICVTCW)) && s->mode==(SRC(sm)|DST(dm)) && (dm==(AFP|AIND) || dm==(AMP|AIND)) && s->m>=0 && s->m<=12 && s->m%4==0 &&
+  native64typedrootoperand(dm&~AIND,s->d,fp,mp) && (s->returned==244?native64typedrootoperand(sm,s->s,fp,mp):native64typedwordoperand(sm,s->s,fp,mp));
+}
+
+static int
 native64typedpointerword(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
  unsigned int sm=USRC(s->mode),dm=UDST(s->mode);
@@ -366,6 +374,8 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
             if(!native64typeddrawstep(s,fpbytes,mpbytes) || (s->returned!=Native64TypedDraw && (s->d<0 || (unsigned long)s->d>=count)))return 0;continue;
         }
         if(s->returned==173){if(!native64typedcontextcopy(s,fpbytes,mpbytes))return 0;continue;}
+        if(s->returned==242){if((s->op!=INEW && s->op!=INEWZ) || s->mode!=(SRC(AIMM)|DST(AFP)) || s->s || s->m || !native64typedrootoperand(AFP,s->d,fpbytes,mpbytes))return 0;continue;}
+        if(s->returned==243 || s->returned==244){if(!native64typedpointerstore(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==172 || s->returned==174){if(!native64typedcontextnew(s,fpbytes))return 0;continue;}
         if(s->returned==171){if(!native64typedtriplecopy(s,fpbytes))return 0;continue;}
         if(s->returned==194 || s->returned==196 || s->returned==201 || s->returned==202){unsigned int span=s->returned==201?32:s->returned==194?16:24;if(s->op!=IMOVMP || s->mode>255 || (s->mode&ARM)!=AXIMM || s->m || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes) || !native64typedrootoperand(dm,s->d,fpbytes,mpbytes) || span>(sm==AFP?fpbytes:mpbytes)-s->s || span>(dm==AFP?fpbytes:mpbytes)-s->d)return 0;continue;}
@@ -484,6 +494,8 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==188){p->reg=0;p->d.ind=s->d;continue;}
         if(s->returned==183){p->d.ind=s->d;continue;}
         if(s->returned==185){p->d.i.f=32;p->d.i.s=0;continue;}
+        if(s->returned==242){p->d.ind=s->d;continue;}
+        if(s->returned==243 || s->returned==244){p->reg=0;p->d.i.f=s->d;p->d.i.s=s->m;continue;}
         if(s->returned==172){p->d.ind=s->d;continue;}
         if(s->returned==174){p->d.i.f=32;p->d.i.s=0;continue;}
         if(s->returned==173){p->reg=0;p->s.i.f=s->s;p->s.i.s = s->m;p->d.i.f=s->d;p->d.i.s=s->m;continue;}

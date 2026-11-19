@@ -775,6 +775,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
                !typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) ||
                !typedoperand(in->mm,&in->m,Tstring,0,1,p,&middle,&mm,&actual))goto fail;
             p->code[pc-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,32};p->returns[pc-p->first]=1;pc++;
+        }else if(c->loads && in->op==ICVTCW && (in->dm==Afpind || in->dm==Ampind) && typedwmref(typedfieldowner(&in->d),"Draw","Pointer")){
+            if(!typedpointerparse(in,p,pc-p->first))goto fail;pc++;
         }else if((c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)) || (c->loads && (in->op==ICVTAC || in->op==ICVTWC || in->op==ICVTCW))){
             if((c->loads && in->op==ICVTAC && !typedloadbytes(in,p,pc-p->first)) || !typedclientcodec(in,p,pc-p->first))goto fail;pc++;
         }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
@@ -784,6 +786,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedclientflagsor(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==IANDW && (in->sm==Afpind || in->sm==Ampind) && typedwmref(typedfieldowner(&in->s),"Wmsrv","Client")){
             if(!typedclientflagsand(in,p,pc-p->first))goto fail;pc++;
+        }else if(c->loads && in->op==IMOVW && (in->dm==Afpind || in->dm==Ampind) && typedwmref(typedfieldowner(&in->d),"Draw","Pointer")){
+            if(!typedpointerstore(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==IMOVW || in->op==IBEQW || in->op==IBNEW) && (in->sm==Afpind || in->sm==Ampind) && typedwmref(typedfieldowner(&in->s),"Draw","Pointer")){
             if(!typedpointerword(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->loads && in->op==IMOVP && (in->sm==Afpind || in->sm==Ampind) && (in->dm==Afpind || in->dm==Ampind)){
@@ -814,6 +818,9 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->loads && (in->op==INEWCB || in->op==INEWCW || in->op==INEWCL || in->op==INEWCF || in->op==INEWCP)){
             if(!typedclientchannel(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && (in->op==INEW || in->op==INEWZ)){
+            if(c->loads && in->s.decl && in->s.decl->sym && !strcmp(in->s.decl->sym->name,"Pointer")){
+                if(!typedpointernew(in,p,p->code+pc-p->first))goto fail;p->returns[pc-p->first]=242;pc++;continue;
+            }
             if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;
             if(c->loads){p->code[pc-p->first].source=0;p->returns[pc-p->first]=UDST(p->code[pc-p->first].mode)==(AFP|AIND)?174:172;}pc++;
         }else if(c->loads && (in->op==ICONSW || in->op==IHEADW || (in->op==ITAIL && typedintlisttype(&in->s)))){

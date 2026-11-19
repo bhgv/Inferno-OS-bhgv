@@ -407,6 +407,21 @@ def verify(data,r,imports,loads=False,rows=None):
                 leaves=r['frame'if vm else'data']['leaves'];value=d if read else s
                 for i in range(0,width,4):assert next(l for l in leaves if l[0]==va[0]+i)==[va[0]+i,value+i,4,4,9]
             continue
+        if returned==242:
+            assert loads and op==o['op']and op in(OPCODES['INEW'],OPCODES['INEWZ'])and mode==o['mode']==17 and o['m']is None
+            assert types[o['s'][0]]==(16,b'')
+            leaf=next(l for l in r['frame']['leaves']if l[0]==o['d'][0]);assert leaf[2:]==[4,8,12]
+            assert r['code'][pc]==[op,mode,0,0,leaf[1],242]
+            continue
+        if returned in(243,244):
+            sm=o['mode']>>3&7;dm=o['mode']&7
+            assert loads and op==o['op']==OPCODES['IMOVW'if returned==243 else'ICVTCW']and mode==o['mode']==(sm<<3)|dm and sm in((0,1,2)if returned==243 else(0,1))and dm in(4,5)and o['m']is None and o['d'][1]in(0,4,8,12)
+            owner=next(l for l in r['frame'if dm==5 else'data']['leaves']if l[0]==o['d'][0]);assert owner[2:]==[4,8,12]
+            if sm==2:value=o['s'][0]
+            else:
+                leaf=next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0]);assert leaf[2:]==([4,4,9]if returned==243 else[4,8,13]);value=leaf[1]
+            assert r['code'][pc]==[op,mode,value,o['d'][1],owner[1],returned]
+            continue
         if returned in(228,229):
             sm=o['mode']>>3&7;dm=o['mode']&7;assert loads and sm in(4,5)and len(o['s'])==2 and o['s'][1]in(0,4,8,12)
             leaf=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0]);assert leaf[2:]==[4,8,12]

@@ -37,7 +37,7 @@ def generate(limbo,w):
  for owner,extra in(('Other','Other:adt{buttons:int;xy:Draw->Point;msec:int;};'),('Fake->Pointer','Fake:module{Pointer:adt{buttons:int;xy:Draw->Point;msec:int;};};')):
   source='implement Closed;'+PREFIX+extra+'Closed:module{run:fn(p:ref '+owner+');};out:int;run(p:ref '+owner+'){n:=p.buttons;out=n;}'
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert not closed[0]['accepted'],closed
- for body in('p.buttons=3;','if(p.buttons<0)out=1;','if(p.buttons==3)out=1;'):
+ for body in('if(p.buttons<0)out=1;','if(p.buttons==3)out=1;'):
   _,closed=E['compile_source'](limbo,w,'implement Closed;'+PREFIX+'Closed:module{run:fn(p:ref Draw->Pointer);};out:int;run(p:ref Draw->Pointer){'+body+'}',interface='',loads=True);assert not closed[0]['accepted'],closed
  original=(ROOT/'module/draw.m').read_text()
  for old,new in(('buttons:\tint;','buttons:\tbig;'),('msec:\tint;','msec:\tbig;'),('buttons:\tint;','renamed:\tint;')):
@@ -61,7 +61,7 @@ def main():
    ('missing raw destination','native64-typed-module.h','if(step->returned==228){map=UDST(step->mode)==AFP?f->map:s->datamap;for(at=0;at<4;at++){bit=(step->d+at)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}}','if(step->returned==228){map=UDST(step->mode)==AFP?f->map:s->datamap;for(at=0;at<4;at++){bit=(step->d+at)/8;if(0)return 0;}}','malformed Pointer field metadata refused'),
    ('wrong selected field','native64-typed-code.h','p->s.i.s=s->m;if(s->returned==229)', 'p->s.i.s=s->m==12?0:s->m;if(s->returned==229)','exact selected Word32 field or zero branch'),
    ('wide zero comparison','native64-typed-code.h','if(s->returned==229)p->d.ins=out+s->d;else p->d.ind=s->d;', 'if(s->returned==229){p->op=s->op==IBEQW?IBEQL:IBNEL;p->d.ins=out+s->d;}else p->d.ind=s->d;','exact selected Word32 field or zero branch'),
-   ('missing source root','native64-typed-module.h','map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;', 'map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if(0)return 0;','malformed Pointer field metadata refused'))
+   ('missing source root','native64-typed-module.h','map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;\n            if(step->returned==228)', 'map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if(0)return 0;\n            if(step->returned==228)','malformed Pointer field metadata refused'))
   for name,header,before,after,predicate in controls:
    for parent in('native64-typed-module.h','native64-typed-multi.h','native64-typed-code.h'):(w/parent).write_text((ROOT/'include'/parent).read_text())
    text=(w/header).read_text();assert text.count(before)==1;(w/header).write_text(text.replace(before,after,1));subprocess.run(command,check=True);result=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],capture_output=True,text=True,timeout=180)

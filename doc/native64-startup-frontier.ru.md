@@ -237,3 +237,9 @@ awm.init проходит rc == nil и c.stop == nil, доходит до PC303 
 на handlerequest. Сам handlerequest отвергается на PC427
 client-context-geometry: создание ref Draw.Pointer. setfocus, controlevent
 и reshaped accepted целиком; графический AWM и Android UI пока не запущены.
+
+Следующий этап: [Создание Draw.Pointer](native64-pointer-new.ru.md).
+handlerequest проходит PC427–437: выделение Pointer, buttons и обе
+координаты. Новый отказ — PC438 external-inherit, подготовка millisec
+с результатом в p.msec. awm.init остаётся на PC303, пока handlerequest
+не принят целиком. Графический AWM и Android UI ещё не запущены.
