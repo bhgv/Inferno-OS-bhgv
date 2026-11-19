@@ -252,6 +252,7 @@ typedcontextcopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
 }
 
 #include "dis64-window.h"
+#include "dis64-wmcontext.h"
 #include "dis64-draw-fields.h"
 
 /* Immutable byte constants are immediate operands, never mutable MP storage. */

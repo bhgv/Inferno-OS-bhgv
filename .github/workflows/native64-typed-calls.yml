@@ -35,6 +35,7 @@ on:
       - 'utils/tests/native64-process-exit*'
       - 'utils/tests/native64-local-concat*'
       - 'utils/tests/native64-alt*'
+      - 'utils/tests/native64-wmcontext-alt*'
       - 'utils/tests/native64-geometry-args*'
       - 'utils/tests/native64-window-fields*'
       - 'utils/tests/native64-draw-fields*'
@@ -168,6 +169,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/coordinate-format.log"
           python3 utils/tests/native64-context-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/context-fields.log"
+          python3 utils/tests/native64-wmcontext-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmcontext-alt.log"
           python3 utils/tests/native64-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/alt.log"
           python3 utils/tests/native64-local-concat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -293,6 +296,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/coordinate-format.log"
           python3 utils/tests/native64-context-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/context-fields.log"
+          python3 utils/tests/native64-wmcontext-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmcontext-alt.log"
           python3 utils/tests/native64-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/alt.log"
           python3 utils/tests/native64-local-concat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

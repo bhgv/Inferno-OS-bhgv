@@ -125,3 +125,8 @@ AWM init проходит fatal PC136 и доходит до PC140 IMOVW (typed-
 guards работают в C/JIT с настоящими очередями. AWM init проходит PC140
 Window.ctl и доходит до PC142 Wmcontext.ctl; command остаётся accepted.
 Полного графического event loop ещё нет.
+
+Следующий этап: [Wmcontext channels и ref ALT](native64-wmcontext-alt.ru.md).
+AWM init проходит ctl/kbd/ptr и PC149 reference payload, останавливается
+на PC151: tuple (ref Client, chan of string) из join. Command остаётся accepted;
+полного графического event loop ещё нет.
