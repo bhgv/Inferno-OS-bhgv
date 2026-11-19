@@ -183,12 +183,16 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         }
         if(c->contract){
             s=steps+c->end-1;width=native64geometryresultwidth(c->contract)?native64geometryresultwidth(c->contract):c->contract==72?24:c->contract==88?88:c->contract==48?16:c->contract&15;
-            if(s->m || s->d!=32)return 0;
-            if(!c->inherited && USRC(s->mode)==AMP){
-                if(c->contract!=24 || s->op!=ILEA || s->mode!=(SRC(AMP)|DST(AFP|AIND)) || s->returned!=(128|24) || !native64typedrootoperand(AMP,s->s,fpbytes,mpbytes))return 0;
-            }else if(s->mode!=(SRC(AFP)|DST(AFP|AIND)))return 0;
-            else if(c->inherited){if(s->op!=IMOVL || s->s!=32 || s->returned!=64)return 0;}
-            else if(s->op!=ILEA || s->returned!=(128|c->contract) || s->s<64 || (unsigned long)s->s>fpbytes || width>fpbytes-s->s || s->s%(native64geometryresultwidth(c->contract)?4:(c->contract==48 || c->contract==72 || c->contract==88)?8:width))return 0;
+            if(s->returned==220){
+                if(!c->external || c->contract!=24 || c->inherited || s->op!=ILEA || s->mode!=(SRC(AFP|AIND)|DST(AFP|AIND)) || s->m!=24 || s->d!=32 || !native64typedrootoperand(AFP,s->s,fpbytes,mpbytes))return 0;
+            }else{
+                if(s->m || s->d!=32)return 0;
+                if(!c->inherited && USRC(s->mode)==AMP){
+                    if(c->contract!=24 || s->op!=ILEA || s->mode!=(SRC(AMP)|DST(AFP|AIND)) || s->returned!=(128|24) || !native64typedrootoperand(AMP,s->s,fpbytes,mpbytes))return 0;
+                }else if(s->mode!=(SRC(AFP)|DST(AFP|AIND)))return 0;
+                else if(c->inherited){if(s->op!=IMOVL || s->s!=32 || s->returned!=64)return 0;}
+                else if(s->op!=ILEA || s->returned!=(128|c->contract) || s->s<64 || (unsigned long)s->s>fpbytes || width>fpbytes-s->s || s->s%(native64geometryresultwidth(c->contract)?4:(c->contract==48 || c->contract==72 || c->contract==88)?8:width))return 0;
+            }
         }
         s=steps+c->end;
         if(c->external){
@@ -216,6 +220,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 if(j==i){p->s.imm=c->external?c->moduleoffset:c->ordinal;p->reg=c->external?c->ordinal:0;p->d.ind=40;}
                 else if(j==c->end){p->s.ind=40;if(c->external){p->reg=c->ordinal;p->d.ind=c->moduleoffset;}else p->d.ins=c->target;}
                 else if(s->op==IMOVM && (native64imagegeometryoffset(s->returned)!=~0U)){p->s.i.f=s->s;p->s.i.s=native64imagegeometryoffset(s->returned);p->reg=s->m;p->d.i.f=40;p->d.i.s=s->d;}
+                else if(s->returned==220){p->s.i.f=s->s;p->s.i.s=24;p->reg=512|24;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==Native64TypedFieldArg){p->s.i.f=s->s;p->s.i.s=s->m;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==187){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
                 else if(s->returned==182){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}

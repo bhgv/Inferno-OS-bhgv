@@ -91,6 +91,8 @@ typedgeometrybinding(Inst*binding,Type*result,Dis64TypedBody*p,unsigned int*base
  done:dis64layoutfree(&l);return ok;
 }
 
+static int typedwmref(Type*,char*,char*);
+static int typedwmsrvwindowbase(Addr*,int,Dis64TypedBody*,long*,unsigned int*);
 static int typedrootargclear(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*);
 static int typedimagegeometryprep(Inst*,Inst*,Dis64TypedBody*,unsigned int);
 static int typedimagegeometry(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
@@ -223,6 +225,11 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         }else if(c->loads && kind==Ttuple){
             if(!typedstatresult(fn,binding,p,&local,0))return typedfail(p,"external-result-kind");
             contract=88;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;
+        }else if(c->loads && root && binding->sm==Afpind && binding->s.reg!=16){
+            unsigned int wire;long base;
+            if(kind!=Tref || !typedwmref(fn->ty->tof,"Draw","Image") || binding->s.offset!=20 ||
+               !typedwmsrvwindowbase(&binding->s,Afpind,p,&base,&wire) || wire!=(AFP|AIND))return typedfail(p,"window-image-result");
+            local=base;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),24,base,32};p->returns[at-p->first]=220;
         }else if(binding->sm==Afp){
             if(!typedoperand(Afp,&binding->s,root?TypedRoot:kind,0,0,p,&source,&sm,&actual) ||
                (root && actual!=kind && actual!=Tany))return typedfail(p,"external-result");

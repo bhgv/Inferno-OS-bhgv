@@ -47,7 +47,7 @@ def generate(limbo,w):
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert len(closed)==1 and not closed[0]['accepted'],closed
  print('PASS geometry result boundary: foreign ADT, global and inherited results refused',flush=True)
  _,records=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True)
- r=next(r for r in records if r['name']=='reshaped');assert r['pc']==783 and r['reason']=='external-inherit',r;print('AWM reshaped frontier:',r.get('pc'),r.get('reason'),flush=True)
+ r=next(r for r in records if r['name']=='reshaped');assert r['accepted']or r['pc']>783,r;print('AWM reshaped frontier:',r.get('pc'),r.get('reason'),flush=True)
 def unit():
  src=BASE['unit']().split('\n#line 1 "native64-alt-pairs.c"')[0];start=src.index(' optab[IMOVW]=countmovw;');end=src.index(' require(prepare64calls(',start)
  extract=CMD['NS']['S']['FILES']['FILES']['function'];src+='\nstatic unsigned int calls;\n#include \"draw-native.h\"\n'

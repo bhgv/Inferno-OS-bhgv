@@ -257,9 +257,9 @@ def main(argv=False,local=False,pair=False,raises=False):
                     assert r.returncode==10 and 'Command file predicate: argv MP publication'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
                     print('PASS startup active control:',arch,'prepared argv MP publication',flush=True);header.write_text(original)
                 if local:
-                    materializer=(ROOT/'include/native64-typed-multi.h').read_text();old='p->d.i.s=s->d;';assert materializer.count(old)==1
+                    materializer=(ROOT/'include/native64-typed-multi.h').read_text();old='else{p->s.imm=s->s;p->d.i.f=40;p->d.i.s=s->d;';assert materializer.count(old)==1
                     (work/'native64-typed-module.h').write_text((ROOT/'include/native64-typed-module.h').read_text())
-                    (work/'native64-typed-multi.h').write_text(materializer.replace(old,'p->d.i.s=(c->inherited && j==c->end-1)?48:s->d;',1))
+                    (work/'native64-typed-multi.h').write_text(materializer.replace(old,'else{p->s.imm=s->s;p->d.i.f=40;p->d.i.s=(c->inherited && j==c->end-1)?48:s->d;',1))
                     subprocess.run(command,check=True)
                     r=subprocess.run(runner+[str(binary),str(image)],capture_output=True,text=True,errors='backslashreplace',timeout=180)
                     assert r.returncode==10 and 'Command file predicate: inherited result address publication'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
@@ -273,8 +273,8 @@ def main(argv=False,local=False,pair=False,raises=False):
                     assert r.returncode==10 and 'Command file predicate: pair preflight refusal'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
                     print('PASS pair active control: constructor checks second root',flush=True)
                     (work/'native64-typed-module.h').unlink()
-                    bind=(ROOT/'include/native64-local-bind.h').read_text();old='at<(unsigned int)instruction.s.ind+width';assert bind.count(old)==1
-                    (work/'native64-local-bind.h').write_text(bind.replace(old,'at<(unsigned int)instruction.s.ind+(contract==48?8:width)',1))
+                    bind=(ROOT/'include/native64-local-bind.h').read_text();old='at<(unsigned int)offset+width';assert bind.count(old)==1
+                    (work/'native64-local-bind.h').write_text(bind.replace(old,'at<(unsigned int)offset+(contract==48?8:width)',1))
                     subprocess.run(command,check=True)
                     r=subprocess.run(runner+[str(binary),str(image),'pair-root-control'],capture_output=True,text=True,errors='backslashreplace',timeout=180)
                     assert r.returncode==10 and 'Command file predicate: pair result root map'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)

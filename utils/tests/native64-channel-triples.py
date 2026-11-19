@@ -67,7 +67,7 @@ def main():
   for name,path,before,after,predicate in (
    ('component-offset','native64-typed-code.h','p->d.i.s=8*(s->returned-168);','p->d.i.s=s->returned==170?8:8*(s->returned-168);','exact three caller result cells'),
    ('mapped-copy-third-root','native64-typed-module.h','uchar roots[]={0xe0};m->type[ordinal]=dtype(freeheap,24,roots,1);','uchar roots[]={0xc0};m->type[ordinal]=dtype(freeheap,24,roots,1);','exact channel reference ownership'),
-   ('binding-third-root','native64-local-bind.h','at<(unsigned int)instruction.s.ind+width','at<(unsigned int)instruction.s.ind+(contract==72?16:width)','triple execution/error'),
+   ('binding-third-root','native64-local-bind.h','at<(unsigned int)offset+width','at<(unsigned int)offset+(contract==72?16:width)','triple execution/error'),
    ('byte-copy-descriptors','native64-typed-module.h','m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports;','m->prog[b->offsets[i]+j].reg=m->ntype-1;','separate byte/copy descriptors'),
    ('callee-result-proof','native64-typed-multi.h','((c->contract==72)!=(c->resultcontract==72))','0','callee triple result proof required')):
    original=(ROOT/'include'/path).read_text();assert original.count(before)==1

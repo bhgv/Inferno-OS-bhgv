@@ -179,3 +179,8 @@ awm.init остаётся на PC180 multi-callee. Command accepted;
 Следующий отказ — PC783 external-inherit: screen.newwindow возвращает Image
 прямо в w.img. awm.init остаётся на PC180 multi-callee;
 графический AWM и Android UI пока не запущены.
+
+Следующий этап: [Image прямо в Window.img](native64-window-image-result.ru.md).
+Компилятор проходит screen.newwindow и обновление w.r в настоящем reshaped.
+Следующий отказ — PC791 multi-argument: Rect для локальной r2s в сообщении
+reshape. awm.init остаётся на PC180 multi-callee; графический AWM пока не запущен.

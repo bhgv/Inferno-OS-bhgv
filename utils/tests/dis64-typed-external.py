@@ -289,7 +289,13 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert leaf==[old+i,native+i,4,4,9]
                     assert not(r['frame']['map'][(native+i)//64]&(128>>((native+i)//8%8)))
 
-            if e['inherited']:assert b['s']==[16,0]and r['code'][end-1]==[118,13,32,0,32,64]
+            if r['code'][end-1][5]==220:
+                assert loads and contract==24 and not e['inherited']and b['mode']==45 and b['m']is None and b['s'][1]==20
+                source=maps['frame'][b['s'][0]];assert source==e['resultoffset']
+                leaf=next(l for l in r['frame']['leaves']if l[0]==b['s'][0]);assert leaf[3:]==[8,12]
+                assert r['frame']['map'][source//64]&(128>>(source//8%8))
+                assert r['code'][end-1]==[39,45,source,24,32,220]
+            elif e['inherited']:assert b['s']==[16,0]and r['code'][end-1]==[118,13,32,0,32,64]
             else:
                 assert b['mode']in(5,13)and (b['mode']!=5 or contract==24)
                 assert r['code'][end-1]==[39,b['mode'],maps['frame'if b['mode']==13 else'data'][b['s'][0]],0,32,128|contract]

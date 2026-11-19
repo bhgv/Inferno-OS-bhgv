@@ -592,6 +592,13 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].contract==88)found++;
             if(found!=1)return 0;
         }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==220){
+            unsigned int k,found=0;step=f->code+j;
+            if(step->op!=ILEA || step->mode!=(SRC(AFP|AIND)|DST(AFP|AIND)) || step->m!=24 || step->d!=32 || !native64typedrootoperand(AFP,step->s,f->bytes,s->databytes))return 0;
+            bit=step->s/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;
+            for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].external && f->sites[k].contract==24 && !f->sites[k].inherited)found++;
+            if(found!=1)return 0;
+        }
         for(j=0;j<f->count;j++)if(f->code[j].returned==224 || f->code[j].returned==240){
             unsigned int k,found=0;for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && (128|f->sites[k].contract)==f->code[j].returned && !f->sites[k].inherited)found++;if(found!=1)return 0;
         }
