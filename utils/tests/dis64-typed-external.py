@@ -281,7 +281,15 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
-        if returned in(189,190,191,192,193):
+        if returned==194:
+            assert loads and o['op']==op==OPCODES['IMOVMP']and o['mode']==mode and mode&192==64 and o['m']is not None and m==0
+            assert types[o['m']]==(8,bytes([0xc0]))
+            for address,old,new in((mode>>3&7,o['s'][0],s),(mode&7,o['d'][0],d)):
+                assert address in(0,1)
+                leaves=r['frame'if address else'data']['leaves'];a=next(l for l in leaves if l[0]==old);b=next(l for l in leaves if l[0]==old+4)
+                assert a[2:]==[4,8,12]and b[2:]==[4,8,6]and b[1]==a[1]+8 and new==a[1]
+            continue
+        if returned in(189,190,191,192,193,195):
             assert loads and o['m']is None
             sm=o['mode']>>3&7;assert o['mode']&7==1
             destination=maps['frame'][o['d'][0]]
@@ -302,6 +310,11 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert o['op']==OPCODES['ILEA']and sm in(0,1)
                 leaf=next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0]);contract=24 if leaf[4]in ROOTS else leaf[3]
                 assert r['code'][pc]==[OPCODES['ILEA'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],contract,destination,190]
+            elif returned==195:
+                assert o['op']==OPCODES['ILEA']and sm in(0,1)
+                leaves=r['frame'if sm else'data']['leaves'];first=next(l for l in leaves if l[0]==o['s'][0]);second=next(l for l in leaves if l[0]==o['s'][0]+4)
+                assert first[2:]==[4,8,12]and second[2:]==[4,8,6]and second[1]==first[1]+8
+                assert r['code'][pc]==[OPCODES['ILEA'],o['mode'],first[1],48,destination,195]
             else:
                 assert o['op']==OPCODES['IALT']and sm==1
                 headers=original[pc-2:pc];assert all(h['op']==OPCODES['IMOVW']and h['mode']==17 for h in headers)

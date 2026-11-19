@@ -661,6 +661,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             for(d=descriptors;d && d->id!=in->m.offset;d=d->next);
             if(in->sm!=Afp || in->mm!=Adesc || in->dm!=Afpind || in->d.reg!=16 || in->d.offset || in->branch || !in->m.decl || in->m.decl->desc!=d || !typedchanneltriple(in->m.decl->ty) || !d || d->size!=12 || d->nmap!=1 || d->map[0]!=0xe0 || !typedchannelbinding(c,p,in,&base)){typedfail(p,"channel-result-copy");goto fail;}
             p->code[pc-p->first]=(Dis64Instruction){IMOVMP,SRC(AFP)|AXIMM|DST(AFP|AIND),0,base,32};p->returns[pc++-p->first]=171;
+        }else if(c->loads && in->op==IMOVMP){
+            if(!typedaltpaircopy(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && in->op==IMOVP && in->dm==Afpind && in->d.reg==16 && in->d.offset==0){
             if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && (in->op==INEWA || in->op==INEWAZ || in->op==ISLICEA)){

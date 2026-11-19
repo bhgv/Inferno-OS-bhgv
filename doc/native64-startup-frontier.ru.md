@@ -130,3 +130,8 @@ Window.ctl и доходит до PC142 Wmcontext.ctl; command остаётся 
 AWM init проходит ctl/kbd/ptr и PC149 reference payload, останавливается
 на PC151: tuple (ref Client, chan of string) из join. Command остаётся accepted;
 полного графического event loop ещё нет.
+
+Следующий этап: [пара ref/channel в ALT](native64-alt-pairs.ru.md).
+Настоящий awm.init проходит адрес пары из join на PC151 и останавливается
+на PC153: tuple из req. Command остаётся accepted. Это продвижение typed
+frontier; полный AWM event loop и Android UI ещё не запущены.

@@ -34,7 +34,7 @@ native64localbind(void)
     }
     if(fetched.op!=ILEA)return 0;
     memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;altaddress=!!(contract&256);if(altaddress)contract&=~256;width=contract==72?24:contract==88?88:contract==48?16:contract&15;reference=contract==72 || !!(contract&16);
-    if(!native64model() || (altaddress?((instruction.add!= (SRC(AFP)|DST(AFP)) && instruction.add!=(SRC(AMP)|DST(AFP))) || (contract!=4 && contract!=24)):
+    if(!native64model() || (altaddress?((instruction.add!= (SRC(AFP)|DST(AFP)) && instruction.add!=(SRC(AMP)|DST(AFP))) || (contract!=4 && contract!=24 && contract!=48)):
         ((instruction.add!=(SRC(AFP)|DST(AFP|AIND)) && !(contract==24 && instruction.add==(SRC(AMP)|DST(AFP|AIND)))) || instruction.d.i.f!=40 || instruction.d.i.s!=32)) ||
        (contract!=48 && contract!=72 && contract!=88 && ((contract&~31) || (width!=1 && width!=4 && width!=8) || (reference && width!=8))) || R.FP==nil || R.FP==H)error(exBounds);
     base=(uintptr)R.FP;
