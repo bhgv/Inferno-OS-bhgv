@@ -33,7 +33,11 @@ def compile_source(limbo,work,source,interface=None,loads=False):
 def field_argument(original,step,new,maps):
     sm=original['mode']>>3&7;oldfields={0:0,4:8,8:16,12:24,16:32,20:24,40:48,44:48,48:56,52:64,56:72,84:104}
     assert original['op']==41 and sm in(4,5)and original['mode']==(sm<<3)|5 and original['m']is None and len(original['s'])==2
-    base,field=original['s'];assert field in oldfields
+    base,field=original['s']
+    if step[5]==233:
+        assert field==20 and step==[41,original['mode'],maps['frame'if sm==5 else'data'][base],40,new,233]
+        return
+    assert field in oldfields
     assert step==[41,original['mode'],maps['frame'if sm==5 else'data'][base],oldfields[field],new,125]
 
 def verify(data,r,imports,loads=False,rows=None):
@@ -80,8 +84,8 @@ def verify(data,r,imports,loads=False,rows=None):
                         assert field in((0,16)if width==16 else(0,8,16,24));assert role==(160+field//16 if width==16 else 162+field//8)
                     assert r['frame'if sm==5 else'data']['map'][source//64]&(128>>(source//8%8))
                 assert r['code'][at]==[o['op'],o['mode'],source,width,arg[0],role]
-            elif r['code'][at][5]==125:
-                assert loads and arg[1]in ROOTS;field_argument(o,r['code'][at],arg[0],maps)
+            elif r['code'][at][5]in(125,233):
+                assert loads and arg[1]in ROOTS and (r['code'][at][5]!=233 or arg[1]==13);field_argument(o,r['code'][at],arg[0],maps)
             elif o['op']==OPCODES['ICVTAC']:
                 assert loads and arg[1:]==[13,4,8]and sm in(0,1)and o['m']is None
                 assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0])[4]==3
@@ -284,8 +288,8 @@ def verify(data,r,imports,loads=False,rows=None):
                 oldoffset+=oldbytes;continue
             assert j not in aggregates
             assert a['d']==[pending,oldoffset];oldoffset+=oldbytes
-            if r['code'][at][5]==125:
-                assert loads and kind in ROOTS;field_argument(a,r['code'][at],new,maps)
+            if r['code'][at][5]in(125,233):
+                assert loads and kind in ROOTS and (r['code'][at][5]!=233 or kind==13);field_argument(a,r['code'][at],new,maps)
             elif a['op']==OPCODES['ILENA']:
                 assert loads and kind==9 and oldbytes==width==4 and sm in(0,1)and a['m']is None
                 assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==a['s'][0])[4]==3
@@ -394,6 +398,14 @@ def verify(data,r,imports,loads=False,rows=None):
                 destination=next(l for l in r['frame'if dm else'data']['leaves']if l[0]==o['d'][0]);assert destination[2:]==[4,4,9]
                 target=destination[1];assert not(r['frame'if dm else'data']['map'][target//64]&(128>>(target//8%8)))
             assert r['code'][pc]==[o['op'],o['mode'],source,o['s'][1],target,returned]
+            continue
+        if returned==232:
+            sm=o['mode']>>3&7;mm=1 if o['mode']&192==128 else 0 if o['mode']&192==192 else -1
+            assert loads and o['op']in(OPCODES['IBEQC'],OPCODES['IBNEC'])and sm in(4,5)and mm in(0,1)and o['s'][1]==20 and o['mode']&7==2
+            owner=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0]);value=next(l for l in r['frame'if mm else'data']['leaves']if l[0]==o['m'])
+            assert owner[2:]==[4,8,12]and value[2:]==[4,8,13]
+            for space,offset in(('frame'if sm==5 else'data',owner[1]),('frame'if mm else'data',value[1])):assert r[space]['map'][offset//64]&(128>>(offset//8%8))
+            assert r['code'][pc]==[o['op'],o['mode'],owner[1],value[1],o['d'][0]-r['first'],232]
             continue
         if returned==207:
             assert loads and o['op']in(93,94)and op==(OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'])and mode==o['mode']

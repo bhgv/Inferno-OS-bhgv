@@ -52,6 +52,8 @@ on:
       - 'utils/tests/native64-mp-client-nil*'
       - 'utils/tests/native64-pointer-args*'
       - 'utils/tests/native64-pointer-fields*'
+      - 'utils/tests/native64-client-compare*'
+      - 'utils/tests/native64-client-cursor*'
       - 'utils/tests/native64-geometry-args*'
       - 'utils/tests/native64-window-fields*'
       - 'utils/tests/native64-draw-fields*'
@@ -219,6 +221,12 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/pointer-args.log"
           python3 utils/tests/native64-pointer-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/pointer-fields.log"
+          python3 utils/tests/native64-client-compare.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-compare.log"
+          python3 utils/tests/native64-client-cursor.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-cursor.log"
+          python3 utils/tests/native64-client-cursor-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-cursor-args.log"
           python3 utils/tests/native64-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/alt.log"
           python3 utils/tests/native64-local-concat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -378,6 +386,12 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/pointer-args.log"
           python3 utils/tests/native64-pointer-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/pointer-fields.log"
+          python3 utils/tests/native64-client-compare.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-compare.log"
+          python3 utils/tests/native64-client-cursor.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-cursor.log"
+          python3 utils/tests/native64-client-cursor-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-cursor-args.log"
           python3 utils/tests/native64-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/alt.log"
           python3 utils/tests/native64-local-concat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

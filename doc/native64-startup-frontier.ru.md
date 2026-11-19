@@ -213,3 +213,10 @@ awm.init проходит p.buttons и wmsrv.find(p.xy). Новый отказ �
 multi-callee на setfocus(win,c); сам setfocus пока отвергается на PC1189
 load-nil-roles. reshaped остаётся accepted целиком; графический AWM и
 Android UI пока не запущены.
+
+Следующий этап: [Client equality и cursor в setfocus](native64-client-focus.ru.md).
+setfocus проходит сравнение old/new, сравнение строк cursor и импортируемый
+аргумент new.cursor. Новый отказ — PC1210 indirect-or-reserved-operand:
+IANDW new.flags с маской Kbdstarted. awm.init остаётся на PC210 multi-callee
+до завершения setfocus. reshaped accepted целиком; графический AWM и
+Android UI пока не запущены.

@@ -151,11 +151,11 @@ native64moduledrawfields(const Native64ModuleSpec*s,const Native64ModuleFunction
    found=0;for(k=0;k<f->nsites;k++)if(f->sites[k].first<i && i+2<f->sites[k].end && f->sites[k].external)found++;if(found!=1)return 0;
    map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if(0==(map[bit/8]&(128>>(bit%8))))return 0;bit=step->d/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;continue;
   }
-  if(step->returned==Native64TypedFieldArg){
+  if(step->returned==Native64TypedFieldArg || step->returned==233){
    found=0;
    for(k=0;k<f->nsites;k++)if(f->sites[k].first<i && i<f->sites[k].end){
     if(found++)return 0;site=f->sites+k;
-    if(site->external>1 || site->end>=f->count || f->code[site->first].op!=(site->external?IMFRAME:IFRAME) || f->code[site->end].op!=(site->external?IMCALL:ICALL))return 0;
+    if((step->returned==233 && !site->external) || site->external>1 || site->end>=f->count || f->code[site->first].op!=(site->external?IMFRAME:IFRAME) || f->code[site->end].op!=(site->external?IMCALL:ICALL))return 0;
     if(site->external){if(site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;request=s->tables[site->table].imports+site->target;bytes=request->bytes;map=request->map;np=request->mapbytes;}
     else{if(site->target>=s->nfunctions)return 0;child=s->functions+site->target;if(!native64modulemap(child->bytes,child->map,child->mapbytes,1))return 0;bytes=child->bytes;map=child->map;np=child->mapbytes;}
     if(!native64typedfieldarg(step,f->bytes,s->databytes,bytes,map,np))return 0;
@@ -475,6 +475,18 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             if(step->returned==228){map=UDST(step->mode)==AFP?f->map:s->datamap;for(at=0;at<4;at++){bit=(step->d+at)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}}
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==231 || ((f->code[j].op==IBEQL || f->code[j].op==IBNEL) && (USRC(f->code[j].mode)==AFP || USRC(f->code[j].mode)==AMP) && f->code[j].returned)){
+            unsigned int k,modes[2],offsets[2];step=f->code+j;if(!native64typedclientcompare(step,f->bytes,s->databytes) || step->d<0 || (unsigned long)step->d>=f->count)return 0;
+            modes[0]=USRC(step->mode);modes[1]=(step->mode&ARM)==AXINF?AFP:AMP;offsets[0]=step->s;offsets[1]=step->m;
+            for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
+            for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
+        }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==232 || ((f->code[j].op==IBEQC || f->code[j].op==IBNEC) && (USRC(f->code[j].mode)&AIND) && f->code[j].returned)){
+            unsigned int k,modes[2],offsets[2];step=f->code+j;if(!native64typedcursorcompare(step,f->bytes,s->databytes) || step->d<0 || (unsigned long)step->d>=f->count)return 0;
+            modes[0]=USRC(step->mode)&~AIND;modes[1]=(step->mode&ARM)==AXINF?AFP:AMP;offsets[0]=step->s;offsets[1]=step->m;
+            for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
+            for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
+        }
         for(j=0;j<f->count;j++)if(f->code[j].returned==207 || ((f->code[j].op==IBEQL || f->code[j].op==IBNEL) && (USRC(f->code[j].mode)&AIND) && f->code[j].m>=0x1000000L)){
             unsigned int k,modes[2],offsets[2];step=f->code+j;if(!native64typedfieldreference(step,f->bytes,s->databytes) || step->d<0 || (unsigned long)step->d>=f->count)return 0;
             modes[0]=USRC(step->mode)&~AIND;modes[1]=(step->mode&ARM)==AXINF?AFP:AMP;offsets[0]=step->s;offsets[1]=step->m&65535;
@@ -521,6 +533,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         }
         for(j=0;j<f->count;j++)if(f->code[j].op==IBEQC || f->code[j].op==IBNEC || f->code[j].op==IBLTC || f->code[j].op==IBLEC || f->code[j].op==IBGTC || f->code[j].op==IBGEC){
             unsigned int k,modes[2],offsets[2];Inst probe;step=f->code+j;
+            if(step->returned==232)continue; /* Owner and String maps proved above. */
             {Native64TypedStep local=*step;
              if(step->d<0 || (unsigned long)step->d>=f->count)return 0;
              local.d=0;if(!native64typedcode(&probe,1,&local,1,f->bytes,s->databytes))return 0;

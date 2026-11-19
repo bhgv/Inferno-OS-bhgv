@@ -355,6 +355,13 @@ typedclientstring(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
   p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|(mm==AIMM?AXIMM:mm==AFP?AXINF:AXINM)|DST(dm),middle,source,destination};return 1;
  }
 
+ if((in->op==IBEQC || in->op==IBNEC) && (in->sm==Afpind || in->sm==Ampind) && typedwmref(typedfieldowner(&in->s),"Wmsrv","Client")){
+  long field;int payload;
+  if(in->s.offset!=20 || !in->s.native64type || in->s.native64type->kind!=Tstring || !typedclientaddress(&in->s,in->sm,p,&source,&sm,&field,&payload) || field!=40 || payload!=Tstring ||
+     !typedoperand(in->mm,&in->m,Tstring,0,1,p,&middle,&mm,&actual) || actual!=Tstring || (mm!=AFP && mm!=AMP) || middle>65535 ||
+     in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc)return typedfail(p,"client-cursor-compare");
+  p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AIMM),middle,source,in->branch->pc-p->first};p->returns[pc]=232;return 1;
+ }
  if(!typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) ||
     !typedoperand(in->mm,&in->m,index?Tint:Tstring,index,1,p,&middle,&mm,&actual))return 0;
  if(index){if(in->branch || !typedoperand(in->dm,&in->d,Tint,0,0,p,&destination,&dm,&actual) || dm!=AFP || (mm!=AIMM && mm!=AFP))return typedfail(p,"string-index-roles");}
@@ -463,6 +470,20 @@ typedloadglobalclient(Addr*a,Dis64TypedBody*p)
   typedclientaddress(a,Ampind,p,&base,&wire,&field,&kind) && wire==(AMP|AIND) && field==0 && kind==Tchan;
 }
 
+/* Equality of two exact canonical Client roots, without object dereference. */
+static int
+typedloadclientcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
+{
+ Addr*a=&in->s,*b=&in->m;long source,middle,field;unsigned int sm,mm,wire;int kind;
+ if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) || !typedloadreftype(a) || !typedloadreftype(b) || a->decl->ty->tof!=b->decl->ty->tof ||
+    !typedwmref(a->decl->ty,"Wmsrv","Client") || (in->sm!=Afp && in->sm!=Amp) || (in->mm!=Afp && in->mm!=Amp) ||
+    !typedclientaddress(a,in->sm==Afp?Afpind:Ampind,p,&source,&wire,&field,&kind) || field || kind!=Tchan ||
+    !typedclientaddress(b,in->mm==Afp?Afpind:Ampind,p,&middle,&wire,&field,&kind) || field || kind!=Tchan ||
+    !typedoperand(in->sm,a,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=Tref || !typedoperand(in->mm,b,TypedRoot,0,1,p,&middle,&mm,&kind) || kind!=Tref || middle>65535 ||
+    in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc)return typedfail(p,"client-root-compare");
+ p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AIMM),middle,source,in->branch->pc-p->first};p->returns[pc]=231;return 1;
+}
+
 /* Checked native startup needs direct ref ADT, list-of-String and Module nil tests.
  * Nil is the compiler's readonly Tany MP root; no aggregate dereference or
  * comparison of unrelated reference classes is admitted by this route. */
@@ -471,6 +492,7 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 {
  Addr *value=&in->s,*empty=&in->m;int vm=in->sm,nm=in->mm,kind,actual;
  unsigned int sm,mm;long source,middle;
+ if(typedloadreftype(value) && typedloadreftype(empty))return typedloadclientcompare(in,p,pc,stop);
  if(value->decl && value->decl->ty && value->decl->ty->kind==Tany){
   value=&in->m;empty=&in->s;vm=in->mm;nm=in->sm;
  }
@@ -611,7 +633,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         }
         if(c->loads && root && (in->sm==Afpind || in->sm==Ampind)){
             if(in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
-               !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || offset>65535 || !typedselectedfieldarg(in,p,at-p->first,offset,kind))return typedfail(p,"multi-field-argument");
+               !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || offset>65535 || !typedselectedfieldarg(in,p,at-p->first,offset,kind) || p->returns[at-p->first]==233)return typedfail(p,"multi-field-argument");
             at++;continue;
         }
         if((!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal) ||

@@ -35,6 +35,11 @@ typedselectedfieldarg(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offs
 {
  Inst field=*in;Type*value=in->s.native64type;Dis64Instruction*out=p->code+pc;
  if(in->op!=IMOVP || in->mm!=Anone || in->branch || (in->sm!=Afpind && in->sm!=Ampind) || !value || value->kind!=kind)return typedfail(p,"field-argument-kind");
+ if(kind==Tstring && typedwmref(typedfieldowner(&in->s),"Wmsrv","Client")){
+  long base,part;unsigned int wire;int actual;
+  if(in->s.offset!=20 || !typedclientaddress(&in->s,in->sm,p,&base,&wire,&part,&actual) || part!=40 || actual!=Tstring)return typedfail(p,"client-cursor-argument");
+  *out=(Dis64Instruction){IMOVP,SRC(wire)|DST(AFP|AIND),40,base,offset};p->returns[pc]=233;return 1;
+ }
  field.dm=Afp;field.d=in->s;
  if(!(typedwindowowner(&in->s)?typedwindowfield(&field,p,pc,1,nil):typeddrawowner(&in->s)?typeddrawfield(&field,p,pc,1,nil):typedclientfield(&field,p,pc,1)))return 0;
  *out=(Dis64Instruction){IMOVP,SRC(USRC(out->mode))|DST(AFP|AIND),p->contextfields[pc],out->source,offset};p->returns[pc]=125;return 1;
