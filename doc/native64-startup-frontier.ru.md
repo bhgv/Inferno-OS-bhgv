@@ -258,5 +258,11 @@ PC521 multi-callee на newrect, которая останавливается �
 
 Следующий этап: [list of Rect и MP-результат](native64-rect-list.ru.md).
 newrect принята целиком; handlerequest проходит PC521–543. Новый отказ —
-PC544 load-nil-roles на c.wins == nil. awm.init пока остаётся на PC303.
+PC544 load-nil-roles на tl args == nil. awm.init пока остаётся на PC303.
 Окно AWM и Android UI ещё не запущены.
+
+Следующий этап: [String head в аргументе и Client.wins nil](native64-head-args.ru.md).
+Исправлена подпись PC544: это tl args, Client.wins проверяется на PC556.
+handlerequest проходит PC544–595. Новый отказ — PC596 external-call на
+int hd args / int hd tl args в аргументах Point.sub. awm.init остаётся
+на PC303. Окно AWM и Android UI ещё не запущены.

@@ -206,6 +206,26 @@ def verify(data,r,imports,loads=False,rows=None):
         at=first+1;aggregates={a['index']:a['layout']for a in e.get('aggregate_args',[])};nominals={a['index']:a.get('nominal')for a in e.get('aggregate_args',[])}
         assert len(aggregates)==len(e.get('aggregate_args',[]))
         for j,(new,kind,oldbytes,width)in enumerate(e['args']):
+            if at<end and r['code'][at][5]==252:
+                assert loads and kind==13 and oldbytes==4 and width==8
+                temp=None;tails=0
+                while at<end and original[at]['op']==OPCODES['ITAIL']:
+                    a=original[at];sm=a['mode']>>3&7;assert a['mode']==(sm<<3)|1 and sm in(0,1)and a['m']is None
+                    dst=maps['frame'][a['d'][0]];src=maps['frame'if sm else'data'][a['s'][0]]
+                    if temp is not None:assert src==temp==dst and sm==1
+                    temp=dst;assert r['code'][at]==[a['op'],a['mode'],src,0,dst,252];tails+=1;at+=1
+                assert 1<=tails<=32
+                a=original[at]
+                assert a['op']==OPCODES['IHEADP']and a['mode']==13 and a['m']is None and maps['frame'][a['s'][0]]==temp
+                oldtarget=32
+                for _,pk,poldbytes,_ in e['args'][:j]:
+                    align=8 if pk in(4,7)else 1 if pk==5 else 4;oldtarget=(oldtarget+align-1)//align*align+poldbytes
+                oldtarget=(oldtarget+3)//4*4
+                assert a['d']==[pending,oldtarget]
+                assert r['code'][at]==[a['op'],a['mode'],temp,0,new,252];at+=1
+                a=original[at];assert a['op']==41 and a['mode']==1 and a['m']is None and next(l for l in r['data']['leaves']if l[0]==a['s'][0])[4]==20 and maps['frame'][a['d'][0]]==temp
+                assert r['code'][at]==[41,1,maps['data'][a['s'][0]],0,temp,252];at+=1;oldoffset=oldtarget+oldbytes
+                continue
             listclear=None
             if at<end and r['code'][at][5]==112:
                 assert loads and kind==10 and oldbytes==4 and width==8
@@ -494,11 +514,11 @@ def verify(data,r,imports,loads=False,rows=None):
             assert r['code'][pc]==[o['op'],o['mode'],owner[1],72,value[1],237]
             for space,root_at in(('frame'if sm==5 else'data',owner[1]),('frame',value[1])):assert r[space]['map'][root_at//64]&(128>>(root_at//8%8))
             continue
-        if returned==241:
-            sm=o['mode']>>3&7;field=o['s'][1];assert loads and o['op']in(93,94)and sm in(4,5)and o['mode']==(sm<<3)|192|2 and field in(0,4,8,12,32)
+        if returned in(241,251):
+            sm=o['mode']>>3&7;field=o['s'][1];assert loads and o['op']in(93,94)and sm in(4,5)and o['mode']==(sm<<3)|192|2 and field in((24,)if returned==251 else(0,4,8,12,32))
             owner=maps['frame'if sm==5 else'data'][o['s'][0]];other=maps['data'][o['m']];assert next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0])[4]==12
             assert next(l for l in r['data']['leaves']if l[0]==o['m'])[4]==20
-            assert r['code'][pc]==[OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'],o['mode'],owner,((0,8,16,24,64)[(0,4,8,12,32).index(field)]<<16)|other,o['d'][0]-r['first'],241]
+            assert r['code'][pc]==[OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'],o['mode'],owner,((48 if returned==251 else(0,8,16,24,64)[(0,4,8,12,32).index(field)])<<16)|other,o['d'][0]-r['first'],returned]
             for space,root_at in(('frame'if sm==5 else'data',owner),('data',other)):assert r[space]['map'][root_at//64]&(128>>(root_at//8%8))
             continue
         if returned==207:

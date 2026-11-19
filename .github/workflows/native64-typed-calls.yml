@@ -60,6 +60,7 @@ on:
       - 'utils/tests/native64-client-flags*'
       - 'utils/tests/native64-client-id*'
       - 'utils/tests/native64-channel-nil*'
+      - 'utils/tests/native64-head-args*'
       - 'utils/tests/native64-client-cursor*'
       - 'utils/tests/native64-geometry-args*'
       - 'utils/tests/native64-window-fields*'
@@ -248,6 +249,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/client-id.log"
           python3 utils/tests/native64-channel-nil.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/channel-nil.log"
+          python3 utils/tests/native64-head-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/head-args.log"
           python3 utils/tests/native64-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/alt.log"
           python3 utils/tests/native64-local-concat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -427,6 +430,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/client-id.log"
           python3 utils/tests/native64-channel-nil.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/channel-nil.log"
+          python3 utils/tests/native64-head-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/head-args.log"
           python3 utils/tests/native64-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/alt.log"
           python3 utils/tests/native64-local-concat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

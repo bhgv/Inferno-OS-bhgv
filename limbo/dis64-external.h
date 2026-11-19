@@ -213,6 +213,7 @@ typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"external-geometry-argument");
 }
 
+static int typedexternalheadarg(TypedMulti*,Dis64TypedBody*,Inst*,Decl*,unsigned int,unsigned int*,unsigned int);
 static int typedexternalstringexpr(TypedMulti*,Dis64TypedBody*,Inst*,Decl*,unsigned int,unsigned int*,unsigned int);
 static int typedselectedfieldarg(Inst*,Dis64TypedBody*,unsigned int,unsigned int,int);
 static int typedloadlisttype(Addr*);
@@ -234,7 +235,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
     if(fn->ty==nil || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys!=nil || fn->ty->tof==nil)
         return typedfail(p,"external-signature");
     while(end<stop && c->instructions[end]!=nil && (c->instructions[end]->dm==Afpind ||
-      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
+      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || call->op!=IMCALL || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Aoff || call->m.decl!=fn || call->dm!=frame->sm || call->d.reg!=frame->s.reg ||
        call->d.decl!=frame->s.decl || call->branch!=nil)return typedfail(p,"external-call");
@@ -247,6 +248,10 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
         offset=(offset+width-1)&~(width-1);
+        if(c->loads && kind==Tstring && in->op==ITAIL){
+            if(offset>65535-8 || !typedexternalheadarg(c,p,frame,arg,end,&at,offset))return 0;
+            offset+=8;continue;
+        }
         if(c->loads && kind==Tstring && in->op==ICVTWC){
             if(offset>65535-8 || !typedexternalstringexpr(c,p,frame,arg,end,&at,offset))return 0;
             offset+=8;continue;

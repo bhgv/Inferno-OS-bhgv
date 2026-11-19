@@ -374,6 +374,24 @@ typedclientstring(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 }
 
 /* One numeric String temporary, bounded in-place concatenation, argument, clear. */
+/* A bounded String-list tail chain, head into a mapped pending argument,
+ * then exact nil clear. No arbitrary instruction replay in call setup. */
+static int
+typedexternalheadarg(TypedMulti*c,Dis64TypedBody*p,Inst*frame,Decl*arg,unsigned int end,unsigned int*at,unsigned int offset)
+{
+ Inst*in;Addr temp;unsigned int n=0,wire;long source;int actual;
+ if(*at>=end || !(in=c->instructions[*at]) || in->op!=ITAIL || !in->d.decl || in->d.decl->store!=Dlocal || !in->d.decl->sym || in->d.decl->sym->name[0]!='.' || in->d.decl->sym->name[1]!='t' || in->dm!=Afp || !typedloadlisttype(&in->d))return typedfail(p,"external-head-temp");
+ temp=in->d;
+ while(*at<end && (in=c->instructions[*at]) && in->op==ITAIL){
+  if(n++==32 || in->dm!=Afp || in->d.decl!=temp.decl || in->d.reg!=temp.reg || in->d.offset || !typedloadlisttype(&in->s) || (n>1 && (in->sm!=Afp || in->s.decl!=temp.decl || in->s.reg!=temp.reg || in->s.offset)) || !typedclientlist(in,p,p->code+*at-p->first))return typedfail(p,"external-head-tail");
+  p->returns[(*at)++-p->first]=252;
+ }
+ if(*at>=end || !(in=c->instructions[*at]) || in->op!=IHEADP || in->mm!=Anone || in->branch || in->sm!=Afp || in->s.decl!=temp.decl || in->s.reg!=temp.reg || in->s.offset || !typedloadlisttype(&in->s) || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !typedoperand(Afp,&in->s,Tlist,0,0,p,&source,&wire,&actual) || actual!=Tlist)return typedfail(p,"external-head-argument");
+ p->code[*at-p->first]=(Dis64Instruction){IHEADP,SRC(AFP)|DST(AFP|AIND),0,source,offset};p->returns[(*at)++-p->first]=252;
+ if(*at>=end || !(in=c->instructions[*at]) || in->op!=IMOVP || in->sm!=Amp || in->mm!=Anone || in->branch || in->dm!=Afp || in->d.decl!=temp.decl || in->d.reg!=temp.reg || in->d.offset || !in->s.decl || !in->s.decl->ty || in->s.decl->ty->kind!=Tany || !in->s.decl->sym || strcmp(in->s.decl->sym->name,"nil") || in->s.reg!=in->s.decl->offset || in->s.offset || !typedinst(in,c->count,p,p->code+*at-p->first,p->returns+*at-p->first))return typedfail(p,"external-head-clear");
+ p->returns[(*at)++-p->first]=252;return 1;
+}
+
 static int
 typedexternalstringexpr(TypedMulti*c,Dis64TypedBody*p,Inst*frame,Decl*arg,unsigned int end,unsigned int*at,unsigned int offset)
 {
@@ -436,8 +454,8 @@ typedloadcontextcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int st
  field.op=IMOVP;field.s=*left;field.sm=lm;field.mm=Anone;field.dm=Afp;field.branch=nil;
  window=typedwindowowner(left);draw=typeddrawowner(left);
  if(actual==Tany && typedwmref(typedfieldowner(left),"Wmsrv","Client")){
-  if(mm!=AMP || middle>65535 || !typedclientaddress(left,lm,p,&base,&bm,&offset,&kind) || kind!=Tchan)return typedfail(p,"client-channel-nil");
-  p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:IBNEL,SRC(bm)|AXINM|DST(AIMM),(offset<<16)|middle,base,in->branch->pc-p->first};p->returns[pc]=241;return 1;
+  if(mm!=AMP || middle>65535 || !typedclientaddress(left,lm,p,&base,&bm,&offset,&kind) || (kind!=Tchan && !(kind==Tlist && offset==48)))return typedfail(p,"client-root-nil");
+  p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:IBNEL,SRC(bm)|AXINM|DST(AIMM),(offset<<16)|middle,base,in->branch->pc-p->first};p->returns[pc]=kind==Tlist?251:241;return 1;
  }
  if(actual!=Tany && typedwmref(typedfieldowner(left),"Wmsrv","Client")){
   if(!typedclientaddress(left,lm,p,&base,&bm,&offset,&kind) || kind!=Tref)return typedfail(p,"client-reference-field");family=4;
@@ -495,17 +513,19 @@ typedloadclientcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int sto
 static int
 typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 {
- Addr *value=&in->s,*empty=&in->m;int vm=in->sm,nm=in->mm,kind,actual;
+ Addr *value=&in->s,*empty=&in->m;int vm=in->sm,nm=in->mm,kind,actual;Type*valuetype;
  unsigned int sm,mm;long source,middle;
  if(typedloadreftype(value) && typedloadreftype(empty))return typedloadclientcompare(in,p,pc,stop);
  if(value->decl && value->decl->ty && value->decl->ty->kind==Tany){
   value=&in->m;empty=&in->s;vm=in->mm;nm=in->sm;
  }
+ valuetype=value->decl?value->decl->ty:nil;
+ if(value->native64type && value->decl && value->decl->store==Dlocal && value->decl->sym && value->decl->sym->name[0]=='.' && value->decl->sym->name[1]=='t' && value->reg==value->decl->offset && !value->offset)valuetype=value->native64type;
  if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
     !value->decl || !value->decl->ty ||
     (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedwindowlisttype(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
     !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
-    !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=value->decl->ty->kind || (typedloadreftype(value) && sm!=AFP && !(sm==AMP && typedloadglobalclient(value,p))) ||
+    !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || (!valuetype || kind!=valuetype->kind) || (typedloadreftype(value) && sm!=AFP && !(sm==AMP && typedloadglobalclient(value,p))) ||
     !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || (kind==Tchan && middle>65535) ||
     in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop ||
     in->d.offset!=in->branch->pc)return typedfail(p,"load-nil-roles");

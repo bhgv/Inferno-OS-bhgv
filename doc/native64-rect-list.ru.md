@@ -4,7 +4,7 @@
 Она проходит CONSM на PC1340, список прямоугольников из Window.r, вызов
 Rect.size, Winplace.place с результатом прямо в lastrect и возврат Rect.
 handlerequest проходит PC521–543; новый отказ — PC544 load-nil-roles на
-c.wins == nil. awm.init пока остаётся на PC303 multi-callee, поскольку
+сравнении tl args с nil. awm.init пока остаётся на PC303 multi-callee, поскольку
 handlerequest ещё не принят целиком. Окно AWM и Android UI ещё не запущены.
 
 | Private role | Операция | Проверенная форма |
