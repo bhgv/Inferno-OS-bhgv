@@ -178,7 +178,7 @@ def verify(data,r,imports,loads=False,rows=None):
         assert offset==maps['frame'if mode else 'data'][o['s'][0]]
         pending=o['d'][0];assert r['code'][first]==[11,o['mode'],offset,e['binding'],40,0]and o['m']==e['binding']
         oldoffset=32
-        at=first+1;aggregates={a['index']:a['layout']for a in e.get('aggregate_args',[])}
+        at=first+1;aggregates={a['index']:a['layout']for a in e.get('aggregate_args',[])};nominals={a['index']:a.get('nominal')for a in e.get('aggregate_args',[])}
         assert len(aggregates)==len(e.get('aggregate_args',[]))
         for j,(new,kind,oldbytes,width)in enumerate(e['args']):
             listclear=None
@@ -234,6 +234,7 @@ def verify(data,r,imports,loads=False,rows=None):
             if kind==1:
                 assert loads and j in aggregates
                 layout=aggregates.pop(j);n=2 if oldbytes==8 else 4 if oldbytes==16 else 0
+                assert nominals[j]in(None,'Draw.Pointer') and (nominals[j]!='Draw.Pointer' or r['code'][at][5]==227)
                 assert n and width==oldbytes and layout=={'legacy_bytes':oldbytes,'bytes':width,'map':[0],'leaves':[[4*k,4*k,4,4,9]for k in range(n)]}
                 if r['code'][at][5]==166:
                     assert a['op']==41 and sm in(4,5)and a['mode']==(sm<<3)|1 and a['m']is None and a['s'][1]==8
@@ -244,7 +245,13 @@ def verify(data,r,imports,loads=False,rows=None):
                     field=a['s'][1]
                     assert oldbytes in(8,16)and a['mode']==(sm<<3)|64|5 and a['m']==oldbytes and a['d']==[pending,oldoffset]
                     # Window.r has classic offset4 and native offset8; Image starts at0.
-                    if field%8==4:
+                    if r['code'][at][5]==227:
+                        assert oldbytes==16 and field==0 and nominals[j]=='Draw.Pointer'
+                        root=maps['frame'if sm==5 else'data'][a['s'][0]]
+                        assert next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==a['s'][0])[4]==12
+                        assert r['frame'if sm==5 else'data']['map'][root//64]&(128>>(root//8%8))
+                        role=227
+                    elif field%8==4:
                         assert field in((4,)if oldbytes==16 else(4,12))
                         role=217 if oldbytes==16 else 218+(field-4)//8
                     else:

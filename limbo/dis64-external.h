@@ -76,6 +76,22 @@ typedwordgeometry(Type*t,Dis64Layout*layout)
  return 1;
 }
 
+/* A Pointer is nominally distinct from Rect despite four raw Word leaves. */
+static int
+typedpointerlayout(Type*t,Dis64Layout*l)
+{
+ Decl*d=t?t->decl:nil,*f;Dis64Layout point={0};unsigned int i;int ok=0;
+ if(!t || t->kind!=Tadt || !d || !d->sym || strcmp(d->sym->name,"Pointer") || !d->dot || !d->dot->sym || strcmp(d->dot->sym->name,"Draw"))return 0;
+ f=t->ids;if(!f || f->store!=Dfield || f->offset || !f->sym || strcmp(f->sym->name,"buttons") || !f->ty || f->ty->kind!=Tint)goto done;
+ f=f->next;if(!f || f->store!=Dfield || f->offset!=4 || !f->sym || strcmp(f->sym->name,"xy") || !typedwordgeometry(f->ty,&point) || point.bytes!=8)goto done;
+ {Decl*q=f->ty->ids;if(!q || q->store!=Dfield || q->offset || !q->sym || strcmp(q->sym->name,"x") || !q->next || q->next->store!=Dfield || q->next->offset!=4 || !q->next->sym || strcmp(q->next->sym->name,"y"))goto done;for(q=q->next->next;q;q=q->next)if(!q->ty || q->ty->kind!=Tfn)goto done;}
+ f=f->next;if(!f || f->store!=Dfield || f->offset!=12 || !f->sym || strcmp(f->sym->name,"msec") || !f->ty || f->ty->kind!=Tint || f->next)goto done;
+ if(!dis64layouttype(t,l) || l->alignment!=4 || l->legacybytes!=16 || l->bytes!=16 || l->count!=4)goto done;
+ for(i=0;i<4;i++)if(l->leaves[i].legacy!=4*i || l->leaves[i].native!=4*i || l->leaves[i].oldbytes!=4 || l->leaves[i].bytes!=4 || l->leaves[i].kind!=Tint)goto done;
+ ok=1;
+ done:dis64layoutfree(&point);return ok;
+}
+
 /* Only a local exact Draw.Point/Rect destination; no inherited/global ADT. */
 static int
 typedgeometrybinding(Inst*binding,Type*result,Dis64TypedBody*p,unsigned int*base,unsigned int*contract)
@@ -101,7 +117,17 @@ static int
 typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned int end,unsigned int*at,unsigned int*offset)
 {
  Dis64Layout layout={0};Inst*in;Addr sourceaddr;long source=0,part;unsigned int i,sm=0,wire,base;int actual,ok=0,prepared=0;
- if(!typedwordgeometry(arg->ty,&layout))goto done;
+ if(!typedwordgeometry(arg->ty,&layout)){
+  dis64layoutfree(&layout);
+  if(!c->loads || !typedpointerlayout(arg->ty,&layout))goto done;
+  base=(*offset+3)&~3U;if(base>65535-16)goto done;
+  in=c->instructions[*at];sourceaddr=in->s;sourceaddr.offset=0;
+  if(in->op!=IMOVM || (in->sm!=Afpind && in->sm!=Ampind) || in->mm!=Aimm || in->m.offset!=16 || in->branch || in->s.offset || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
+     !sourceaddr.decl || !sourceaddr.decl->ty || sourceaddr.decl->ty->kind!=Tref || sourceaddr.decl->ty->tof!=arg->ty ||
+     !typedoperand(in->sm==Afpind?Afp:Amp,&sourceaddr,TypedRoot,0,0,p,&source,&wire,&actual) || actual!=Tref)goto done;
+  p->code[*at-p->first]=(Dis64Instruction){IMOVM,SRC(wire|AIND)|AXIMM|DST(AFP|AIND),16,source,base};p->returns[(*at)++-p->first]=227;
+  *offset=base+16;ok=1;goto done;
+ }
  base=(*offset+3)&~3U;if(base>65535-layout.bytes)goto done;
  in=c->instructions[*at];
  if(c->loads && in->op==IMOVP && *at+1<end){

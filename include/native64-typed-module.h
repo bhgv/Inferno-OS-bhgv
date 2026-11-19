@@ -327,7 +327,7 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
     if(!native64typedgeometryarg(step,f->bytes,s->databytes,request->bytes,request->map,request->mapbytes))return 0;
    }else{
     const Native64ModuleFunction*child;
-    if(site->target>=s->nfunctions || site->first>=f->count || f->code[site->first].op!=IFRAME || site->end>=f->count || f->code[site->end].op!=ICALL)return 0;
+    if(step->returned==227 || site->target>=s->nfunctions || site->first>=f->count || f->code[site->first].op!=IFRAME || site->end>=f->count || f->code[site->end].op!=ICALL)return 0;
     child=s->functions+site->target;
     if(!native64modulemap(child->bytes,child->map,child->mapbytes,1) || !native64typedgeometryarg(step,f->bytes,s->databytes,child->bytes,child->map,child->mapbytes))return 0;
    }

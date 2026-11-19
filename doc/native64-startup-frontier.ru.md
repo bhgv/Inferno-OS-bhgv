@@ -201,3 +201,9 @@ awm.init проходит PC187 и PC189. Новый отказ — PC192
 external-geometry-argument: Draw.Pointer по значению в win.pointer(*p).
 Настоящий reshaped остаётся accepted целиком; графический AWM и Android UI
 пока не запущены.
+
+Следующий этап: [Draw.Pointer в импортируемом вызове](native64-pointer-args.ru.md).
+awm.init проходит win.pointer(*p) на PC192–196. Новый отказ — PC200
+context-nil-roles, проверка p.buttons. Это Word32-поле объекта Pointer;
+доступ к нему пока не открыт. reshaped остаётся accepted целиком;
+графический AWM и Android UI пока не запущены.

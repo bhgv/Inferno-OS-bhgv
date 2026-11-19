@@ -16,7 +16,7 @@ struct Native64TypedCall {
 static unsigned int
 native64imagegeometryoffset(unsigned int tag)
 {
- static const unsigned int offsets[]={0,16,0,8,16,24};return tag>=160 && tag<=165?offsets[tag-160]:tag==217 || tag==218?8:tag==219?16:~0U;
+ static const unsigned int offsets[]={0,16,0,8,16,24};return tag>=160 && tag<=165?offsets[tag-160]:tag==217 || tag==218?8:tag==219?16:tag==227?0:~0U;
 }
 
 /* Numeric Draw.Point/Rect copies into a prepared imported frame. */
@@ -25,7 +25,7 @@ native64typedgeometryarg(const Native64TypedStep*s,unsigned int fp,unsigned int 
 {
  unsigned int sm=USRC(s->mode),i,bit,sourcebytes=sm==AFP?fp:mp;
  if((native64imagegeometryoffset(s->returned)!=~0U) && (sm==(AFP|AIND) || sm==(AMP|AIND))){
-  if(s->op!=IMOVM || s->mode!=(SRC(sm)|AXIMM|DST(AFP|AIND)) || s->m!=(s->returned<162 || s->returned==217?16:8) || !native64typedrootoperand(sm&~AIND,s->s,fp,mp) || s->d<64 || s->d%4 || s->d>65535 || (unsigned long)s->d>bytes || (unsigned long)s->m>bytes-s->d || map==nil || map==H || np!=(bytes+63)/64)return 0;
+  if(s->op!=IMOVM || s->mode!=(SRC(sm)|AXIMM|DST(AFP|AIND)) || s->m!=(s->returned<162 || s->returned==217 || s->returned==227?16:8) || !native64typedrootoperand(sm&~AIND,s->s,fp,mp) || s->d<64 || s->d%4 || s->d>65535 || (unsigned long)s->d>bytes || (unsigned long)s->m>bytes-s->d || map==nil || map==H || np!=(bytes+63)/64)return 0;
  }else if(s->op!=IMOVM || s->mode!=(SRC(sm)|AXIMM|DST(AFP|AIND)) || (sm!=AFP && sm!=AMP) || s->returned!=64 ||
     (s->m!=8 && s->m!=16) || s->s<0 || s->s%4 || (sm==AFP && s->s<64) || (unsigned long)s->s>sourcebytes ||
     (unsigned long)s->m>sourcebytes-s->s || s->d<64 || s->d%4 || s->d>65535 || (unsigned long)s->d>bytes || (unsigned long)s->m>bytes-s->d ||
@@ -165,7 +165,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 if(!c->external || !native64typedlistprep(s,fpbytes,mpbytes))return 0;continue;
             }
             if(s->op==IMOVM){
-                if((!c->external && steps[c->end].op!=ICALL) || c->callee->np<0 || !native64typedgeometryarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+                if((s->returned==227 && !c->external) || (!c->external && steps[c->end].op!=ICALL) || c->callee->np<0 || !native64typedgeometryarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
             }
             if(s->op==ILENA || s->op==ICVTAC){
