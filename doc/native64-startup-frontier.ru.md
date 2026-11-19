@@ -135,3 +135,9 @@ AWM init проходит ctl/kbd/ptr и PC149 reference payload, останав
 Настоящий awm.init проходит адрес пары из join на PC151 и останавливается
 на PC153: tuple из req. Command остаётся accepted. Это продвижение typed
 frontier; полный AWM event loop и Android UI ещё не запущены.
+
+Следующий этап: [request tuple в ALT](native64-alt-requests.ru.md).
+Настоящий awm.init проходит тройку из req на PC153 и доходит до PC154,
+alt-field-channel для wmrectIO.write через Sys.FileIO. Command остаётся
+accepted; FileIO channel fields и mixed payloads — следующий участок.
+Полный AWM/Android UI пока не запущен.
