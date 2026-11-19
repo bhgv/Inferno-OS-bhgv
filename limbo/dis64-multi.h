@@ -555,7 +555,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
                !typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual))return typedfail(p,"local-byte-string-argument");
             p->code[at-p->first]=(Dis64Instruction){ICVTAC,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=64;continue;
         }
-        if(c->loads && child==p && kind==Tstring && in->op==IADDC){
+        if(c->loads && kind==Tstring && in->op==IADDC && (child==p || (arg==c->functions[target]->ty->ids && !arg->next))){
             unsigned int mm;long middle;
             if(in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || in->branch ||
                !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || offset>65535 ||

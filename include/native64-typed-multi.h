@@ -171,7 +171,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 continue;
             }
             if(s->op==IADDC){
-                if((!c->external && (!c->inherited || c->target!=out)) || c->callee->np<0 || !native64typedconcatarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+                if((!c->external && !(c->inherited && c->target==out) && !(j==c->first+1 && j+1==c->end-(c->contract?1:0) && s->d==64)) || c->callee->np<0 || !native64typedconcatarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
             }
             if((s->op!=IMOVB && s->op!=IMOVW && s->op!=IMOVL && s->op!=IMOVF && s->op!=IMOVP) ||

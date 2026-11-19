@@ -69,8 +69,9 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert r['code'][at]==[o['op'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],0,arg[0],64]
             elif o['op']==OPCODES['IADDC']:
                 mm=1 if o['mode']&192==128 else 0 if o['mode']&192==192 else -1
-                assert loads and target==r['first']and inherited and arg[1:]==[13,4,8]and sm in(0,1)and mm in(0,1)
-                assert r['code'][end+1][0]==OPCODES['IRET']
+                assert loads and arg[1:]==[13,4,8]and sm in(0,1)and mm in(0,1)
+                if target==r['first']:assert inherited and r['code'][end+1][0]==OPCODES['IRET']
+                else:assert len(callee['args'])==1 and at==first+1 and at+1==end-bool(contract) and arg[0]==64
                 assert r['code'][at]==[o['op'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],maps['frame'if mm else'data'][o['m']],arg[0],64]
             else:
                 assert r['code'][at]==[o['op'],o['mode'],o['s'][0]if sm==2 else maps['frame'if sm==1 else'data'][o['s'][0]],0,arg[0],64]

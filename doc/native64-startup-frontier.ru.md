@@ -115,3 +115,8 @@ AWM command проходит построение fd list для Sys.pctl на P
 Весь настоящий awm.command принимается. AWM init проходит spawn PC127/131
 и доходит до PC136: computed String argument локального fatal.
 Полного графического запуска ещё нет; Wmsrv wm остаётся на PC40.
+
+Следующий этап: [computed String local argument](native64-local-concat.ru.md).
+AWM init проходит fatal PC136 и доходит до PC140 IMOVW (typed-span),
+чтения win.ctl при подготовке ALT. Весь command остаётся accepted.
+Графического запуска пока нет.

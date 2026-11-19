@@ -414,8 +414,13 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                         if(site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
                         request=s->tables[site->table].imports+site->target;
                         if(!native64typedconcatarg(step,f->bytes,s->databytes,request->bytes,request->map,request->mapbytes))return 0;
-                    }else if(site->target!=i || !site->inherited || site->end>=f->count-1 || f->code[site->end+1].op!=IRET ||
-                             !native64typedconcatarg(step,f->bytes,s->databytes,f->bytes,f->map,f->mapbytes))return 0;
+                    }else{
+                        const Native64ModuleFunction*child;
+                        if(site->target>=s->nfunctions)return 0;child=s->functions+site->target;
+                        if(!(site->target==i && site->inherited && site->end<f->count-1 && f->code[site->end+1].op==IRET) &&
+                           !(j==site->first+1 && j+1==site->end-(site->contract?1:0) && step->d==64))return 0;
+                        if(!native64modulemap(child->bytes,child->map,child->mapbytes,1) || !native64typedconcatarg(step,f->bytes,s->databytes,child->bytes,child->map,child->mapbytes))return 0;
+                    }
                 }
             }
             if(!found)return 0;
