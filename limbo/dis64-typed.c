@@ -590,7 +590,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             for(i=0;i<p.nexternal;i++){
                 Dis64TypedExternal *e=p.external+i;
                 fprint(2,"%s{\"first\":%ud,\"end\":%ud,\"binding\":%ud,\"module\":[%ud,%ud],\"resultoffset\":%ud,\"contract\":%ud,\"inherited\":%ud,\"signature\":%ud,\"name\":",i?",":"",e->first,e->end,e->binding,e->modulemode,e->moduleoffset,e->resultoffset,e->contract,e->inherited,(unsigned int)sign(e->callee));
-                typedexportname(e->callee);fprint(2,",\"args\":");typedbindings(e->callee->ty->ids,1);fprint(2,",\"aggregate_args\":");typedaggregatebindings(e->callee->ty->ids);if(typedchanneltriple(e->callee->ty->tof))fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);fprint(2,"}");
+                typedexportname(e->callee);fprint(2,",\"args\":");typedbindings(e->callee->ty->ids,1);fprint(2,",\"aggregate_args\":");typedaggregatebindings(e->callee->ty->ids);if(e->contract==96 || e->contract==112)fprint(2,",\"result_geometry\":%ud",e->contract==96?8:16);if(typedchanneltriple(e->callee->ty->tof))fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);fprint(2,"}");
             }
             fprint(2,"]");
         }

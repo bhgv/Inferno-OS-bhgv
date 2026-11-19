@@ -173,3 +173,9 @@ image-geometry-owner для передачи w.r в геометрический
 На PC765 остаётся external-result-kind: нужен возврат Draw.Rect из импорта.
 awm.init остаётся на PC180 multi-callee. Command accepted;
 графический AWM и Android UI пока не запущены.
+
+Следующий этап: [возврат Point/Rect из импортов](native64-geometry-results.ru.md).
+Настоящий reshaped проходит PC765, четыре масштабирования координат и addpt.
+Следующий отказ — PC783 external-inherit: screen.newwindow возвращает Image
+прямо в w.img. awm.init остаётся на PC180 multi-callee;
+графический AWM и Android UI пока не запущены.

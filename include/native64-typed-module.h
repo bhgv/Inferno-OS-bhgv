@@ -25,7 +25,7 @@ struct Native64ModuleSite {
 };
 struct Native64ModuleImport {
     const char *name;unsigned int signature,bytes;
-    const uchar *map;unsigned int mapbytes,resultcontract; /* 72: imported three-channel result. */
+    const uchar *map;unsigned int mapbytes,resultcontract; /* Imported result: 72 three roots; 96/112 raw Point/Rect. */
 };
 struct Native64ModuleTable {const Native64ModuleImport *imports;unsigned int count;};
 struct Native64ModuleFunction {
@@ -350,7 +350,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         nimports+=table->count;
         for(j=0;j<table->count;j++){
             request=table->imports+j;
-            if((request->resultcontract && request->resultcontract!=72) || !native64modulename(request->name) || !native64modulemap(request->bytes,request->map,request->mapbytes,1) ||
+            if((request->resultcontract && request->resultcontract!=72 && !native64geometryresultwidth(request->resultcontract)) || !native64modulename(request->name) || !native64modulemap(request->bytes,request->map,request->mapbytes,1) ||
                request->bytes>65536 || request->bytes>32*1024*1024-total)return 0;
             total+=request->bytes;
         }
@@ -592,6 +592,9 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].contract==88)found++;
             if(found!=1)return 0;
         }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==224 || f->code[j].returned==240){
+            unsigned int k,found=0;for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && (128|f->sites[k].contract)==f->code[j].returned && !f->sites[k].inherited)found++;if(found!=1)return 0;
+        }
         for(j=0;j<f->count;j++)if(f->code[j].op==ISPAWN || f->code[j].returned==186){
             unsigned int k,found=0,a;const Native64ModuleFunction*child;const Native64TypedStep*body;
             step=f->code+j;if(step->op!=ISPAWN || step->returned!=186 || step->mode!=(SRC(AFP)|DST(AIMM)) || step->m || step->s!=40)return 0;
@@ -618,6 +621,18 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         }
         for(j=0;j<f->nsites;j++){
             site=f->sites+j;if(site->external>1)return 0;
+            if(native64geometryresultwidth(site->contract)){
+                if(!site->external || site->inherited || site->table>=s->ntables || site->target>=s->tables[site->table].count || site->end<2 || site->end>=f->count)return 0;
+                request=s->tables[site->table].imports+site->target;
+                if(request->resultcontract!=site->contract)return 0;
+                step=f->code+site->end-1;
+                if(step->op!=ILEA || step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->m || step->d!=32 || step->returned!=(128|site->contract) ||
+                   !native64geometryresultmap(f->bytes,f->map,f->mapbytes,step->s,site->contract))return 0;
+            }
+            if(site->external && site->table<s->ntables && site->target<s->tables[site->table].count){
+                request=s->tables[site->table].imports+site->target;
+                if((native64geometryresultwidth(request->resultcontract) || native64geometryresultwidth(site->contract)) && request->resultcontract!=site->contract)return 0;
+            }
             if(site->contract==72){
                 if(site->external){if(site->table>=s->ntables || site->target>=s->tables[site->table].count || s->tables[site->table].imports[site->target].resultcontract!=72)return 0;}
                 else if(site->target>=s->nfunctions || s->functions[site->target].resultcontract!=72)return 0;

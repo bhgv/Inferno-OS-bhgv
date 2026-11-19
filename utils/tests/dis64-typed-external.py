@@ -277,8 +277,18 @@ def verify(data,r,imports,loads=False,rows=None):
         assert not aggregates
         contract=e['contract'];assert at+bool(contract)==end
         assert (contract==72)==(e.get('result_channels')==[6,6,6])
+        assert e.get('result_geometry',0)==({96:8,112:16}.get(contract,0))
         if contract:
             b=original[end-1];assert b['op']==39 and b['d']==[pending,16]
+            if contract in(96,112):
+                assert loads and not e['inherited']and b['mode']==13
+                width={96:8,112:16}[contract];old=b['s'][0];native=maps['frame'][old]
+                assert e['resultoffset']==native and native>=64 and native%4==0
+                for i in range(0,width,4):
+                    leaf=next(l for l in r['frame']['leaves']if l[0]==old+i)
+                    assert leaf==[old+i,native+i,4,4,9]
+                    assert not(r['frame']['map'][(native+i)//64]&(128>>((native+i)//8%8)))
+
             if e['inherited']:assert b['s']==[16,0]and r['code'][end-1]==[118,13,32,0,32,64]
             else:
                 assert b['mode']in(5,13)and (b['mode']!=5 or contract==24)

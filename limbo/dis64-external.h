@@ -76,6 +76,21 @@ typedwordgeometry(Type*t,Dis64Layout*layout)
  return 1;
 }
 
+/* Only a local exact Draw.Point/Rect destination; no inherited/global ADT. */
+static int
+typedgeometrybinding(Inst*binding,Type*result,Dis64TypedBody*p,unsigned int*base,unsigned int*contract)
+{
+ Dis64Layout l={0};Addr a;Type*t;unsigned int i,wire;long part;int actual,ok=0;
+ t=binding->s.native64type?binding->s.native64type:binding->s.decl?binding->s.decl->ty:nil;
+ if(binding->sm!=Afp || t!=result || !typedwordgeometry(t,&l))goto done;
+ for(i=0;i<l.bytes;i+=4){a=binding->s;a.reg+=i;a.offset=0;
+  if(!typedoperand(Afp,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || wire!=AFP || part<64 || (i && part!=*base+i))goto done;
+  if(!i)*base=part;
+ }
+ *contract=l.bytes==8?96:112;ok=1;
+ done:dis64layoutfree(&l);return ok;
+}
+
 static int typedrootargclear(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*);
 static int typedimagegeometryprep(Inst*,Inst*,Dis64TypedBody*,unsigned int);
 static int typedimagegeometry(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
@@ -194,11 +209,14 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
     }
     kind=fn->ty->tof->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
     if(kind!=Tnone){
-        if(!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal && !(c->loads && kind==Ttuple))return typedfail(p,"external-result-kind");
+        if(!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal && !(c->loads && (kind==Ttuple || kind==Tadt)))return typedfail(p,"external-result-kind");
         contract=(root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4)|(root?16:0);
         if(at+1!=end || (binding=c->instructions[at])==nil || binding->op!=ILEA || binding->mm!=Anone ||
            binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil)return typedfail(p,"external-result");
-        if(c->loads && kind==Ttuple && typedchanneltriple(fn->ty->tof)){
+        if(c->loads && kind==Tadt){
+            if(!typedgeometrybinding(binding,fn->ty->tof,p,&local,&contract))return typedfail(p,"external-geometry-result");
+            p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;
+        }else if(c->loads && kind==Ttuple && typedchanneltriple(fn->ty->tof)){
             contract=72;
             if(binding->sm==Afp){if(!typedchannelbinding(c,p,binding,&local))return 0;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;}
             else{if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || !p->resulttriple)return typedfail(p,"channel-result-inherit");inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;}
