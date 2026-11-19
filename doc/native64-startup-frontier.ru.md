@@ -226,3 +226,8 @@ setfocus теперь accepted целиком. awm.init проходит PC210, 
 на PC229–234 и c.flags |= Controller на PC240. Новый отказ — PC243 multi-call,
 подготовка строки newclient с c.id для controlevent. reshaped accepted
 целиком; графический AWM и Android UI пока не запущены.
+
+Следующий этап: [Client.id и локальный String-аргумент](native64-client-id.ru.md).
+awm.init проходит подготовку newclient с c.id и вызов controlevent
+на PC243–247. Новый отказ — PC257 load-nil-roles. setfocus, controlevent
+и reshaped принимаются целиком; графический AWM и Android UI пока не запущены.

@@ -69,3 +69,12 @@ typedclientflagsor(Inst*in,Dis64TypedBody*p,unsigned int pc)
     !typedoperand(in->sm,&in->s,Tint,1,1,p,&mask,&sm,&actual) || sm!=AIMM || actual!=Tint)return typedfail(p,"client-flags-or");
  p->code[pc]=(Dis64Instruction){IORW,SRC(AIMM)|DST(wire),32,mask,base};p->returns[pc]=236;return 1;
 }
+
+static int
+typedclientidstring(Inst*in,Dis64TypedBody*p,unsigned int pc)
+{
+ long base,field,dest;unsigned int wire,dm;int kind,actual;
+ if(in->op!=ICVTWC || in->s.offset!=36 || !in->s.native64type || in->s.native64type->kind!=Tint || in->mm!=Anone || in->branch || in->dm!=Afp || in->d.offset ||
+    !typedclientaddress(&in->s,in->sm,p,&base,&wire,&field,&kind) || kind!=Tint || field!=72 || !typedoperand(Afp,&in->d,Tstring,0,0,p,&dest,&dm,&actual) || actual!=Tstring)return typedfail(p,"client-id-string");
+ p->code[pc]=(Dis64Instruction){ICVTWC,SRC(wire)|DST(AFP),72,base,dest};p->returns[pc]=237;return 1;
+}

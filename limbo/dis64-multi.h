@@ -574,7 +574,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     if(frame->sm!=Adesc || frame->mm!=Anone || frame->dm!=Afp || frame->branch!=nil || frame->d.reg<32 ||
        frame->d.reg>(int)p->frame.legacybytes-4)return typedfail(p,"multi-frame");
     while(end<stop && c->instructions[end]!=nil && (c->instructions[end]->dm==Afpind ||
-      (c->loads && ((c->instructions[end]->op==IMOVP && c->instructions[end]->dm==Afp) || c->instructions[end]->op==ISLICEA))))end++;
+      (c->loads && ((c->instructions[end]->op==IMOVP && c->instructions[end]->dm==Afp) || c->instructions[end]->op==ISLICEA || (c->instructions[end]->op==ICVTWC && c->instructions[end]->dm==Afp)))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || (call->op!=ICALL && !(c->loads && call->op==ISPAWN)) || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Anone || call->dm!=Apc || call->d.offset<0 || (unsigned long)call->d.offset>=c->count ||
        (target=c->entries[call->d.offset])<0)return typedfail(p,"multi-call");
@@ -620,6 +620,18 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
                !dis64layoutaddress(&child->frame,arg->offset,4,1,&view) || view>65535 ||
                !typedinst(clear,stop,p,p->code+at+3-p->first,p->returns+at+3-p->first))return typedfail(p,"local-slice-string-argument");
             p->code[at+2-p->first]=(Dis64Instruction){ICVTAC,SRC(sm)|DST(AFP|AIND),0,source,view};p->returns[at+2-p->first]=64;at+=4;continue;
+        }
+        if(c->loads && !spawning && kind==Tstring && in->op==ICVTWC){
+            Inst*first=in,*concat,*clear;unsigned int mm;long middle;
+            if(c->functions[target]->ty->tof->kind!=Tnone || arg!=c->functions[target]->ty->ids || arg->next || at+2>=end || in->dm!=Afp || !in->d.decl || in->d.decl->store!=Dlocal || !in->d.decl->sym || in->d.decl->sym->name[0]!='.' || in->d.decl->sym->name[1]!='t' ||
+               !typedclientidstring(in,p,at-p->first) || !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || offset!=64)return typedfail(p,"local-id-string-prefix");
+            concat=c->instructions[at+1];clear=c->instructions[at+2];
+            if(concat->op!=IADDC || concat->branch || concat->dm!=Afpind || concat->d.reg!=frame->d.reg || concat->d.offset!=arg->offset ||
+               !((concat->sm==Afp && concat->s.decl==first->d.decl && concat->s.reg==first->d.reg && !concat->s.offset) || (concat->mm==Afp && concat->m.decl==first->d.decl && concat->m.reg==first->d.reg && !concat->m.offset)) ||
+               !typedoperand(concat->sm,&concat->s,Tstring,0,0,p,&source,&sm,&actual) || actual!=Tstring || !typedoperand(concat->mm,&concat->m,Tstring,0,1,p,&middle,&mm,&actual) || actual!=Tstring ||
+               clear->op!=IMOVP || clear->sm!=Amp || clear->dm!=Afp || clear->mm!=Anone || clear->branch || clear->d.decl!=first->d.decl || clear->d.reg!=first->d.reg || clear->d.offset || !clear->s.decl || !clear->s.decl->ty || clear->s.decl->ty->kind!=Tany ||
+               !typedinst(clear,stop,p,p->code+at+2-p->first,p->returns+at+2-p->first))return typedfail(p,"local-id-string-argument");
+            p->code[at+1-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,offset};p->returns[at+1-p->first]=64;p->returns[at+2-p->first]=238;at+=3;continue;
         }
         if(c->loads && kind==Tstring && in->op==ICVTAC){
             if(arg!=c->functions[target]->ty->ids || arg->next || in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
@@ -745,6 +757,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             inside[pc+1-p->first]=1;pc+=2;
         }else if(c->external>=2 && (in->op==IMOVB || in->op==ICVTBW || in->op==ICVTWB)){
             if(!typedclientbyte(in,p,pc-p->first))goto fail;pc++;
+        }else if(c->loads && in->op==ICVTWC && (in->sm==Afpind || in->sm==Ampind) && typedwmref(typedfieldowner(&in->s),"Wmsrv","Client")){
+            if(!typedclientidstring(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==ICVTAC && in->dm==Afpind){
             long source;unsigned int sm;int actual;
             if(!typedloadbytes(in,p,pc-p->first))goto fail;

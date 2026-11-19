@@ -55,7 +55,13 @@ def verify(data,r,imports,loads=False,rows=None):
         pending=original[first]['d'][0];assert original[first]['op']==5 and original[first]['s']==[descriptor]
         assert r['code'][first]==[5,17,descriptor,0,40,0]
         for arg in callee['args']:
-            prep=False;screenprep=None;o=original[at]
+            prep=False;screenprep=None;idprep=None;o=original[at]
+            if loads and arg[1]==13 and r['code'][at][5]==237:
+                sm=o['mode']>>3&7;assert o['op']==OPCODES['ICVTWC']and sm in(4,5)and o['mode']==(sm<<3)|1 and o['m']is None and o['s'][1]==36
+                owner=maps['frame'if sm==5 else'data'][o['s'][0]];temp=maps['frame'][o['d'][0]]
+                assert r['code'][at]==[o['op'],o['mode'],owner,72,temp,237]
+                for space,root_at in(('frame'if sm==5 else'data',owner),('frame',temp)):assert r[space]['map'][root_at//64]&(128>>(root_at//8%8))
+                idprep=(o['d'][0],temp);at+=1;o=original[at]
             if loads and arg[1]==13 and o['op']==41 and o['mode']&7==1:
                 assert at+3<end and original[at+1]['op']==OPCODES['ISLICEA']and original[at+2]['op']==OPCODES['ICVTAC']
                 view=o['d'];assert original[at+1]['d']==view and original[at+2]['s']==view
@@ -101,11 +107,15 @@ def verify(data,r,imports,loads=False,rows=None):
                 mm=1 if o['mode']&192==128 else 0 if o['mode']&192==192 else -1
                 assert loads and arg[1:]==[13,4,8]and sm in(0,1)and mm in(0,1)
                 if target==r['first']:assert inherited and r['code'][end+1][0]==OPCODES['IRET']
-                else:assert len(callee['args'])==1 and at==first+1 and at+1==end-bool(contract) and arg[0]==64
+                else:assert len(callee['args'])==1 and at==first+(2 if idprep else 1) and at+(2 if idprep else 1)==end-bool(contract) and arg[0]==64
                 assert r['code'][at]==[o['op'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],maps['frame'if mm else'data'][o['m']],arg[0],64]
             else:
                 assert r['code'][at]==[o['op'],o['mode'],o['s'][0]if sm==2 else maps['frame'if sm==1 else'data'][o['s'][0]],0,arg[0],64]
             at+=2 if prep else 1
+            if idprep is not None:
+                clear=original[at];assert clear['op']==41 and clear['mode']==1 and clear['m']is None and clear['d']==[idprep[0]]
+                assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
+                assert r['code'][at]==[41,1,maps['data'][clear['s'][0]],0,idprep[1],238];at+=1
             if screenprep is not None:
                 clear=original[at];assert clear['op']==41 and clear['mode']==1 and clear['m']is None and clear['d']==[screenprep[0]]
                 assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
@@ -431,6 +441,12 @@ def verify(data,r,imports,loads=False,rows=None):
             owner=next(l for l in r['frame'if dm==5 else'data']['leaves']if l[0]==o['d'][0]);assert owner[2:]==[4,8,12]
             assert r['frame'if dm==5 else'data']['map'][owner[1]//64]&(128>>(owner[1]//8%8))
             assert r['code'][pc]==[o['op'],o['mode'],o['s'][0],32,owner[1],236]
+            continue
+        if returned==237:
+            sm=o['mode']>>3&7;assert loads and o['op']==OPCODES['ICVTWC']and sm in(4,5)and o['mode']==(sm<<3)|1 and o['m']is None and o['s'][1]==36
+            owner=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0]);value=next(l for l in r['frame']['leaves']if l[0]==o['d'][0]);assert owner[2:]==[4,8,12]and value[2:4]==[4,8]and value[4]in ROOTS+(20,)
+            assert r['code'][pc]==[o['op'],o['mode'],owner[1],72,value[1],237]
+            for space,root_at in(('frame'if sm==5 else'data',owner[1]),('frame',value[1])):assert r[space]['map'][root_at//64]&(128>>(root_at//8%8))
             continue
         if returned==207:
             assert loads and o['op']in(93,94)and op==(OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'])and mode==o['mode']
