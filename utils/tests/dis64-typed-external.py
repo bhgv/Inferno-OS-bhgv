@@ -448,6 +448,13 @@ def verify(data,r,imports,loads=False,rows=None):
             assert r['code'][pc]==[o['op'],o['mode'],owner[1],72,value[1],237]
             for space,root_at in(('frame'if sm==5 else'data',owner[1]),('frame',value[1])):assert r[space]['map'][root_at//64]&(128>>(root_at//8%8))
             continue
+        if returned==241:
+            sm=o['mode']>>3&7;field=o['s'][1];assert loads and o['op']in(93,94)and sm in(4,5)and o['mode']==(sm<<3)|192|2 and field in(0,4,8,12,32)
+            owner=maps['frame'if sm==5 else'data'][o['s'][0]];other=maps['data'][o['m']];assert next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0])[4]==12
+            assert next(l for l in r['data']['leaves']if l[0]==o['m'])[4]==20
+            assert r['code'][pc]==[OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'],o['mode'],owner,((0,8,16,24,64)[(0,4,8,12,32).index(field)]<<16)|other,o['d'][0]-r['first'],241]
+            for space,root_at in(('frame'if sm==5 else'data',owner),('data',other)):assert r[space]['map'][root_at//64]&(128>>(root_at//8%8))
+            continue
         if returned==207:
             assert loads and o['op']in(93,94)and op==(OPCODES['IBEQL']if o['op']==93 else OPCODES['IBNEL'])and mode==o['mode']
             sm=mode>>3&7;mm=mode&192;assert sm in(4,5)and mm in(128,192)and mode&7==2

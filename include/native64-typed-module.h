@@ -482,7 +482,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             if(step->returned==228){map=UDST(step->mode)==AFP?f->map:s->datamap;for(at=0;at<4;at++){bit=(step->d+at)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}}
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned==231 || ((f->code[j].op==IBEQL || f->code[j].op==IBNEL) && (USRC(f->code[j].mode)==AFP || USRC(f->code[j].mode)==AMP) && f->code[j].returned)){
+        for(j=0;j<f->count;j++)if(f->code[j].returned==231 || ((f->code[j].op==IBEQL || f->code[j].op==IBNEL) && (USRC(f->code[j].mode)==AFP || USRC(f->code[j].mode)==AMP) && f->code[j].returned && f->code[j].returned!=239)){
             unsigned int k,modes[2],offsets[2];step=f->code+j;if(!native64typedclientcompare(step,f->bytes,s->databytes) || step->d<0 || (unsigned long)step->d>=f->count)return 0;
             modes[0]=USRC(step->mode);modes[1]=(step->mode&ARM)==AXINF?AFP:AMP;offsets[0]=step->s;offsets[1]=step->m;
             for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
@@ -517,6 +517,12 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             }
         }
         for(j=0;j<f->count;j++)if(f->code[j].returned==238){unsigned int k,found=0;if(j<2 || f->code[j-2].returned!=237 || f->code[j-1].op!=IADDC)return 0;for(k=0;k<f->nsites;k++)if(f->sites[k].first<j && j<f->sites[k].end && !f->sites[k].external)found++;if(found!=1)return 0;}
+        for(j=0;j<f->count;j++)if(f->code[j].returned==239 || f->code[j].returned==241 || ((f->code[j].op==IBEQL || f->code[j].op==IBNEL) && (USRC(f->code[j].mode)&AIND) && f->code[j].returned>238 && f->code[j].m>=0 && (unsigned long)f->code[j].m<=0x40ffffUL)){
+            unsigned int other;step=f->code+j;if(!native64typedchannelnil(step,f->bytes,s->databytes) || step->d<0 || (unsigned long)step->d>=f->count)return 0;
+            map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
+            other=step->returned==241?step->m&65535:step->m;if(!native64modulereadonlynil(s,other))return 0;bit=other/8;if(!(s->datamap[bit/8]&(128>>(bit%8))))return 0;
+            for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
+        }
         for(j=0;j<f->count;j++)if(f->code[j].returned==207 || ((f->code[j].op==IBEQL || f->code[j].op==IBNEL) && (USRC(f->code[j].mode)&AIND) && f->code[j].m>=0x1000000L)){
             unsigned int k,modes[2],offsets[2];step=f->code+j;if(!native64typedfieldreference(step,f->bytes,s->databytes) || step->d<0 || (unsigned long)step->d>=f->count)return 0;
             modes[0]=USRC(step->mode)&~AIND;modes[1]=(step->mode&ARM)==AXINF?AFP:AMP;offsets[0]=step->s;offsets[1]=step->m&65535;

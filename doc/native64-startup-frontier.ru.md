@@ -231,3 +231,9 @@ setfocus теперь accepted целиком. awm.init проходит PC210, 
 awm.init проходит подготовку newclient с c.id и вызов controlevent
 на PC243–247. Новый отказ — PC257 load-nil-roles. setfocus, controlevent
 и reshaped принимаются целиком; графический AWM и Android UI пока не запущены.
+
+Следующий этап: [Nil-проверки каналов](native64-channel-nil.ru.md).
+awm.init проходит rc == nil и c.stop == nil, доходит до PC303 multi-callee
+на handlerequest. Сам handlerequest отвергается на PC427
+client-context-geometry: создание ref Draw.Pointer. setfocus, controlevent
+и reshaped accepted целиком; графический AWM и Android UI пока не запущены.

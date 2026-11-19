@@ -434,6 +434,10 @@ typedloadcontextcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int st
  if(!typedoperand(rm,right,TypedRoot,0,1,p,&middle,&mm,&actual) || (actual!=Tany && actual!=Tref))return typedfail(p,"field-reference-roles");
  field.op=IMOVP;field.s=*left;field.sm=lm;field.mm=Anone;field.dm=Afp;field.branch=nil;
  window=typedwindowowner(left);draw=typeddrawowner(left);
+ if(actual==Tany && typedwmref(typedfieldowner(left),"Wmsrv","Client")){
+  if(mm!=AMP || middle>65535 || !typedclientaddress(left,lm,p,&base,&bm,&offset,&kind) || kind!=Tchan)return typedfail(p,"client-channel-nil");
+  p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:IBNEL,SRC(bm)|AXINM|DST(AIMM),(offset<<16)|middle,base,in->branch->pc-p->first};p->returns[pc]=241;return 1;
+ }
  if(actual!=Tany && typedwmref(typedfieldowner(left),"Wmsrv","Client")){
   if(!typedclientaddress(left,lm,p,&base,&bm,&offset,&kind) || kind!=Tref)return typedfail(p,"client-reference-field");family=4;
  }else{
@@ -498,14 +502,14 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  }
  if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
     !value->decl || !value->decl->ty ||
-    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedwindowlisttype(value) && !typedloadreftype(value)) ||
+    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedwindowlisttype(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
     !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
     !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=value->decl->ty->kind || (typedloadreftype(value) && sm!=AFP && !(sm==AMP && typedloadglobalclient(value,p))) ||
-    !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany ||
+    !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || (kind==Tchan && middle>65535) ||
     in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop ||
     in->d.offset!=in->branch->pc)return typedfail(p,"load-nil-roles");
  p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,
-  SRC(sm)|AXINM|DST(AIMM),middle,source,in->branch->pc-p->first};return 1;
+  SRC(sm)|AXINM|DST(AIMM),middle,source,in->branch->pc-p->first};if(kind==Tchan)p->returns[pc]=239;return 1;
 }
 
 static int typedmultibody(TypedMulti*,unsigned int,unsigned int);
