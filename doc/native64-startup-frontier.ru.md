@@ -190,3 +190,8 @@ reshape. awm.init остаётся на PC180 multi-callee; графически
 Следующий отказ — PC795 indirect-or-reserved-operand: подготовка Sys.sprint
 с w.tag и результатом r2s. awm.init остаётся на PC180 multi-callee;
 графический AWM и Android UI пока не запущены.
+
+Следующий этап: [Window.tag и String temporaries в форматтере](native64-format-fields.ru.md).
+Настоящий reshaped теперь accepted целиком. awm.init проходит PC180;
+следующий отказ — PC187 unsupported-opcode, ICVTCW (String в int).
+Графический AWM и Android UI пока не запущены.

@@ -138,11 +138,23 @@ def verify(data,r,imports,loads=False,rows=None):
             oldend=legacy+oldwidth
             oldop=41 if kind in(12,13)else 118 if kind==4 else 46 if kind==7 else 45
             newop=oldop if kind in(4,7,12,13)else OPCODES['ICVTWL']
-            a=original[at];sm=a['mode']>>3&7;assert a['op']==oldop and sm in((0,1)if kind in(4,7,12,13)else(0,1,2))and a['m']is None and a['d']==[pending,legacy]
-            source=a['s'][0]if sm==2 else maps['frame'if sm else'data'][a['s'][0]]
-            assert r['code'][at]==[newop,a['mode'],source,0,native,64]
+            a=original[at];sm=a['mode']>>3&7
+            if r['code'][at][5]==222:
+                assert kind==13 and j>=(1 if op==0 else 2)and a['op']==41 and sm in(4,5)and a['mode']==(sm<<3)|5 and a['m']is None and a['s'][1]==0 and a['d']==[pending,legacy]
+                source=maps['frame'if sm==5 else'data'][a['s'][0]]
+                leaf=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==a['s'][0]);assert leaf[3:]==[8,12]
+                assert r['frame'if sm==5 else'data']['map'][source//64]&(128>>(source//8%8))
+                assert r['code'][at]==[41,a['mode'],source,0,native,222]
+            else:
+                assert a['op']==oldop and sm in((0,1)if kind in(4,7,12,13)else(0,1,2))and a['m']is None and a['d']==[pending,legacy]
+                source=a['s'][0]if sm==2 else maps['frame'if sm else'data'][a['s'][0]]
+                assert r['code'][at]==[newop,a['mode'],source,0,native,64]
             if op==3 and j==0 and sm==1:fd=a['s'][0]
             at+=1
+            if at<end-1 and r['code'][at][5]==223:
+                clear=original[at];assert kind==13 and sm==1 and a['op']==41 and clear['op']==41 and clear['mode']==1 and clear['m']is None and clear['d']==a['s']
+                assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
+                assert r['code'][at]==[41,1,maps['data'][clear['s'][0]],0,maps['frame'][clear['d'][0]],223];at+=1
             if op==3 and j==0 and original[at]['mode']&7==1:
                 clear=original[at];assert clear['op']==41 and clear['mode']==1 and clear['m']is None and clear['d']==[fd]
                 assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20

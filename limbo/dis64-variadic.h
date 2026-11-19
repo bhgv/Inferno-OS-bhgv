@@ -1,5 +1,15 @@
 /* Trusted checked LOAD profile only. Actual instantiated arguments come from
  * the compiler FRAME annotation, never from format text or descriptor bits. */
+/* Only nominal Wmsrv.Window.tag in a typed String tail, not a format/FD. */
+static int
+typedvariadicwindowtag(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offset)
+{
+ long base;unsigned int wire;
+ if(!in->s.native64type || in->s.native64type->kind!=Tstring || in->s.offset ||
+    !typedwmsrvwindowbase(&in->s,in->sm,p,&base,&wire))return typedfail(p,"variadic-window-tag");
+ p->code[pc]=(Dis64Instruction){IMOVP,SRC(wire)|DST(AFP|AIND),0,base,offset};p->returns[pc]=222;return 1;
+}
+
 static int
 typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int stop,unsigned int*next)
 {
@@ -54,11 +64,16 @@ typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int sto
     root=arg->ty->kind==Tstring || arg->ty->kind==Tref;
     width=arg->ty->kind==Tbig || arg->ty->kind==Treal?8:4;
     store=root?IMOVP:arg->ty->kind==Treal?IMOVF:width==8?IMOVL:IMOVW;
+    if(arg->ty->kind==Tstring && i>=(op==3?2:1) && (in->sm==Afpind || in->sm==Ampind)){
+        if(in->op!=IMOVP || in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !typedvariadicwindowtag(in,p,at-p->first,64+8*i))return 0;
+        at++;continue;
+    }
     if(in->op!=store || in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
        !typedoperand(in->sm,&in->s,root?TypedRoot:arg->ty->kind,!root && width==4,0,p,&source,&sm,&kind) ||
        (root && kind!=arg->ty->kind && kind!=Tany))return typedfail(p,"variadic-argument");
     if(op==3 && i==0 && in->sm==Afp)fdold=in->s.reg;
     p->code[at-p->first]=(Dis64Instruction){!root && width==4?ICVTWL:store,SRC(sm)|DST(AFP|AIND),0,source,64+8*i};p->returns[at++-p->first]=64;
+    if(arg->ty->kind==Tstring){unsigned int before=at;if(!typedrootargclear(c,p,in,end,&at))return 0;if(at!=before)p->returns[at-1-p->first]=223;}
     if(op==3 && i==0 && at<end && (in=c->instructions[at]) && in->op==IMOVP && in->dm==Afp){
         if(!fdold || in->mm!=Anone || in->branch || in->sm!=Amp || in->d.reg!=fdold || in->d.offset ||
            !in->s.decl || !in->s.decl->ty || in->s.decl->ty->kind!=Tany || in->s.reg!=in->s.decl->offset || in->s.offset ||

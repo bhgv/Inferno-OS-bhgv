@@ -19,7 +19,7 @@ native64sysmoduleblocked(unsigned int pc,const Native64ModuleVariadic *v)
 static int
 native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v,unsigned int n)
 {
-    unsigned int code,links,scratch,imports,i,j,k,at,bit,total=0,fields,seen,sm,bytes,fixed,kind,reference,store,width,fd=~0U;
+    unsigned int code,links,scratch,imports,i,j,k,at,bit,total=0,fields,seen,sm,bytes,fixed,kind,reference,store,width,fd=~0U,lastroot=~0U;
     const Native64ModuleFunction*f;const Native64TypedStep*step;const uchar*map;Inst probe;
     if(!n || n>256 || v==nil || v==H || !native64modulecheck(s,&code,&links,&scratch,&imports))return 0;
     for(i=0;i<n;i++){
@@ -54,11 +54,24 @@ native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v
         if(p->inherited){if(p->resultoffset!=32)return 0;}
         else if(p->resultoffset<64 || p->resultoffset%bytes || p->resultoffset>f->bytes || bytes>f->bytes-p->resultoffset ||
                 !!(f->map[bit/8]&(128>>(bit%8)))!=(p->contract==24))return 0;
-        seen=0;fd=~0U;
+        seen=0;fd=~0U;lastroot=~0U;
         for(at=p->first+1;at<p->end-1;at++){
             step=f->code+at;sm=USRC(step->mode);
             if(step->m)return 0;
-            if(step->returned==64){
+            if(step->returned==222){
+                if(seen<fixed || seen>=fields || (p->tail && p->tail[seen-fixed].kind!=Native64TailRef) ||
+                   step->op!=IMOVP || step->mode!=(SRC(sm)|DST(AFP|AIND)) || (sm!=(AFP|AIND) && sm!=(AMP|AIND)) ||
+                   !native64typedrootoperand(sm&~AIND,step->s,f->bytes,s->databytes) || step->d!=64+8*seen)return 0;
+                map=(sm&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
+                lastroot=~0U;seen++;
+            }else if(step->returned==223){
+                if(lastroot==~0U || step->op!=IMOVP || step->mode!=(SRC(AMP)|DST(AFP)) || step->d!=lastroot ||
+                   !native64typedrootoperand(AMP,step->s,f->bytes,s->databytes) || !(s->datamap[step->s/64]&(128>>((step->s/8)%8))) ||
+                   !native64typedrootoperand(AFP,step->d,f->bytes,s->databytes) || !(f->map[step->d/64]&(128>>((step->d/8)%8))))return 0;
+                for(j=0;j<s->nstrings;j++)if(s->strings[j].offset==(unsigned int)step->s)return 0;
+                for(j=at+1;j<p->end-1;j++)if(USRC(f->code[j].mode)==AFP && f->code[j].s==step->d)return 0;
+                lastroot=~0U;
+            }else if(step->returned==64){
                 if(seen==fields)return 0;
                 kind=seen<fixed || !p->tail?Native64TailRef:p->tail[seen-fixed].kind;
                 reference=kind==Native64TailRef;width=kind==Native64TailInt || kind==Native64TailFix?4:8;
@@ -70,6 +83,7 @@ native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v
                     if((sm!=AFP && sm!=AMP) || step->s<0 || (sm==AFP && step->s<64) || step->s%width ||
                        (unsigned long)step->s>bytes || width>bytes-step->s || !!(map[bit/8]&(128>>(bit%8)))!=reference)return 0;
                 }
+                lastroot=reference && sm==AFP && (p->operation!=Native64SysFprint || seen!=0)?step->s:~0U;
                 if(!seen && p->operation==Native64SysFprint && sm==AFP)fd=step->s;
                 seen++;
             }else{
@@ -89,6 +103,9 @@ native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v
             if(t->op!=IGOTO && native64sysmoduleblocked(t->fallback,p))return 0;
             for(k=0;k<t->count;k++)if(native64sysmoduleblocked(t->rows[k].target,p))return 0;
         }
+    }
+    for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==222 || s->functions[i].code[j].returned==223){
+        seen=0;for(k=0;k<n;k++)if(v[k].function==i && v[k].first<j && j<v[k].end-1)seen++;if(seen!=1)return 0;
     }
     return 1;
 }
@@ -145,6 +162,8 @@ native64sysmodulemake(void*argument)
             step=f->code+j;out=m->prog+offset+j;memset(out,0,sizeof(*out));out->op=step->op;out->add=step->mode;
             if(j==v->first){out->s.imm=ordinal+i;out->d.ind=40;}
             else if(j==v->end){out->reg=v->binding;out->s.ind=40;out->d.ind=v->moduleoffset;}
+            else if(step->returned==222){out->s.i.f=step->s;out->s.i.s=0;out->d.i.f=40;out->d.i.s=step->d;}
+            else if(step->returned==223){Native64TypedStep copy=*step;copy.returned=0;if(!native64typedcode(out,1,&copy,1,f->bytes,b->spec->databytes))error(exInval);}
             else if(!step->returned){if(!native64typedcode(out,1,step,1,f->bytes,b->spec->databytes))error(exInval);}
             else{out->s.imm=step->s;out->d.i.f=40;out->d.i.s=step->d;if(j==v->end-1)out->reg=v->contract;}
         }
