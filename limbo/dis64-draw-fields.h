@@ -75,6 +75,15 @@ typedimagegeometryprep(Inst*in,Inst*copy,Dis64TypedBody*p,unsigned int pc)
  p->code[pc].middle=p->contextfields[pc];p->returns[pc]=166;return 1;
 }
 
+/* Screen.image rooted temporarily for a numeric argument of a local CALL. */
+static int
+typedlocalscreenimageprep(Inst*in,Inst*copy,Dis64TypedBody*p,unsigned int pc)
+{
+ if(!copy || typeddrawowner(&in->s)!=2 || in->s.offset!=4 || in->dm!=Afp || in->mm!=Anone || in->branch || !in->d.decl || in->d.decl->store!=Dlocal || !in->d.decl->sym || in->d.decl->sym->name[0]!='.' || in->d.decl->sym->name[1]!='t' || in->d.offset ||
+    copy->op!=IMOVM || copy->sm!=Afpind || copy->s.reg!=in->d.reg || copy->s.decl!=in->d.decl || typeddrawowner(&copy->s)!=1 || in->s.native64type!=typedfieldowner(&copy->s) || !typeddrawfield(in,p,pc,0,nil))return typedfail(p,"local-screen-image-prep");
+ p->code[pc].middle=8;p->returns[pc]=235;return 1;
+}
+
 /* Numeric Image geometry copied to/from ordinary FP/MP geometry, not a call frame. */
 static int
 typedlocalgeometry(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)

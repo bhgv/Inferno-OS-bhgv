@@ -46,3 +46,26 @@ typedclientfieldmove(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returne
     (root && actual!=kind && actual!=Tany) || (vm!=AFP && vm!=AMP && (read || root || vm!=AIMM)))return typedfail(p,"client-field-value");
  *out=(Dis64Instruction){in->op,read?SRC(bm)|DST(vm):SRC(vm)|DST(bm),field,read?base:value,read?value:base};*returned=root?205:206;return 1;
 }
+
+/* A selected fused flags read: Word32 AND with an encodable immediate mask. */
+static int
+typedclientflagsand(Inst*in,Dis64TypedBody*p,unsigned int pc)
+{
+ long base,field,mask,value;unsigned int wire,mm,dm;int kind,actual;
+ if(in->op!=IANDW || in->s.offset!=16 || !in->s.native64type || in->s.native64type->kind!=Tint || in->branch ||
+    !typedclientaddress(&in->s,in->sm,p,&base,&wire,&field,&kind) || kind!=Tint || field!=32 ||
+    !typedoperand(in->mm,&in->m,Tint,1,1,p,&mask,&mm,&actual) || mm!=AIMM || actual!=Tint ||
+    !typedoperand(in->dm,&in->d,Tint,0,0,p,&value,&dm,&actual) || actual!=Tint || (dm!=AFP && dm!=AMP))return typedfail(p,"client-flags-and");
+ p->code[pc]=(Dis64Instruction){IANDW,SRC(wire)|AXIMM|DST(dm),(32UL<<16)|((unsigned long)mask&65535),base,value};p->returns[pc]=234;return 1;
+}
+
+/* Selected in-place flags OR: mutate only the four-byte flags leaf. */
+static int
+typedclientflagsor(Inst*in,Dis64TypedBody*p,unsigned int pc)
+{
+ long base,field,mask;unsigned int wire,sm;int kind,actual;
+ if(in->op!=IORW || in->d.offset!=16 || !in->d.native64type || in->d.native64type->kind!=Tint || in->mm!=Anone || in->branch ||
+    !typedclientaddress(&in->d,in->dm,p,&base,&wire,&field,&kind) || field!=32 || kind!=Tint ||
+    !typedoperand(in->sm,&in->s,Tint,1,1,p,&mask,&sm,&actual) || sm!=AIMM || actual!=Tint)return typedfail(p,"client-flags-or");
+ p->code[pc]=(Dis64Instruction){IORW,SRC(AIMM)|DST(wire),32,mask,base};p->returns[pc]=236;return 1;
+}

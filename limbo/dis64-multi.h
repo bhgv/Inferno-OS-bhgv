@@ -597,7 +597,13 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
-        if(c->loads && !spawning && kind==Tadt){if(!typedlocalgeometryarg(in,frame,arg,p,child,at-p->first))return 0;at++;continue;}
+        if(c->loads && !spawning && kind==Tadt){
+            int prepared=0;
+            if(in->op==IMOVP){if(at+2>=end || !typedlocalscreenimageprep(in,c->instructions[at+1],p,at-p->first))return 0;in=c->instructions[++at];prepared=1;}
+            if(!typedlocalgeometryarg(in,frame,arg,p,child,at-p->first))return 0;at++;
+            if(prepared){unsigned int clear=at;Inst store=*in;store.op=IMOVP;store.sm=Afp;store.s.offset=0;if(!typedrootargclear(c,p,&store,end,&at) || clear==at)return typedfail(p,"local-screen-image-clear");}
+            continue;
+        }
         if(spawning && (in->op!=op || (in->sm!=Afp && in->sm!=Amp && in->sm!=Aimm)))return typedfail(p,"spawn-argument");
         /* No later allocating argument may follow the pending String root. */
         if(c->loads && kind==Tstring && in->op==IMOVP && in->dm==Afp){
@@ -756,6 +762,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
                  (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
+        }else if(c->loads && in->op==IORW && (in->dm==Afpind || in->dm==Ampind) && typedwmref(typedfieldowner(&in->d),"Wmsrv","Client")){
+            if(!typedclientflagsor(in,p,pc-p->first))goto fail;pc++;
+        }else if(c->loads && in->op==IANDW && (in->sm==Afpind || in->sm==Ampind) && typedwmref(typedfieldowner(&in->s),"Wmsrv","Client")){
+            if(!typedclientflagsand(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==IMOVW || in->op==IBEQW || in->op==IBNEW) && (in->sm==Afpind || in->sm==Ampind) && typedwmref(typedfieldowner(&in->s),"Draw","Pointer")){
             if(!typedpointerword(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->loads && in->op==IMOVP && (in->sm==Afpind || in->sm==Ampind) && (in->dm==Afpind || in->dm==Ampind)){

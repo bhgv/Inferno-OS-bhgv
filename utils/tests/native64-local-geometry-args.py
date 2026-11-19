@@ -5,25 +5,26 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 BASE=runpy.run_path(str(ROOT/'utils/tests/native64-alt-pairs.py'));G,CMD,E=BASE['G'],BASE['CMD'],BASE['E']
 PREFIX='include "sys.m";include "draw.m";include "wmsrv.m";'
-NAMES=('globalrect','localrect','windowrect','mpwindow','pointfmt','mixed','chain','imagerect')
+NAMES=('globalrect','localrect','windowrect','mpwindow','pointfmt','mixed','chain','imagerect','screenrect','localscreen','screenmin','screenmax')
 DECL='Localgeometry:module{'+''.join(n+':fn(w:ref Wmsrv->Window);'for n in NAMES)+'};'
-SOURCE='implement Localgeometry;'+PREFIX+'Point,Rect:import Draw;'+DECL+'rect,seenrect:Rect;point,seenpoint:Point;stored:ref Wmsrv->Window;image:ref Draw->Image;out,label:string;lead,trail:int;bign:big;'
+SOURCE='implement Localgeometry;'+PREFIX+'Point,Rect:import Draw;'+DECL+'rect,seenrect:Rect;point,seenpoint:Point;stored:ref Wmsrv->Window;image:ref Draw->Image;screen:ref Draw->Screen;out,label:string;lead,trail:int;bign:big;'
 SOURCE+='globalrect(w:ref Wmsrv->Window){out=r2s(rect);}localrect(w:ref Wmsrv->Window){local:=rect;out=r2s(local);}windowrect(w:ref Wmsrv->Window){out=r2s(w.r);}mpwindow(w:ref Wmsrv->Window){stored=w;out=r2s(stored.r);}pointfmt(w:ref Wmsrv->Window){out=p2s(rect.max);}mixed(w:ref Wmsrv->Window){out=mix(17,rect,-31,point,16r123456789abcdef0,"mix");}chain(w:ref Wmsrv->Window){local:=w.r;out=wrap(local);}'
 SOURCE+='imagerect(w:ref Wmsrv->Window){out=r2s(image.r);}'
+SOURCE+='screenrect(w:ref Wmsrv->Window){out=r2s(screen.image.r);}localscreen(w:ref Wmsrv->Window){local:=screen;out=r2s(local.image.r);}screenmin(w:ref Wmsrv->Window){out=p2s(screen.image.r.min);}screenmax(w:ref Wmsrv->Window){out=p2s(screen.image.clipr.max);}'
 SOURCE+=re.search(r'r2s\(r: Rect\): string\s*\{.*?\n\}',(ROOT/'appl/wm/awm.b').read_text(),re.S)[0]
 SOURCE+='p2s(p:Point):string{return string p.x+" "+string p.y;}wrap(r:Rect):string{return r2s(r);}mix(a:int,r:Rect,b:int,p:Point,n:big,s:string):string{lead=a;trail=b;seenrect=r;seenpoint=p;bign=n;label=s;return r2s(r);}'
 def generate(limbo,w):
  m=w/'localgeometry.m';m.write_text(PREFIX+DECL)
  h=subprocess.check_output([str(limbo),'-H','-M','Localgeometry','-I',str(ROOT/'module'),str(m)],text=True)
  signatures={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Localgeometry_(\w+) (0x[0-9a-f]+)U',h,re.M)}
- rows=G['generate'](limbo,w,SOURCE,'Localgeometry',(12,0,0,'~0U'),export_signatures=signatures)
- p=w/'full.h';s=p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','');gl={g[0]:g[1]for g in rows[0]['globals']};p.write_text(s+'\nstatic const uint geometry_globals[]={'+','.join(str(gl[n])for n in('rect','point','stored','out','label','lead','trail','bign','seenrect','seenpoint','image'))+'};\n')
- h=subprocess.check_output([str(limbo),'-H','-M','Wmsrv','-I',str(ROOT/'module'),str(m)],text=True);draw=subprocess.check_output([str(limbo),'-H','-M','Draw','-I',str(ROOT/'module'),str(m)],text=True);(w/'window-native.h').write_text(h+'\n'+next(l for l in draw.splitlines()if l.startswith('#define Draw_Image_map '))+'\n')
+ rows=G['generate'](limbo,w,SOURCE,'Localgeometry',(16,0,0,'~0U'),export_signatures=signatures)
+ p=w/'full.h';s=p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','');gl={g[0]:g[1]for g in rows[0]['globals']};p.write_text(s+'\nstatic const uint geometry_globals[]={'+','.join(str(gl[n])for n in('rect','point','stored','out','label','lead','trail','bign','seenrect','seenpoint','image','screen'))+'};\n')
+ h=subprocess.check_output([str(limbo),'-H','-M','Wmsrv','-I',str(ROOT/'module'),str(m)],text=True);draw=subprocess.check_output([str(limbo),'-H','-M','Draw','-I',str(ROOT/'module'),str(m)],text=True);(w/'window-native.h').write_text(h+'\n'+'\n'.join(l for l in draw.splitlines()if l.startswith(('#define Draw_Image_map ','#define Draw_Screen_map ')))+'\n')
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];controls=0;roles=set()
  for row in records:
   for first,end,target,*_ in row.get('calls',[]):
    for pc in range(first+1,end):
-    if row['code'][pc][0]!=E['OPCODES']['IMOVM']:continue
+    if row['code'][pc][0]!=E['OPCODES']['IMOVM']and row['code'][pc][5]!=235:continue
     for k in range(6):
      bad=copy.deepcopy(row);bad['code'][pc][k]+=1
      try:CMD['verify_nilbranches'](data,bad,imports,rows=records)
@@ -50,6 +51,7 @@ def main():
   if arch in('arm64','riscv64'):cc+=['-DDIS64_TEST_'+arch.upper()+'=1','-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')];binary=w/'unit';command=cc+[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+[str(ROOT/('lib9/'+n+'.c'))for n in('sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+CMD['FILES']['releaseflags'](cc)+['-pthread','-lm','-o',str(binary)];subprocess.run(command,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],check=True,timeout=180)
   for name,header,before,after,predicate in (
+   ('wrong Screen image field','native64-typed-multi.h','else if(s->returned==166 || s->returned==235){checkstep=*s;checkstep.returned=Native64TypedDraw;', 'else if(s->returned==166 || s->returned==235){checkstep=*s;if(s->returned==235)checkstep.m=16;checkstep.returned=Native64TypedDraw;','exact completion/error'),
    ('short local Rect copy','native64-typed-multi.h','else if(s->op==IMOVM)p->reg=s->m;', 'else if(s->op==IMOVM)p->reg=(!c->external && s->m==16)?8:s->m;','exact real r2s/p2s signed decimal String'),
    ('missing callee raw map','native64-typed-multi.h','for(i=0;i<(unsigned long)s->m;i+=4){bit=(s->d+i)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}', 'for(i=0;i<(unsigned long)s->m;i+=4){bit=(s->d+i)/8;if(0)return 0;}','malformed local geometry metadata refused'),
    ('missing caller raw map','native64-typed-module.h','for(j=0;j<(unsigned long)step->m;j+=4){bit=(step->s+j)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}', 'for(j=0;j<(unsigned long)step->m;j+=4){bit=(step->s+j)/8;if(0)return 0;}','malformed local geometry metadata refused')):

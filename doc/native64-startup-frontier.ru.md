@@ -220,3 +220,9 @@ setfocus проходит сравнение old/new, сравнение стр�
 IANDW new.flags с маской Kbdstarted. awm.init остаётся на PC210 multi-callee
 до завершения setfocus. reshaped accepted целиком; графический AWM и
 Android UI пока не запущены.
+
+Следующий этап: [Client.flags и Screen.image в локальном CALL](native64-flags-screen-local.ru.md).
+setfocus теперь accepted целиком. awm.init проходит PC210, r2s(screen.image.r)
+на PC229–234 и c.flags |= Controller на PC240. Новый отказ — PC243 multi-call,
+подготовка строки newclient с c.id для controlevent. reshaped accepted
+целиком; графический AWM и Android UI пока не запущены.
