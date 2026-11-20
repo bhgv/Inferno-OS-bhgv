@@ -23,6 +23,7 @@ static int typedlibraryslicearg(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigne
 static int typedlibrarymodule(Inst*,Dis64TypedBody*,long*,unsigned int*,int*);
 static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int,int);
 #include "dis64-external.h"
+static int typedclientaddress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
 #include "dis64-variadic.h"
 static int typedwindowlisttype(Addr*);
 
@@ -162,7 +163,6 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
 }
 
 static int typedwmcontextchannel(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*);
-static int typedclientaddress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
 static int typedclientchanneladdress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
 
 /* Sys.Rwrite: exact (int, string), including its alignment gap. */

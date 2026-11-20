@@ -26,6 +26,7 @@ typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int sto
     !fn->ty || !fn->ty->tof || fn->ty->kind!=Tfn || !fn->ty->varargs || fn->ty->polys || !fn->sym || !fn->dot || !fn->dot->sym || strcmp(fn->dot->sym->name,"Sys"))
     return typedfail(p,"variadic-call");
  if(!strcmp(fn->sym->name,"sprint") && (unsigned int)sign(fn)==0x4c0624b6U && fn->ty->tof->kind==Tstring){op=0;contract=24;}
+ else if(!strcmp(fn->sym->name,"aprint") && (unsigned int)sign(fn)==0x77442d46U && fn->ty->tof->kind==Tarray && fn->ty->tof->tof && fn->ty->tof->tof->kind==Tbyte){op=1;contract=24;}
  else if(!strcmp(fn->sym->name,"fprint") && (unsigned int)sign(fn)==0xf46486c8U && fn->ty->tof->kind==Tint){op=3;contract=4;}
  else return typedfail(p,"variadic-signature");
  if(!actual->tof || actual->tof->kind!=fn->ty->tof->kind || !typedoperand(call->dm,&call->d,TypedRoot,0,0,p,&module,&mm,&kind) || kind!=Tmodule)
@@ -68,6 +69,12 @@ typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int sto
         if(in->op!=IMOVP || in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !typedvariadicwindowtag(in,p,at-p->first,64+8*i))return 0;
         at++;continue;
     }
+    if(arg->ty->kind==Tint && i>=(op==3?2:1) && (in->sm==Afpind || in->sm==Ampind)){
+        long field;int payload;
+        if(in->op!=IMOVW || in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
+           !typedclientaddress(&in->s,in->sm,p,&source,&sm,&field,&payload) || payload!=Tint || (field!=32 && field!=72 && field!=76 && field!=80))return typedfail(p,"variadic-client-word");
+        p->code[at-p->first]=(Dis64Instruction){ICVTWL,SRC(sm)|DST(AFP|AIND),field,source,64+8*i};p->returns[at++-p->first]=95;continue;
+    }
     if(in->op!=store || in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
        !typedoperand(in->sm,&in->s,root?TypedRoot:arg->ty->kind,!root && width==4,0,p,&source,&sm,&kind) ||
        (root && kind!=arg->ty->kind && kind!=Tany))return typedfail(p,"variadic-argument");
@@ -85,10 +92,11 @@ typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int sto
  if(at+1!=end || !(bind=c->instructions[at]) || bind->op!=ILEA || bind->mm!=Anone || bind->branch ||
     bind->dm!=Afpind || bind->d.reg!=frame->d.reg || bind->d.offset!=16)return typedfail(p,"variadic-result");
  if(bind->sm==Afp){
-    if(!typedoperand(Afp,&bind->s,op==0?Tstring:Tint,0,0,p,&source,&sm,&kind))return typedfail(p,"variadic-result");
+    if(!typedoperand(Afp,&bind->s,op==0?Tstring:op==1?TypedRoot:Tint,0,0,p,&source,&sm,&kind))return typedfail(p,"variadic-result");
+    if(op==1 && (kind!=Tarray && !typedroottemporary(&bind->s,Tarray)))return typedfail(p,"variadic-array-result");
     p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,source,32};
  }else{
-    if(bind->sm!=Afpind || bind->s.reg!=16 || bind->s.offset || p->resultkind!=(op==0?Tstring:Tint))return typedfail(p,"variadic-inherited-result");
+    if(bind->sm!=Afpind || bind->s.reg!=16 || bind->s.offset || p->resultkind!=(op==0?Tstring:op==1?Tarray:Tint))return typedfail(p,"variadic-inherited-result");
     v->inherited=1;source=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};
  }
  p->returns[at-p->first]=128|contract;

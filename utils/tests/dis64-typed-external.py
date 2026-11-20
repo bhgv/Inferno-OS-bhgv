@@ -254,15 +254,15 @@ def verify(data,r,imports,loads=False,rows=None):
     previous=-1
     for v in r.get('variadics',[]):
         first,end=v['first'],v['end'];assert loads and previous<first<end<len(original) and not covered.intersection(range(first,end+1));previous=end
-        op=v['operation'];assert op in(0,3) and v['contract']==(24 if op==0 else 4)
+        op=v['operation'];assert op in(0,1,3) and v['contract']==(24 if op!=3 else 4)
         choices=imports if imports and isinstance(imports[0],list)else[imports]
         assert any(v['binding']<len(t)and t[v['binding']]=={'name':v['name'],'signature':v['signature']}for t in choices)
-        assert v['name']==('sprint'if op==0 else'fprint') and v['signature']==(0x4c0624b6 if op==0 else 0xf46486c8)
+        assert v['name']=={0:'sprint',1:'aprint',3:'fprint'}[op] and v['signature']=={0:0x4c0624b6,1:0x77442d46,3:0xf46486c8}[op]
         o=original[first];assert o['op']==5 and o['mode']==17 and o['m']is None
-        size,roots=types[o['s'][0]];count=v['count']+(1 if op==0 else 2);frame=v['frame']
+        size,roots=types[o['s'][0]];count=v['count']+(1 if op!=3 else 2);frame=v['frame']
         assert frame['legacy_bytes']==size and frame['bytes']==64+8*count
         leaves=frame['leaves'];assert len(leaves)==count
-        assert leaves[:1 if op==0 else 2]==[[32+4*j,64+8*j,4,8,12 if op==3 and j==0 else 13]for j in range(1 if op==0 else 2)]
+        assert leaves[:1 if op!=3 else 2]==[[32+4*j,64+8*j,4,8,12 if op==3 and j==0 else 13]for j in range(1 if op!=3 else 2)]
         rootwords={l[0]//4 for l in leaves if l[4]in(12,13)}
         assert {i*8+b for i,x in enumerate(roots)for b in range(8)if x&(128>>b)}==rootwords
         expected=[0]*((frame['bytes']+63)//64)
@@ -276,8 +276,14 @@ def verify(data,r,imports,loads=False,rows=None):
             oldop=41 if kind in(12,13)else 118 if kind==4 else 46 if kind==7 else 45
             newop=oldop if kind in(4,7,12,13)else OPCODES['ICVTWL']
             a=original[at];sm=a['mode']>>3&7
-            if r['code'][at][5]==222:
-                assert kind==13 and j>=(1 if op==0 else 2)and a['op']==41 and sm in(4,5)and a['mode']==(sm<<3)|5 and a['m']is None and a['s'][1]==0 and a['d']==[pending,legacy]
+            if r['code'][at][5]==95:
+                assert kind==9 and j>=(1 if op!=3 else 2)and a['op']==45 and sm in(4,5)and a['mode']==(sm<<3)|5 and a['m']is None and a['s'][1]in(16,36,40,44)and a['d']==[pending,legacy]
+                source=maps['frame'if sm==5 else'data'][a['s'][0]];field={16:32,36:72,40:76,44:80}[a['s'][1]]
+                leaf=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==a['s'][0]);assert leaf[3:]==[8,12]
+                assert r['frame'if sm==5 else'data']['map'][source//64]&(128>>(source//8%8))
+                assert r['code'][at]==[OPCODES['ICVTWL'],a['mode'],source,field,native,95]
+            elif r['code'][at][5]==222:
+                assert kind==13 and j>=(1 if op!=3 else 2)and a['op']==41 and sm in(4,5)and a['mode']==(sm<<3)|5 and a['m']is None and a['s'][1]==0 and a['d']==[pending,legacy]
                 source=maps['frame'if sm==5 else'data'][a['s'][0]]
                 leaf=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==a['s'][0]);assert leaf[3:]==[8,12]
                 assert r['frame'if sm==5 else'data']['map'][source//64]&(128>>(source//8%8))

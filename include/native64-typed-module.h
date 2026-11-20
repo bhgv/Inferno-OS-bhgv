@@ -555,7 +555,10 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             {unsigned int mode=USRC(step->mode);long offset=step->s;if(mode!=AIMM){if(mode&AIND)offset&=65535;map=(mode&~AIND)==AFP?f->map:s->datamap;bit=offset/8;if(!!(map[bit/8]&(128>>(bit%8)))!=((mode&AIND)!=0))return 0;}}
             if(step->returned==156){unsigned int mode=step->mode&ARM;long mid=native64librarymiddle(step);if(mode!=AXIMM){map=mode==AXINF?f->map:s->datamap;bit=mid/8;if(map[bit/8]&(128>>(bit%8)))return 0;}}
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned==152 && f->code[j].op!=ILEA){unsigned int k,found=0,bit;const Native64ModuleFunction*child;step=f->code+j;
+        /* A private variadic gateway may forward the caller's managed result.
+         * Its owning Sys validator proves the complete FRAME/MCALL range. */
+        for(j=0;j<f->count;j++)if(f->code[j].returned==152 && f->code[j].op==IMOVL){step=f->code+j;if(step->mode!=(SRC(AFP)|DST(AFP|AIND))||step->s!=32||step->m||step->d!=32)return 0;}
+        for(j=0;j<f->count;j++)if(f->code[j].returned==152 && f->code[j].op!=ILEA && f->code[j].op!=IMOVL){unsigned int k,found=0,bit;const Native64ModuleFunction*child;step=f->code+j;
             if(step->op!=ICVTWF || step->mode!=(SRC(USRC(step->mode))|DST(AFP|AIND)) || step->m || !native64typedwordoperand(USRC(step->mode),step->s,f->bytes,s->databytes))return 0;
             if(USRC(step->mode)!=AIMM){map=USRC(step->mode)==AFP?f->map:s->datamap;bit=step->s/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
             for(k=0;k<f->nsites;k++)if(f->sites[k].first<j && j<f->sites[k].end-(f->sites[k].contract!=0)){site=f->sites+k;if(found++ || site->external || site->target>=s->nfunctions)return 0;child=s->functions+site->target;if(!native64modulemap(child->bytes,child->map,child->mapbytes,1) || !native64typedrootoperand(AFP,step->d,child->bytes,0))return 0;bit=step->d/8;if(child->map[bit/8]&(128>>(bit%8)))return 0;}

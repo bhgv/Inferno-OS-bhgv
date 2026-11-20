@@ -47,7 +47,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
  assert len(imports)==expected_tables
  namespaces=[]
  for ti,table in enumerate(imports):
-  namespace='Sys'if any(e['name']in('fprint','sprint')for e in table)else'Arg'if any(e['name']=='opt'for e in table)else'Command'
+  namespace='Sys'if any(e['name']in('fprint','sprint','aprint')for e in table)else'Arg'if any(e['name']=='opt'for e in table)else'Command'
   namespaces.append({'Sys':0,'Arg':1,'Command':2}[namespace])
   for j,e in enumerate(table):
    size,mapping=import_frames[(e['name'],e['signature'])]if import_frames is not None else(80,[0,192])if namespace=='Command'else frames[(namespace,e['name'])]
@@ -86,7 +86,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
  variables=[]
  for i,r in enumerate(rows):
   for j,v in enumerate(r.get('variadics',[])):
-   fixed=1 if v['operation']==0 else 2;tail=v['frame']['leaves'][fixed:];slotname=f'full_var_slots_{i}_{j}'
+   fixed=1 if v['operation']!=3 else 2;tail=v['frame']['leaves'][fixed:];slotname=f'full_var_slots_{i}_{j}'
    if tail:
     kinds={4:'Native64TailBig',7:'Native64TailReal',9:'Native64TailInt',16:'Native64TailFix',13:'Native64TailRef'}
     lines+=['static const Native64TailSlot '+slotname+'[]={'+','.join('{'+f'{kinds[l[4]]},{8*k},8,'+('&Tstring'if l[4]==13 else'nil')+'}'for k,l in enumerate(tail))+'};']
