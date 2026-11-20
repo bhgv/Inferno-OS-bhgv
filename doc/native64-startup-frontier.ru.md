@@ -350,3 +350,11 @@ Client.contains и find включены в исполняемый класте�
 проверяются реестры Client с 8-байтными mapped элементами и настоящий C
 Rect_contains. Остаются семь тел, включая wm/childminder и обмен images.
 Это ещё не admission полного файлового графа или запуск окна AWM.
+
+
+[Контекст и обмен изображениями Wmsrv](native64-wmsrv-contexts.ru.md):
+31/34 тела вместо 27/34. newwmcontext/senderror/Client.setimage/setorigin
+исполняются в расширенном кластере 18 исходных тел (1212 C/JIT вызовов),
+с настоящими Limbo peers, каналами и C-геометрией. Остаются init, wm
+(reference-class PC94) и childminder (alt-field-channel PC249). Полный
+серверный цикл, файловый граф и настоящее окно AWM ещё не запущены.

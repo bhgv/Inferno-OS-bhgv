@@ -1,10 +1,21 @@
 #include "../include/native64-library-layout.h"
+/* Canonical Draw.Wmcontext: five channels followed by FD and Context roots. */
+static int
+typedwmcontextrecord(Type*t)
+{static char*names[]={"kbd","ptr","ctl","wctl","images","connfd","ctxt"};Dis64Layout l={0};Decl*d;unsigned int i;int ok=0;
+ if(!t||t->kind!=Tadt||!t->decl||!t->decl->sym||strcmp(t->decl->sym->name,"Wmcontext")||!t->decl->dot||!t->decl->dot->sym||strcmp(t->decl->dot->sym->name,"Draw")||!dis64layouttype(t,&l)||l.legacybytes!=28||l.bytes!=56||l.count!=7||l.alignment!=8)goto done;
+ for(i=0,d=t->ids;i<7;i++,d=d->next){Type*v;if(!d||d->store!=Dfield||!d->sym||strcmp(d->sym->name,names[i])||d->offset!=4*i||!(v=d->ty)||v->kind!=(i<5?Tchan:Tref)||l.leaves[i].legacy!=4*i||l.leaves[i].native!=8*i||l.leaves[i].oldbytes!=4||l.leaves[i].bytes!=8||l.leaves[i].kind!=v->kind)goto done;
+  if(i<5){v=v->tof;if(!v||(i==0?v->kind!=Tint:i==1?!typedwmref(v,"Draw","Pointer"):i==4?!typedwmref(v,"Draw","Image"):v->kind!=Tstring))goto done;}else if(!typedwmref(v,i==5?"Sys":"Draw",i==5?"FD":"Context"))goto done;
+ }if(d)goto done;ok=1;
+ done:dis64layoutfree(&l);return ok;}
 static unsigned int
 typedlibraryrecord(Type*t)
 {
  static char*names[][9]={{"fd","buffer","index","size","dirty","bufpos","filpos","lastop","mode"},{"h","t","n"},{"h","t","n"},{"last","h","t"},{"iobuf","fill","next"}};
  Dis64Layout l={0};Decl*d;unsigned int id=0,i=0,k,n;int ok=0;Type ref;
  if(t && t->kind==Tref)t=t->tof;if(!t || t->kind!=Tadt || !t->decl || !t->decl->sym)return 0;
+ if(!strcmp(t->decl->sym->name,"Wmcontext"))return typedwmcontextrecord(t)?8:0;
+ if(!strcmp(t->decl->sym->name,"Point")){ok=typedwordgeometry(t,&l)&&l.bytes==8;dis64layoutfree(&l);return ok?9:0;}
  if(!strcmp(t->decl->sym->name,"Client")){ok=typedclientlayout(t,&l);dis64layoutfree(&l);return ok?6:0;}
  if(!strcmp(t->decl->sym->name,"Window")){memset(&ref,0,sizeof(ref));ref.kind=Tref;ref.tof=t;return typedwmsrvwindow(&ref)?7:0;}
  if(!strcmp(t->decl->sym->name,"Iobuf"))id=1;else if(!strcmp(t->decl->sym->name,"Iqueue"))id=2;else if(!strcmp(t->decl->sym->name,"Squeue"))id=3;else if(!strcmp(t->decl->sym->name,"Ptrqueue"))id=4;else if(!strcmp(t->decl->sym->name,"Filler"))id=5;
@@ -33,6 +44,11 @@ static int
 typedlibraryinst(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
 {
  int sk=Tint,dk=Tint,binary=0,branch=0,actual,rootcompare=0;long source,middle=0,dest;unsigned int sm,dm,mm=AXNON,sid,did,id;Type*t;Inst copy=*in;
+ if(in->op==IMOVMP&&in->mm==Adesc&&in->m.decl&&typedlibraryrecord(in->m.decl->ty)==8){Addr a,b;long src,dst;unsigned int sm,dm;int k;
+  if(in->branch||(in->sm!=Afpind&&in->sm!=Ampind)||(in->dm!=Afpind&&in->dm!=Ampind)||in->s.offset||in->d.offset||!in->m.decl->desc||in->m.decl->desc->id!=in->m.offset||in->m.decl->desc->size!=28||in->m.decl->desc->nmap!=1||in->m.decl->desc->map[0]!=0xfe||!typedwmref(typedfieldowner(&in->s),"Draw","Wmcontext")||!typedwmref(typedfieldowner(&in->d),"Draw","Wmcontext"))return 0;
+  a=in->s;b=in->d;a.native64type=typedfieldowner(&a);b.native64type=typedfieldowner(&b);if(!typedoperand(in->sm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&src,&sm,&k)||!typedoperand(in->dm==Afpind?Afp:Amp,&b,TypedRoot,0,0,p,&dst,&dm,&k))return 0;
+  p->code[pc]=(Dis64Instruction){IMOVMP,SRC(sm|AIND)|AXIMM|DST(dm|AIND),8,src,dst};p->returns[pc]=90;return 1;
+ }
  if(in->op==INEW || in->op==INEWZ){
   if(in->sm!=Adesc || !in->s.decl || !(id=typedlibraryrecord(in->s.decl->ty)) || in->mm!=Anone || in->branch)return 0;
   if(in->dm==Afpind){if(p->resultkind!=Tref || in->d.reg!=16 || in->d.offset)return 0;dest=32;dm=AFP|AIND;}

@@ -88,3 +88,7 @@ AWM call cluster сохраняются. Его активный контрол�
 Оставшиеся семь тел полного Wmsrv: init, wm, childminder, senderror,
 Client.setimage, Client.setorigin, newwmcontext. Файловый граф библиотек и
 настоящее окно AWM по-прежнему требуют дальнейшей работы.
+
+Следующий этап: [Контекст и обмен изображениями](native64-wmsrv-contexts.ru.md).
+Теперь 31/34 тела полного Wmsrv; кластер расширен до 18 исходных тел и
+1212 C/JIT вызовов с настоящими Limbo peers. Остаются init, wm и childminder.

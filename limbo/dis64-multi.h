@@ -161,6 +161,7 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"client-context-geometry");
 }
 
+static int typedclientaddress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
 static int typedclientchanneladdress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
 
 /* Sys.Rwrite: exact (int, string), including its alignment gap. */
@@ -192,12 +193,16 @@ typedreplytransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
  *out=(Dis64Instruction){in->op,send?SRC(vm==Afp?AFP:AMP)|DST(wire):SRC(wire)|DST(vm==Afp?AFP:AMP),136,send?value:channel,send?channel:value};*returned=136;return 1;
 }
 
+static int typedroottransfer(Inst*,Dis64TypedBody*,Dis64Instruction*,uchar*);
+static unsigned int typedlibraryrecord(Type*);
+
 /* Primitive channel transfer; aggregate payloads and borrowed outputs stay closed. */
 static int
 typedclienttransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {
  Addr*ca=in->op==ISEND?&in->d:&in->s;Addr*va=in->op==ISEND?&in->s:&in->d;int cm=in->op==ISEND?in->dm:in->sm,vm=in->op==ISEND?in->sm:in->dm,actual,kind,root;
  Type*t=ca->native64type?ca->native64type:ca->decl?ca->decl->ty:nil;unsigned int cw,vw,width;long channel,value,field=0;int indirect=cm==Afpind || cm==Ampind;
+ if(typedroottransfer(in,p,out,returned))return 1;
  if(in->mm!=Anone || in->branch)return typedfail(p,"channel-transfer-owner");
  if(indirect){if(!typedclientchanneladdress(ca,cm,p,&channel,&cw,&field,&kind))return typedfail(p,"client-channel-field");}
  else{if(!t || t->kind!=Tchan || !t->tof || !typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&cw,&actual) || actual!=Tchan)return typedfail(p,"channel-transfer-owner");kind=t->tof->kind;}
@@ -205,6 +210,7 @@ typedclienttransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned
  if(kind==Ttuple && !indirect && typedreplytransfer(in,p,out,returned))return 1;
  if(!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal)return typedfail(p,"channel-transfer-payload");
  width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
+ if(in->op==IRECV&&vm==Afpind&&va->reg==16&&!va->offset&&!indirect&&kind==Tint){*out=(Dis64Instruction){IRECV,SRC(cw)|DST(AFP|AIND),4,channel,32};*returned=109;return 1;}
  if(!typedoperand(vm,va,root?TypedRoot:kind==Tfix?Tint:kind,in->op==ISEND&&!root&&width<8,0,p,&value,&vw,&actual) || (root && actual!=kind && actual!=Tany))return typedfail(p,"channel-transfer-value");
  *out=(Dis64Instruction){in->op,in->op==ISEND?SRC(vw)|DST(cw):SRC(cw)|DST(vw),(field<<8)|width|(root?16:0),in->op==ISEND?value:channel,in->op==ISEND?channel:value};*returned=indirect?204:188;return 1;
 }
@@ -215,6 +221,10 @@ typedchanneloutput(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,uchar*r
 {
  unsigned int dm,mm=AXNON,wire;long destination,capacity=0;int actual;
  if(in->branch)return typedfail(p,"channel-operands");
+ if((in->dm==Afpind||in->dm==Ampind)&&typedlibraryrecord(typedfieldowner(&in->d))==8){Addr a=in->d;Type*t=typedfieldowner(&a);unsigned int field=a.offset;long owner;int k;
+  if((field!=0&&field!=4&&field!=8&&field!=16)||in->mm!=Aimm||in->m.offset!=0||in->sm!=Anone||in->op!=(field==0?INEWCW:INEWCP))return typedfail(p,"wmcontext-channel-field");a.offset=0;a.native64type=t;if(!typedoperand(in->dm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&owner,&dm,&k)||k!=Tref)return 0;
+  *out=(Dis64Instruction){in->op,SRC(AXXX)|AXIMM|DST(dm|AIND),0,2*field,owner};*returned=108;return 1;
+ }
  if(in->dm==Afpind){if(in->d.reg!=16 || in->d.offset || fn->ty->tof->kind!=Tchan)return typedfail(p,"channel-result");destination=32;dm=AFP|AIND;*returned=1;}
  else if(!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&destination,&dm,&actual) || actual!=Tchan)return typedfail(p,"channel-destination");
  if(in->mm!=Anone){if(!typedoperand(in->mm,&in->m,Tint,1,1,p,&capacity,&wire,&actual))return typedfail(p,"channel-capacity");mm=wire==AIMM?AXIMM:wire==AFP?AXINF:AXINM;}
@@ -226,6 +236,7 @@ static int
 typedclientchannel(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {
  Type*t=in->dm==Afpind?fn->ty->tof:in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;int kind;
+ if((in->dm==Afpind||in->dm==Ampind)&&typedlibraryrecord(typedfieldowner(&in->d))==8)return typedchanneloutput(in,fn,p,out,returned);
  if(in->sm!=Anone)return typedfail(p,"channel-operands");
  if(!t || t->kind!=Tchan || !t->tof)return typedfail(p,"channel-payload");kind=t->tof->kind;
  if(!((in->op==INEWCB && kind==Tbyte) || (in->op==INEWCW && (kind==Tint || kind==Tfix)) || (in->op==INEWCL && kind==Tbig) || (in->op==INEWCF && kind==Treal) ||
@@ -243,9 +254,24 @@ typedmappedpayload(Type*t,Dis64Layout*layout)
  for(i=0,field=t->ids;field;field=field->next,i++)if(i>=n || !field->ty || field->ty->kind!=layout->leaves[i].kind)return 0;
  if(i!=n)return 0;
  for(i=0;i<n;i++)if(layout->leaves[i].legacy!=4*i || layout->leaves[i].native!=8*i || layout->leaves[i].oldbytes!=4 || layout->leaves[i].bytes!=8 ||
-   (layout->leaves[i].kind!=Tstring && layout->leaves[i].kind!=Tref && layout->leaves[i].kind!=Tchan && layout->leaves[i].kind!=Tarray && layout->leaves[i].kind!=Tlist && layout->leaves[i].kind!=Tmodule))return 0;
+   (layout->leaves[i].kind!=Tany && layout->leaves[i].kind!=Tstring && layout->leaves[i].kind!=Tref && layout->leaves[i].kind!=Tchan && layout->leaves[i].kind!=Tarray && layout->leaves[i].kind!=Tlist && layout->leaves[i].kind!=Tmodule))return 0;
  return 1;
 }
+
+static unsigned int
+typedrootcount(Type*t)
+{Dis64Layout l={0};unsigned int n=typedmappedpayload(t,&l)?l.count:0;dis64layoutfree(&l);return n;}
+/* A complete two/three-root tuple crossing an ordinary channel. */
+static int
+typedroottransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
+{int send=in->op==ISEND,cm=send?in->dm:in->sm,vm=send?in->sm:in->dm,actual,payload;Addr*ca=send?&in->d:&in->s,*va=send?&in->s:&in->d;Type*t=ca->native64type?ca->native64type:ca->decl?ca->decl->ty:nil;Dis64Layout l={0},*storage;long channel,field=0;unsigned int cw,base,next,i,n;int ok=0;
+ if(in->mm!=Anone||in->branch||!t||t->kind!=Tchan||!typedmappedpayload(t->tof,&l))goto done;n=l.count;
+ if(cm==Afpind||cm==Ampind){if(ca->offset!=32||n!=3||!typedclientaddress(ca,cm,p,&channel,&cw,&field,&payload)||payload!=Tchan||field!=64)goto done;}
+ else if(!typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&cw,&actual)||actual!=Tchan)goto done;
+ if(vm!=Afp&&vm!=Amp)goto done;storage=vm==Afp?&p->frame:&p->data;
+ for(i=0;i<n;i++){if(!dis64layoutaddress(storage,va->reg+4*i,4,1,&next)||(i&&next!=base+8*i))goto done;if(!i)base=next;}
+ *out=(Dis64Instruction){in->op,send?SRC(vm==Afp?AFP:AMP)|DST(cw):SRC(cw)|DST(vm==Afp?AFP:AMP),(field<<8)|8*n,send?base:channel,send?channel:base};*returned=107;ok=1;
+ done:dis64layoutfree(&l);return ok;}
 
 /* Descriptor deduplication may merge root classes with identical GC geometry. */
 static int

@@ -78,7 +78,7 @@ def array_argument(original,code,at,maps,pending,oldoffset,offset):
     return at+2
 
 # Independent closed layout table: legacy and native field offsets.
-LIBRARY_FIELDS={1:([0,4,8,12,16,24,32,40,44],[0,8,16,20,24,32,40,48,52]),2:([0,4,8],[0,8,16]),3:([0,4,8],[0,8,16]),4:([0,4,8],[0,8,16]),5:([0,4,8],[0,8,16]),6:(list(range(0,52,4)),[0,8,16,24,32,40,48,56,64,72,76,80,88]),7:([0,4,8,12,16,20],[0,8,12,16,20,24])}
+LIBRARY_FIELDS={8:(list(range(0,28,4)),list(range(0,56,8))),9:([0,4],[0,4]),1:([0,4,8,12,16,24,32,40,44],[0,8,16,20,24,32,40,48,52]),2:([0,4,8],[0,8,16]),3:([0,4,8],[0,8,16]),4:([0,4,8],[0,8,16]),5:([0,4,8],[0,8,16]),6:(list(range(0,52,4)),[0,8,16,24,32,40,48,56,64,72,76,80,88]),7:([0,4,8,12,16,20],[0,8,12,16,20,24])}
 def library_operand(value,mode,record,maps,result=False):
     if mode in(4,5):
         if not record:assert result and mode==5 and value==[16,0];return 32
@@ -94,7 +94,7 @@ def library_step(o,c,maps,first,types):
     op,mode,source,middle,dest,tag=c;sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192
     if tag==154:
         assert source in LIBRARY_FIELDS and op==OPCODES['INEWZ']and o['op']in(OPCODES['INEW'],OPCODES['INEWZ'])and o['m']is None and not middle
-        size,mapping=types[o['s'][0]];assert size==({1:48,6:52,7:24}.get(source,12))and list(mapping)==([247,136]if source==6 else[132]if source==7 else[192 if source<=3 else 224])
+        size,mapping=types[o['s'][0]];assert size==({1:48,6:52,7:24,8:28,9:8}.get(source,12))and list(mapping)==([254]if source==8 else[]if source==9 else[247,136]if source==6 else[132]if source==7 else[192 if source<=3 else 224])
         assert mode==o['mode']and dest==library_operand(o['d'],dm,0,maps,True);return
     assert tag==153 and mode==o['mode'];sid=middle>>24;did=(middle>>16)&255;assert sid or did
     expected=OPCODES['INEWAZ']if o['op']in(OPCODES['INEWA'],OPCODES['INEWAZ'])else OPCODES['IBEQL']if o['op']==OPCODES['IBEQW']and op==OPCODES['IBEQL']else OPCODES['IBNEL']if o['op']==OPCODES['IBNEW']and op==OPCODES['IBNEL']else o['op'];assert op==expected
@@ -563,6 +563,23 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert op==OPCODES['IMOVM']and dm in(4,5)and o['s'][1]==o['d'][1]==0 and o['m']==m==16 and mode&192==64
                 assert d==maps['frame'if dm==5 else'data'][o['d'][0]]
             continue
+        if returned in(90,107,108,109,110):
+            assert loads and op==o['op']and mode==o['mode'];sm=mode>>3&7;dm=mode&7
+            if returned==90:
+                assert op==OPCODES['IMOVMP']and sm in(4,5)and dm in(4,5)and o['s'][1]==o['d'][1]==0 and types[o['m']][0]==28 and list(types[o['m']][1])==[254]and m==8 and s==maps['frame'if sm==5 else'data'][o['s'][0]]and d==maps['frame'if dm==5 else'data'][o['d'][0]]
+            elif returned==108:
+                assert op in(OPCODES['INEWCW'],OPCODES['INEWCP'])and sm==3 and dm in(4,5)and o['m']==m==0 and o['s']is None and o['d'][1]in(0,4,8,16)
+                assert s==2*o['d'][1]and d==maps['frame'if dm==5 else'data'][o['d'][0]]
+            elif returned==109:assert op==OPCODES['IRECV']and sm in(0,1)and dm==5 and o['m']is None and m==4 and o['d']==[16,0]and d==32 and s==maps['frame'if sm else'data'][o['s'][0]]
+            elif returned==110:assert op==OPCODES['IMOVM']and sm in(4,5)and dm in(4,5)and o['s'][1]==0 and o['d'][1]==4 and o['m']==m==16 and s==maps['frame'if sm==5 else'data'][o['s'][0]]and d==maps['frame'if dm==5 else'data'][o['d'][0]]
+            else:
+                assert op in(OPCODES['ISEND'],OPCODES['IRECV'])and o['m']is None
+                send=op==OPCODES['ISEND'];cm=dm if send else sm;vm=sm if send else dm;ca=o['d']if send else o['s'];va=o['s']if send else o['d'];channel=d if send else s;value=s if send else d;width=m&255
+                assert width in(16,24)and vm in(0,1)and channel==maps['frame'if cm in(1,5)else'data'][ca[0]]and m==(((64<<8)if cm in(4,5)else 0)|width)
+                if cm in(4,5):assert ca[1]==32 and width==24
+                else:assert cm in(0,1)
+                for i in range(width//8):assert next(l for l in r['frame'if vm else'data']['leaves']if l[0]==va[0]+4*i)[1:4]==[value+8*i,4,8]
+            continue
         if returned==111:
             assert loads and mode==o['mode'];sm=mode>>3&7;dm=mode&7;arm=mode&192
             if op==OPCODES['ISLICELA']:
@@ -661,7 +678,7 @@ def verify(data,r,imports,loads=False,rows=None):
                     for i in range(0,width,4):assert next(l for l in leaves if l[0]==old+i)==[old+i,new+i,4,4,9]
             else:
                 read=returned in(208,209)or returned==215 and sm in(4,5);cm=sm if read else dm;vm=dm if read else sm;ca=o['s']if read else o['d'];va=o['d']if read else o['s']
-                assert cm in(4,5)and vm in(0,1)and ca[1]in(((4,)if width==16 else(4,12))if returned==215 else((0,16)if width==16 else(0,8,16,24)))and m==((ca[1]+(4 if returned==215 and not(width==8 and ca[1]==4 and m>>8==4)else 0))<<8)|width
+                assert cm in(4,5)and vm in(0,1)and ca[1]in(((4,)if width==16 else(0,4,12))if returned==215 else((0,16)if width==16 else(0,8,16,24)))and m==((ca[1]+(4 if returned==215 and not(width==8 and ((ca[1]==4 and m>>8==4)or(ca[1]==0 and m>>8==0)))else 0))<<8)|width
                 assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]in ROOTS
                 assert(s if read else d)==maps['frame'if cm==5 else'data'][ca[0]]
                 leaves=r['frame'if vm else'data']['leaves'];value=d if read else s

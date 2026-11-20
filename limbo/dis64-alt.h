@@ -108,7 +108,7 @@ typedaltpaircopy(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
   for(i=0;i<2;i++){k=i?in->dm:in->sm;a=i?&in->d:&in->s;if((k!=Afp && k!=Amp) || !typedreplyspan(k==Afp?&p->frame:&p->data,a->reg,off+i))return typedfail(p,"reply-copy-span");}
   *out=(Dis64Instruction){IMOVMP,SRC(in->sm==Afp?AFP:AMP)|AXIMM|DST(in->dm==Afp?AFP:AMP),0,off[0],off[1]};*returned=135;return 1;
  }
- n=d && (typedaltpair(d->ty) || typedaltbytepair(d->ty))?2:d && typedaltrequest(d->ty)?3:0;
+ n=d?typedrootcount(d->ty):0;
  if(!n || in->op!=IMOVMP || in->mm!=Adesc || !d || !d->desc || d->desc->id!=in->m.offset || d->desc->size!=4*n || d->desc->nmap!=1 || !d->desc->map || d->desc->map[0]!=(n==2?0xc0:0xe0) || in->branch)return typedfail(p,"alt-pair-copy-type");
  for(i=0;i<2;i++){
   k=i?in->dm:in->sm;a=i?&in->d:&in->s;l=k==Afp?&p->frame:&p->data;
@@ -185,7 +185,7 @@ typedaltinst(Inst*in,Decl*fn,Dis64TypedBody*p,unsigned int pc)
  if(slot%8==4 && in->op==ILEA){
   use=in->s.native64type?in->s.native64type:in->s.decl?in->s.decl->ty:nil;
   if(use && use->kind==Ttuple){
-   unsigned int first,next,i,n=(typedaltpair(use) || typedaltbytepair(use))?2:typedaltrequest(use)?3:0;Dis64Layout*l=in->sm==Afp?&p->frame:&p->data;
+   unsigned int first,next,i,n=typedrootcount(use);Dis64Layout*l=in->sm==Afp?&p->frame:&p->data;
    unsigned int fio=typedfileiopayload(use);
    if(typedreplyliteral(use)){
     if((in->sm!=Afp && in->sm!=Amp) || !in->s.decl || in->s.reg!=in->s.decl->offset || in->s.offset || !typedreplyspan(l,in->s.reg,&first))return typedfail(p,"reply-payload-span");source=first;sm=in->sm==Afp?AFP:AMP;width=136;

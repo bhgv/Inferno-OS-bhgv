@@ -31,14 +31,16 @@ def generate(limbo,w):
     else:raise AssertionError(('request oracle missed',row['name'],pc,k))
  print('PASS ALT request source:',controls,'corruptions detected; classic tuple descriptor/operands/tables/maps and unchanged bytes',flush=True)
 def boundaries(limbo,w):
- for ty in('(ref Draw->Pointer,int)','(ref Draw->Pointer,chan of int)','(ref Draw->Pointer,ref Draw->Pointer)','(ref Draw->Pointer,array of int,Sys->Rwrite)','(ref Draw->Pointer,array of byte,chan of (string,int))','(ref Draw->Pointer,array of byte,chan of (int,int))','(ref Draw->Pointer,array of byte,chan of string)'):
-  names=','.join('x'+str(i)for i in range(3 if 'array' in ty else 2));source='implement Closed;'+PREFIX+'Closed:module{run:fn(c:chan of '+ty+');};run(c:chan of '+ty+'){alt{('+names+'):= <-c => ;}}'
-  _,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert not rows[0]['accepted'],rows
+ cases=(('(ref Draw->Pointer,int)',2,False),('(ref Draw->Pointer,chan of int)',2,True),('(ref Draw->Pointer,ref Draw->Pointer)',2,True),('(ref Draw->Pointer,array of int,Sys->Rwrite)',3,True),('(ref Draw->Pointer,array of byte,chan of (string,int))',3,True),('(ref Draw->Pointer,array of byte,chan of (int,int))',3,True),('(ref Draw->Pointer,array of byte,chan of string)',3,True),('(ref Draw->Pointer,int,chan of int)',3,False),('(ref Draw->Pointer,ref Draw->Pointer,ref Draw->Pointer,ref Draw->Pointer)',4,False))
+ for ty,n,accepted in cases:
+  names=','.join('x'+str(i)for i in range(n));source='implement Closed;'+PREFIX+'Closed:module{run:fn(c:chan of '+ty+');};run(c:chan of '+ty+'){alt{('+names+'):= <-c => ;}}'
+  data,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert rows[0]['accepted']==accepted,(ty,rows)
+  if accepted:CMD['verify_nilbranches'](data,rows[0],[],rows=rows)
  prefix=PREFIX+'include "wmsrv.m";';decl='Probe:module{run:fn(c:chan of (ref Wmsrv->Client,array of byte,Sys->Rwrite));};';source='implement Probe;'+prefix+decl+'client:ref Wmsrv->Client;bytes:array of byte;reply:Sys->Rwrite;run(c:chan of (ref Wmsrv->Client,array of byte,Sys->Rwrite)){alt{(p,a,r):= <-c => client=p;bytes=a;reply=r;}}'
  data,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert rows[0]['accepted'],rows;CMD['verify_nilbranches'](data,rows[0],[],rows=rows)
  interface=w/'join.m';interface.write_text(prefix+decl);h=subprocess.check_output([str(limbo),'-H','-M','Probe','-I',str(ROOT/'module'),str(interface)],text=True);signature=int(re.search(r'^#define LIMBO_NATIVE64_SIGNATURE_Probe_run (0x[0-9a-f]+)U',h,re.M)[1],16);assert E['BASE']['READ']['legacy_instructions'](data,with_exports=True)[-1][0]['signature']==signature
  _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);init=next(r for r in rows if r['name']=='init');assert init['accepted']or init['pc']>153,init;assert next(r for r in rows if r['name']=='command')['accepted']
- print('PASS real Wmsrv.Client req triple and canonical hash; wider/different tuples closed; AWM init:',init.get('pc','complete'),init.get('reason','accepted'),flush=True)
+ print('PASS real Wmsrv.Client req triple and canonical hash; two/three-root groups checked; mixed/wider tuples closed; AWM init:',init.get('pc','complete'),init.get('reason','accepted'),flush=True)
 def unit():
  base=runpy.run_path(str(ROOT/'utils/tests/native64-alt-pairs.py'))
  src=base['unit']().split('\n#line 1 "native64-alt-pairs.c"')[0]
