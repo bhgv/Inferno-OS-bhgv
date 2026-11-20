@@ -296,6 +296,19 @@ native64typedbytestep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
  return mm==AXIMM?(s->m>=-32768 && s->m<=32767):mm==AXINF && s->m<=65535 && native64typedwordoperand(AFP,s->m,fp,mp);
 }
 
+/* A private 8-byte mapped element Type is installed by the owning builder. */
+static int
+native64typedrefarray(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int sm=USRC(s->mode),dm=UDST(s->mode);
+ if(s->returned==254)return s->op==INEWAZ && s->mode==(SRC(sm)|AXIMM|DST(dm)) && s->m==2 && native64typedwordoperand(sm,s->s,fp,mp) && native64typedrootoperand(dm,s->d,fp,mp);
+ if(s->returned!=255)return 0;
+ if(s->op==IINDL)return s->mode==(SRC(sm)|AXINF|DST(dm)) && s->m==48 && native64typedrootoperand(sm,s->s,fp,mp) && native64typedwordoperand(dm,s->d,fp,mp);
+ if(s->op!=IMOVP || s->m)return 0;
+ return sm==(AFP|AIND)?s->s==48 && s->mode==(SRC(sm)|DST(dm)) && native64typedrootoperand(dm,s->d,fp,mp):
+  dm==(AFP|AIND) && s->d==48 && s->mode==(SRC(sm)|DST(dm)) && native64typedrootoperand(sm,s->s,fp,mp);
+}
+
 /* Context has exactly three pointer fields (Display, Screen, wm channel).
  * The compiler proves the nominal owner and field class; no generic ADT ABI. */
 static int
@@ -394,6 +407,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
 	for(i=0;i<count;i++){
 		s=steps+i;sm=USRC(s->mode);dm=UDST(s->mode);mm=s->mode&ARM;
 		if(s->mode>255 || s->op>255)return 0;
+        if(native64typedbranch(s->op) && s->d>=0 && (unsigned long)s->d<count && steps[s->d].returned==255 && steps[s->d].op==IMOVP)return 0;
         if(s->returned>=Native64TypedContext && s->returned<Native64TypedContextNil+3){
             if(!native64typedcontextstep(s,fpbytes,mpbytes) ||
                (s->returned!=Native64TypedContext && (s->d<0 || (unsigned long)s->d>=count)))return 0;
@@ -408,6 +422,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
             if(!native64typeddrawstep(s,fpbytes,mpbytes) || (s->returned!=Native64TypedDraw && (s->d<0 || (unsigned long)s->d>=count)))return 0;continue;
         }
         if(s->returned==173){if(!native64typedcontextcopy(s,fpbytes,mpbytes))return 0;continue;}
+        if(s->returned==254 || s->returned==255){if(!native64typedrefarray(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==253){if(!native64typedinthead(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==252){if(!native64typedheadprep(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned>=248 && s->returned<=250){if(!native64typedrectlist(s,fpbytes,mpbytes))return 0;continue;}
@@ -532,6 +547,8 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==188){p->reg=0;p->d.ind=s->d;continue;}
         if(s->returned==183){p->d.ind=s->d;continue;}
         if(s->returned==185){p->d.i.f=32;p->d.i.s=0;continue;}
+        if(s->returned==254){p->reg=0;p->s.ind=s->s;p->d.ind=s->d;continue;}
+        if(s->returned==255){if(s->op==IINDL){p->s.ind=s->s;p->d.ind=s->d;}else if(USRC(s->mode)&AIND){p->s.i.f=48;p->s.i.s=0;p->d.ind=s->d;}else{p->s.ind=s->s;p->d.i.f=48;p->d.i.s=0;}continue;}
         if(s->returned==253){p->s.ind=s->s;p->d.ind=s->d;continue;}
         if(s->returned==252){p->s.ind=s->s;p->d.ind=s->d;continue;}
         if(s->returned>=248 && s->returned<=250){p->d.ind=s->d;if(s->returned==248 && (USRC(s->mode)&AIND)){p->s.i.f=s->s;p->s.i.s=8;}else p->s.ind=s->s;continue;}

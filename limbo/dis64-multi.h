@@ -303,6 +303,36 @@ typedclientindex(Inst *in,Inst *use,Dis64TypedBody *p,unsigned int pc)
  return 1;
 }
 
+/* Only canonical Draw.Image references; array element slots are mapped roots. */
+static int
+typedimagearrayaddr(Addr*a)
+{
+ Type*t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;
+ return a->decl && t && t->kind==Tarray && typedwmref(t->tof,"Draw","Image") && a->reg==a->decl->offset && !a->offset;
+}
+static int
+typedimagearraynew(Inst*in,Dis64TypedBody*p,unsigned int pc)
+{
+ Decl*d=in->m.decl;long source,dest;unsigned int sm,dm;int actual;
+ if((in->op!=INEWA && in->op!=INEWAZ) || !typedimagearrayaddr(&in->d) || in->mm!=Adesc || !d || !d->desc || d->desc->id!=in->m.offset || !typedwmref(d->ty,"Draw","Image") || d->desc->size!=4 || d->desc->nmap!=1 || d->desc->map[0]!=0x80 || in->branch ||
+    !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) || !typedoperand(in->dm,&in->d,Tarray,0,0,p,&dest,&dm,&actual) || (dm!=AFP && dm!=AMP))return typedfail(p,"image-array-allocation");
+ p->code[pc]=(Dis64Instruction){INEWAZ,SRC(sm)|AXIMM|DST(dm),2,source,dest};p->returns[pc]=254;return 1;
+}
+/* An immediate pointer mover consumes the borrowed address in reserved FP48. */
+static int
+typedimagearrayindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc)
+{
+ long array,index,value;unsigned int sm,dm,vm;int actual,read;Addr*a;
+ if(in->op!=IINDW || !typedimagearrayaddr(&in->s) || in->mm!=Afp || !in->m.decl || in->m.offset || in->branch ||
+    !typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual) || !typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual) ||
+    !use || use->op!=IMOVP || use->mm!=Anone || use->branch)return typedfail(p,"image-array-index");
+ read=use->sm==Afpind;a=read?&use->s:&use->d;
+ if((!read && use->dm!=Afpind) || a->decl!=in->m.decl || a->reg!=in->m.reg || a->offset ||
+    !typedoperand(read?use->dm:use->sm,read?&use->d:&use->s,TypedRoot,0,0,p,&value,&vm,&actual) || (actual!=Tref && actual!=Tany))return typedfail(p,"image-array-mover");
+ p->code[pc]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};p->returns[pc]=255;
+ p->code[pc+1]=(Dis64Instruction){IMOVP,read?SRC(AFP|AIND)|DST(vm):SRC(vm)|DST(AFP|AIND),0,read?48:value,read?value:48};p->returns[pc+1]=255;return 1;
+}
+
 static int
 typedloadbytes(Inst *in,Dis64TypedBody *p,unsigned int pc)
 {
@@ -811,6 +841,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedaltpaircopy(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && in->op==IMOVP && in->dm==Afpind && in->d.reg==16 && in->d.offset==0){
             if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+        }else if(c->loads && (in->op==INEWA || in->op==INEWAZ) && typedimagearrayaddr(&in->d)){
+            if(!typedimagearraynew(in,p,pc-p->first))goto fail;pc++;
+        }else if(c->loads && in->op==IINDW && typedimagearrayaddr(&in->s)){
+            if(pc+1>=stop || !typedimagearrayindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
         }else if((c->external>=2 || c->loads) && (in->op==INEWA || in->op==INEWAZ || in->op==ISLICEA)){
             if((c->loads && !typedloadbytes(in,p,pc-p->first)) || !typedclientarray(in,p,pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==IINDB || in->op==IINDW)){

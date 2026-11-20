@@ -235,7 +235,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         if(k<n && i==calls[k].first){i=calls[k++].end+1;continue;}
         checkstep=steps[i];
         if(native64typedbranch(checkstep.op)){
-            if(checkstep.d<0 || (unsigned long)checkstep.d>=count || native64typedblocked(checkstep.d,calls,n))return 0;
+            if(checkstep.d<0 || (unsigned long)checkstep.d>=count || native64typedblocked(checkstep.d,calls,n) || (steps[checkstep.d].returned==255 && steps[checkstep.d].op==IMOVP))return 0;
             checkstep.d=0;
         }
         if(!native64typedcode(&probe,1,&checkstep,1,fpbytes,mpbytes))return 0;

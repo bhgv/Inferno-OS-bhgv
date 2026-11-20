@@ -53,7 +53,7 @@ def main():
   (w/'native64-typed-module.h').write_text(header.replace(before,';',1));subprocess.run(cmd,check=True);r=subprocess.run(runner+[str(binary),'metadata'],capture_output=True,text=True,timeout=180)
   assert r.returncode==10 and 'byte metadata refusal removed: case=0'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
   print('PASS byte active control: constructor requires exact root/scalar roles',flush=True)
-  before='m->prog[b->offsets[i]+j].reg=m->ntype-1;';assert header.count(before)==1
+  before='m->prog[b->offsets[i]+j].reg=f->code[j].returned==254?refarraytype:s->nfunctions+1+b->imports;';assert header.count(before)==1
   (w/'native64-typed-module.h').write_text(header.replace(before,';',1));subprocess.run(cmd,check=True);r=subprocess.run(runner+[str(binary)],capture_output=True,text=True,timeout=180)
   assert r.returncode==10 and 'byte-array predicate: resolved byte descriptor'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
   print('PASS byte active control: primitive descriptor resolved before execution',flush=True)

@@ -288,3 +288,10 @@ sizewin ещё не принята из-за array[4] of ref Image на PC901.
 showborders отдельно останавливается на PC1095 unsupported-opcode.
 dragwin принята целиком, awm.init пока на PC303. Окно AWM и Android UI
 ещё не запущены.
+
+Следующий этап: [Массивы ссылок Draw.Image](native64-image-arrays.ru.md).
+sizewin проходит выделение array[4] of ref Image на PC901; новый отказ —
+PC902 multi-callee на showborders. Чтение и запись через прямые FP/MP слоты
+проверены отдельно. showborders на PC1095 требует передачи элемента массива
+непосредственно в pending local call frame. handlerequest пока на PC618,
+awm.init на PC303, dragwin принята целиком. Окно AWM и Android UI не запущены.

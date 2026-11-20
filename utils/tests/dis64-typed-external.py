@@ -440,6 +440,25 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned==254:
+            sm=o['mode']>>3&7;dm=o['mode']&7;assert loads and o['op']in(OPCODES['INEWA'],OPCODES['INEWAZ'])and o['mode']==(sm<<3)|64|dm and sm in(0,1,2)and dm in(0,1)and types[o['m']][0]==4 and list(types[o['m']][1])==[128]
+            source=o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]]
+            assert [op,mode,s,m,d,returned]==[OPCODES['INEWAZ'],o['mode'],source,2,maps['frame'if dm else'data'][o['d'][0]],254]
+            continue
+        if returned==255:
+            assert loads
+            if op==OPCODES['IINDL']:
+                sm=o['mode']>>3&7;dm=o['mode']&7;assert o['op']==OPCODES['IINDW']and o['mode']==(sm<<3)|128|dm and sm in(0,1)and dm in(0,1,2)
+                source=maps['frame'if sm else'data'][o['s'][0]];index=o['d'][0]if dm==2 else maps['frame'if dm else'data'][o['d'][0]]
+                assert [op,mode,s,m,d,returned]==[OPCODES['IINDL'],o['mode'],source,48,index,255]
+                assert r['code'][pc+1][0]==41 and r['code'][pc+1][5]==255
+            else:
+                before=original[pc-1];assert op==o['op']==41 and o['m']is None and mode==o['mode']and before['op']==OPCODES['IINDW']
+                sm=mode>>3&7;dm=mode&7;read=sm==5;indirect=o['s']if read else o['d'];direct=o['d']if read else o['s'];vm=dm if read else sm
+                assert vm in(0,1)and indirect==[before['m'],0]and (read or dm==5)
+                value=maps['frame'if vm else'data'][direct[0]]
+                assert [s,m,d]==([48,0,value]if read else[value,0,48])
+            continue
         if returned==213:
             assert loads and op==o['op']and op in(OPCODES['ICONSP'],OPCODES['IHEADP'],OPCODES['ITAIL'])and mode==o['mode']and o['m']is None and m==0
             sm=mode>>3&7;dm=mode&7;assert sm in(0,1)and dm in(0,1)
