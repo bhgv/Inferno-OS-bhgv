@@ -606,6 +606,17 @@ typedlocalgeometryarg(Inst*in,Inst*frame,Decl*arg,Dis64TypedBody*p,Dis64TypedBod
  done:dis64layoutfree(&l);return ok?1:typedfail(p,"local-geometry-argument");
 }
 
+/* Literal Draw.Point/Rect leaves relocated against the actual local frame. */
+static int
+typedlocalgeometryliteral(TypedMulti*c,Dis64TypedBody*p,Dis64TypedBody*child,Inst*frame,Decl*arg,unsigned int end,unsigned int*at)
+{
+ Dis64Layout l={0};unsigned int i,base=0,part;int ok=0;
+ if(!typedwordgeometry(arg->ty,&l))goto done;
+ for(i=0;i<l.bytes;i+=4){if(!dis64layoutaddress(&child->frame,arg->offset+i,4,0,&part) || part<64 || part>65535 || (i && part!=base+i))goto done;if(!i)base=part;}
+ ok=typedexternalgeometry(c,p,arg,frame,end,at,&base);
+ done:dis64layoutfree(&l);return ok?1:typedfail(p,"local-geometry-literal");
+}
+
 static int
 typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int depth,unsigned int *next,unsigned int *height)
 {
@@ -616,7 +627,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     if(frame->sm!=Adesc || frame->mm!=Anone || frame->dm!=Afp || frame->branch!=nil || frame->d.reg<32 ||
        frame->d.reg>(int)p->frame.legacybytes-4)return typedfail(p,"multi-frame");
     while(end<stop && c->instructions[end]!=nil && (c->instructions[end]->dm==Afpind ||
-      (c->loads && ((c->instructions[end]->op==IMOVP && c->instructions[end]->dm==Afp) || c->instructions[end]->op==ISLICEA || (c->instructions[end]->op==ICVTWC && c->instructions[end]->dm==Afp)))))end++;
+      (c->loads && (((c->instructions[end]->op==IMOVP || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL) && c->instructions[end]->dm==Afp) || c->instructions[end]->op==ISLICEA || (c->instructions[end]->op==ICVTWC && c->instructions[end]->dm==Afp)))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || (call->op!=ICALL && !(c->loads && call->op==ISPAWN)) || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Anone || call->dm!=Apc || call->d.offset<0 || (unsigned long)call->d.offset>=c->count ||
        (target=c->entries[call->d.offset])<0)return typedfail(p,"multi-call");
@@ -641,9 +652,14 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
         if(c->loads && !spawning && kind==Tadt){
             int prepared=0;
+            if(in->op!=IMOVP && in->op!=IMOVM){if(!typedlocalgeometryliteral(c,p,child,frame,arg,end,&at))return 0;continue;}
             if(in->op==IMOVP){if(at+2>=end || !typedlocalscreenimageprep(in,c->instructions[at+1],p,at-p->first))return 0;in=c->instructions[++at];prepared=1;}
             if(!typedlocalgeometryarg(in,frame,arg,p,child,at-p->first))return 0;at++;
             if(prepared){unsigned int clear=at;Inst store=*in;store.op=IMOVP;store.sm=Afp;store.s.offset=0;if(!typedrootargclear(c,p,&store,end,&at) || clear==at)return typedfail(p,"local-screen-image-clear");}
+            continue;
+        }
+        if(c->loads && !spawning && kind==Tint && (in->op==ITAIL || in->op==IHEADP)){
+            if(!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || offset<64 || offset>65535 || !typedexternalinthead(c,p,frame,end,&at,arg->offset,offset))return typedfail(p,"local-int-head-argument");
             continue;
         }
         if(spawning && (in->op!=op || (in->sm!=Afp && in->sm!=Amp && in->sm!=Aimm)))return typedfail(p,"spawn-argument");

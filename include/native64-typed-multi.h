@@ -148,7 +148,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
             if(!s->returned){if(c->external || !native64typedargprep(s,fpbytes,mpbytes))return 0;continue;}
             if(s->returned==253){
-                if(!c->external)return 0;
+                if(!c->external && steps[c->end].op!=ICALL)return 0;
                 if(s->op==ICVTCW){
                     unsigned int at,bit;if(c->callee->np<0 || (unsigned int)c->callee->np>((unsigned int)c->callee->size+63)/64)return 0;if(s->mode!=(SRC(AFP)|DST(AFP|AIND)) || s->m || !native64typedrootoperand(AFP,s->s,fpbytes,mpbytes) || !native64typedwordoperand(AFP,s->d,c->callee->size,0) || s->d>65535 || j==c->first+1 || j+1>=stop || steps[j-1].returned!=253 || steps[j-1].op!=IHEADP || steps[j-1].d!=s->s || steps[j+1].returned!=253 || steps[j+1].op!=IMOVP || steps[j+1].d!=s->s)return 0;
                     for(at=0;at<4;at++){bit=(s->d+at)/8;if(bit/8<(unsigned int)c->callee->np && (c->callee->map[bit/8]&(128>>(bit%8))))return 0;}

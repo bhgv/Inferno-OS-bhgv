@@ -74,6 +74,22 @@ def verify(data,r,imports,loads=False,rows=None):
         assert r['code'][first]==[5,17,descriptor,0,40,0]
         for arg in callee['args']:
             prep=False;screenprep=None;idprep=None;o=original[at]
+            if loads and arg[1]==9 and r['code'][at][5]==253:
+                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);assert arg[2:]==[4,4]
+                assert not(callee['frame']['map'][arg[0]//64]&(128>>(arg[0]//8%8)))
+                at=inthead_argument(original,r['code'],at,maps,pending,oldoffset,arg[0],r);continue
+            if loads and arg[1]==1 and o['op']!=OPCODES['IMOVM']and r['code'][at][5]!=235:
+                assert arg[2]==arg[3]and arg[3]in(8,16)
+                for k in range(arg[3]//4):
+                    oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]+4*k)
+                    assert next(l for l in callee['frame']['leaves']if l[0]==oldoffset)==[oldoffset,arg[0]+4*k,4,4,9]
+                    assert not(callee['frame']['map'][(arg[0]+4*k)//64]&(128>>((arg[0]+4*k)//8%8)))
+                    if r['code'][at][5]==253:at=inthead_argument(original,r['code'],at,maps,pending,oldoffset,arg[0]+4*k,r)
+                    else:
+                        x=original[at];sm=x['mode']>>3&7;assert x['op']==OPCODES['IMOVW']and sm in(0,1,2)and x['mode']==(sm<<3)|5 and x['m']is None and x['d']==[pending,oldoffset]
+                        source=x['s'][0]if sm==2 else maps['frame'if sm==1 else'data'][x['s'][0]]
+                        assert r['code'][at]==[x['op'],x['mode'],source,0,arg[0]+4*k,64];at+=1
+                continue
             if loads and arg[1]==13 and r['code'][at][5]==237:
                 sm=o['mode']>>3&7;assert o['op']==OPCODES['ICVTWC']and sm in(4,5)and o['mode']==(sm<<3)|1 and o['m']is None and o['s'][1]==36
                 owner=maps['frame'if sm==5 else'data'][o['s'][0]];temp=maps['frame'][o['d'][0]]

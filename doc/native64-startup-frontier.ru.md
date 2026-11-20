@@ -280,3 +280,11 @@ dragwin принята целиком; Window.tag передаётся в reshap
 в dragwin. handlerequest проходит PC607 и останавливается на PC618
 multi-call при подготовке Point для sizewin. sizewin пока на PC901
 load-byte-array-class, awm.init — PC303. Окно AWM и Android UI не запущены.
+
+Следующий этап: [Числовой Point/Rect для локальных вызовов](native64-local-int-head-args.ru.md).
+Подготовка литеральных Point/Rect и int hd для обычного CALL поддержана.
+handlerequest пока на PC618, причина теперь multi-callee вместо multi-call:
+sizewin ещё не принята из-за array[4] of ref Image на PC901.
+showborders отдельно останавливается на PC1095 unsupported-opcode.
+dragwin принята целиком, awm.init пока на PC303. Окно AWM и Android UI
+ещё не запущены.

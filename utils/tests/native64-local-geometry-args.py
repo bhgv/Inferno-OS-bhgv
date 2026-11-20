@@ -31,10 +31,10 @@ def generate(limbo,w):
      except(AssertionError,KeyError,IndexError,StopIteration,ValueError):controls+=1
      else:raise AssertionError(('local geometry oracle missed',row['name'],k))
  print('PASS local geometry oracle:',controls,'corruptions detected; classic source/target leaves, canonical signatures and unchanged bytes',flush=True)
- for ty,extra,body in(('Other','Other:adt{x:int;y:int;};','take(x);'),('Draw->Rect','','spawn take(x);'),('Draw->Rect','','take(((1,2),(3,4)));')):
+ for ty,extra,body in(('Other','Other:adt{x:int;y:int;};','take(x);'),('Draw->Rect','','spawn take(x);')):
   source='implement Closed;'+PREFIX+extra+'Closed:module{run:fn(x:'+ty+');};run(x:'+ty+'){'+body+'}take(x:'+ty+'){}'
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert not next(r for r in closed if r['name']=='run')['accepted'],closed
- print('PASS local geometry boundary: other ADT, spawn and scalar literal aggregate remain closed',flush=True)
+ print('PASS local geometry boundary: other ADT and aggregate spawn remain closed',flush=True)
  _,records=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True)
  r=next(r for r in records if r['name']=='reshaped');assert r['accepted']or r['pc']>795,r;print('AWM reshaped frontier:',r.get('pc'),r.get('reason'),'; init:',[(x.get('pc'),x.get('reason'))for x in records if x['name']=='init'],flush=True)
 def unit():
