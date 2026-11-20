@@ -115,6 +115,9 @@ native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==95 || s->functions[i].code[j].returned==222 || s->functions[i].code[j].returned==223){
         seen=0;for(k=0;k<n;k++)if(v[k].function==i && v[k].first<j && j<v[k].end-1)seen++;if(seen!=1)return 0;
     }
+    for(i=0;i<s->nfunctions;i++){f=s->functions+i;for(j=6;j<f->count;j++)if(f->code[j].returned==195&&native64altaprintprep(s,f,j,f->code+j)){
+        seen=0;for(k=0;k<n;k++)if(v[k].function==i&&v[k].first==j-6&&v[k].end==j-2&&v[k].operation==Native64SysAprint&&v[k].count==1&&!v[k].inherited&&v[k].contract==24&&v[k].resultoffset==(unsigned int)f->code[j].s)seen++;if(seen!=1)return 0;
+    }}
     return 1;
 }
 
@@ -138,8 +141,12 @@ native64sysmodulemake(void*argument)
     for(i=0;i<spec.nfunctions;i++){
         b->functions[i]=spec.functions[i];b->functions[i].code=b->code+pc;
         memmove(b->code+pc,spec.functions[i].code,spec.functions[i].count*sizeof(*b->code));
-        for(j=0;j<b->count;j++)if(b->variadic[j].function==i)
-            for(k=b->variadic[j].first;k<=b->variadic[j].end;k++)b->code[pc+k]=(Native64TypedStep){IRET,SRC(AXXX)|DST(AXXX),0,0,0,0};
+        for(j=0;j<b->count;j++)if(b->variadic[j].function==i){
+            const Native64ModuleVariadic*v=b->variadic+j;const Native64ModuleFunction*f=spec.functions+i;unsigned int alt=v->end+2<f->count&&native64altaprintprep(&spec,f,v->end+2,f->code+v->end+2);
+            /* Root-preserving inert preparation keeps the ALT island checkable.
+             * The unpublished range is replaced by the validated Sys gateway. */
+            for(k=v->first;k<=v->end;k++)b->code[pc+k]=alt?(Native64TypedStep){IMOVP,SRC(AFP)|DST(AFP),v->resultoffset,0,v->resultoffset,0}:(Native64TypedStep){IRET,SRC(AXXX)|DST(AXXX),0,0,0,0};
+        }
         pc+=spec.functions[i].count;
     }
     spec.functions=b->functions;

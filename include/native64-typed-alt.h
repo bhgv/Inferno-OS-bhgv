@@ -10,6 +10,25 @@ native64altcontextprep(const Native64ModuleSpec*s,const Native64ModuleFunction*f
  bit=a->s/8;if(!(s->datamap[bit/8]&(128>>(bit%8))))return 0;return 1;
 }
 
+/* Closed aprint(Int) producer; the Sys builder separately owns the call site. */
+static int
+native64altaprintprep(const Native64ModuleSpec*s,const Native64ModuleFunction*f,unsigned int at,const Native64TypedStep*p)
+{const Native64TypedStep*a,*v,*b,*n;unsigned int sm,bit,i,found=0;const uchar*map;
+ if(at<6||p->m!=48||USRC(p->mode)!=AFP)return 0;a=f->code+at-6;v=a+4;b=a+3;n=a+5;
+ if(a->op!=IFRAME||a->mode!=(SRC(AIMM)|DST(AFP))||a->m||a->d!=40||a->returned||a->s<0||a->s>32767||
+    b->op!=ILEA||b->mode!=(SRC(AFP)|DST(AFP|AIND))||b->s!=p->s||b->m||b->d!=32||b->returned!=152||
+    v->op!=IMCALL||v->mode!=(SRC(AFP)|AXIMM|DST(UDST(v->mode)))||v->s!=40||v->m<0||v->m>32767||v->returned||
+    n->op!=IMOVP||n->mode!=(SRC(AMP)|DST(AFP))||n->m||n->d!=p->s+8||n->returned||!native64modulereadonlynil(s,n->s))return 0;
+ for(i=0;i<s->ntables;i++)if((unsigned long)v->m<s->tables[i].count){const Native64ModuleImport*t=s->tables[i].imports+v->m;if(!strcmp(t->name,"aprint")&&t->signature==0x77442d46U)found=1;}if(!found)return 0;
+ sm=UDST(v->mode);if(!native64typedrootoperand(sm,v->d,f->bytes,s->databytes))return 0;map=sm==AFP?f->map:s->datamap;bit=v->d/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
+ v=a+1;sm=USRC(v->mode);if(v->op!=IMOVP||v->mode!=(SRC(sm)|DST(AFP|AIND))||v->m||v->d!=64||v->returned!=64||!native64typedrootoperand(sm,v->s,f->bytes,s->databytes))return 0;
+ map=sm==AFP?f->map:s->datamap;bit=v->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
+ v=a+2;sm=USRC(v->mode);if(v->op!=ICVTWL||v->mode!=(SRC(sm)|DST(AFP|AIND))||v->d!=72)return 0;
+ if(v->returned==95){if((v->m!=32&&v->m!=72&&v->m!=76&&v->m!=80)||(sm!=(AFP|AIND)&&sm!=(AMP|AIND))||!native64typedrootoperand(sm&~AIND,v->s,f->bytes,s->databytes))return 0;map=(sm&~AIND)==AFP?f->map:s->datamap;bit=v->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
+ else{if(v->returned!=64||v->m||!native64typedwordoperand(sm,v->s,f->bytes,s->databytes))return 0;if(sm!=AIMM){map=sm==AFP?f->map:s->datamap;bit=v->s/8;if(map[bit/8]&(128>>(bit%8)))return 0;}}
+ bit=n->s/8;if(!(s->datamap[bit/8]&(128>>(bit%8))))return 0;return 1;
+}
+
 static int
 native64modulealts(const Native64ModuleSpec*s,const Native64ModuleFunction*f)
 {
@@ -22,6 +41,7 @@ native64modulealts(const Native64ModuleSpec*s,const Native64ModuleFunction*f)
    if(!end)return 0;payloads[n-1-i]=end-1;p=f->code+end-1;if(!native64typedaltstep(p,f->bytes,s->databytes) || p->op!=ILEA)return 0;
    w=native64fileiowidth(p->m)?native64fileiowidth(p->m):p->m==72?24:p->m==48?16:p->m&15;end--;limit=0;
    if(native64altcontextprep(s,f,end,p))end-=5;
+   else if(native64altaprintprep(s,f,end,p))end-=6;
    while(end && !f->code[end-1].returned){Inst probe;const Native64TypedStep*t=f->code+end-1;unsigned int width=(t->op==IMOVP || t->op==ISLICEA)?8:4,length=0;
     if(p->m==48 && end+1<payloads[n-1-i] && t->op==ILENA && f->code[end].op==IMOVP && f->code[end+1].op==ISLICEA && f->code[end].s==t->s && USRC(f->code[end].mode)==USRC(t->mode) && f->code[end].d==p->s && f->code[end+1].d==p->s && (f->code[end+1].mode&ARM)==AXINF && t->d==f->code[end+1].m)length=1;
     if(++limit>8 || (!length && ((t->op!=IMOVP && t->op!=IMOVW && !(t->op==ISLICEA && p->m==48)) || UDST(t->mode)!=USRC(p->mode) || t->d<p->s || t->d+width>p->s+w)))break;

@@ -53,6 +53,7 @@ on:
       - 'utils/tests/native64-rect-list*'
       - 'utils/tests/native64-format-fields*'
       - 'utils/tests/native64-aprint*'
+      - 'utils/tests/native64-wmsrv-module*'
       - 'utils/tests/native64-string-word*'
       - 'utils/tests/native64-string-library*'
       - 'utils/tests/native64-bufio-library*'
@@ -242,6 +243,10 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/format-fields.log"
           python3 utils/tests/native64-aprint.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/aprint.log"
+          python3 utils/tests/native64-aprint-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/aprint-alt.log"
+          python3 utils/tests/native64-wmsrv-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-module.log"
           python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/string-word.log"
           python3 utils/tests/native64-string-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -445,6 +450,10 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/format-fields.log"
           python3 utils/tests/native64-aprint.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/aprint.log"
+          python3 utils/tests/native64-aprint-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/aprint-alt.log"
+          python3 utils/tests/native64-wmsrv-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-module.log"
           python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/string-word.log"
           python3 utils/tests/native64-string-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

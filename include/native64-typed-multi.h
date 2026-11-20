@@ -123,6 +123,13 @@ native64typedblocked(unsigned int pc,const Native64TypedCall *calls,unsigned int
 /* A complete immutable checked-IR function and its sorted disjoint call sites.
  * Exact semantic fields and Type/target identities remain trusted compiler/
  * builder premises. All structural checks precede output; no allocation. */
+/* A branch is checked against its real target in the complete body first.
+ * A two-instruction probe avoids inventing a self-entry into a protected
+ * registry suffix while validating/materializing that branch in isolation. */
+static int
+native64typedbranchprobe(Inst*out,const Native64TypedStep*step,unsigned int fp,unsigned int mp)
+{Native64TypedStep pair[2];Inst code[2];pair[0]=*step;pair[0].d=1;pair[1]=(Native64TypedStep){IRET,SRC(AXXX)|DST(AXXX),0,0,0,0};if(!native64typedcode(code,2,pair,2,fp,mp))return 0;if(out){*out=code[0];out->d.ins=nil;}return 1;}
+
 static int
 native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *steps,unsigned int count,unsigned int fpbytes,unsigned int mpbytes,const Native64TypedCall *calls,unsigned int n)
 {
@@ -268,9 +275,8 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         if(checkstep.returned==158 && (!i || steps[i-1].returned!=157 || native64typedblocked(i-1,calls,n)))return 0;
         if(native64typedbranch(checkstep.op)){
             if(checkstep.d<0 || (unsigned long)checkstep.d>=count || native64typedblocked(checkstep.d,calls,n) || native64typedprotectedentry(steps,count,checkstep.d))return 0;
-            checkstep.d=0;
-        }
-        if(!native64typedcode(&probe,1,&checkstep,1,fpbytes,mpbytes))return 0;
+            if(!native64typedbranchprobe(&probe,&checkstep,fpbytes,mpbytes))return 0;
+        }else if(!native64typedcode(&probe,1,&checkstep,1,fpbytes,mpbytes))return 0;
         i++;
     }
     k=0;
@@ -309,9 +315,9 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             }
             i=c->end+1;continue;
         }
-        s=steps+i;checkstep=*s;if(native64typedbranch(s->op))checkstep.d=0;
-        native64typedcode(out+i,1,&checkstep,1,fpbytes,mpbytes);
-        if(native64typedbranch(s->op))out[i].d.ins=out+s->d;
+        s=steps+i;checkstep=*s;
+        if(native64typedbranch(s->op)){native64typedbranchprobe(out+i,s,fpbytes,mpbytes);out[i].d.ins=out+s->d;}
+        else native64typedcode(out+i,1,&checkstep,1,fpbytes,mpbytes);
         i++;
     }
     return 1;

@@ -153,6 +153,15 @@ typedaltcontextprep(Dis64TypedBody*p,unsigned int at,Dis64Instruction*payload)
  z->op==IMOVP&&z->mode==(SRC(AMP)|DST(AFP))&&!z->middle&&z->source==a->source&&z->destination==tmp;
 }
 
+/* A single checked aprint(Int) directly fills the first root of a reply pair. */
+static int
+typedaltaprintprep(Dis64TypedBody*p,unsigned int at,Dis64Instruction*payload)
+{Dis64Instruction*a,*v,*n;Dis64TypedVariadic*t;unsigned int i;
+ if(at<6||payload->middle!=48||USRC(payload->mode)!=AFP)return 0;a=p->code+at-6;v=a+4;n=a+5;
+ for(i=0;i<p->nvariadic;i++){t=p->variadic+i;if(t->first==at-6&&t->end==at-2&&t->operation==1&&t->count==1&&!t->inherited&&t->contract==24&&t->resultoffset==(unsigned int)payload->source)break;}if(i==p->nvariadic)return 0;
+ return a[2].op==ICVTWL&&a[2].destination==72&&(p->returns[at-4]==64||p->returns[at-4]==95)&&v->op==IMCALL&&!p->returns[at-2]&&n->op==IMOVP&&n->mode==(SRC(AMP)|DST(AFP))&&!n->middle&&!p->returns[at-1]&&n->destination==payload->source+8;
+}
+
 static int
 typedaltinst(Inst*in,Decl*fn,Dis64TypedBody*p,unsigned int pc)
 {
@@ -169,6 +178,7 @@ typedaltinst(Inst*in,Decl*fn,Dis64TypedBody*p,unsigned int pc)
     if(p->returns[slot]!=190 && p->returns[slot]!=195 && p->returns[slot]!=197 && p->returns[slot]!=199 && p->returns[slot]!=203 && p->returns[slot]!=134)return typedfail(p,"alt-setup-shape");
     width=q->middle==136 || q->middle==48?16:q->middle==72 || q->middle==120?24:q->middle==104?32:q->middle&15;limit=0;
     if(typedaltcontextprep(p,slot,q))slot-=5;
+    else if(typedaltaprintprep(p,slot,q))slot-=6;
     while(slot && !p->returns[slot-1]){int length=0;prep=p->code+slot-1;
      if(q->middle==48 && slot+1<end-1 && prep->op==ILENA && p->code[slot].op==IMOVP && p->code[slot+1].op==ISLICEA && p->code[slot].source==prep->source && USRC(p->code[slot].mode)==USRC(prep->mode) && p->code[slot].destination==q->source && p->code[slot+1].destination==q->source && (p->code[slot+1].mode&ARM)==AXINF && prep->destination==p->code[slot+1].middle)length=1;
      if(++limit>8 || (!length && ((prep->op!=IMOVP && prep->op!=IMOVW && !(prep->op==ISLICEA && q->middle==48)) || UDST(prep->mode)!=USRC(q->mode) || prep->destination<q->source || prep->destination+(prep->op==IMOVW?4:8)>q->source+width)))break;slot--;
