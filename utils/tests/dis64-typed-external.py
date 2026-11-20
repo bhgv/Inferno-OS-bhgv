@@ -167,7 +167,7 @@ def rootpath_argument(original,code,at,maps,pending,oldoffset,new,r):
 
 def verify(data,r,imports,loads=False,rows=None):
     assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and (rows is not None or 'calls'not in r)
-    if r.get('result')==[14,24]:assert r.get('result_channels')==[6,6,6]
+    if r.get('result')==[14,24]and not r.get('result_aggregate'):assert r.get('result_channels')==[6,6,6]
     _,old,types=BASE['READ']['legacy_instructions'](data,with_types=True)
     layout=json.loads(json.dumps(r));layout.update(schema='inferno-typed-body-v2');BASE['verify'](data,layout,validate_code=False)
     maps={space:{leaf[0]+i:leaf[1]+i for leaf in r[space]['leaves']for i in range(leaf[2])}for space in ('frame','data')}
@@ -175,7 +175,7 @@ def verify(data,r,imports,loads=False,rows=None):
     for first,end,target,descriptor,offset,contract,inherited in r.get('calls',[]):
         assert rows is not None and previous<first<end<len(original);previous=end
         callee=next(x for x in rows if x['first']==target);assert callee['accepted']and callee['descriptor']==descriptor
-        assert contract==(96 if callee.get('result_geometry')==8 else 112 if callee.get('result_geometry')==16 else 72 if callee.get('result_channels')==[6,6,6]else 12 if callee.get('result_words')else 16 if callee.get('result_mixed')else 48 if callee.get('result_pair')else callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
+        assert contract==(callee['result_aggregate']if callee.get('result_aggregate')else 96 if callee.get('result_geometry')==8 else 112 if callee.get('result_geometry')==16 else 72 if callee.get('result_channels')==[6,6,6]else 12 if callee.get('result_words')else 16 if callee.get('result_mixed')else 48 if callee.get('result_pair')else callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
         at=first+1;preps=set()
         pending=original[first]['d'][0];assert original[first]['op']==5 and original[first]['s']==[descriptor]
         assert r['code'][first]==[5,17,descriptor,0,40,0]
@@ -256,7 +256,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 screenprep=(o['d'][0],temp[1]);at+=1;o=original[at];assert o['s'][0]==screenprep[0]and o['mode']>>3&7==5
             sm=o['mode']>>3&7
             assert o['d']==[pending,next(x[0]for x in callee['frame']['leaves']if x[1]==arg[0])]
-            if arg[1]==1:
+            if arg[1]in(1,14):
                 assert loads and arg[2]==arg[3]and arg[3]in(8,16)
                 assert o['op']==OPCODES['IMOVM']and o['mode']==(sm<<3)|64|5 and o['m']==arg[3]
                 width=arg[3];role=r['code'][at][5]
@@ -314,6 +314,9 @@ def verify(data,r,imports,loads=False,rows=None):
             elif r['code'][end-1][5]==93:
                 assert loads and contract==24 and not inherited and binding['mode']==45 and binding['s'][1]==48 and offset==maps['frame'][binding['s'][0]]
                 assert r['code'][end-1]==[39,45,offset,24,32,93]
+            elif r['code'][end-1][5]==85:
+                assert loads and contract in(80,92,124)and not inherited and binding['mode']==13
+                assert offset==maps['frame'][binding['s'][0]]and r['code'][end-1]==[39,13,offset,0,32,85]
             elif inherited:
                 assert binding['mode']==45 and binding['s']==[16,0]and offset==32
                 assert r['code'][end-1]==[118,13,32,0,32,64]
@@ -324,7 +327,7 @@ def verify(data,r,imports,loads=False,rows=None):
         if spawn:assert loads and not contract and not inherited and callee['result']==[0,0]
         opcode=OPCODES['ISPAWN']if spawn else 4
         assert original[end]=={'op':opcode,'mode':10,'m':None,'s':[pending],'d':[target]}
-        assert r['code'][end]==[opcode,10,40,0,target,186 if spawn else 32 if inherited else 0]
+        assert r['code'][end]==[opcode,10,40,0,target,186 if spawn else (78 if contract==24 and r.get('result_aggregate')in(80,124)else 32)if inherited else 0]
         covered.update(set(range(first,end+1))-preps);inside.update(range(first+1,end+1))
     previous=-1
     for v in r.get('variadics',[]):
@@ -723,6 +726,23 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned==77:
+            c=r['result_aggregate'];width={12:12,48:16,80:16,92:20,124:24}[c];count={12:3,48:2,80:2,92:5,124:3}[c]
+            sm=o['mode']>>3&7;assert loads and op==o['op']and o['d'][0]==16 and o['d'][1]%4==0
+            field=o['d'][1]//4;assert field<count;off=8*field if c in(48,124)else(8 if c==80 and field else 4*field)
+            n=8 if op==41 else 4 if op==45 else o['m']if op==42 else width if op==OPCODES['IMOVMP']else 0
+            root=c in(48,124)or(c==80 and field==0)
+            assert n and n<=width-off and op in(41,45,42,OPCODES['IMOVMP'])and d==32 and m==(c<<16)|(n<<8)|off
+            assert mode==(sm<<3)|(64 if op in(42,OPCODES['IMOVMP'])else 0)|5 and sm in(0,1,2)
+            assert s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
+            if op in(41,45):assert o['m']is None and root==(op==41)
+            elif op==42:
+                assert c in(12,92)and sm in(0,1)and n%4==0
+                for k in range(0,n,4):assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0]+k)==[o['s'][0]+k,s+k,4,4,9]
+            else:
+                assert c in(48,124)and field==0 and sm==1 and types[o['m']][0]==4*count and list(types[o['m']][1])==[192 if c==48 else 224]
+                for k in range(count):assert maps['frame'][o['s'][0]+4*k]==s+8*k
+            continue
         if returned==68:
             assert loads and op==o['op']==OPCODES['IMOVMP']and mode==o['mode']==69 and o['s']and len(o['s'])==1 and o['d'][1]==0 and types[o['m']][0]==104 and list(types[o['m']][1])==[132,38,4]
             assert [s,m,d]==[maps['data'][o['s'][0]],11,maps['frame'][o['d'][0]]];continue

@@ -236,6 +236,26 @@ typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out,
 	return 1;
 }
 
+static int typedwmref(Type*,char*,char*);
+/* Closed flattened aggregate ABIs used by Wmlib and Winplace. */
+static unsigned int
+typedaggregatecontract(Type*t,Dis64Layout*l)
+{Decl*d;unsigned int i,c=0;if(!t||t->kind!=Ttuple||!dis64layouttype(t,l))return 0;d=t->ids;
+ if(l->count==2&&d&&d->next&&!d->next->next&&l->legacybytes==8&&l->bytes==16){if(d->ty->kind==Tstring&&d->next->ty->kind==Tint)c=80;else if(typedwmref(d->ty,"Draw","Context")&&d->next->ty->kind==Tstring)c=48;}
+ if(l->count==3&&l->legacybytes==12){if(d&&d->next&&d->next->next&&!d->next->next->next&&d->ty->kind==Tstring&&typedwmref(d->next->ty,"Draw","Image")&&d->next->next->ty->kind==Tstring&&l->bytes==24)c=124;else if(!typedwordtriple(t)&&l->bytes==12)c=12;}
+ if(l->count==5&&l->legacybytes==20&&l->bytes==20)c=92;
+ if(!c)return 0;for(i=0;i<l->count;i++){Dis64LayoutLeaf*v=l->leaves+i;int root=c==48||c==124||(c==80&&!i),kind=c==48?(i?Tstring:Tref):c==124?(i==1?Tref:Tstring):c==80&&!i?Tstring:Tint;unsigned int off=c==48||c==124?8*i:c==80?(i?8:0):4*i;if(v->legacy!=4*i||v->native!=off||v->oldbytes!=4||v->bytes!=(root?8:4)||v->kind!=kind)return 0;}return c;}
+static int
+typedaggregatereturn(Inst*in,Dis64TypedBody*p,unsigned int pc)
+{Dis64Layout l={0};Dis64Layout*space;unsigned int c=p->resultaggregate,i,k,width,off,base,wire=0;long source=0;int actual,ok=0;
+ if(!c||in->dm!=Afpind||in->d.reg!=16||in->d.offset<0||in->branch||!typedaggregatecontract(p->resulttype,&l))goto done;
+ for(i=0;i<l.count;i++)if(l.leaves[i].legacy==(unsigned int)in->d.offset)break;if(i==l.count)goto done;off=l.leaves[i].native;width=in->op==IMOVP?8:in->op==IMOVW?4:in->op==IMOVM?in->m.offset:in->op==IMOVMP?l.bytes:0;if(!width||width>l.bytes-off)goto done;
+ if(in->op==IMOVP||in->op==IMOVW){if(in->mm!=Anone||width!=l.leaves[i].bytes||!typedoperand(in->sm,&in->s,width==8?TypedRoot:Tint,width==4,0,p,&source,&wire,&actual)||(width==8&&actual!=l.leaves[i].kind&&actual!=Tany))goto done;}
+ else if(in->op==IMOVM){if(in->mm!=Aimm||(in->sm!=Afp&&in->sm!=Amp)||width%4)goto done;space=in->sm==Afp?&p->frame:&p->data;for(k=0;k<width;k+=4){unsigned int j,n;if(i+k/4>=l.count||l.leaves[i+k/4].kind!=Tint||l.leaves[i+k/4].native!=off+k||!dis64layoutaddress(space,in->s.reg+k,4,0,&n)||(k&&n!=base+k))goto done;for(j=0;j<space->count;j++)if(space->leaves[j].legacy==(unsigned int)in->s.reg+k&&space->leaves[j].kind==Tint)break;if(j==space->count)goto done;if(!k)base=n;}source=base;wire=in->sm==Afp?AFP:AMP;}
+ else if(in->op==IMOVMP){Decl*d=in->m.decl;if((c!=48&&c!=124)||off||in->sm!=Afp||in->mm!=Adesc||!d||!d->desc||d->desc->id!=in->m.offset||d->desc->size!=l.legacybytes||d->desc->nmap!=1||d->desc->map[0]!=(c==48?0xc0:0xe0))goto done;for(k=0;k<l.count;k++){unsigned int n;if(!dis64layoutaddress(&p->frame,in->s.reg+4*k,4,1,&n)||(k&&n!=base+8*k))goto done;if(!k)base=n;}source=base;wire=AFP;}
+ else goto done;p->code[pc]=(Dis64Instruction){in->op,SRC(wire)|((in->op==IMOVM||in->op==IMOVMP)?AXIMM:0)|DST(AFP|AIND),(c<<16)|(width<<8)|off,source,32};p->returns[pc]=77;ok=1;
+ done:dis64layoutfree(&l);return ok?1:typedfail(p,"aggregate-return-layout");}
+
 /* Meet all reachable paths: a caller-owned result must be defined before RET. */
 static int
 typedresults(Dis64TypedBody *p)
@@ -245,10 +265,11 @@ typedresults(Dis64TypedBody *p)
 	int ok=1;
 	if(p->resultkind==Tnone) return 1;
 	state=allocmem(p->count);memset(state,0,p->count);
-	queue=allocmem(((p->resulttriple?4:p->resultpair?3:2)*p->count+1)*sizeof(*queue));state[0]=1;queue[tail++]=0;
+	queue=allocmem(((p->resultaggregate?32:p->resulttriple?4:p->resultpair?3:2)*p->count+1)*sizeof(*queue));state[0]=1;queue[tail++]=0;
 	while(head<tail){
 		pc=queue[head++];flow=state[pc];
-        if(p->resulttriple){if(p->returns[pc]==2 || p->returns[pc]==4 || p->returns[pc]==8)flow|=p->returns[pc];if(p->returns[pc]==32 || p->returns[pc]==171)flow=15;}
+        if(p->resultaggregate){unsigned int c=p->resultaggregate,n=c==92?5:(c==12||c==124)?3:2;if(p->returns[pc]==32)flow=(1U<<(n+1))-1;if(p->returns[pc]==78)flow|=2;if(p->returns[pc]==77){unsigned int off=p->code[pc].middle&255,bytes=(p->code[pc].middle>>8)&255,first=c==80?(off?1:0):off/((c==48||c==124)?8:4),count=p->code[pc].op==IMOVP?1:bytes/((c==48||c==124)?8:4);while(count--)flow|=2U<<(first++);}}
+        else if(p->resulttriple){if(p->returns[pc]==2 || p->returns[pc]==4 || p->returns[pc]==8)flow|=p->returns[pc];if(p->returns[pc]==32 || p->returns[pc]==171)flow=15;}
         else if(p->resultpair){if(p->returns[pc]==8)flow|=2;if(p->returns[pc]==16)flow|=4;if(p->returns[pc]==32)flow=7;}
         else if((p->returns[pc] && p->returns[pc]<=32) || ((p->returns[pc]==109 || (p->returns[pc]==111 && p->code[pc].op==IMOVP)) || p->returns[pc]==174 || p->returns[pc]==185 || p->returns[pc]==246 || p->returns[pc]==247 || (p->returns[pc]==158 && p->code[pc].destination==32 && UDST(p->code[pc].mode)==(AFP|AIND)) || ((p->returns[pc]==154 || (p->returns[pc]==153 && !(p->code[pc].middle&0xff0000) && p->code[pc].destination==32)) && UDST(p->code[pc].mode)==(AFP|AIND))))flow=3;
         n=0;
@@ -277,7 +298,7 @@ typedresults(Dis64TypedBody *p)
 			if(joined!=state[edge[i]]){state[edge[i]]=joined;queue[tail++]=edge[i];}
 		}
 	}
-	if(ok)for(pc=0;pc<p->count;pc++)if(p->code[pc].op==IRET && (p->resulttriple?(state[pc]!=0 && state[pc]!=15):p->resultpair?(state[pc]!=0 && state[pc]!=7):state[pc]==1)){p->badpc=p->first+pc;ok=typedfail(p,"undefined-result");break;}
+	if(ok)for(pc=0;pc<p->count;pc++)if(p->code[pc].op==IRET && (p->resultaggregate?(state[pc]!=0 && state[pc]!=((1U<<((p->resultaggregate==92?5:(p->resultaggregate==12||p->resultaggregate==124)?3:2)+1))-1)):p->resulttriple?(state[pc]!=0 && state[pc]!=15):p->resultpair?(state[pc]!=0 && state[pc]!=7):state[pc]==1)){p->badpc=p->first+pc;ok=typedfail(p,"undefined-result");break;}
 	free(state);free(queue);return ok;
 }
 
@@ -294,14 +315,14 @@ typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned in
 	if(fn==nil || fn->ty==nil || fn->pc==nil || fn->ty->kind!=Tfn || fn->ty->varargs ||
 	   fn->handler || fn->ty->polys!=nil || fn->ty->tof==nil || fn->pc->pc<0)
 		return typedfail(p,"function-result-or-polymorphism");
-	p->resultkind=fn->ty->tof->kind;
+	p->resultkind=fn->ty->tof->kind;p->resulttype=fn->ty->tof;
 	switch(p->resultkind){
 	case Tnone:break;
 	case Tbyte:p->resultbytes=1;break;
 	case Tint:case Tfix:p->resultbytes=4;break;
 	case Tbig:case Treal:case Tstring:case Tref:case Tarray:case Tlist:case Tchan:case Tmodule:p->resultbytes=8;break;
     case Tadt:{Dis64Layout layout={0};int ok=loads && typedwordgeometry(fn->ty->tof,&layout);if(ok)p->resultgeometry=p->resultbytes=layout.bytes;dis64layoutfree(&layout);if(!ok)return typedfail(p,"aggregate-result");break;}
-	case Ttuple:if(loads && typedwordtriple(fn->ty->tof)){p->resultbytes=12;p->resulttriple=2;}else if(loads && typedchanneltriple(fn->ty->tof)){p->resultbytes=24;p->resulttriple=1;}else if(loads && typedpairtype(fn->ty->tof)){p->resultbytes=16;p->resultpair=typedpairtype(fn->ty->tof);}else return typedfail(p,"aggregate-result");break;
+	case Ttuple:{Dis64Layout l={0};if(loads&&(p->resultaggregate=typedaggregatecontract(fn->ty->tof,&l)))p->resultbytes=l.bytes;dis64layoutfree(&l);if(p->resultaggregate)break;}if(loads && typedwordtriple(fn->ty->tof)){p->resultbytes=12;p->resulttriple=2;}else if(loads && typedchanneltriple(fn->ty->tof)){p->resultbytes=24;p->resulttriple=1;}else if(loads && typedpairtype(fn->ty->tof)){p->resultbytes=16;p->resultpair=typedpairtype(fn->ty->tof);}else return typedfail(p,"aggregate-result");break;
 	default:return typedfail(p,"aggregate-result");
 	}
 	p->first=fn->pc->pc;
@@ -652,7 +673,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             if((multi!=nil && strcmp(multi,"1")==0) || (external!=nil && strcmp(external,"1")==0) || (loads!=nil && strcmp(loads,"1")==0)){
                 fprint(2,",\"signature\":");typedsignature(fn);fprint(2,",\"export_name\":");typedexportname(fn);
             }
-			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair && p.resultpair<3)fprint(2,",\"result_pair\":[%d,%d]",p.resultpair==2?Tstring:Tmodule,p.resultpair==2?Tstring:Tlist);if(p.resultpair>=3)fprint(2,",\"result_mixed\":[%d,%d]",p.resultpair==3?Tint:p.resultpair==4?Tbig:Treal,Tstring);if(p.resulttriple==2)fprint(2,",\"result_words\":[%d,%d,%d]",Tint,Tint,Tint);if(p.resulttriple==1)fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);if(p.resultgeometry)fprint(2,",\"result_geometry\":%d",p.resultgeometry);
+			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair && p.resultpair<3)fprint(2,",\"result_pair\":[%d,%d]",p.resultpair==2?Tstring:Tmodule,p.resultpair==2?Tstring:Tlist);if(p.resultpair>=3)fprint(2,",\"result_mixed\":[%d,%d]",p.resultpair==3?Tint:p.resultpair==4?Tbig:Treal,Tstring);if(p.resulttriple==2)fprint(2,",\"result_words\":[%d,%d,%d]",Tint,Tint,Tint);if(p.resulttriple==1)fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);if(p.resultaggregate)fprint(2,",\"result_aggregate\":%d",p.resultaggregate);if(p.resultgeometry)fprint(2,",\"result_geometry\":%d",p.resultgeometry);
 			fprint(2,",\"descriptor\":%d,\"data_descriptor\":%d,\"frame\":",fn->desc->id,descriptors->id);
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);

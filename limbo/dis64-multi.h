@@ -831,7 +831,7 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  if(value->native64type && value->decl && value->decl->store==Dlocal && value->decl->sym && value->decl->sym->name[0]=='.' && value->decl->sym->name[1]=='t' && value->reg==value->decl->offset && !value->offset)valuetype=value->native64type;
  if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
     !value->decl || !value->decl->ty ||
-    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedintlisttype(value) && !typedpointerlisttype(value) && !typedwindowlisttype(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
+    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedintlisttype(value) && !typedpointerlisttype(value) && !typedwindowlisttype(value) && !typedrectlisttype(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
     !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
     !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || (!valuetype || kind!=valuetype->kind) || (typedloadreftype(value) && sm!=AFP && !(sm==AMP && typedloadglobalclient(value,p))) ||
     !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || (kind==Tchan && middle>65535) ||
@@ -953,6 +953,16 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
+        if(c->loads && !spawning && kind==Ttuple){
+            Dis64Layout tuple={0};unsigned int j,src=0,dst=0,x,y;int valid=dis64layouttype(arg->ty,&tuple),actual;long part;unsigned int wire;
+            if(!valid || (tuple.bytes!=8 && tuple.bytes!=16) || tuple.bytes!=tuple.legacybytes || tuple.count!=tuple.bytes/4 || in->op!=IMOVM || in->mm!=Aimm || in->m.offset!=tuple.bytes || in->branch || (in->sm!=Afp && in->sm!=Amp) || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset)valid=0;
+            for(j=0;valid && j<tuple.count;j++){Addr a=in->s;a.reg+=4*j;a.offset=0;
+                if(tuple.leaves[j].kind!=Tint || tuple.leaves[j].bytes!=4 || tuple.leaves[j].native!=4*j || tuple.leaves[j].legacy!=4*j || !dis64layoutaddress(&child->frame,arg->offset+4*j,4,0,&x) || x<64 || x>65535 || !typedoperand(in->sm,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || part<0)valid=0;
+                else {y=part;if(!j){src=y;dst=x;}else if(y!=src+4*j || x!=dst+4*j)valid=0;}
+            }
+            if(valid){p->code[at-p->first]=(Dis64Instruction){IMOVM,SRC(in->sm==Afp?AFP:AMP)|AXIMM|DST(AFP|AIND),tuple.bytes,src,dst};p->returns[at++-p->first]=64;}
+            dis64layoutfree(&tuple);if(!valid)return typedfail(p,"local-word-tuple-argument");continue;
+        }
         if(c->loads && !spawning && kind==Tadt){
             int prepared=0;
             if(in->op!=IMOVP && (in->op!=IMOVM || in->m.offset!=arg->ty->size || in->s.native64type&&in->s.native64type->kind==Ttuple)){if(!typedlocalgeometryliteral(c,p,child,frame,arg,end,&at))return 0;continue;}
@@ -1056,8 +1066,9 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(at+1!=end || (binding=c->instructions[at])==nil || binding->op!=ILEA || binding->mm!=Anone ||
            binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil)return typedfail(p,"multi-result");
         kind=child->resultkind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
-        contract=child->resultpair>=3?16:child->resulttriple==2?12:child->resultgeometry?(child->resultgeometry==8?96:112):child->resulttriple?72:child->resultpair?48:child->resultbytes | (root?16:0);
-        if(c->loads && typedimagearraybinding(c,p,frame,binding,c->functions[target]->ty->tof,pc,at)){
+        contract=child->resultaggregate?child->resultaggregate:child->resultpair>=3?16:child->resulttriple==2?12:child->resultgeometry?(child->resultgeometry==8?96:112):child->resulttriple?72:child->resultpair?48:child->resultbytes | (root?16:0);
+        if(child->resultaggregate&&binding->sm==Afp){if(!typedwmtuplebinding(c->functions[target],binding,p,&local,0))return typedfail(p,"local-aggregate-result-binding");p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=(contract==80||contract==92||contract==124)?85:128|contract;}
+        else if(c->loads && typedimagearraybinding(c,p,frame,binding,c->functions[target]->ty->tof,pc,at)){
             local=p->code[at-p->first].source;
         }else if(c->loads&&child->resultgeometry&&binding->sm==Afpind&&binding->s.reg!=16){
             if(!typedwindowgeometrybinding(binding,c->functions[target]->ty->tof,p,at-p->first,&local,&contract))return typedfail(p,"local-window-geometry-result");
@@ -1083,13 +1094,13 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             if(!binding->s.decl || binding->s.decl->store!=Dglobal || !typedoperand(Amp,&binding->s,TypedRoot,0,0,p,&source,&sm,&actual) || actual!=kind)return typedfail(p,"multi-global-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AMP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;
         }else{
-            if(child->resultgeometry || binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || kind!=p->resultkind || child->resultpair!=p->resultpair || child->resulttriple!=p->resulttriple)return typedfail(p,"multi-inherit");
+            if(child->resultgeometry || binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || !((kind==Tstring && (p->resultaggregate==80 || p->resultaggregate==124)) || (kind==p->resultkind && child->resultpair==p->resultpair && child->resulttriple==p->resulttriple && child->resultaggregate==p->resultaggregate)))return typedfail(p,"multi-inherit");
             inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;
         }
         at++;
     }
     if(at!=end)return typedfail(p,"multi-setup-length");
-    p->code[end-p->first]=(Dis64Instruction){spawning?ISPAWN:ICALL,SRC(AFP)|DST(AIMM),0,40,call->d.offset};p->returns[end-p->first]=spawning?186:inherit?32:0;
+    p->code[end-p->first]=(Dis64Instruction){spawning?ISPAWN:ICALL,SRC(AFP)|DST(AIMM),0,40,call->d.offset};p->returns[end-p->first]=spawning?186:inherit?(kind==Tstring && (p->resultaggregate==80 || p->resultaggregate==124)?78:32):0;
     site=p->sites+p->nsites++;*site=(Dis64TypedSite){pc-p->first,end-p->first,call->d.offset,frame->s.offset,local,contract,inherit};
     *next=end+1;return 1;
 }
@@ -1130,7 +1141,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     for(pc=p->first;pc<stop;){
         in=c->instructions[pc];p->badpc=pc;
         if(in==nil){typedfail(p,"multi-instruction-order");goto fail;}
-        if(c->loads && in->op==IINDB){
+        if(c->loads&&p->resultaggregate&&in->dm==Afpind&&in->d.reg==16&&(in->op==IMOVP||in->op==IMOVW||in->op==IMOVM||in->op==IMOVMP)){if(!typedaggregatereturn(in,p,pc-p->first))goto fail;pc++;}
+        else if(c->loads && in->op==IINDB){
             if(pc+1>=stop || !typedlibrarybyteindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
         }else if(c->loads&&in->op==IMOVP&&(in->sm==Afpind||in->sm==Ampind)&&(in->dm==Afpind||in->dm==Ampind)&&typedrootfieldcopy(in,p,pc-p->first)){pc++;
         }else if(c->loads && (in->op==INEW||in->op==INEWZ||in->op==IMOVMP)&&typedwindowconstruct(in,p,pc-p->first)){pc++;

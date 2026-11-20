@@ -59,7 +59,7 @@ typedwmtuple(Type*t,Dis64Layout*l)
 static unsigned int
 typedwmtuplebinding(Decl*fn,Inst*b,Dis64TypedBody*p,unsigned int*base,int relocate)
 {Dis64Layout l={0};unsigned int c,i,j,first,end,delta,next;int ok=0;
- c=typedwmtuple(fn->ty->tof,&l);if(!c||b->sm!=Afp||b->s.reg<32)goto done;
+ c=typedaggregatecontract(fn->ty->tof,&l);if(!c)c=typedwmtuple(fn->ty->tof,&l);if(!c||b->sm!=Afp||b->s.reg<32)goto done;
  for(first=0;first<p->frame.count;first++)if(p->frame.leaves[first].legacy==(unsigned int)b->s.reg)break;
  if(first>p->frame.count||l.count>p->frame.count-first)goto done;*base=(p->frame.leaves[first].native+7)&~7U;
  for(i=0;i<l.count;i++){Dis64LayoutLeaf*a=l.leaves+i,*v=p->frame.leaves+first+i;if(v->legacy!=b->s.reg+a->legacy||v->oldbytes!=a->oldbytes||v->bytes!=a->bytes||v->kind!=a->kind||(!relocate&&v->native!=*base+a->native))goto done;}
@@ -70,6 +70,7 @@ typedwmtuplebinding(Decl*fn,Inst*b,Dis64TypedBody*p,unsigned int*base,int reloca
 static int
 typedwmtupleframe(TypedMulti*c,Decl*owner,Dis64TypedBody*p,unsigned int stop)
 {unsigned int pc,end,base;Inst*in,*call,*b;Decl*fn,*arg;Dis64Layout l={0};unsigned int contract,bytes;
+ for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IFRAME)continue;end=pc+1;while(end<stop&&c->instructions[end]&&c->instructions[end]->op!=ICALL&&c->instructions[end]->op!=IFRAME&&!c->instructions[end]->branch)end++;if(end>=stop||!c->instructions[end]||c->instructions[end]->op!=ICALL||c->instructions[end]->d.offset<0||(unsigned int)c->instructions[end]->d.offset>=c->count||c->entries[c->instructions[end]->d.offset]<0)continue;fn=c->functions[c->entries[c->instructions[end]->d.offset]];contract=typedaggregatecontract(fn->ty->tof,&l);dis64layoutfree(&l);if(!contract||!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;if(!typedwmtuplebinding(fn,b,p,&base,1))return typedfail(p,"local-aggregate-result-frame");}
  for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IMFRAME||!(fn=in->m.decl)||!fn->ty||fn->ty->kind!=Tfn)continue;contract=typedwmtuple(fn->ty->tof,&l);bytes=l.legacybytes;dis64layoutfree(&l);if(!contract)continue;
   end=pc+1;while(end<stop&&c->instructions[end]&&c->instructions[end]->op!=IMCALL&&c->instructions[end]->op!=IMFRAME&&!c->instructions[end]->branch)end++;if(end<=pc+1||end>=stop||!(call=c->instructions[end])||call->op!=IMCALL||call->m.decl!=fn||!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;
   for(arg=owner->ty->ids;arg;arg=arg->next)if(!arg->ty||(b->s.reg<arg->offset+arg->ty->size&&b->s.reg+bytes>arg->offset))return typedfail(p,"wm-tuple-result-formal-overlap");

@@ -161,9 +161,9 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
            c->callee==nil || c->callee==H || (!c->external && (c->target==nil || c->target==H)) || c->ordinal>536870911 || c->inherited>1 ||
            c->external>1 || (c->external && (c->ordinal>32767 || !native64librarymoduleoperand(c->modulemode,c->moduleoffset,fpbytes,mpbytes))) ||
            c->callee->size<64 || c->callee->size>65536 || c->callee->size%8 ||
-           ((c->contract==72)!=(c->resultcontract==72)) || (c->resultcontract && c->resultcontract!=16 && c->resultcontract!=48 && c->resultcontract!=72 && !native64wmtuplewidth(c->resultcontract) && !native64geometryresultwidth(c->resultcontract)) ||
+           ((c->contract==72)!=(c->resultcontract==72)) || (c->resultcontract && c->resultcontract!=12 && c->resultcontract!=16 && c->resultcontract!=48 && c->resultcontract!=72 && !native64wmtuplewidth(c->resultcontract) && !native64geometryresultwidth(c->resultcontract)) ||
            ((native64geometryresultwidth(c->contract) || native64geometryresultwidth(c->resultcontract)) && (c->contract!=c->resultcontract || (c->inherited && (!c->external || c->callerresultcontract!=c->contract)))) ||
-           ((native64wmtuplewidth(c->contract)||native64wmtuplewidth(c->resultcontract))&&(!c->external||c->inherited||c->contract!=c->resultcontract)) || (c->contract==48 && c->external) || (c->contract==88 && (!c->external || c->inherited || c->callee->size!=72 || c->callee->np!=2 || c->callee->map[0] || c->callee->map[1]!=0x80)) || (c->contract && !native64wmtuplewidth(c->contract) && !native64geometryresultwidth(c->contract) && c->contract!=16 && c->contract!=48 && c->contract!=72 && c->contract!=88 && ((c->contract&~31) || (width!=1 && width!=4 && width!=8) || ((c->contract&16) && width!=8))) ||
+           ((native64wmtuplewidth(c->contract)||native64wmtuplewidth(c->resultcontract))&&(c->contract!=c->resultcontract||(c->inherited&&c->callerresultcontract!=c->contract))) || (c->contract==48 && c->external) || (c->contract==88 && (!c->external || c->inherited || c->callee->size!=72 || c->callee->np!=2 || c->callee->map[0] || c->callee->map[1]!=0x80)) || (c->contract && !native64wmtuplewidth(c->contract) && !native64geometryresultwidth(c->contract) && c->contract!=12 && c->contract!=16 && c->contract!=48 && c->contract!=72 && c->contract!=88 && ((c->contract&~31) || (width!=1 && width!=4 && width!=8) || ((c->contract&16) && width!=8))) ||
            (c->inherited && !c->contract) || (c->contract && c->end<c->first+2))return 0;
         s=steps+c->first;
         if(c->external){
@@ -267,7 +267,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         if(c->contract){
             s=steps+c->end-1;width=native64wmtuplewidth(c->contract)?native64wmtuplewidth(c->contract):native64geometryresultwidth(c->contract)?native64geometryresultwidth(c->contract):c->contract==16?16:c->contract==72?24:c->contract==88?88:c->contract==48?16:c->contract&15;
             if(s->returned==60){if(c->contract!=24||!c->external||c->inherited||s->op!=ILEA||s->mode!=(SRC(AFP|AIND)|DST(AFP|AIND))||s->d!=32||!native64windowrootfield(s->m)||!native64typedrootoperand(AFP,s->s,fpbytes,mpbytes))return 0;
-            }else if(s->returned==85){if(!native64wmtuplewidth(c->contract)||!c->external||c->inherited||s->op!=ILEA||s->mode!=(SRC(AFP)|DST(AFP|AIND))||s->m||s->d!=32||s->s<64||s->s%8||(unsigned long)s->s>fpbytes||width>fpbytes-s->s)return 0;
+            }else if(s->returned==85){if(!native64wmtuplewidth(c->contract)||c->inherited||s->op!=ILEA||s->mode!=(SRC(AFP)|DST(AFP|AIND))||s->m||s->d!=32||s->s<64||s->s%8||(unsigned long)s->s>fpbytes||width>fpbytes-s->s)return 0;
             }else if(s->returned==131){
                 if(c->contract!=24 || c->inherited || s->op!=ILEA || s->mode!=(SRC(AFP)|DST(AFP|AIND)) || s->m || s->d!=32 || !native64typedrootoperand(AFP,s->s,fpbytes,mpbytes) || !c->first || steps[c->first-1].returned!=131 || steps[c->first-1].op!=IINDL || steps[c->first-1].s!=s->s)return 0;
             }else if(s->returned==81){if(c->inherited||!native64geometryresultwidth(c->contract)||!native64windowgeometryfield(s->m,native64geometryresultwidth(c->contract))||s->op!=ILEA||s->mode!=(SRC(AFP|AIND)|DST(AFP|AIND))||s->d!=32||!native64typedrootoperand(AFP,s->s,fpbytes,mpbytes))return 0;
@@ -285,7 +285,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                     }else if(c->contract!=24 || s->op!=ILEA || s->mode!=(SRC(AMP)|DST(AFP|AIND)) || s->returned!=(128|24) || !native64typedrootoperand(AMP,s->s,fpbytes,mpbytes))return 0;
                 }else if(s->mode!=(SRC(AFP)|DST(AFP|AIND)))return 0;
                 else if(c->inherited){if(s->op!=IMOVL || s->s!=32 || s->returned!=64)return 0;}
-                else if(s->op!=ILEA || s->returned!=(128|c->contract) || s->s<64 || (unsigned long)s->s>fpbytes || width>fpbytes-s->s || s->s%(native64geometryresultwidth(c->contract)?4:(c->contract==16 || c->contract==48 || c->contract==72 || c->contract==88)?8:width))return 0;
+                else if(s->op!=ILEA || s->returned!=(128|c->contract) || s->s<64 || (unsigned long)s->s>fpbytes || width>fpbytes-s->s || s->s%(native64geometryresultwidth(c->contract)||c->contract==12?4:(c->contract==16 || c->contract==48 || c->contract==72 || c->contract==88)?8:width))return 0;
             }
         }
         s=steps+c->end;
@@ -293,7 +293,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             if(s->op!=IMCALL || s->mode!=(SRC(AFP)|AXIMM|DST(c->modulemode)) || s->m!=c->ordinal || s->s!=40 || s->d!=c->moduleoffset || s->returned!=(c->inherited?32:0))return 0;
         }else if(s->op==ISPAWN){
             if(c->contract || c->inherited || c->resultcontract || s->mode!=(SRC(AFP)|DST(AIMM)) || s->m || s->s!=40 || s->returned!=186)return 0;
-        }else if(s->op!=ICALL || s->mode!=(SRC(AFP)|DST(AIMM)) || s->m || s->s!=40 || s->returned!=(c->inherited?32:0))return 0;
+        }else if(s->op!=ICALL || s->mode!=(SRC(AFP)|DST(AIMM)) || s->m || s->s!=40 || s->returned!=(c->inherited?(c->contract==24 && (c->callerresultcontract==80 || c->callerresultcontract==124)?78:32):0))return 0;
     }
     for(i=0;i<count;){
         if(k<n && i==calls[k].first){i=calls[k++].end+1;continue;}
