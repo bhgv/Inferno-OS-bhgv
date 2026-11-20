@@ -313,3 +313,11 @@ sweep, showborders и showborder. В C/JIT исполняются исходны
 буферы и полное освобождение. Теперь граница проходит по сборке и подключению
 зависимостей и сервисов AWM: Wmsrv 3/34, Wmclient 5/21, String 7/21, Bufio 0/27
 тел в текущем preflight. Это не запуск окна AWM или Android UI.
+
+
+Полная библиотека [String](native64-string-library.ru.md): теперь checked IR
+принимает 21/21 исходных тел; все они исполнены в C/JIT. Снимок остальных
+зависимостей после этого изменения: Arg 8/8, Bufio 0/27, Wmsrv 3/34,
+Wmclient 5/21, Wmlib 8/25, Winplace 8/21, Titlebar 4/7.
+emuinit остаётся 4/4, AWM — 20/20. Это счётчики checked IR; они не
+означают запуск GUI или admission полного файлового графа.

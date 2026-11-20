@@ -53,6 +53,7 @@ on:
       - 'utils/tests/native64-rect-list*'
       - 'utils/tests/native64-format-fields*'
       - 'utils/tests/native64-string-word*'
+      - 'utils/tests/native64-string-library*'
       - 'utils/tests/native64-mp-client-nil*'
       - 'utils/tests/native64-pointer-args*'
       - 'utils/tests/native64-pointer-fields*'
@@ -237,6 +238,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/format-fields.log"
           python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/string-word.log"
+          python3 utils/tests/native64-string-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/string-library.log"
           python3 utils/tests/native64-mp-client-nil.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/mp-client-nil.log"
           python3 utils/tests/native64-pointer-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -430,6 +433,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/format-fields.log"
           python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/string-word.log"
+          python3 utils/tests/native64-string-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/string-library.log"
           python3 utils/tests/native64-mp-client-nil.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/mp-client-nil.log"
           python3 utils/tests/native64-pointer-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

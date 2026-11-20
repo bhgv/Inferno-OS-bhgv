@@ -58,13 +58,15 @@ def inthead_argument(original,code,at,maps,pending,oldoffset,offset,r):
     assert code[at]==[41,1,maps['data'][a['s'][0]],0,temp,253]
     return at+1
 
-def word_argument(original,step,maps,pending,oldoffset,offset):
+def word_argument(original,step,maps,pending,oldoffset,offset,row=None):
     sm=original['mode']>>3&7;arm=original['mode']&192;mm=2 if arm==64 else 1 if arm==128 else 0
-    assert original['op']in[OPCODES[n]for n in('IADDW','ISUBW','IMULW','IDIVW','IMODW','IANDW','IORW','IXORW','ISHLW','ISHRW')]
+    assert original['op']in[OPCODES[n]for n in('IADDW','ISUBW','IMULW','IDIVW','IMODW','IANDW','IORW','IXORW','ISHLW','ISHRW','IINDC')]
     assert sm in(0,1,2)and arm in(64,128,192)and original['d']==[pending,oldoffset]
     source=original['s'][0]if sm==2 else maps['frame'if sm else'data'][original['s'][0]]
     middle=original['m']if mm==2 else maps['frame'if mm else'data'][original['m']]
-    assert step==[original['op'],original['mode'],source,middle,offset,130]
+    if original['op']==OPCODES['IINDC']:
+        assert row is not None and sm in(0,1)and next(l for l in row['frame'if sm else'data']['leaves']if l[0]==original['s'][0])[4]==13
+    assert step==[original['op'],original['mode'],source,middle,offset,137 if original['op']==OPCODES['IINDC']else 130]
 
 def array_argument(original,code,at,maps,pending,oldoffset,offset):
     a=original[at];b=original[at+1];sm=a['mode']>>3&7;dm=a['mode']&7
@@ -85,18 +87,24 @@ def verify(data,r,imports,loads=False,rows=None):
     for first,end,target,descriptor,offset,contract,inherited in r.get('calls',[]):
         assert rows is not None and previous<first<end<len(original);previous=end
         callee=next(x for x in rows if x['first']==target);assert callee['accepted']and callee['descriptor']==descriptor
-        assert contract==(96 if callee.get('result_geometry')==8 else 112 if callee.get('result_geometry')==16 else 72 if callee.get('result_channels')==[6,6,6]else 48 if callee.get('result_pair')==[11,10]else callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
+        assert contract==(96 if callee.get('result_geometry')==8 else 112 if callee.get('result_geometry')==16 else 72 if callee.get('result_channels')==[6,6,6]else 12 if callee.get('result_words')else 16 if callee.get('result_mixed')else 48 if callee.get('result_pair')else callee['result'][1]|(16 if callee['result'][0]in ROOTS else 0))
         at=first+1;preps=set()
         pending=original[first]['d'][0];assert original[first]['op']==5 and original[first]['s']==[descriptor]
         assert r['code'][first]==[5,17,descriptor,0,40,0]
         for arg in callee['args']:
             prep=False;screenprep=None;idprep=None;o=original[at]
-            if loads and (r['code'][at][5]==127 or r['code'][at][5]==130 and arg[1]==9):
+            if loads and r['code'][at][5]==152:
+                assert arg[1:]==[7,8,8]and o['op']==OPCODES['ICVTWF']and o['m']is None and o['d'][0]==pending
+                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);assert o['d'][1]==oldoffset
+                sm=o['mode']>>3&7;assert sm in(0,1,2)
+                source=o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]]
+                assert r['code'][at]==[o['op'],o['mode'],source,0,arg[0],152];at+=1;continue
+            if loads and (r['code'][at][5]==127 or r['code'][at][5]in(130,137)and arg[1]==9):
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0])
                 if r['code'][at][5]==127:
                     assert arg[1]==12 and callee['frame']['map'][arg[0]//64]&(128>>(arg[0]//8%8))
                     at=array_argument(original,r['code'],at,maps,pending,oldoffset,arg[0]);continue
-                assert arg[1]==9;word_argument(original[at],r['code'][at],maps,pending,oldoffset,arg[0]);at+=1;continue
+                assert arg[1]==9;word_argument(original[at],r['code'][at],maps,pending,oldoffset,arg[0],r);at+=1;continue
             if loads and arg[1]==9 and r['code'][at][5]==253:
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);assert arg[2:]==[4,4]
                 assert not(callee['frame']['map'][arg[0]//64]&(128>>(arg[0]//8%8)))
@@ -912,15 +920,36 @@ def verify(data,r,imports,loads=False,rows=None):
                 for k in range(3):assert maps['frame'][o['s'][0]+4*k]==base+8*k
                 continue
             if o['op']==41 and o['mode']&7==5:
+                assert op==41 and mode==o['mode']and m==0 and o['m']is None
                 assert o['d']in([16,0],[16,4],[16,8])and d==32+2*o['d'][1]and returned==168+o['d'][1]//4
                 address=mode>>3&7;assert address in(0,1)and o['m']is None
                 assert s==maps['frame'if address else'data'][o['s'][0]]
                 leaf=next(l for l in r['frame'if address else'data']['leaves']if l[0]==o['s'][0]);assert leaf[4]in(6,20)and leaf[3]==8
                 assert r['code'][pc]==[41,o['mode'],s,0,32+2*o['d'][1],168+o['d'][1]//4]
                 continue
+        if returned in(145,146,147,149,150,151):
+            assert loads and op==o['op']and mode==o['mode']and o['d'][0]==16
+            mixed=returned>=149;kind=9 if returned<=149 else 4 if returned==150 else 7
+            assert (r.get('result_mixed')==[kind,13]if mixed else r.get('result_words')==[9,9,9])
+            assert o['d'][1]==(0 if mixed else 4*(returned-145))and d==32+o['d'][1]
+            sm=mode>>3&7;assert sm in(0,1,2)
+            assert s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
+            mm=mode&192;assert m==(o['m']if mm==64 else maps['frame'if mm==128 else'data'][o['m']])if mm else m==0
+            continue
+        if (r.get('result_pair')or r.get('result_mixed')or r['result']==[13,8])and o['op']==OPCODES['ISLICEC']and o['mode']&7==5:
+            assert op==o['op']and mode==o['mode']
+            assert o['d'][0]==16 and o['d'][1]in(0,4,8)and d==(40 if o['d'][1]else 32)and returned==(56 if o['d'][1]else 40 if r.get('result_pair')else 24)
+            sm=mode>>3&7;assert s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
+            mm=mode&192;assert m==(o['m']if mm==64 else maps['frame'if mm==128 else'data'][o['m']])
+            continue
+        if r.get('result_mixed')and o['op']==OPCODES['IMOVP']and o['mode']&7==5:
+            assert op==o['op']and mode==o['mode']and m==0 and o['m']is None
+            assert o['d']==[16,4 if r['result_mixed'][0]==9 else 8]and d==40 and returned==56
+            assert s==maps['frame'if mode>>3&7 else'data'][o['s'][0]];continue
         if r.get('result_pair'):
-            assert r['result_pair']==[11,10]and r['result']==[14,16]
+            assert r['result_pair']in([11,10],[13,13])and r['result']==[14,16]
             if o['op']==41 and o['mode']&7==5:
+                assert op==41 and mode==o['mode']and m==0 and o['m']is None
                 assert o['d']in([16,0],[16,4])and d==32+2*o['d'][1]and returned==(40 if o['d'][1]==0 else 56)
                 address=mode>>3&7;assert address in(0,1)
                 assert s==maps['frame'if address else'data'][o['s'][0]]

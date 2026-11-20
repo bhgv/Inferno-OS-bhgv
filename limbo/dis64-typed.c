@@ -104,14 +104,18 @@ typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out)
 static int
 typedpairtype(Type *t)
 {
- Decl *a;Dis64Layout layout={0};int ok;
- if(!t || t->kind!=Ttuple || !(a=t->ids) || !a->ty || a->ty->kind!=Tmodule ||
-    !(a=a->next) || a->next || !a->ty || a->ty->kind!=Tlist || !a->ty->tof || a->ty->tof->kind!=Tstring)return 0;
- ok=dis64layouttype(t,&layout) && layout.legacybytes==8 && layout.bytes==16 && layout.count==2 &&
-  layout.leaves[0].legacy==0 && layout.leaves[0].native==0 && layout.leaves[0].kind==Tmodule &&
-  layout.leaves[1].legacy==4 && layout.leaves[1].native==8 && layout.leaves[1].kind==Tlist;
- dis64layoutfree(&layout);return ok;
+ Decl *a;Dis64Layout l={0};int kind=0,ok=0;
+ if(!t || t->kind!=Ttuple || !(a=t->ids) || !a->ty || !a->next || a->next->next || !a->next->ty)return 0;
+ if(a->ty->kind==Tmodule && a->next->ty->kind==Tlist && a->next->ty->tof && a->next->ty->tof->kind==Tstring)kind=1;
+ else if(a->next->ty->kind==Tstring){if(a->ty->kind==Tstring)kind=2;else if(a->ty->kind==Tint)kind=3;else if(a->ty->kind==Tbig)kind=4;else if(a->ty->kind==Treal)kind=5;}
+ if(!kind || !dis64layouttype(t,&l))goto done;
+ ok=(l.legacybytes==(kind>=4?16:8)) && l.bytes==16 && l.count==2 && l.leaves[0].legacy==0 && l.leaves[0].native==0 && l.leaves[0].bytes==(kind==3?4:8) && l.leaves[1].legacy==(kind>=4?8:4) && l.leaves[1].native==8 && l.leaves[1].bytes==8;
+ done:dis64layoutfree(&l);return ok?kind:0;
 }
+
+static int
+typedwordtriple(Type*t)
+{Decl*d;Dis64Layout l={0};unsigned int n=0;int ok=0;if(!t || t->kind!=Ttuple)return 0;for(d=t->ids;d;d=d->next)if(!d->ty || d->ty->kind!=Tint || d->offset!=4*n++)return 0;if(n==3 && dis64layouttype(t,&l) && l.legacybytes==12 && l.bytes==12 && l.count==3)ok=1;dis64layoutfree(&l);return ok;}
 
 /* Three channel handles, regardless of their independently typed payloads. */
 static int
@@ -195,11 +199,12 @@ typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out,
 			return typedfail(p,"branch-owner");
 		out->destination=in->branch->pc-p->first; dm=AIMM;
 	}else if(in->dm==Afpind && p->resulttriple){
-        if(in->op!=IMOVP || in->mm!=Anone || in->d.reg!=16 || in->d.offset<0 || in->d.offset>8 || in->d.offset%4)return typedfail(p,"channel-result-destination");
-        out->destination=32+2*in->d.offset;dm=AFP|AIND;destkind=Tchan;*result=2<<(in->d.offset/4);
+        if(in->op!=(p->resulttriple==2?IMOVW:IMOVP) || in->mm!=Anone || in->d.reg!=16 || in->d.offset<0 || in->d.offset>8 || in->d.offset%4)return typedfail(p,"channel-result-destination");
+        out->destination=32+(p->resulttriple==2?1:2)*in->d.offset;dm=AFP|AIND;destkind=p->resulttriple==2?Tint:Tchan;*result=2<<(in->d.offset/4);
     }else if(in->dm==Afpind && p->resultpair){
-        if(in->op!=IMOVP || in->mm!=Anone || in->d.reg!=16 || (in->d.offset!=0 && in->d.offset!=4))return typedfail(p,"pair-result-destination");
-        out->destination=in->d.offset?40:32;dm=AFP|AIND;destkind=in->d.offset?Tlist:Tmodule;*result=in->d.offset?16:8;
+        int second=in->d.offset!=0,firstkind=p->resultpair==3?Tint:p->resultpair==4?Tbig:Treal;
+        if(in->d.reg!=16 || (in->d.offset && in->d.offset!=(p->resultpair>=4?8:4)) || (p->resultpair<3 || second ? in->op!=IMOVP || in->mm!=Anone : dk!=firstkind))return typedfail(p,"pair-result-destination");
+        out->destination=second?40:32;dm=AFP|AIND;destkind=p->resultpair>=3?(second?Tstring:firstkind):p->resultpair==2?Tstring:second?Tlist:Tmodule;*result=second?16:8;
 	}else if(in->dm==Afpind){
 		if(p->resultkind==Tnone || in->d.reg!=16 || in->d.offset!=0 ||
 		   (dk==TypedRoot ? !(p->resultkind==Tstring || p->resultkind==Tref || p->resultkind==Tarray || p->resultkind==Tlist || p->resultkind==Tchan || p->resultkind==Tmodule) :
@@ -284,7 +289,7 @@ typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned in
 	case Tint:case Tfix:p->resultbytes=4;break;
 	case Tbig:case Treal:case Tstring:case Tref:case Tarray:case Tlist:case Tchan:case Tmodule:p->resultbytes=8;break;
     case Tadt:{Dis64Layout layout={0};int ok=loads && typedwordgeometry(fn->ty->tof,&layout);if(ok)p->resultgeometry=p->resultbytes=layout.bytes;dis64layoutfree(&layout);if(!ok)return typedfail(p,"aggregate-result");break;}
-	case Ttuple:if(loads && typedchanneltriple(fn->ty->tof)){p->resultbytes=24;p->resulttriple=1;}else if(loads && typedpairtype(fn->ty->tof)){p->resultbytes=16;p->resultpair=1;}else return typedfail(p,"aggregate-result");break;
+	case Ttuple:if(loads && typedwordtriple(fn->ty->tof)){p->resultbytes=12;p->resulttriple=2;}else if(loads && typedchanneltriple(fn->ty->tof)){p->resultbytes=24;p->resulttriple=1;}else if(loads && typedpairtype(fn->ty->tof)){p->resultbytes=16;p->resultpair=typedpairtype(fn->ty->tof);}else return typedfail(p,"aggregate-result");break;
 	default:return typedfail(p,"aggregate-result");
 	}
 	p->first=fn->pc->pc;
@@ -635,12 +640,12 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             if((multi!=nil && strcmp(multi,"1")==0) || (external!=nil && strcmp(external,"1")==0) || (loads!=nil && strcmp(loads,"1")==0)){
                 fprint(2,",\"signature\":");typedsignature(fn);fprint(2,",\"export_name\":");typedexportname(fn);
             }
-			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair)fprint(2,",\"result_pair\":[%d,%d]",Tmodule,Tlist);if(p.resulttriple)fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);if(p.resultgeometry)fprint(2,",\"result_geometry\":%d",p.resultgeometry);
+			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair && p.resultpair<3)fprint(2,",\"result_pair\":[%d,%d]",p.resultpair==2?Tstring:Tmodule,p.resultpair==2?Tstring:Tlist);if(p.resultpair>=3)fprint(2,",\"result_mixed\":[%d,%d]",p.resultpair==3?Tint:p.resultpair==4?Tbig:Treal,Tstring);if(p.resulttriple==2)fprint(2,",\"result_words\":[%d,%d,%d]",Tint,Tint,Tint);if(p.resulttriple==1)fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);if(p.resultgeometry)fprint(2,",\"result_geometry\":%d",p.resultgeometry);
 			fprint(2,",\"descriptor\":%d,\"data_descriptor\":%d,\"frame\":",fn->desc->id,descriptors->id);
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);
 			fprint(2,",\"code\":[");
-			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.resulttriple && p.returns[i]==2?168:p.resulttriple && p.returns[i]==4?169:p.resulttriple && p.returns[i]==8?170:p.resultpair && p.returns[i]==8?40:p.resultpair && p.returns[i]==16?56:p.returns[i]>=32?p.returns[i]:p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);
+			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.resulttriple==2 && p.returns[i]==2?145:p.resulttriple==2 && p.returns[i]==4?146:p.resulttriple==2 && p.returns[i]==8?147:p.resulttriple && p.returns[i]==2?168:p.resulttriple && p.returns[i]==4?169:p.resulttriple && p.returns[i]==8?170:p.resultpair>=3 && p.returns[i]==8?146+p.resultpair:p.resultpair && p.returns[i]==8?40:p.resultpair && p.returns[i]==16?56:p.returns[i]>=32?p.returns[i]:p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);
 			fprint(2,"],\"globals\":");typedbindings(globals,0);
 		}
 		fprint(2,"}\n"); dis64typedfree(&p);

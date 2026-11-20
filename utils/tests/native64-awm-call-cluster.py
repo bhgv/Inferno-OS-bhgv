@@ -84,7 +84,7 @@ def main():
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')];binary=w/'unit';command=cc+[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+CMD['FILES']['releaseflags'](cc)+['-lm','-o',str(binary)];subprocess.run(command,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],check=True,timeout=180)
   controls=(
    ('wrong Image argument slot','native64-typed-multi.h','else{p->s.i.f=56;p->s.i.s=0;p->d.i.f=40;p->d.i.s=s->d;}','else{p->s.i.f=56;p->s.i.s=0;p->d.i.f=40;p->d.i.s=s->d+8;}','exact cluster completion/error'),
-   ('wrong computed Word operand','native64-typed-multi.h','else if(s->returned==130){p->s.imm=s->s;p->reg=s->m;','else if(s->returned==130){p->s.imm=s->s+1;p->reg=s->m;','real showborder Image and mixed Rect arguments'),
+   ('wrong computed Word operand','native64-typed-multi.h','else if(s->returned==130 || s->returned==137 || (s->returned==152 && s->op==ICVTWF)){p->s.imm=s->s;p->reg=s->m;','else if(s->returned==130 || s->returned==137 || (s->returned==152 && s->op==ICVTWF)){p->s.imm=s->s+1;p->reg=s->m;','real showborder Image and mixed Rect arguments'),
    ('wrong flags mask','native64-typed-code.h','if(s->returned==236){p->reg=0;','if(s->returned==236){p->s.imm=s->s^1;p->reg=0;','Image comparisons Client.id and in-place flags'))
   parents=('native64-typed-code.h','native64-typed-module.h','native64-typed-multi.h','native64-typed-tables.h')
   for name,header,before,after,predicate in controls:

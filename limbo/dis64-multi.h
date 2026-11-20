@@ -443,6 +443,9 @@ typedclientcodec(Inst *in,Dis64TypedBody *p,unsigned int pc)
  case ICVTCA:sk=Tstring;dk=Tarray;break;case ICVTAC:sk=Tarray;dk=Tstring;break;
  default:return 0;
  }
+ if(in->dm==Afpind && p->resultpair>=3 && !in->d.offset && in->d.reg==16 && dk==(p->resultpair==3?Tint:p->resultpair==4?Tbig:Treal)){
+  if(in->mm!=Anone || in->branch || !typedoperand(in->sm,&in->s,sk,sk==Tint,0,p,&source,&sm,&actual))return typedfail(p,"numeric-string-result");p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|DST(AFP|AIND),0,source,32};p->returns[pc]=8;return 1;
+ }
  if(in->mm!=Anone || in->branch || !typedoperand(in->sm,&in->s,sk,sk==Tint,0,p,&source,&sm,&actual) ||
     !typedoperand(in->dm,&in->d,dk,0,0,p,&destination,&dm,&actual) || dm!=AFP)return typedfail(p,"client-codec-roles");
  p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,destination};return 1;
@@ -452,6 +455,10 @@ static int
 typedclientstring(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 {
  unsigned int sm,mm,dm;long source,middle,destination;int actual,index=in->op==IINDC;
+ if(in->op==ISLICEC && in->dm==Afpind && in->d.reg==16 && (p->resultkind==Tstring || p->resultpair>=2)){
+  if(in->branch || (in->d.offset!=0 && !(p->resultpair>=2 && in->d.offset==(p->resultpair>=4?8:4))) || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) || !typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mm,&actual) || (mm!=AIMM && mm!=AFP))return typedfail(p,"string-result-slice");
+  p->code[pc]=(Dis64Instruction){ISLICEC,SRC(sm)|(mm==AIMM?AXIMM:AXINF)|DST(AFP|AIND),middle,source,in->d.offset?40:32};p->returns[pc]=p->resultpair?(in->d.offset?16:8):1;return 1;
+ }
  if(in->op==IADDC || in->op==IINSC || in->op==ISLICEC){
   int numeric=in->op!=IADDC;
   if(in->branch || !typedoperand(in->sm,&in->s,numeric?Tint:Tstring,numeric,0,p,&source,&sm,&actual) ||
@@ -778,6 +785,15 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(c->loads && !spawning && kind==Tref && typedwmref(arg->ty,"Draw","Image") && in->op==IINDW){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || !typedimagearrayarg(c,p,frame,end,&at,arg->offset,offset))return 0;continue;
         }
+        if(c->loads && kind==Treal && in->op==ICVTWF){
+            if(spawning || in->branch || in->mm!=Anone || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !dis64layoutaddress(&child->frame,arg->offset,8,0,&offset) || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual))return typedfail(p,"local-real-argument");
+            p->code[at-p->first]=(Dis64Instruction){ICVTWF,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=152;continue;
+        }
+        if(c->loads && kind==Tint && in->op==IINDC){
+            unsigned int mm;long middle;
+            if(spawning || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || !typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) || !typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mm,&actual))return typedfail(p,"local-string-index-argument");
+            p->code[at-p->first]=(Dis64Instruction){IINDC,SRC(sm)|(mm==AIMM?AXIMM:mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,offset};p->returns[at++-p->first]=137;continue;
+        }
         if(c->loads && !spawning && kind==Tint && typedwordargop(in->op)){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || !typedwordargument(in,frame,p,at-p->first,arg->offset,offset))return 0;at++;continue;
         }
@@ -848,11 +864,14 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(at+1!=end || (binding=c->instructions[at])==nil || binding->op!=ILEA || binding->mm!=Anone ||
            binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil)return typedfail(p,"multi-result");
         kind=child->resultkind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
-        contract=child->resultgeometry?(child->resultgeometry==8?96:112):child->resulttriple?72:child->resultpair?48:child->resultbytes | (root?16:0);
+        contract=child->resultpair>=3?16:child->resulttriple==2?12:child->resultgeometry?(child->resultgeometry==8?96:112):child->resulttriple?72:child->resultpair?48:child->resultbytes | (root?16:0);
         if(c->loads && typedimagearraybinding(c,p,frame,binding,c->functions[target]->ty->tof,pc,at)){
             local=p->code[at-p->first].source;
         }else if(binding->sm==Afp){
             if(child->resultgeometry){if(!typedgeometrybinding(binding,c->functions[target]->ty->tof,p,&local,&contract))return typedfail(p,"local-geometry-result");source=local;sm=AFP;}
+            else if(child->resultpair>=3 || child->resulttriple==2){unsigned int k,next,n=child->resulttriple==2?3:2,oldstep=child->resultpair>=4?8:4;
+                for(k=0;k<n;k++){if(!dis64layoutaddress(&p->frame,binding->s.reg+k*oldstep,k==0&&child->resultpair>=4?8:4,child->resultpair>=3&&k==1,&next) || (k && next!=local+(child->resulttriple==2?4:8)*k))return typedfail(p,"mixed-call-result");if(!k)local=next;}source=local;sm=AFP;
+            }
             else if(child->resulttriple){if(!typedchannelbinding(c,p,binding,&local))return 0;source=local;sm=AFP;}
             else if(child->resultpair){
                 unsigned int second;Addr *a=&binding->s;
@@ -967,10 +986,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             p->code[pc-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,32};p->returns[pc-p->first]=1;pc++;
         }else if(c->loads && in->op==ICVTCW && (in->dm==Afpind || in->dm==Ampind) && typedwmref(typedfieldowner(&in->d),"Draw","Pointer")){
             if(!typedpointerparse(in,p,pc-p->first))goto fail;pc++;
-        }else if((c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)) || (c->loads && (in->op==ICVTCA || in->op==ICVTAC || in->op==ICVTWC || in->op==ICVTCW))){
+        }else if((c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)) || (c->loads && (in->op==ICVTCW || in->op==ICVTWC || in->op==ICVTCA || in->op==ICVTAC || (in->op==ICVTCF && p->resultpair==5 && in->dm==Afpind)))){
             if((c->loads && (in->op==ICVTCA || in->op==ICVTAC) && !typedloadbytes(in,p,pc-p->first)) || !typedclientcodec(in,p,pc-p->first))goto fail;pc++;
         }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
-                 (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC))){
+                 (c->loads && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->loads && (in->sm==Afpind || in->sm==Ampind) && (typeddrawowner(&in->s)==1 || (typedwmref(typedfieldowner(&in->s),"Wmsrv","Client") && in->s.native64type && in->s.native64type->kind==Tint && (in->op==IBEQW || in->op==IBNEW || in->op==IBLTW || in->op==IBLEW || in->op==IBGTW || in->op==IBGEW))) && (in->op==IMOVW || typedwordargop(in->op) || in->op==IBEQW || in->op==IBNEW || in->op==IBLTW || in->op==IBLEW || in->op==IBGTW || in->op==IBGEW)){
             if(!typedimageword(in,p,pc-p->first,stop))goto fail;pc++;

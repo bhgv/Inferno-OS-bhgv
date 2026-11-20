@@ -4,7 +4,8 @@
 static unsigned int
 native64geometryresultwidth(unsigned int contract)
 {
- return contract==96?8:contract==112?16:0;
+ /* Contract 12 is three Word32 results; 96/112 retain Point/Rect ABI. */
+ return contract==12?12:contract==96?8:contract==112?16:0;
 }
 static int
 native64geometryresultmapat(unsigned int bytes,const uchar*map,unsigned int np,long offset,unsigned int contract,unsigned int minimum)
