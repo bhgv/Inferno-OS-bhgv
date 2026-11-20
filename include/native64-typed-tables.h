@@ -57,7 +57,7 @@ native64moduletablescheck(const Native64ModuleSpec *s)
                width>(USRC(step->mode)==AFP?f->bytes:s->databytes)-step->s)return 0;
             for(k=0;k<t->count;k++){
                 r=t->rows+k;
-                if(r->target>=f->count || (f->code[r->target].returned==255 && f->code[r->target].op==IMOVP))return 0;
+                if(r->target>=f->count || native64typedprotectedentry(f->code,f->count,r->target))return 0;
                 if(t->op==ICASEC){
                     const Native64ModuleCaseRow *previous=k?t->rows+k-1:nil;
                     if(s->string==nil || s->string==(String*(*)(char*,int))H || r->low || r->high || !native64moduletext(r->start,r->nstart) ||
@@ -69,7 +69,7 @@ native64moduletablescheck(const Native64ModuleSpec *s)
                          (t->op!=ICASEL && (r->low<(-2147483647LL-1) || r->high>2147483647LL)) ||
                          (t->op==IGOTO && (r->low!=r->high || (k && r->low!=t->rows[k-1].low+1))))return 0;
             }
-            if(t->op!=IGOTO && f->code[t->fallback].returned==255 && f->code[t->fallback].op==IMOVP)return 0;
+            if(t->op!=IGOTO && native64typedprotectedentry(f->code,f->count,t->fallback))return 0;
             for(k=0;k<f->nsites;k++){
                 if(t->op!=IGOTO && t->fallback>f->sites[k].first && t->fallback<=f->sites[k].end)return 0;
                 for(l=0;l<t->count;l++)if(t->rows[l].target>f->sites[k].first && t->rows[l].target<=f->sites[k].end)return 0;

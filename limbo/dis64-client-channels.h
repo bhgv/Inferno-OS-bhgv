@@ -64,10 +64,10 @@ static int
 typedclientflagsor(Inst*in,Dis64TypedBody*p,unsigned int pc)
 {
  long base,field,mask;unsigned int wire,sm;int kind,actual;
- if(in->op!=IORW || in->d.offset!=16 || !in->d.native64type || in->d.native64type->kind!=Tint || in->mm!=Anone || in->branch ||
+ if((in->op!=IORW && in->op!=IANDW && in->op!=IXORW) || in->d.offset!=16 || !in->d.native64type || in->d.native64type->kind!=Tint || in->mm!=Anone || in->branch ||
     !typedclientaddress(&in->d,in->dm,p,&base,&wire,&field,&kind) || field!=32 || kind!=Tint ||
     !typedoperand(in->sm,&in->s,Tint,1,1,p,&mask,&sm,&actual) || sm!=AIMM || actual!=Tint)return typedfail(p,"client-flags-or");
- p->code[pc]=(Dis64Instruction){IORW,SRC(AIMM)|DST(wire),32,mask,base};p->returns[pc]=236;return 1;
+ p->code[pc]=(Dis64Instruction){in->op,SRC(AIMM)|DST(wire),32,mask,base};p->returns[pc]=236;return 1;
 }
 
 static int

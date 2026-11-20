@@ -40,7 +40,7 @@ def generate(limbo,w):
  _,records=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True)
  for name in('init','handlerequest','sizewin'):
   row=next(r for r in records if r['name']==name);print('AWM',name,':',row['accepted'],row.get('pc'),row.get('reason'),flush=True)
- row=next(r for r in records if r['name']=='handlerequest');assert row['pc']>618 or row['pc']==618 and row['reason']=='multi-callee'
+ row=next(r for r in records if r['name']=='handlerequest');assert row['accepted'] or row['pc']>618 or row['pc']==618 and row['reason']=='multi-callee'
 def unit():
  src=BASE['unit']().split('\n#line 1 "native64-alt-pairs.c"')[0];start=src.index(' optab[IMOVW]=countmovw;');end=src.index(' require(prepare64calls(',start)
  extract=CMD['NS']['S']['FILES']['FILES']['function'];src+='\n'+extract((ROOT/'libinterp/heap.c').read_text(),'void\nfreestring(')+'\n'+extract((ROOT/'libinterp/string.c').read_text(),'OP(cvtcw)\n')+'\n'

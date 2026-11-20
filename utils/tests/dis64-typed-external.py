@@ -58,6 +58,23 @@ def inthead_argument(original,code,at,maps,pending,oldoffset,offset,r):
     assert code[at]==[41,1,maps['data'][a['s'][0]],0,temp,253]
     return at+1
 
+def word_argument(original,step,maps,pending,oldoffset,offset):
+    sm=original['mode']>>3&7;arm=original['mode']&192;mm=2 if arm==64 else 1 if arm==128 else 0
+    assert original['op']in[OPCODES[n]for n in('IADDW','ISUBW','IMULW','IDIVW','IMODW','IANDW','IORW','IXORW','ISHLW','ISHRW')]
+    assert sm in(0,1,2)and arm in(64,128,192)and original['d']==[pending,oldoffset]
+    source=original['s'][0]if sm==2 else maps['frame'if sm else'data'][original['s'][0]]
+    middle=original['m']if mm==2 else maps['frame'if mm else'data'][original['m']]
+    assert step==[original['op'],original['mode'],source,middle,offset,130]
+
+def array_argument(original,code,at,maps,pending,oldoffset,offset):
+    a=original[at];b=original[at+1];sm=a['mode']>>3&7;dm=a['mode']&7
+    assert a['op']==OPCODES['IINDW']and a['mode']==(sm<<3)|128|dm and sm in(0,1)and dm in(0,1,2)
+    source=maps['frame'if sm else'data'][a['s'][0]];index=a['d'][0]if dm==2 else maps['frame'if dm else'data'][a['d'][0]]
+    assert code[at]==[OPCODES['IINDL'],a['mode'],source,56,index,127]
+    assert b==dict(op=41,mode=45,m=None,s=[a['m'],0],d=[pending,oldoffset])
+    assert code[at+1]==[41,45,56,0,offset,127]
+    return at+2
+
 def verify(data,r,imports,loads=False,rows=None):
     assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and (rows is not None or 'calls'not in r)
     if r.get('result')==[14,24]:assert r.get('result_channels')==[6,6,6]
@@ -74,21 +91,38 @@ def verify(data,r,imports,loads=False,rows=None):
         assert r['code'][first]==[5,17,descriptor,0,40,0]
         for arg in callee['args']:
             prep=False;screenprep=None;idprep=None;o=original[at]
+            if loads and (r['code'][at][5]==127 or r['code'][at][5]==130 and arg[1]==9):
+                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0])
+                if r['code'][at][5]==127:
+                    assert arg[1]==12 and callee['frame']['map'][arg[0]//64]&(128>>(arg[0]//8%8))
+                    at=array_argument(original,r['code'],at,maps,pending,oldoffset,arg[0]);continue
+                assert arg[1]==9;word_argument(original[at],r['code'][at],maps,pending,oldoffset,arg[0]);at+=1;continue
             if loads and arg[1]==9 and r['code'][at][5]==253:
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);assert arg[2:]==[4,4]
                 assert not(callee['frame']['map'][arg[0]//64]&(128>>(arg[0]//8%8)))
                 at=inthead_argument(original,r['code'],at,maps,pending,oldoffset,arg[0],r);continue
-            if loads and arg[1]==1 and o['op']!=OPCODES['IMOVM']and r['code'][at][5]!=235:
+            if loads and arg[1]==1 and (o['op']!=OPCODES['IMOVM']or o['m']!=arg[3])and r['code'][at][5]!=235:
                 assert arg[2]==arg[3]and arg[3]in(8,16)
-                for k in range(arg[3]//4):
+                k=0
+                while k<arg[3]//4:
                     oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]+4*k)
                     assert next(l for l in callee['frame']['leaves']if l[0]==oldoffset)==[oldoffset,arg[0]+4*k,4,4,9]
                     assert not(callee['frame']['map'][(arg[0]+4*k)//64]&(128>>((arg[0]+4*k)//8%8)))
-                    if r['code'][at][5]==253:at=inthead_argument(original,r['code'],at,maps,pending,oldoffset,arg[0]+4*k,r)
+                    if r['code'][at][5]==253:at=inthead_argument(original,r['code'],at,maps,pending,oldoffset,arg[0]+4*k,r);k+=1
+                    elif r['code'][at][5]==130:word_argument(original[at],r['code'][at],maps,pending,oldoffset,arg[0]+4*k);at+=1;k+=1
                     else:
-                        x=original[at];sm=x['mode']>>3&7;assert x['op']==OPCODES['IMOVW']and sm in(0,1,2)and x['mode']==(sm<<3)|5 and x['m']is None and x['d']==[pending,oldoffset]
+                        x=original[at];sm=x['mode']>>3&7;assert sm in(0,1,2)and x['d']==[pending,oldoffset]
                         source=x['s'][0]if sm==2 else maps['frame'if sm==1 else'data'][x['s'][0]]
-                        assert r['code'][at]==[x['op'],x['mode'],source,0,arg[0]+4*k,64];at+=1
+                        if x['op']==OPCODES['IMOVM']:
+                            n=x['m'];assert n in(8,16)and 4*k+n<=arg[3]and sm in(0,1)and x['mode']==(sm<<3)|64|5
+                            for v in range(0,n,4):
+                                assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==x['s'][0]+v)==[x['s'][0]+v,source+v,4,4,9]
+                                assert next(l for l in callee['frame']['leaves']if l[0]==oldoffset+v)==[oldoffset+v,arg[0]+4*k+v,4,4,9]
+                            assert r['code'][at]==[x['op'],x['mode'],source,n,arg[0]+4*k,64];k+=n//4
+                        else:
+                            assert x['op']==OPCODES['IMOVW']and x['mode']==(sm<<3)|5 and x['m']is None
+                            assert r['code'][at]==[x['op'],x['mode'],source,0,arg[0]+4*k,64];k+=1
+                        at+=1
                 continue
             if loads and arg[1]==13 and r['code'][at][5]==237:
                 sm=o['mode']>>3&7;assert o['op']==OPCODES['ICVTWC']and sm in(4,5)and o['mode']==(sm<<3)|1 and o['m']is None and o['s'][1]==36
@@ -106,7 +140,7 @@ def verify(data,r,imports,loads=False,rows=None):
             if loads and arg[1]==1 and r['code'][at][5]==235:
                 sm=o['mode']>>3&7;assert o['op']==41 and sm in(4,5)and o['mode']==(sm<<3)|1 and o['m']is None and o['s'][1]==4
                 owner=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0]);temp=next(l for l in r['frame']['leaves']if l[0]==o['d'][0])
-                assert owner[2:]==temp[2:]==[4,8,12]
+                assert owner[2:4]==[4,8]and owner[4]in set(ROOTS)|{20}and temp[2:4]==[4,8]and temp[4]in set(ROOTS)|{20}
                 for space,root_at in(('frame'if sm==5 else'data',owner[1]),('frame',temp[1])):assert r[space]['map'][root_at//64]&(128>>(root_at//8%8))
                 assert r['code'][at]==[41,o['mode'],owner[1],8,temp[1],235]
                 screenprep=(o['d'][0],temp[1]);at+=1;o=original[at];assert o['s'][0]==screenprep[0]and o['mode']>>3&7==5
@@ -161,7 +195,10 @@ def verify(data,r,imports,loads=False,rows=None):
         assert at+bool(contract)==end
         if contract:
             binding=original[end-1];assert binding['op']==39 and binding['d']==[pending,16]and binding['m']is None
-            if inherited:
+            if r['code'][end-1][5]==131:
+                index=original[first-1];assert loads and contract==24 and not inherited and index['op']==OPCODES['IINDW']and index['mode']>>3&7==1 and binding['mode']==45 and binding['s']==[index['m'],0]
+                assert offset==maps['frame'][index['s'][0]]and r['code'][end-1]==[39,13,offset,0,32,131]
+            elif inherited:
                 assert binding['mode']==45 and binding['s']==[16,0]and offset==32
                 assert r['code'][end-1]==[118,13,32,0,32,64]
             else:
@@ -240,21 +277,27 @@ def verify(data,r,imports,loads=False,rows=None):
         at=first+1;aggregates={a['index']:a['layout']for a in e.get('aggregate_args',[])};nominals={a['index']:a.get('nominal')for a in e.get('aggregate_args',[])}
         assert len(aggregates)==len(e.get('aggregate_args',[]))
         for j,(new,kind,oldbytes,width)in enumerate(e['args']):
+            if at<end and r['code'][at][5]in(127,130):
+                if r['code'][at][5]==127:
+                    assert loads and kind==12;oldoffset=(oldoffset+3)//4*4
+                    at=array_argument(original,r['code'],at,maps,pending,oldoffset,new);oldoffset+=oldbytes;continue
+                assert loads and kind==9;oldoffset=(oldoffset+3)//4*4
+                word_argument(original[at],r['code'][at],maps,pending,oldoffset,new);at+=1;oldoffset+=4;continue
             if at<end and r['code'][at][5]==253 and kind==9:
                 assert loads and oldbytes==width==4
                 oldoffset=(oldoffset+3)//4*4;at=inthead_argument(original,r['code'],at,maps,pending,oldoffset,new,r);oldoffset+=4
                 continue
             if at<end and r['code'][at][5]==252:
-                assert loads and kind==13 and oldbytes==4 and width==8
+                assert loads and kind in(10,13)and oldbytes==4 and width==8
                 temp=None;tails=0
-                while at<end and original[at]['op']==OPCODES['ITAIL']:
+                while at<end and original[at]['op']==OPCODES['ITAIL']and original[at]['mode']&7==1:
                     a=original[at];sm=a['mode']>>3&7;assert a['mode']==(sm<<3)|1 and sm in(0,1)and a['m']is None
                     dst=maps['frame'][a['d'][0]];src=maps['frame'if sm else'data'][a['s'][0]]
                     if temp is not None:assert src==temp==dst and sm==1
                     temp=dst;assert r['code'][at]==[a['op'],a['mode'],src,0,dst,252];tails+=1;at+=1
                 assert 1<=tails<=32
                 a=original[at]
-                assert a['op']==OPCODES['IHEADP']and a['mode']==13 and a['m']is None and maps['frame'][a['s'][0]]==temp
+                assert a['op']==OPCODES['IHEADP'if kind==13 else'ITAIL']and a['mode']==13 and a['m']is None and maps['frame'][a['s'][0]]==temp
                 oldtarget=32
                 for _,pk,poldbytes,_ in e['args'][:j]:
                     align=8 if pk in(4,7)else 1 if pk==5 else 4;oldtarget=(oldtarget+align-1)//align*align+poldbytes
@@ -418,10 +461,13 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert leaf==[old+i,native+i,4,4,9]
                     assert not(r[space]['map'][(native+i)//64]&(128>>((native+i)//8%8)))
 
-            if r['code'][end-1][5]==245:
+            if r['code'][end-1][5]==131:
+                index=original[first-1];assert loads and contract==24 and not e['inherited']and index['op']==OPCODES['IINDW']and index['mode']>>3&7==1 and b['mode']==45 and b['s']==[index['m'],0]
+                assert e['resultoffset']==maps['frame'][index['s'][0]]and r['code'][end-1]==[39,13,e['resultoffset'],0,32,131]
+            elif r['code'][end-1][5]==245:
                 assert loads and contract==4 and not e['inherited']and b['mode']==45 and b['m']is None and b['s'][1]==12
                 source=maps['frame'][b['s'][0]];assert source==e['resultoffset']
-                leaf=next(l for l in r['frame']['leaves']if l[0]==b['s'][0]);assert leaf[2:]==[4,8,12]
+                leaf=next(l for l in r['frame']['leaves']if l[0]==b['s'][0]);assert leaf[2:4]==[4,8]and leaf[4]in set(ROOTS)|{20}
                 assert r['frame']['map'][source//64]&(128>>(source//8%8))
                 assert r['code'][end-1]==[39,45,source,12,32,245]
             elif r['code'][end-1][5]==220:
@@ -440,6 +486,20 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned==131:
+            sm=o['mode']>>3&7;dm=o['mode']&7
+            assert loads and op==OPCODES['IINDL']and o['op']==OPCODES['IINDW']and sm==1 and o['mode']==8|128|dm and original[pc+1]['op']in(OPCODES['IFRAME'],OPCODES['IMFRAME'])
+            index=o['d'][0]if dm==2 else maps['frame'if dm else'data'][o['d'][0]]
+            assert [op,mode,s,m,d,returned]==[OPCODES['IINDL'],o['mode'],maps['frame'][o['s'][0]],48,index,131]
+            continue
+        if returned==133:
+            sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192;mm=2 if arm==64 else 1 if arm==128 else 0
+            assert loads and op==o['op']and mode==o['mode']and sm in(4,5)
+            field=o['s'][1];native=s>>16;assert native==field or(field,native)in((16,32),(36,72),(40,76),(44,80))
+            assert s&65535==maps['frame'if sm==5 else'data'][o['s'][0]]
+            assert m==(0 if arm==0 else o['m']if mm==2 else maps['frame'if mm else'data'][o['m']])
+            assert d==(o['d'][0]-r['first']if dm==2 else maps['frame'if dm else'data'][o['d'][0]])
+            continue
         if returned==254:
             sm=o['mode']>>3&7;dm=o['mode']&7;assert loads and o['op']in(OPCODES['INEWA'],OPCODES['INEWAZ'])and o['mode']==(sm<<3)|64|dm and sm in(0,1,2)and dm in(0,1)and types[o['m']][0]==4 and list(types[o['m']][1])==[128]
             source=o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]]
@@ -472,7 +532,7 @@ def verify(data,r,imports,loads=False,rows=None):
             assert m==(24 if ca[1]else 0)
             assert(s if read else d)==maps['frame'if cm==5 else'data'][ca[0]]
             leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==va[0]);assert leaf[1]==(d if read else s)and leaf[2:4]==[4,8]and leaf[4]in((12,20)if ca[1]else(13,20))
-            assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]==12
+            assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]in ROOTS
             continue
         if returned in(208,209,210,211,212,215):
             assert loads and op==o['op']==OPCODES['IMOVM']and mode==o['mode']and mode&192==64
@@ -486,8 +546,8 @@ def verify(data,r,imports,loads=False,rows=None):
                     for i in range(0,width,4):assert next(l for l in leaves if l[0]==old+i)==[old+i,new+i,4,4,9]
             else:
                 read=returned in(208,209)or returned==215 and sm in(4,5);cm=sm if read else dm;vm=dm if read else sm;ca=o['s']if read else o['d'];va=o['d']if read else o['s']
-                assert cm in(4,5)and vm in(0,1)and ca[1]in(((4,)if width==16 else(4,12))if returned==215 else((0,16)if width==16 else(0,8,16,24)))and m==((ca[1]+(4 if returned==215 else 0))<<8)|width
-                assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]==12
+                assert cm in(4,5)and vm in(0,1)and ca[1]in(((4,)if width==16 else(4,12))if returned==215 else((0,16)if width==16 else(0,8,16,24)))and m==((ca[1]+(4 if returned==215 and not(width==8 and ca[1]==4 and m>>8==4)else 0))<<8)|width
+                assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]in ROOTS
                 assert(s if read else d)==maps['frame'if cm==5 else'data'][ca[0]]
                 leaves=r['frame'if vm else'data']['leaves'];value=d if read else s
                 for i in range(0,width,4):assert next(l for l in leaves if l[0]==va[0]+i)==[va[0]+i,value+i,4,4,9]
@@ -520,13 +580,13 @@ def verify(data,r,imports,loads=False,rows=None):
         if returned==242:
             assert loads and op==o['op']and op in(OPCODES['INEW'],OPCODES['INEWZ'])and mode==o['mode']==17 and o['m']is None
             assert types[o['s'][0]]==(16,b'')
-            leaf=next(l for l in r['frame']['leaves']if l[0]==o['d'][0]);assert leaf[2:]==[4,8,12]
+            leaf=next(l for l in r['frame']['leaves']if l[0]==o['d'][0]);assert leaf[2:4]==[4,8]and leaf[4]in set(ROOTS)|{20}
             assert r['code'][pc]==[op,mode,0,0,leaf[1],242]
             continue
         if returned in(243,244):
             sm=o['mode']>>3&7;dm=o['mode']&7
             assert loads and op==o['op']==OPCODES['IMOVW'if returned==243 else'ICVTCW']and mode==o['mode']==(sm<<3)|dm and sm in((0,1,2)if returned==243 else(0,1))and dm in(4,5)and o['m']is None and o['d'][1]in(0,4,8,12)
-            owner=next(l for l in r['frame'if dm==5 else'data']['leaves']if l[0]==o['d'][0]);assert owner[2:]==[4,8,12]
+            owner=next(l for l in r['frame'if dm==5 else'data']['leaves']if l[0]==o['d'][0]);assert owner[2:4]==[4,8]and owner[4]in set(ROOTS)|{20}
             if sm==2:value=o['s'][0]
             else:
                 leaf=next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0]);assert leaf[2:]==([4,4,9]if returned==243 else[4,8,13]);value=leaf[1]
@@ -534,7 +594,7 @@ def verify(data,r,imports,loads=False,rows=None):
             continue
         if returned in(228,229):
             sm=o['mode']>>3&7;dm=o['mode']&7;assert loads and sm in(4,5)and len(o['s'])==2 and o['s'][1]in(0,4,8,12)
-            leaf=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0]);assert leaf[2:]==[4,8,12]
+            leaf=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0]);assert leaf[2:4]==[4,8]and leaf[4]in set(ROOTS)|{20}
             source=leaf[1];assert r['frame'if sm==5 else'data']['map'][source//64]&(128>>(source//8%8))
             if returned==229:
                 assert o['op']in(93,94)and o['m']==0 and o['mode']==(sm<<3)|64|2
@@ -549,27 +609,27 @@ def verify(data,r,imports,loads=False,rows=None):
             sm=o['mode']>>3&7;mm=1 if o['mode']&192==128 else 0 if o['mode']&192==192 else -1
             assert loads and o['op']in(OPCODES['IBEQC'],OPCODES['IBNEC'])and sm in(4,5)and mm in(0,1)and o['s'][1]==20 and o['mode']&7==2
             owner=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0]);value=next(l for l in r['frame'if mm else'data']['leaves']if l[0]==o['m'])
-            assert owner[2:]==[4,8,12]and value[2:]==[4,8,13]
+            assert owner[2:4]==[4,8]and owner[4]in set(ROOTS)|{20}and value[2:]==[4,8,13]
             for space,offset in(('frame'if sm==5 else'data',owner[1]),('frame'if mm else'data',value[1])):assert r[space]['map'][offset//64]&(128>>(offset//8%8))
             assert r['code'][pc]==[o['op'],o['mode'],owner[1],value[1],o['d'][0]-r['first'],232]
             continue
         if returned==234:
             sm=o['mode']>>3&7;dm=o['mode']&7;assert loads and o['op']==OPCODES['IANDW']and sm in(4,5)and dm in(0,1)and o['mode']==(sm<<3)|64|dm and o['s'][1]==16 and -32768<=o['m']<=32767
             owner=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0]);value=next(l for l in r['frame'if dm else'data']['leaves']if l[0]==o['d'][0])
-            assert owner[2:]==[4,8,12]and value[2:]==[4,4,9]
+            assert owner[2:4]==[4,8]and owner[4]in set(ROOTS)|{20}and value[2:]==[4,4,9]
             assert r['frame'if sm==5 else'data']['map'][owner[1]//64]&(128>>(owner[1]//8%8))
             assert not(r['frame'if dm else'data']['map'][value[1]//64]&(128>>(value[1]//8%8)))
             assert r['code'][pc]==[o['op'],o['mode'],owner[1],(32<<16)|(o['m']&65535),value[1],234]
             continue
         if returned==236:
-            dm=o['mode']&7;assert loads and o['op']==OPCODES['IORW']and dm in(4,5)and o['mode']==16|dm and o['m']is None and o['d'][1]==16 and -32768<=o['s'][0]<=32767
-            owner=next(l for l in r['frame'if dm==5 else'data']['leaves']if l[0]==o['d'][0]);assert owner[2:]==[4,8,12]
+            dm=o['mode']&7;assert loads and o['op']in(OPCODES['IORW'],OPCODES['IANDW'],OPCODES['IXORW'])and dm in(4,5)and o['mode']==16|dm and o['m']is None and o['d'][1]==16 and -32768<=o['s'][0]<=32767
+            owner=next(l for l in r['frame'if dm==5 else'data']['leaves']if l[0]==o['d'][0]);assert owner[2:4]==[4,8]and owner[4]in set(ROOTS)|{20}
             assert r['frame'if dm==5 else'data']['map'][owner[1]//64]&(128>>(owner[1]//8%8))
             assert r['code'][pc]==[o['op'],o['mode'],o['s'][0],32,owner[1],236]
             continue
         if returned==237:
             sm=o['mode']>>3&7;assert loads and o['op']==OPCODES['ICVTWC']and sm in(4,5)and o['mode']==(sm<<3)|1 and o['m']is None and o['s'][1]==36
-            owner=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0]);value=next(l for l in r['frame']['leaves']if l[0]==o['d'][0]);assert owner[2:]==[4,8,12]and value[2:4]==[4,8]and value[4]in ROOTS+(20,)
+            owner=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0]);value=next(l for l in r['frame']['leaves']if l[0]==o['d'][0]);assert owner[2:4]==[4,8]and owner[4]in set(ROOTS)|{20}and value[2:4]==[4,8]and value[4]in ROOTS+(20,)
             assert r['code'][pc]==[o['op'],o['mode'],owner[1],72,value[1],237]
             for space,root_at in(('frame'if sm==5 else'data',owner[1]),('frame',value[1])):assert r[space]['map'][root_at//64]&(128>>(root_at//8%8))
             continue
@@ -595,7 +655,7 @@ def verify(data,r,imports,loads=False,rows=None):
             sm=mode>>3&7;dm=mode&7;read=sm in(4,5);cm=sm if read else dm;vm=dm if read else sm;ca=o['s']if read else o['d'];va=o['d']if read else o['s']
             assert cm in(4,5)and vm in(0,1,2)
             fields=[0,8,16,24,32,40,48,56,64,72,76,80,88];assert ca[1]%4==0 and 0<=ca[1]<=48
-            assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]==12
+            assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]in ROOTS
             assert (ca[1]//4 in(4,9,10,11))==(returned==206)
             if vm!=2:
                 leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==va[0]);assert leaf[3]==(8 if returned==205 else 4)and (leaf[4]in ROOTS+(20,))==(returned==205)
@@ -606,7 +666,7 @@ def verify(data,r,imports,loads=False,rows=None):
             assert loads and op==o['op']and op in(OPCODES['ISEND'],OPCODES['IRECV'])and mode==o['mode']and o['m']is None
             sending=op==OPCODES['ISEND'];cm=(mode&7)if sending else(mode>>3&7);vm=(mode>>3&7)if sending else(mode&7)
             ca=o['d']if sending else o['s'];va=o['s']if sending else o['d'];assert cm in(4,5)and vm in(0,1,2)and ca[1]in(0,4,8,12)
-            assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]==12
+            assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]in ROOTS
             contract=24 if ca[1]in(4,8)else 4
             if vm!=2:
                 leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==va[0]);assert leaf[3]==(contract&15)and (leaf[4]in ROOTS+(20,))==(contract==24)
@@ -737,7 +797,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 bm=(sm if read else dm)&1;vm=dm if read else sm
                 assert m==mapping[field[1]]and (s if read else d)==maps['frame'if bm else'data'][field[0]]and (d if read else s)==maps['frame'if vm else'data'][direct[0]]
                 assert next(l for l in r['frame'if bm else'data']['leaves']if l[0]==field[0])[2:4]==[4,8]
-                leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==direct[0]);assert leaf[2:4]==[4,8]and (leaf[4]==(13 if field[1]==52 else 12)or(not read and vm==0 and leaf[4]==20))
+                leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==direct[0]);assert leaf[2:4]==[4,8]and (leaf[4]==(13 if field[1]==52 else 12)or(not read and vm==0 and leaf[4]==20)or(vm==1 and leaf[4]in ROOTS))
             else:
                 index=returned-114;assert index!=2
                 sm=o['mode']>>3&7;field=o['s'];assert sm in(4,5)and field[1]==oldfields[index]and o['mode']==(sm<<3)|192|2 and mode==o['mode']
@@ -755,7 +815,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 index=oldfields.index(field[1]);bm=(sm if read else dm)&1;vm=dm if read else sm
                 assert m==newfields[index]and (s if read else d)==maps['frame'if bm else'data'][field[0]]and (d if read else s)==maps['frame'if vm else'data'][direct[0]]
                 assert next(l for l in r['frame'if bm else'data']['leaves']if l[0]==field[0])[2:]==[4,8,12]
-                leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==direct[0]);assert leaf[2:4]==[4,8]and (leaf[4]==(6 if index==3 else 12)or(not read and vm==0 and leaf[4]==20))
+                leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==direct[0]);assert leaf[2:4]==[4,8]and (leaf[4]==(6 if index==3 else 12)or(not read and vm==0 and leaf[4]==20)or(vm==1 and leaf[4]in ROOTS))
             else:
                 sm=o['mode']>>3&7;field=o['s'];assert sm in(4,5)and len(field)==2
                 index=oldfields.index(field[1]);assert returned==101+index and o['mode']==(sm<<3)|192|2 and mode==o['mode']

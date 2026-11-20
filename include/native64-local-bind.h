@@ -22,7 +22,7 @@ static int
 native64localbind(void)
 {
     VmFetch fetched;Inst instruction;Frame *pending;Type *caller,*callee,*source;Stkext *extent;
-    uintptr base,start,top,target,at,bit,sourcebase;unsigned int width,reference,contract,altaddress,fieldaddress,sourcewidth,sourceroot;long offset;
+    uintptr base,start,top,target,at,bit,sourcebase;unsigned int width,reference,contract,altaddress,fieldaddress,arrayaddress,sourcewidth,sourceroot;long offset;
     void *owner;Type *ownertype;
     void *address,*destination;
     if(!vmfetch(&fetched))return 0;
@@ -36,9 +36,10 @@ native64localbind(void)
         return fetched.module->native64casec();
     }
     if(fetched.op!=ILEA)return 0;
-    memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;fieldaddress=!!(contract&512);if(fieldaddress)contract&=~512;altaddress=!!(contract&256);if(altaddress)contract&=~256;width=native64geometryresultwidth(contract)?native64geometryresultwidth(contract):native64fileiowidth(contract)?native64fileiowidth(contract):contract==72?24:contract==88?88:contract==48?16:contract&15;reference=!native64geometryresultwidth(contract) && (contract==72 || !!(contract&16));
+    memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;arrayaddress=!!(contract&1024);if(arrayaddress)contract&=~1024;fieldaddress=!!(contract&512);if(fieldaddress)contract&=~512;altaddress=!!(contract&256);if(altaddress)contract&=~256;width=native64geometryresultwidth(contract)?native64geometryresultwidth(contract):native64fileiowidth(contract)?native64fileiowidth(contract):contract==72?24:contract==88?88:contract==48?16:contract&15;reference=!native64geometryresultwidth(contract) && (contract==72 || !!(contract&16));
     if(fieldaddress && (altaddress || (contract!=24 && contract!=4) || instruction.add!=(SRC(AFP|AIND)|DST(AFP|AIND)) || instruction.s.i.s!=(contract==4?12:24)))error(exBounds);
-    sourcewidth=fieldaddress?8:width;sourceroot=fieldaddress?1:reference;
+    if(arrayaddress && (fieldaddress || altaddress || contract!=24 || instruction.add!=(SRC(AFP)|DST(AFP|AIND))))error(exBounds);
+    sourcewidth=(fieldaddress||arrayaddress)?8:width;sourceroot=(fieldaddress||arrayaddress)?1:reference;
     offset=fieldaddress?instruction.s.i.f:instruction.s.ind;
     if(!native64model() || (altaddress?((instruction.add!= (SRC(AFP)|DST(AFP)) && instruction.add!=(SRC(AMP)|DST(AFP))) || (contract!=4 && contract!=24 && contract!=48 && contract!=72 && contract!=104 && contract!=120)):
         ((instruction.add!=(SRC(AFP)|DST(AFP|AIND)) && !((contract==24 || native64geometryresultwidth(contract)) && instruction.add==(SRC(AMP)|DST(AFP|AIND))) && !fieldaddress) || instruction.d.i.f!=40 || instruction.d.i.s!=32)) ||
@@ -101,9 +102,17 @@ native64localbind(void)
             address=(uchar*)owner+24;
         }
     }
+    if(arrayaddress){
+        Array*a;Type*t;uintptr data,slot,span;
+        memmove(&owner,address,sizeof(owner));if(owner==H)error(exNilref);
+        if(owner==nil || (uintptr)owner%8 || (uintptr)owner>(uintptr)-1-sizeof(Array) || D2H(owner)->ref==0 || D2H(owner)->t!=&Tarray)error(exBounds);
+        a=owner;t=a->t;if(t==nil || t==H || t->ref<=0 || t->size!=8 || t->np!=1 || t->map[0]!=0x80 || a->len<0 || (uvlong)a->len>0x7fffffff/8)error(exBounds);
+        data=(uintptr)a->data;span=(uintptr)a->len*8;memmove(&address,R.FP+48,sizeof(address));slot=(uintptr)address;
+        if(!data || a->data==H || data>(uintptr)-1-span || slot<data || slot-data>=span || (slot-data)%8)error(exBounds);
+    }
     destination=(void*)(target+32);
     vmdecode(&fetched);
-    if(R.s!=address || R.d!=destination)error(exBounds);
+    if(R.s!=(arrayaddress?(void*)(sourcebase+offset):address) || R.d!=destination)error(exBounds);
     memmove(destination,&address,sizeof(address));
     return 1;
 }

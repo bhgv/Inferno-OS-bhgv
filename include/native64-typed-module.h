@@ -503,13 +503,13 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned==234 || (f->code[j].op==IANDW && (USRC(f->code[j].mode)&AIND) && f->code[j].returned)){
+        for(j=0;j<f->count;j++)if(f->code[j].returned==234 || (f->code[j].op==IANDW && (USRC(f->code[j].mode)&AIND) && f->code[j].returned && f->code[j].returned!=133)){
             step=f->code+j;if(!native64typedflagsand(step,f->bytes,s->databytes))return 0;
             map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
             map=UDST(step->mode)==AFP?f->map:s->datamap;for(at=0;at<4;at++){bit=(step->d+at)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned==236 || (f->code[j].op==IORW && (UDST(f->code[j].mode)&AIND) && f->code[j].returned)){
+        for(j=0;j<f->count;j++)if(f->code[j].returned==236 || (f->code[j].op==IORW && (UDST(f->code[j].mode)&AIND) && f->code[j].returned && f->code[j].returned!=130)){
             step=f->code+j;if(!native64typedflagsor(step,f->bytes,s->databytes))return 0;
             map=(UDST(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->d/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
@@ -526,6 +526,51 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             }
         }
         for(j=0;j<f->count;j++)if(f->code[j].returned==238){unsigned int k,found=0;if(j<2 || f->code[j-2].returned!=237 || f->code[j-1].op!=IADDC)return 0;for(k=0;k<f->nsites;k++)if(f->sites[k].first<j && j<f->sites[k].end && !f->sites[k].external)found++;if(found!=1)return 0;}
+        for(j=0;j<f->count;j++)if(f->code[j].returned==127 || f->code[j].returned==130){
+            unsigned int k,found=0,bytes=0,np=0,mode,width,offset;const uchar*argmap=nil;step=f->code+j;
+            for(k=0;k<f->nsites;k++)if(f->sites[k].first<j && j<f->sites[k].end-(f->sites[k].contract!=0)){
+                const Native64ModuleSite*as=f->sites+k;if(found++)return 0;
+                if(as->external){const Native64ModuleImport*r;if(as->external!=1 || as->table>=s->ntables || as->target>=s->tables[as->table].count)return 0;r=s->tables[as->table].imports+as->target;bytes=r->bytes;np=r->mapbytes;argmap=r->map;}
+                else{const Native64ModuleFunction*r;if(as->target>=s->nfunctions || as->end>=f->count || f->code[as->end].op!=ICALL)return 0;r=s->functions+as->target;if(!native64modulemap(r->bytes,r->map,r->mapbytes,1))return 0;bytes=r->bytes;np=r->mapbytes;argmap=r->map;}
+            }
+            if(found!=1 || !argmap)return 0;
+            if(step->returned==127){
+                if(step->op==IINDL){
+                    if(!native64typedarraycall(step,f->bytes,s->databytes) || j+1>=f->count || f->code[j+1].returned!=127 || f->code[j+1].op!=IMOVP)return 0;
+                    mode=USRC(step->mode);map=mode==AFP?f->map:s->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
+                    mode=UDST(step->mode);if(mode!=AIMM){map=mode==AFP?f->map:s->datamap;bit=step->d/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
+                }else{
+                    if(step->op!=IMOVP || step->mode!=(SRC(AFP|AIND)|DST(AFP|AIND)) || step->s!=56 || step->m || !native64typedrootoperand(AFP,step->d,bytes,0) || step->d>65535 || !j || f->code[j-1].returned!=127 || f->code[j-1].op!=IINDL)return 0;
+                    bit=step->d/8;if(bit/8>=np || !(argmap[bit/8]&(128>>(bit%8))))return 0;
+                }
+            }else{
+                mode=(step->mode&ARM)==AXIMM?AIMM:(step->mode&ARM)==AXINF?AFP:AMP;
+                if(!native64typedwordargop(step->op) || step->mode!=(SRC(USRC(step->mode))|(step->mode&ARM)|DST(AFP|AIND)) || (step->mode&ARM)==AXNON ||
+                   !native64typedwordoperand(USRC(step->mode),step->s,f->bytes,s->databytes) || !native64typedwordoperand(mode,step->m,f->bytes,s->databytes) ||
+                   (mode==AIMM?(step->m< -32768 || step->m>32767):step->m>65535) || !native64typedwordoperand(AFP,step->d,bytes,0) || step->d>65535)return 0;
+                for(k=0;k<4;k++){bit=(step->d+k)/8;if(bit/8>=np || (argmap[bit/8]&(128>>(bit%8))))return 0;}
+                for(k=0;k<2;k++){mode=k?((step->mode&ARM)==AXIMM?AIMM:(step->mode&ARM)==AXINF?AFP:AMP):USRC(step->mode);offset=k?step->m:step->s;width=4;if(mode!=AIMM)while(width--){map=mode==AFP?f->map:s->datamap;bit=(offset+width)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}}
+            }
+        }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==133){
+            unsigned int k,mode,offset;Native64TypedStep copy;step=f->code+j;copy=*step;if(native64typedbranch(copy.op)){if(copy.d<0 || (unsigned long)copy.d>=f->count)return 0;copy.d=0;}if(!native64typedimageword(&copy,f->bytes,s->databytes))return 0;
+            mode=USRC(step->mode)&~AIND;offset=step->s&65535;map=mode==AFP?f->map:s->datamap;bit=offset/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
+            for(k=0;k<2;k++){if(!k){if(native64typedbranch(step->op))continue;mode=UDST(step->mode);offset=step->d;}else{if((step->mode&ARM)==AXNON || (step->mode&ARM)==AXIMM)continue;mode=(step->mode&ARM)==AXINF?AFP:AMP;offset=step->m;}map=mode==AFP?f->map:s->datamap;bit=offset/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
+            for(k=0;k<f->nsites;k++)if(f->sites[k].first<=j && j<=f->sites[k].end)return 0;
+        }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==131){
+            unsigned int k,found=0;step=f->code+j;
+            if(step->op==IINDL){
+                if(!native64typedarraycall(step,f->bytes,s->databytes))return 0;
+                for(k=0;k<f->nsites;k++)if(f->sites[k].first==j+1){const Native64ModuleSite*as=f->sites+k;const Native64TypedStep*b;if(found++ || as->contract!=24 || as->inherited || as->end<2 || as->end>=f->count)return 0;b=f->code+as->end-1;if(b->returned!=131 || b->op!=ILEA || b->s!=step->s)return 0;}
+                if(found!=1)return 0;bit=step->s/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;
+                if(UDST(step->mode)!=AIMM){map=UDST(step->mode)==AFP?f->map:s->datamap;bit=step->d/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
+            }else{
+                if(step->op!=ILEA || step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->m || step->d!=32 || !native64typedrootoperand(AFP,step->s,f->bytes,s->databytes))return 0;
+                for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1){const Native64ModuleSite*as=f->sites+k;if(found++ || as->contract!=24 || as->inherited || !as->first || f->code[as->first-1].returned!=131 || f->code[as->first-1].op!=IINDL || f->code[as->first-1].s!=step->s)return 0;}
+                if(found!=1)return 0;bit=step->s/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;
+            }
+        }
         for(j=0;j<f->count;j++)if(f->code[j].returned==253){
             unsigned int k,found=0,argbytes=0;const uchar*argmap=nil;step=f->code+j;
             for(k=0;k<f->nsites;k++)if(f->sites[k].first<j && j<f->sites[k].end-(f->sites[k].contract!=0)){const Native64ModuleSite*hs=f->sites+k;if(found++)return 0;
@@ -551,16 +596,16 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 const Native64ModuleSite*hs=f->sites+k;if(found++ || !hs->external || hs->table>=s->ntables || hs->target>=s->tables[hs->table].count)return 0;headrequest=s->tables[hs->table].imports+hs->target;
             }
             if(found!=1 || !headrequest)return 0;
-            if(step->op==IHEADP){
+            if(step->op==IHEADP || step->op==ITAIL && UDST(step->mode)==(AFP|AIND)){
                 if(step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->m || !native64typedrootoperand(AFP,step->s,f->bytes,s->databytes) || !native64typedrootoperand(AFP,step->d,headrequest->bytes,0) || j==0 || j+1>=f->count || f->code[j-1].returned!=252 || f->code[j-1].op!=ITAIL || f->code[j-1].d!=step->s || f->code[j+1].returned!=252 || f->code[j+1].op!=IMOVP || f->code[j+1].d!=step->s)return 0;
                 bit=step->d/8;if(!(headrequest->map[bit/8]&(128>>(bit%8))))return 0;
             }else{
                 if(!native64typedheadprep(step,f->bytes,s->databytes))return 0;
                 map=USRC(step->mode)==AFP?f->map:s->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
-                if(step->op==ITAIL){if(j && f->code[j-1].returned==252 && f->code[j-1].op==ITAIL && (USRC(step->mode)!=AFP || step->s!=f->code[j-1].d || step->d!=f->code[j-1].d))return 0;if(j+1>=f->count || f->code[j+1].returned!=252 || (f->code[j+1].op!=ITAIL && f->code[j+1].op!=IHEADP) || f->code[j+1].s!=step->d || (f->code[j+1].op==ITAIL && f->code[j+1].d!=step->d))return 0;}
-                else if(!native64modulereadonlynil(s,step->s) || !j || f->code[j-1].returned!=252 || f->code[j-1].op!=IHEADP || f->code[j-1].s!=step->d)return 0;
+                if(step->op==ITAIL){if(j && f->code[j-1].returned==252 && f->code[j-1].op==ITAIL && (USRC(step->mode)!=AFP || step->s!=f->code[j-1].d || step->d!=f->code[j-1].d))return 0;if(j+1>=f->count || f->code[j+1].returned!=252 || (f->code[j+1].op!=ITAIL && f->code[j+1].op!=IHEADP) || f->code[j+1].s!=step->d || (f->code[j+1].op==ITAIL && UDST(f->code[j+1].mode)==AFP && f->code[j+1].d!=step->d))return 0;}
+                else if(!native64modulereadonlynil(s,step->s) || !j || f->code[j-1].returned!=252 || (f->code[j-1].op!=IHEADP && !(f->code[j-1].op==ITAIL && UDST(f->code[j-1].mode)==(AFP|AIND))) || f->code[j-1].s!=step->d)return 0;
             }
-            bit=(step->op==IHEADP?step->s:step->d)/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;
+            bit=((step->op==IHEADP || step->op==ITAIL && UDST(step->mode)==(AFP|AIND))?step->s:step->d)/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;
         }
         for(j=0;j<f->count;j++)if(f->code[j].returned==239 || f->code[j].returned==241 || f->code[j].returned==251 || ((f->code[j].op==IBEQL || f->code[j].op==IBNEL) && (USRC(f->code[j].mode)&AIND) && f->code[j].returned>238 && f->code[j].m>=0 && (unsigned long)f->code[j].m<=0x40ffffUL)){
             unsigned int other;step=f->code+j;if(!native64typedchannelnil(step,f->bytes,s->databytes) || step->d<0 || (unsigned long)step->d>=f->count)return 0;
@@ -622,7 +667,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             modes[0]=USRC(step->mode);modes[1]=(step->mode&ARM)==AXINF?AFP:AMP;offsets[0]=step->s;offsets[1]=step->m;
             for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
         }
-        for(j=0;j<f->count;j++)if(native64typedbranch(f->code[j].op) && f->code[j].d>=0 && (unsigned long)f->code[j].d<f->count && f->code[f->code[j].d].returned==255 && f->code[f->code[j].d].op==IMOVP)return 0;
+        for(j=0;j<f->count;j++)if(native64typedbranch(f->code[j].op) && f->code[j].d>=0 && (unsigned long)f->code[j].d<f->count && native64typedprotectedentry(f->code,f->count,f->code[j].d))return 0;
         for(j=0;j<f->count;j++)if(f->code[j].returned==254 || f->code[j].returned==255){
             unsigned int k,mode;step=f->code+j;if(!native64typedrefarray(step,f->bytes,s->databytes))return 0;
             for(k=0;k<f->nsites;k++)if(f->sites[k].first<=j && j<=f->sites[k].end)return 0;

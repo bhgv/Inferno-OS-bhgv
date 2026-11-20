@@ -64,7 +64,7 @@ def main():
   controls=(
    ('missing mapped element Type','native64-typed-module.h','uchar refmap[]={0x80};refarraytype=ordinal;', 'uchar refmap[]={0};refarraytype=ordinal;','exact mapped 8-byte array Type'),
    ('classic 4-byte index stride','native64-typed-code.h','if(s->returned==255){if(s->op==IINDL){p->s.ind=s->s;', 'if(s->returned==255){if(s->op==IINDL){p->op=IINDW;p->s.ind=s->s;','exact 8-byte element stride'),
-   ('branch into borrowed mover','native64-typed-module.h','        for(j=0;j<f->count;j++)if(native64typedbranch(f->code[j].op) && f->code[j].d>=0 && (unsigned long)f->code[j].d<f->count && f->code[f->code[j].d].returned==255 && f->code[f->code[j].d].op==IMOVP)return 0;', '', 'array refusal before allocation'))
+   ('branch into borrowed mover','native64-typed-module.h','        for(j=0;j<f->count;j++)if(native64typedbranch(f->code[j].op) && f->code[j].d>=0 && (unsigned long)f->code[j].d<f->count && native64typedprotectedentry(f->code,f->count,f->code[j].d))return 0;', '', 'array refusal before allocation'))
   for name,header,before,after,predicate in controls:
    for parent in('native64-typed-code.h','native64-typed-module.h','native64-typed-multi.h','native64-typed-tables.h'):(w/parent).write_text((ROOT/'include'/parent).read_text())
    text=(w/header).read_text();assert text.count(before)==1;(w/header).write_text(text.replace(before,after,1));subprocess.run(command,check=True);result=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],capture_output=True,text=True,timeout=180)

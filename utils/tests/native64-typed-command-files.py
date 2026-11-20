@@ -27,14 +27,14 @@ def verify_nilbranches(data,row,imports,rows=None):
         sm=old['mode']>>3&7;mm=1 if old['mode']&192==128 else 0 if old['mode']&192==192 else -1
         if sm not in (0,1)or mm not in (0,1):continue
         a,ak=maps['frame'if sm else'data'][old['s'][0]];b,bk=maps['frame'if mm else'data'][old['m']]
-        if ak not in (6,10,11,12,20)and bk not in (6,10,11,12,20):continue
+        if ak not in (6,10,11,12,13,20)and bk not in (6,10,11,12,13,20):continue
         if ak==bk==12 and row['code'][i][5]==231:
             for space,offset in(('frame'if sm else'data',a),('frame'if mm else'data',b)):
                 assert offset%8==0 and row[space]['map'][offset//64]&(128>>(offset//8%8))
             expected=[codes['IBEQL']if old['op']==codes['IBEQW']else codes['IBNEL'],old['mode'],a,b,old['d'][0]-row['first'],231]
             assert row['code'][i]==expected,(row['name'],i,row['code'][i],expected)
             normal['code'][i]=[old['op'],old['mode'],a,b,old['d'][0]-row['first'],0];count+=1;continue
-        assert (ak in (6,10,11,12)and bk==20)or(ak==20 and bk in (6,10,11,12))
+        assert (ak in (6,10,11,12,13)and bk==20)or(ak==20 and bk in (6,10,11,12,13))
         left,right,mode=a,b,sm
         if ak==20:left,right,mode=b,a,mm
         assert right==nil

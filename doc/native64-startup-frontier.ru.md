@@ -295,3 +295,12 @@ PC902 multi-callee на showborders. Чтение и запись через п�
 проверены отдельно. showborders на PC1095 требует передачи элемента массива
 непосредственно в pending local call frame. handlerequest пока на PC618,
 awm.init на PC303, dragwin принята целиком. Окно AWM и Android UI не запущены.
+
+Следующий этап: [Весь кластер вызовов рамок AWM](native64-awm-call-cluster.ru.md).
+Приняты 19 из 20 неизменённых функций AWM, в том числе handlerequest, sizewin,
+sweep, showborders и showborder. В C/JIT исполняются исходные тела обеих функций
+рамок с четырьмя результатами в массив Image и проверкой владения. Закрыты
+арифметические аргументы, смешанные Point/Rect, поля Image/Pointer/Client,
+хвосты списков строк и byte→String после ссылочных аргументов. awm.init
+проходит PC303 и останавливается на PC316 alt-payload-class: смешанная пара
+(int,string) в ALT. Окно AWM и Android UI ещё не запущены.
