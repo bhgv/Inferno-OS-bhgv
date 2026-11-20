@@ -8,6 +8,7 @@ native64libraryshape(const Native64TypedStep*s,unsigned int*w,unsigned int*r)
  unsigned int i,id=(unsigned long)s->m>>24,field=(unsigned long)s->s>>16;
  w[0]=w[1]=4;r[0]=r[1]=0;
  switch(s->op){
+ case IBEQC:case IBNEC:if(!((id==6&&field==40)||(id==7&&field==0)))return 0;w[0]=w[1]=8;r[0]=r[1]=1;break;
  case ISLICELA:case IMOVP:case ICONSP:case IHEADP:case ITAIL:w[0]=w[1]=8;r[0]=r[1]=1;break;
  case ILENC:case ILENA:case ILENL:case IHEADW:w[0]=8;r[0]=1;break;
  case ICONSW:w[1]=8;r[1]=1;break;
@@ -41,7 +42,7 @@ native64typedlibrary(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
  unsigned int sm=USRC(s->mode),dm=UDST(s->mode),mm=s->mode&ARM,w[2],r[2],sid=(unsigned long)s->m>>24,did=(s->m>>16)&255;
  long mid=native64librarymiddle(s);
- if(s->mode>255 || s->m<0 || (unsigned long)s->m>0x05ffffffUL)return 0;
+ if(s->mode>255 || s->m<0 || (unsigned long)s->m>((unsigned long)Native64LibraryRecords<<24|0xffffffUL))return 0;
  if(s->returned==154)return s->op==INEWZ&&s->mode==(SRC(AIMM)|DST(dm))&&s->s>=1&&s->s<=Native64LibraryRecords&&!s->m&&(((dm==AFP||dm==AMP)&&native64typedrootoperand(dm,s->d,fp,mp))||(dm==(AFP|AIND)&&s->d==32));
  if(s->returned!=153 || (!sid&&!did) || !native64libraryshape(s,w,r) || !native64libraryoperand(sm,s->s,sid,w[0],r[0],fp,mp,0))return 0;
  if(native64typedbranch(s->op)){if(did||dm!=AIMM||s->d<0)return 0;}
@@ -86,4 +87,7 @@ native64libraryslicearg(const Native64TypedStep*s,unsigned int fp,unsigned int m
 static int
 native64librarybytecopy(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {unsigned int mm=s->mode&ARM;return s->returned==159 && s->op==ISLICELA && s->mode<=255 && mm!=AXNON && native64typedrootoperand(USRC(s->mode),s->s,fp,mp) && native64typedrootoperand(UDST(s->mode),s->d,fp,mp) && native64typedwordoperand(mm==AXIMM?AIMM:mm==AXINF?AFP:AMP,s->m,fp,mp) && (mm==AXIMM?(s->m>=-32768&&s->m<=32767):s->m<=65535);}
+static int
+native64libraryarraystore(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{return s->returned==142&&s->op==IMOVP&&s->mode==(SRC(USRC(s->mode))|DST(AFP|AIND))&&(USRC(s->mode)==(AFP|AIND)||USRC(s->mode)==(AMP|AIND))&&s->m==(7L<<24)&&s->d==48&&((unsigned long)s->s>>16)==24&&native64libraryoperand(USRC(s->mode),s->s,7,8,1,fp,mp,0);}
 #endif

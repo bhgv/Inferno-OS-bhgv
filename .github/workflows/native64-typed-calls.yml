@@ -56,6 +56,7 @@ on:
       - 'utils/tests/native64-string-library*'
       - 'utils/tests/native64-bufio-library*'
       - 'utils/tests/native64-wmsrv-queues*'
+      - 'utils/tests/native64-wmsrv-windows*'
       - 'utils/tests/native64-mp-client-nil*'
       - 'utils/tests/native64-pointer-args*'
       - 'utils/tests/native64-pointer-fields*'
@@ -246,6 +247,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/bufio-library.log"
           python3 utils/tests/native64-wmsrv-queues.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-queues.log"
+          python3 utils/tests/native64-wmsrv-windows.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-windows.log"
           python3 utils/tests/native64-mp-client-nil.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/mp-client-nil.log"
           python3 utils/tests/native64-pointer-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -445,6 +448,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/bufio-library.log"
           python3 utils/tests/native64-wmsrv-queues.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-queues.log"
+          python3 utils/tests/native64-wmsrv-windows.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-windows.log"
           python3 utils/tests/native64-mp-client-nil.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/mp-client-nil.log"
           python3 utils/tests/native64-pointer-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

@@ -253,7 +253,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
     fn=frame->m.decl;
     if(fn->ty==nil || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys!=nil || fn->ty->tof==nil)
         return typedfail(p,"external-signature");
-    while(end<stop && c->instructions[end]!=nil && c->instructions[end]->op!=IMCALL && (c->instructions[end]->dm==Afpind ||
+    while(end<stop && c->instructions[end]!=nil && c->instructions[end]->op!=IMCALL && (c->instructions[end]->dm==Afpind || (c->loads && c->instructions[end]->op==IINDW) ||
       (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==IMOVW || c->instructions[end]->op==ILENA || c->instructions[end]->op==IINDW || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || call->op!=IMCALL || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Aoff || call->m.decl!=fn || call->dm!=frame->sm || call->d.reg!=frame->s.reg ||
@@ -273,6 +273,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         if(c->loads && typedlibraryargument(in,frame,p,at-p->first,arg->offset,offset,kind)){
             at++;if(at<end && c->instructions[at]->op==ISLICEA){if(kind!=Tarray || !arg->ty->tof || arg->ty->tof->kind!=Tbyte || !typedlibraryslicearg(c->instructions[at],frame,p,at-p->first,arg->offset,offset))return typedfail(p,"library-array-slice");at++;}offset+=width;continue;
         }
+        if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Screen") && in->op==IINDW){if(!typedimagescreenarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Image") && in->op==IINDW){if(!typedimagearrayarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads && kind==Tint && typedwordargop(in->op)){if(!typedwordargument(in,frame,p,at-p->first,arg->offset,offset))return 0;at++;offset+=4;continue;}
         if(c->loads && kind==Tint && (in->op==ITAIL || in->op==IHEADP)){

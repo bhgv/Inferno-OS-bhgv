@@ -16,6 +16,8 @@ typedbytearrayaddr(Addr *a)
  return a->decl && (t=a->native64type?a->native64type:a->decl->ty) && t->kind==Tarray && t->tof && t->tof->kind==Tbyte && a->reg==a->decl->offset && !a->offset;
 }
 
+static int typedimagescreenarg(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
+static int typedlibraryarraystore(Inst*,Dis64TypedBody*,unsigned int);
 static int typedlibraryinst(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
 static int typedlibraryslicearg(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
 static int typedlibrarymodule(Inst*,Dis64TypedBody*,long*,unsigned int*,int*);
@@ -383,6 +385,18 @@ typedimagearrayindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc)
  p->code[pc+1]=(Dis64Instruction){IMOVP,read?SRC(AFP|AIND)|DST(vm):SRC(vm)|DST(AFP|AIND),0,read?48:value,read?value:48};p->returns[pc+1]=255;return 1;
 }
 
+/* A rooted Window list head may prepare the following borrowed array store. */
+static int
+typedimagearraywindowindex(Inst*in,Inst*head,Inst*store,Dis64TypedBody*p,unsigned int pc)
+{long array,index;unsigned int sm,dm;int actual;Addr*a=&store->d;
+ if(in->op!=IINDW||!typedimagearrayaddr(&in->s)||in->mm!=Afp||!in->m.decl||in->m.offset||in->branch||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual)||!typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual)||head->op!=IHEADP||head->dm!=Afp||store->sm!=Afpind||store->s.reg!=head->d.reg||store->s.decl!=head->d.decl||store->dm!=Afpind||a->decl!=in->m.decl||a->reg!=in->m.reg||a->offset||!typedwindowlist(head,p,p->code+pc+1,p->returns+pc+1,nil)||!typedlibraryarraystore(store,p,pc+2))return typedfail(p,"window-array-index");
+ p->code[pc]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};p->returns[pc]=255;return 1;}
+static int
+typedimagearrayslice(Inst*in,Dis64TypedBody*p,unsigned int pc,Type*result)
+{long source,middle;unsigned int sm,mm;int actual;
+ if(in->op!=ISLICEA||in->dm!=Afpind||in->d.reg!=16||in->d.offset||!result||result->kind!=Tarray||!typedwmref(result->tof,"Draw","Image")||in->branch||!typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual)||!typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mm,&actual)||(mm!=AIMM&&mm!=AFP))return typedfail(p,"image-array-result-slice");
+ p->code[pc]=(Dis64Instruction){ISLICEA,SRC(sm)|(mm==AIMM?AXIMM:AXINF)|DST(AFP|AIND),middle,source,32};p->returns[pc]=1;return 1;}
+
 /* Array result owner remains a non-temporary FP root throughout the call. */
 static int
 typedimagearrayresultindex(Inst*in,Dis64TypedBody*p,unsigned int pc)
@@ -411,6 +425,17 @@ typedimagearrayarg(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,uns
  p->code[*at-p->first]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),56,array,index};p->returns[(*at)++-p->first]=127;
  p->code[*at-p->first]=(Dis64Instruction){IMOVP,SRC(AFP|AIND)|DST(AFP|AIND),0,56,offset};p->returns[(*at)++-p->first]=127;return 1;
 }
+/* Retain an Image from an array before publishing its Screen argument. */
+static int
+typedimagescreenarg(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,unsigned int*at,unsigned int old,unsigned int native)
+{Inst*in=c->instructions[*at],*head,*field,store;long array,index,temp;unsigned int sm,dm,tm;int actual;
+ if(*at+3>=end||in->op!=IINDW||!typedimagearrayaddr(&in->s)||in->mm!=Afp||!in->m.decl||in->m.offset||in->branch||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual)||!typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual))return typedfail(p,"array-screen-index");
+ head=c->instructions[*at+1];field=c->instructions[*at+2];
+ if(head->op!=IMOVP||head->sm!=Afpind||head->s.reg!=in->m.reg||head->s.decl!=in->m.decl||head->s.offset||head->dm!=Afp||head->mm!=Anone||head->branch||!typedoperand(Afp,&head->d,TypedRoot,0,0,p,&temp,&tm,&actual)||actual!=Tref||field->sm!=Afpind||field->s.reg!=head->d.reg||field->s.decl!=head->d.decl||field->s.offset!=48||field->dm!=Afpind||field->d.reg!=frame->d.reg||field->d.offset!=old||!typedselectedfieldarg(field,p,*at+2-p->first,native,Tref))return typedfail(p,"array-screen-field");
+ p->code[*at-p->first]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),56,array,index};p->returns[*at-p->first]=143;
+ p->code[*at+1-p->first]=(Dis64Instruction){IMOVP,SRC(AFP|AIND)|DST(AFP),0,56,temp};p->returns[*at+1-p->first]=143;
+ *at+=3;store=*head;store.sm=Afp;store.s=head->d;store.s.offset=0;if(!typedrootargclear(c,p,&store,end,at)||p->returns[*at-1-p->first]!=126)return typedfail(p,"array-screen-clear");return 1;}
+
 static int
 typedwordargop(int op)
 {
@@ -985,6 +1010,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedaltpaircopy(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && in->op==IMOVP && in->dm==Afpind && in->d.reg==16 && in->d.offset==0){
             if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+        }else if(c->loads && in->op==IINDW && typedimagearrayaddr(&in->s) && pc+2<stop && c->instructions[pc+1]->op==IHEADP){
+            if(!typedimagearraywindowindex(in,c->instructions[pc+1],c->instructions[pc+2],p,pc-p->first))goto fail;inside[pc+1-p->first]=inside[pc+2-p->first]=1;pc+=3;
+        }else if(c->loads && in->op==ISLICEA && in->dm==Afpind && fn->ty->tof->kind==Tarray && typedwmref(fn->ty->tof->tof,"Draw","Image")){
+            if(!typedimagearrayslice(in,p,pc-p->first,fn->ty->tof))goto fail;pc++;
         }else if(c->loads && (in->op==INEWA || in->op==INEWAZ) && typedimagearrayaddr(&in->d)){
             if(!typedimagearraynew(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==IINDW && typedimagearrayaddr(&in->s) && pc+1<stop && (c->instructions[pc+1]->op==IFRAME || c->instructions[pc+1]->op==IMFRAME)){
@@ -1070,7 +1099,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedclientintlist(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) &&
           ((in->op!=ICONSP && typedwindowlisttype(&in->s)) || (in->op!=IHEADP && typedwindowlisttype(&in->d)))){
-            if(!typedwindowlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+            if(!typedwindowlist(in,p,p->code+pc-p->first,p->returns+pc-p->first,fn->ty->tof))goto fail;pc++;
         }else if((c->external>=2 || c->loads) && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
             if(!(c->loads?typedloadlist(in,fn,p,p->code+pc-p->first):typedclientlist(in,p,p->code+pc-p->first)))goto fail;
             if(UDST(p->code[pc-p->first].mode)==(AFP|AIND))p->returns[pc-p->first]=1;pc++;

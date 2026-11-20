@@ -3,8 +3,10 @@ static unsigned int
 typedlibraryrecord(Type*t)
 {
  static char*names[][9]={{"fd","buffer","index","size","dirty","bufpos","filpos","lastop","mode"},{"h","t","n"},{"h","t","n"},{"last","h","t"},{"iobuf","fill","next"}};
- Dis64Layout l={0};Decl*d;unsigned int id=0,i=0,k,n;int ok=0;
+ Dis64Layout l={0};Decl*d;unsigned int id=0,i=0,k,n;int ok=0;Type ref;
  if(t && t->kind==Tref)t=t->tof;if(!t || t->kind!=Tadt || !t->decl || !t->decl->sym)return 0;
+ if(!strcmp(t->decl->sym->name,"Client")){ok=typedclientlayout(t,&l);dis64layoutfree(&l);return ok?6:0;}
+ if(!strcmp(t->decl->sym->name,"Window")){memset(&ref,0,sizeof(ref));ref.kind=Tref;ref.tof=t;return typedwmsrvwindow(&ref)?7:0;}
  if(!strcmp(t->decl->sym->name,"Iobuf"))id=1;else if(!strcmp(t->decl->sym->name,"Iqueue"))id=2;else if(!strcmp(t->decl->sym->name,"Squeue"))id=3;else if(!strcmp(t->decl->sym->name,"Ptrqueue"))id=4;else if(!strcmp(t->decl->sym->name,"Filler"))id=5;
  if(!id || !dis64layouttype(t,&l) || l.bytes!=native64librarybytes(id) || l.count!=(n=native64libraryfields(id)))goto done;
  for(d=t->ids;d;d=d->next){if(d->store!=Dfield)continue;if(i>=n || !d->sym || strcmp(d->sym->name,names[id-1][i]) || !d->ty)goto done;
@@ -47,6 +49,7 @@ typedlibraryinst(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
  case ICVTWL:dk=Tbig;break;case ICVTLW:sk=Tbig;break;
  case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:binary=1;break;
  case IADDL:case ISUBL:case IMULL:case IDIVL:case IMODL:sk=dk=Tbig;binary=1;break;
+ case IBEQC:case IBNEC:sk=TypedRoot;rootcompare=1;branch=binary=1;break;
  case IBEQW:case IBNEW:case IBLTW:case IBLEW:case IBGTW:case IBGEW:branch=binary=1;break;
  case IBEQL:case IBNEL:case IBLTL:case IBLEL:case IBGTL:case IBGEL:sk=Tbig;branch=binary=1;break;
  default:return 0;
@@ -103,3 +106,10 @@ typedlibrarybytecopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
 {long source,middle,dest;unsigned int sm,mm,dm;int actual;
  if(in->op!=ISLICELA || !typedbytearrayaddr(&in->s) || !typedbytearrayaddr(&in->d) || in->branch || !typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual) || !typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mm,&actual) || !typedoperand(in->dm,&in->d,Tarray,0,0,p,&dest,&dm,&actual))return typedfail(p,"library-byte-copy");
  p->code[pc]=(Dis64Instruction){ISLICELA,SRC(sm)|(mm==AIMM?AXIMM:mm==AFP?AXINF:AXINM)|DST(dm),middle,source,dest};p->returns[pc]=159;return 1;}
+
+/* Store a Window's mapped Image root into the immediately prepared array slot. */
+static int
+typedlibraryarraystore(Inst*in,Dis64TypedBody*p,unsigned int pc)
+{long source;unsigned int sm,id;int actual;
+ if(in->op!=IMOVP||in->mm!=Anone||in->branch||in->dm!=Afpind||!typedlibraryoperand(in->sm,&in->s,TypedRoot,p,&source,&sm,&actual,&id)||id!=7||in->s.offset!=20)return typedfail(p,"window-array-store");
+ p->code[pc]=(Dis64Instruction){IMOVP,SRC(sm)|DST(AFP|AIND),7L<<24,source,48};p->returns[pc]=142;return 1;}

@@ -4,7 +4,7 @@ import argparse,copy,json,os,re,runpy,shlex,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 CMD=runpy.run_path(str(ROOT/'utils/tests/native64-typed-command-files.py'));E=CMD['EXT']
-def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,export_signatures=None,extra_imports=None):
+def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,export_signatures=None,extra_imports=None,source_label=None):
  expected_functions,expected_tables,expected_sites,entry=shape or ((4,3,3,'0')if module=='Emuinit'else(8,1,1,'~0U'))
  source=(ROOT/'appl/cmd/emuinit.b').read_text()if source is None else source;data,rows=E['compile_source'](limbo,w,source,interface='',loads=True)
  assert len(rows)==expected_functions and all(r['accepted']for r in rows),[(r['name'],r.get('reason'),r.get('pc'))for r in rows]
@@ -95,7 +95,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
  lines+=['static const Native64ModuleVariadic full_variadics[]={'+','.join(variables)+'};']
  for i,r in enumerate(rows):lines+=[f'static const uint full_fn_{r.get("export_name",r["name"]).replace(".","_")}={i};']
  (w/'full.h').write_text('\n'.join(lines)+'\n')
- print('PASS complete unchanged '+module+': '+str(len(rows))+' checked bodies, '+str(len(variables))+' variadic sites, complete classic operand/table/descriptor/export oracles and identical old-profile bytes',flush=True)
+ print('PASS '+(source_label or 'complete unchanged '+module)+': '+str(len(rows))+' checked bodies, '+str(len(variables))+' variadic sites, complete classic operand/table/descriptor/export oracles and identical old-profile bytes',flush=True)
  return rows
 
 def main():

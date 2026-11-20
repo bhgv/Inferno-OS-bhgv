@@ -96,6 +96,10 @@ native64typedargprep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 }
 
 static int
+native64typedarrayscreen(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{if(s->returned!=143)return 0;if(s->op==IINDL){Native64TypedStep copy=*s;copy.returned=127;return native64typedarraycall(&copy,fp,mp);}return s->op==IMOVP&&s->mode==(SRC(AFP|AIND)|DST(AFP))&&s->s==56&&!s->m&&native64typedrootoperand(AFP,s->d,fp,mp);}
+
+static int
 native64typedcomputedarg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const uchar*map,unsigned int np)
 {
  unsigned int bit,width=s->op==ILENA?4:8,root=s->op!=ILENA;
@@ -151,6 +155,10 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             if(s->returned==152){unsigned int k,bit;
                 if(c->external || s->op!=ICVTWF || s->mode!=(SRC(sm)|DST(AFP|AIND)) || s->m || !native64typedwordoperand(sm,s->s,fpbytes,mpbytes) || !native64typedrootoperand(AFP,s->d,c->callee->size,0) || s->d>65535)return 0;
                 for(k=0;k<8;k++){bit=(s->d+k)/8;if(bit/8<(unsigned int)c->callee->np && (c->callee->map[bit/8]&(128>>(bit%8))))return 0;}continue;
+            }
+            if(s->returned==143){if(!c->external||!native64typedarrayscreen(s,fpbytes,mpbytes))return 0;
+                if(s->op==IINDL){if(j+1>=stop||steps[j+1].returned!=143||steps[j+1].op!=IMOVP)return 0;}
+                else{if(j==c->first+1||steps[j-1].returned!=143||steps[j-1].op!=IINDL||j+2>=stop||steps[j+1].returned!=125||steps[j+1].op!=IMOVP||steps[j+1].s!=s->d||steps[j+1].m!=56||steps[j+2].returned!=126||steps[j+2].d!=s->d)return 0;}continue;
             }
             if(s->returned==127){
                 if(!c->external && steps[c->end].op!=ICALL)return 0;
@@ -275,6 +283,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 else if(s->returned==156){if(USRC(s->mode)&AIND){p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;}else p->s.imm=s->s;p->reg=native64librarymiddle(s);p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==155){p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==131){p->s.ind=s->s;p->reg=1024|24;p->d.i.f=40;p->d.i.s=32;}
+                else if(s->returned==143){if(s->op==IINDL){p->s.ind=s->s;p->reg=56;p->d.imm=s->d;}else{p->s.i.f=56;p->s.i.s=0;p->d.ind=s->d;}}
                 else if(s->returned==127){if(s->op==IINDL){p->reg=s->m;p->s.ind=s->s;p->d.ind=s->d;}else{p->s.i.f=56;p->s.i.s=0;p->d.i.f=40;p->d.i.s=s->d;}}
                 else if(s->returned==130 || s->returned==137 || (s->returned==152 && s->op==ICVTWF)){p->s.imm=s->s;p->reg=s->m;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==253){if(s->op==ICVTCW){p->s.ind=s->s;p->d.i.f=40;p->d.i.s=s->d;}else native64typedcode(p,1,s,1,fpbytes,mpbytes);}

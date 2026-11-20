@@ -20,9 +20,12 @@ typedwindowlisttype(Addr*a)
  return a->decl && t && t->kind==Tlist && typedwmsrvwindow(t->tof) && a->reg==a->decl->offset && !a->offset;
 }
 static int
-typedwindowlist(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
+typedwindowlist(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned,Type*result)
 {
  unsigned int sm,dm;long source,destination;int actual,cons=in->op==ICONSP,head=in->op==IHEADP;Type*t;
+ if(head&&in->dm==Afpind&&in->d.reg==16&&!in->d.offset&&in->mm==Anone&&!in->branch&&typedwindowlisttype(&in->s)&&typedwmsrvwindow(result)){
+  if(!typedoperand(in->sm,&in->s,Tlist,0,0,p,&source,&sm,&actual))return 0;*out=(Dis64Instruction){IHEADP,SRC(sm)|DST(AFP|AIND),0,source,32};*returned=1;return 1;
+ }
  if(in->mm!=Anone || in->branch || (in->sm!=Afp && in->sm!=Amp) || (in->dm!=Afp && in->dm!=Amp) ||
     (!cons&&!typedwindowlisttype(&in->s)) || (!head&&!typedwindowlisttype(&in->d)))return typedfail(p,"window-list-roles");
  if(cons){t=in->s.native64type?in->s.native64type:in->s.decl?in->s.decl->ty:nil;if(!typedwmsrvwindow(t) && (!t || t->kind!=Tany))return typedfail(p,"window-list-element");}
