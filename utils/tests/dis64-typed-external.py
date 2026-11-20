@@ -422,6 +422,13 @@ def verify(data,r,imports,loads=False,rows=None):
                 layout=aggregates.pop(j);n=2 if oldbytes==8 else 4 if oldbytes==16 else 0
                 assert nominals[j]in(None,'Draw.Pointer') and (nominals[j]!='Draw.Pointer' or r['code'][at][5]==227)
                 assert n and width==oldbytes and layout=={'legacy_bytes':oldbytes,'bytes':width,'map':[0],'leaves':[[4*k,4*k,4,4,9]for k in range(n)]}
+                if r['code'][at][5]==141:
+                    assert a['op']==OPCODES['IHEADP']and sm in(0,1)and a['mode']==(sm<<3)|1 and a['m']is None
+                    source=maps['frame'if sm else'data'][a['s'][0]];temp=maps['frame'][a['d'][0]]
+                    assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==a['s'][0])[2:]==[4,8,10]
+                    assert next(l for l in r['frame']['leaves']if l[0]==a['d'][0])[2:]==[4,8,12]
+                    assert r['code'][at]==[a['op'],a['mode'],source,0,temp,141]
+                    at+=1;a=original[at];sm=a['mode']>>3&7;assert sm==5 and maps['frame'][a['s'][0]]==temp and a['s'][1]==4 and r['code'][at][5]==217
                 if r['code'][at][5]==166:
                     assert a['op']==41 and sm in(4,5)and a['mode']==(sm<<3)|1 and a['m']is None and a['s'][1]in(8,20)
                     temp=maps['frame'][a['d'][0]]
@@ -556,6 +563,21 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert op==OPCODES['IMOVM']and dm in(4,5)and o['s'][1]==o['d'][1]==0 and o['m']==m==16 and mode&192==64
                 assert d==maps['frame'if dm==5 else'data'][o['d'][0]]
             continue
+        if returned==111:
+            assert loads and mode==o['mode'];sm=mode>>3&7;dm=mode&7;arm=mode&192
+            if op==OPCODES['ISLICELA']:
+                assert op==o['op']and sm in(0,1)and dm in(0,1)and arm in(64,128,192)
+                assert [s,m,d]==[library_operand(o['s'],sm,0,maps),o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']],library_operand(o['d'],dm,0,maps)]
+            elif op==OPCODES['IINDL']:
+                assert o['op']==OPCODES['IINDW']and sm in(0,1)and dm in(4,5)and arm==128 and o['d'][1]==36
+                assert [s,m,d]==[maps['frame'if sm else'data'][o['s'][0]],48,maps['frame'if dm==5 else'data'][o['d'][0]]|(72<<16)]
+                assert r['code'][pc+1][5]==255 and r['code'][pc+1][0]==41
+            else:
+                before=original[pc-1];assert before['op']==OPCODES['IINDW']and r['code'][pc-1][5]==255 and o['s']==[before['m'],0]and s==48
+                if op==41:assert o['op']==41 and mode==45 and m==0 and o['m']is None and o['d']==[16,0]and d==32
+                else:assert (o['op'],op)in((OPCODES['IBEQW'],OPCODES['IBEQL']),(OPCODES['IBNEW'],OPCODES['IBNEL']))and mode==234 and m==maps['data'][o['m']]and d==o['d'][0]-r['first']
+                inside.add(pc)
+            continue
         if returned==159:
             assert loads and op==o['op']==OPCODES['ISLICELA']and mode==o['mode'];sm=mode>>3&7;dm=mode&7;arm=mode&192
             assert s==library_operand(o['s'],sm,0,maps)and d==library_operand(o['d'],dm,0,maps)and m==(o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']]);continue
@@ -603,7 +625,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 sm=o['mode']>>3&7;dm=o['mode']&7;assert o['op']==OPCODES['IINDW']and o['mode']==(sm<<3)|128|dm and sm in(0,1)and dm in(0,1,2)
                 source=maps['frame'if sm else'data'][o['s'][0]];index=o['d'][0]if dm==2 else maps['frame'if dm else'data'][o['d'][0]]
                 assert [op,mode,s,m,d,returned]==[OPCODES['IINDL'],o['mode'],source,48,index,255]
-                assert (r['code'][pc+1][0]==41 and r['code'][pc+1][5]==255)or(r['code'][pc+1][0]==OPCODES['IHEADP']and r['code'][pc+1][5]==213 and r['code'][pc+2][5]==142)
+                assert r['code'][pc+1][5]==111 or (r['code'][pc+1][0]==41 and r['code'][pc+1][5]==255)or(r['code'][pc+1][0]==OPCODES['IHEADP']and r['code'][pc+1][5]==213 and r['code'][pc+2][5]==142)
                 if r['code'][pc+1][5]==213:inside.update((pc+1,pc+2))
             else:
                 before=original[pc-1];assert op==o['op']==41 and o['m']is None and mode==o['mode']and before['op']==OPCODES['IINDW']

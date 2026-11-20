@@ -173,6 +173,8 @@ typedgeometrybinding(Inst*binding,Type*result,Dis64TypedBody*p,unsigned int*base
 static int typedwmref(Type*,char*,char*);
 static int typedwmsrvwindowbase(Addr*,int,Dis64TypedBody*,long*,unsigned int*);
 static int typedrootargclear(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*);
+static int typedwindowlisttype(Addr*);
+static int typedwindowlist(Inst*,Dis64TypedBody*,Dis64Instruction*,uchar*,Type*);
 static int typedimagegeometryprep(Inst*,Inst*,Dis64TypedBody*,unsigned int);
 static int typedimagegeometry(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
 
@@ -199,6 +201,11 @@ typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned
  }
  base=(*offset+3)&~3U;if(base>65535-layout.bytes)goto done;
  in=c->instructions[*at];
+ if(c->loads && in->op==IHEADP && *at+1<end && typedwindowlisttype(&in->s)){
+  Inst*copy=c->instructions[*at+1];
+  if(!typedwindowlisttype(&in->s)||in->dm!=Afp||!in->d.decl||in->d.decl->store!=Dlocal||!in->d.decl->sym||in->d.decl->sym->name[0]!='.'||in->d.decl->sym->name[1]!='t'||copy->op!=IMOVM||copy->sm!=Afpind||copy->s.reg!=in->d.reg||copy->s.decl!=in->d.decl||copy->s.offset!=4||layout.bytes!=16||!typedwindowlist(in,p,p->code+*at-p->first,p->returns+*at-p->first,nil))goto done;
+  p->returns[*at-p->first]=141;in=c->instructions[++*at];prepared=1;
+ }
  if(c->loads && in->op==IMOVP && *at+1<end){
   if(!typedimagegeometryprep(in,c->instructions[*at+1],p,*at-p->first))goto done;
   in=c->instructions[++*at];prepared=1;

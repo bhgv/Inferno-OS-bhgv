@@ -85,7 +85,7 @@ def main():
   controls=(
    ('wrong Image argument slot','native64-typed-multi.h','else{p->s.i.f=56;p->s.i.s=0;p->d.i.f=40;p->d.i.s=s->d;}','else{p->s.i.f=56;p->s.i.s=0;p->d.i.f=40;p->d.i.s=s->d+8;}','exact cluster completion/error'),
    ('wrong computed Word operand','native64-typed-multi.h','else if(s->returned==130 || s->returned==137 || (s->returned==152 && s->op==ICVTWF)){p->s.imm=s->s;p->reg=s->m;','else if(s->returned==130 || s->returned==137 || (s->returned==152 && s->op==ICVTWF)){p->s.imm=s->s+1;p->reg=s->m;','real showborder Image and mixed Rect arguments'),
-   ('wrong flags mask','native64-typed-code.h','if(s->returned==236){p->reg=0;','if(s->returned==236){p->s.imm=s->s^1;p->reg=0;','Image comparisons Client.id and in-place flags'))
+   ('wrong flags mask','native64-typed-code.h','if(s->returned==153){p->reg=native64librarymiddle(s);','if(s->returned==153){p->reg=native64librarymiddle(s);if(s->op==IXORW && USRC(s->mode)==AIMM)p->s.imm=s->s^1;','Image comparisons Client.id and in-place flags'))
   parents=('native64-typed-code.h','native64-typed-module.h','native64-typed-multi.h','native64-typed-tables.h')
   for name,header,before,after,predicate in controls:
    for parent in parents:(w/parent).write_text((ROOT/'include'/parent).read_text())

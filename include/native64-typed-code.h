@@ -316,7 +316,7 @@ native64typedarraycall(const Native64TypedStep*s,unsigned int fp,unsigned int mp
 static int
 native64typedprotectedentry(const Native64TypedStep*steps,unsigned int count,unsigned int target)
 {
- return target<count && (steps[target].returned==158 || steps[target].returned==142 || (target&&steps[target].returned==213&&steps[target-1].returned==255&&steps[target-1].op==IINDL) || (steps[target].returned==255 && steps[target].op==IMOVP) ||
+ return target<count && (steps[target].returned==158 || (steps[target].returned==111&&(steps[target].op==IMOVP||native64typedbranch(steps[target].op))) || steps[target].returned==142 || (target&&steps[target].returned==213&&steps[target-1].returned==255&&steps[target-1].op==IINDL) || (steps[target].returned==255 && steps[target].op==IMOVP) ||
   (target && steps[target-1].returned==131 && steps[target-1].op==IINDL));
 }
 static int
@@ -347,6 +347,17 @@ native64typedrefarray(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
  if(s->op!=IMOVP || s->m)return 0;
  return sm==(AFP|AIND)?s->s==48 && s->mode==(SRC(sm)|DST(dm)) && native64typedrootoperand(dm,s->d,fp,mp):
   dm==(AFP|AIND) && s->d==48 && s->mode==(SRC(sm)|DST(dm)) && native64typedrootoperand(sm,s->s,fp,mp);
+}
+
+/* Closed registry array protocols, including its borrowed element result. */
+static int
+native64typedregistry(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{unsigned int sm=USRC(s->mode),dm=UDST(s->mode),mm=s->mode&ARM;
+ if(s->returned!=111||s->mode>255)return 0;
+ if(s->op==ISLICELA)return s->mode==(SRC(sm)|mm|DST(dm))&&mm!=AXNON&&(mm!=AXIMM||(s->m>=-32768&&s->m<=32767))&&native64typedrootoperand(sm,s->s,fp,mp)&&native64typedrootoperand(dm,s->d,fp,mp)&&native64typedwordoperand(mm==AXIMM?AIMM:mm==AXINF?AFP:AMP,s->m,fp,mp);
+ if(s->op==IINDL)return s->mode==(SRC(sm)|AXINF|DST(dm))&&s->m==48&&native64typedrootoperand(sm,s->s,fp,mp)&&(dm==(AFP|AIND)||dm==(AMP|AIND))&&s->d>=0&&((unsigned long)s->d>>16)==72&&native64typedrootoperand(dm&~AIND,s->d&65535,fp,mp);
+ if(s->op==IMOVP)return s->mode==(SRC(AFP|AIND)|DST(AFP|AIND))&&s->s==48&&!s->m&&s->d==32;
+ return (s->op==IBEQL||s->op==IBNEL)&&s->mode==(SRC(AFP|AIND)|AXINM|DST(AIMM))&&s->s==48&&native64typedrootoperand(AMP,s->m,fp,mp)&&s->d>=0;
 }
 
 /* Context has exactly three pointer fields (Display, Screen, wm channel).
@@ -480,6 +491,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         }
         if(s->returned==173){if(!native64typedcontextcopy(s,fpbytes,mpbytes))return 0;continue;}
         if((s->returned>=145 && s->returned<=147) || (s->returned>=149 && s->returned<=151)){if(!native64typednumericresult(s,fpbytes,mpbytes))return 0;continue;}
+        if(s->returned==111){if(!native64typedregistry(s,fpbytes,mpbytes)||(native64typedbranch(s->op)&&(unsigned long)s->d>=count))return 0;continue;}
         if(s->returned==142){if(!native64libraryarraystore(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==138 || s->returned==139){if(!native64typedpointerpair(s,fpbytes,mpbytes) || (s->returned==138 && (s->d<0 || (unsigned long)s->d>=count)))return 0;continue;}
         if(s->returned==159){if(!native64librarybytecopy(s,fpbytes,mpbytes))return 0;continue;}
@@ -614,6 +626,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==183){p->d.ind=s->d;continue;}
         if(s->returned==185){p->d.i.f=32;p->d.i.s=0;continue;}
         if((s->returned>=145 && s->returned<=147) || (s->returned>=149 && s->returned<=151)){p->d.i.f=32;p->d.i.s=s->returned<=147?4*(s->returned-145):0;continue;}
+        if(s->returned==111){if(s->op==IINDL){p->s.ind=s->s;p->reg=48;p->d.i.f=s->d&65535;p->d.i.s=72;}else if(s->op==IMOVP){p->s.i.f=48;p->s.i.s=0;p->d.i.f=32;p->d.i.s=0;}else if(native64typedbranch(s->op)){p->s.i.f=48;p->s.i.s=0;p->reg=s->m;p->d.ins=out+s->d;}else p->d.ind=s->d;continue;}
         if(s->returned==142){p->reg=0;p->s.i.f=s->s&65535;p->s.i.s=24;p->d.i.f=48;p->d.i.s=0;continue;}
         if(s->returned==138 || s->returned==139){p->s.i.f=s->s;p->s.i.s=s->returned==138?(unsigned long)s->m>>16:0;if(s->returned==138){p->reg=s->m&65535;p->d.ins=out+s->d;}else{p->reg=16;p->d.i.f=s->d;p->d.i.s=0;}continue;}
         if(s->returned==159){p->reg=s->m;p->d.ind=s->d;continue;}
