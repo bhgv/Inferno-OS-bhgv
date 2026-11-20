@@ -50,8 +50,8 @@ def boundaries(limbo,w):
  for before,after in(('flags:\tint;','flags:\tbig;'),('ctl:\t\tchan of string;','ctl:\t\tchan of int;'),('images:\tchan of (ref Draw->Point, ref Draw->Image, chan of int);','images:\tchan of (ref Draw->Point, ref Draw->Image, chan of string);')):
   assert before in original;(w/'badwmsrv.m').write_text(original.replace(before,after,1));source='implement Closed;include "sys.m";include "draw.m";include "badwmsrv.m";Closed:module{run:fn(c:ref Wmsrv->Client);};run(c:ref Wmsrv->Client){c.stop <-=1;}'
   _,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert not rows[0]['accepted'],rows
- _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);init=next(r for r in rows if r['name']=='init');assert not init['accepted']and init['pc']>169,init;assert next(r for r in rows if r['name']=='command')['accepted']
- print('PASS Client boundaries; real AWM init:',init['pc'],init['reason'],flush=True)
+ _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);init=next(r for r in rows if r['name']=='init');assert init['accepted']or init['pc']>169,init;assert next(r for r in rows if r['name']=='command')['accepted']
+ print('PASS Client boundaries; real AWM init:',init.get('pc','complete'),init.get('reason','accepted'),flush=True)
 def unit():
  src=BASE['unit']().split('\n#line 1 "native64-alt-pairs.c"')[0];start=src.index(' optab[IMOVW]=countmovw;');end=src.index(' require(prepare64calls(',start)
  return src+'\n#line 1 "native64-client-channels.c"\n'+(ROOT/'utils/tests/native64-client-channels.c').read_text().replace(' CLIENT_HANDLERS',src[start:end])

@@ -58,9 +58,9 @@ def boundaries(limbo,w):
   source='implement Closed;'+fake+'Closed:module{run:fn(f:ref Sys->FileIO);};run(f:ref Sys->FileIO){alt{(a,b,d,r):= <-f.read => ;}}'
   _,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert not rows[0]['accepted']and rows[0]['reason']=='alt-field-channel',rows
  _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True)
- init=next(r for r in rows if r['name']=='init');assert not init['accepted']and init['pc']>158,init
+ init=next(r for r in rows if r['name']=='init');assert init['accepted']or init['pc']>158,init
  assert next(r for r in rows if r['name']=='command')['accepted']
- print('PASS FileIO boundaries; real AWM init:',init['pc'],init['reason'],flush=True)
+ print('PASS FileIO boundaries; real AWM init:',init.get('pc','complete'),init.get('reason','accepted'),flush=True)
 def unit():
  src=BASE['unit']().split('\n#line 1 "native64-alt-pairs.c"')[0]
  start=src.index(' optab[IMOVW]=countmovw;');end=src.index(' require(prepare64calls(',start)

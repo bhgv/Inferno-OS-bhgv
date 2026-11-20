@@ -421,6 +421,7 @@ def main():
     run([sys.executable,str(tests/'native64-context-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'context-fields.log')
     run([sys.executable,str(tests/'native64-wmcontext-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmcontext-alt.log')
     run([sys.executable,str(tests/'native64-alt-pairs.py'),'--limbo',str(tools/'limbo')],build,env,logs/'alt-pairs.log')
+    run([sys.executable,str(tests/'native64-alt-replies.py'),'--limbo',str(tools/'limbo')],build,env,logs/'alt-replies.log')
     run([sys.executable,str(tests/'native64-alt-requests.py'),'--limbo',str(tools/'limbo')],build,env,logs/'alt-requests.log')
     run([sys.executable,str(tests/'native64-fileio-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'fileio-alt.log')
     run([sys.executable,str(tests/'native64-client-channels.py'),'--limbo',str(tools/'limbo')],build,env,logs/'client-channels.log')

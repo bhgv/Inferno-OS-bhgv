@@ -57,7 +57,7 @@ typedtextcmp(Sym *a,Sym *b)
 static int
 typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out)
 {
-    Decl *d=in->d.decl;Case *c;Label *l;unsigned int base,sm,i,rows=0;long value;int actual,kind;
+    Decl *d=in->d.decl;Case *c;Label *l;unsigned int base,sm,i,rows=0;long value;int actual,kind;unsigned int altdefault=0;
     kind=in->op==ICASE?Tcase:in->op==ICASEL?Tcasel:in->op==ICASEC?Tcasec:Tgoto;
     if(p->tables==nil || p->ntables==256 || in->dm!=Amp || in->mm!=Anone || in->branch!=nil || d==nil || d->store!=Dglobal ||
        d->sym==nil || d->sym->name==nil || d->sym->name[0]!='.' || d->init==nil || d->init->op!=Oname || d->init->decl!=d ||
@@ -68,9 +68,12 @@ typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out)
     if(in->op!=IGOTO && (c->iwild==nil || c->iwild->pc<p->first || c->iwild->pc>=stop))return typedfail(p,"table-default-owner");
     for(i=0;i<p->ntables;i++)rows+=p->tables[i].table->nlab;
     if((unsigned int)c->nlab>65536-rows)return typedfail(p,"table-row-budget");
+    if(in->op==IGOTO && p->sourceroles && in->pc>p->first && p->returns[in->pc-p->first-1]==191 && p->code[in->pc-p->first-1].op==INBALT){
+        if(c->nlab!=p->code[in->pc-p->first-1].middle || !c->iwild || c->iwild->pc<p->first || c->iwild->pc>=stop)return typedfail(p,"alt-default-owner");altdefault=1;
+    }
     for(i=0;i<(unsigned int)c->nlab;i++){
         l=c->labs+i;
-        if(in->op==IGOTO && p->sourceroles && in->pc>p->first && p->returns[in->pc-p->first-1]==191 && p->code[in->pc-p->first-1].op==IALT && c->iwild==nil &&
+        if(in->op==IGOTO && p->sourceroles && in->pc>p->first && p->returns[in->pc-p->first-1]==191 && (altdefault || (p->code[in->pc-p->first-1].op==IALT && c->iwild==nil)) &&
            c->nlab==p->code[in->pc-p->first-1].middle &&
            l->inst && l->inst->pc>=p->first && l->inst->pc<stop)continue;
         if(in->op==ICASEC){
@@ -92,7 +95,7 @@ typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out)
     }
     if(!typedoperand(in->sm,&in->s,in->op==ICASEL?Tbig:in->op==ICASEC?Tstring:Tint,0,0,p,&value,&sm,&actual))return 0;
     if(in->op==IGOTO && in->pc>p->first && p->returns[in->pc-p->first-1]==191 && (sm!=AFP || value!=p->code[in->pc-p->first-1].destination))return typedfail(p,"alt-selection-table");
-    p->tables[p->ntables++]=(Dis64TypedTable){in->pc-p->first,base,in->op,c};
+    p->tables[p->ntables++]=(Dis64TypedTable){in->pc-p->first,base,in->op,c,altdefault};
     *out=(Dis64Instruction){in->op,SRC(sm)|DST(AMP),0,value,base+(in->op==IGOTO?4:0)};return 1;
 }
 
@@ -237,7 +240,7 @@ typedresults(Dis64TypedBody *p)
             Dis64TypedTable *t=nil;unsigned int j,target;
             for(j=0;j<p->ntables;j++)if(p->tables[j].pc==pc){t=p->tables+j;break;}
             if(t==nil){ok=typedfail(p,"missing-table-flow");break;}
-            for(j=0;j<(unsigned int)t->table->nlab+(t->op!=IGOTO);j++){
+            for(j=0;j<(unsigned int)t->table->nlab+(t->op!=IGOTO || t->altdefault);j++){
                 target=(j<(unsigned int)t->table->nlab?t->table->labs[j].inst:t->table->iwild)->pc-p->first;
                 joined=state[target]?state[target]&flow:flow;
                 if(joined!=state[target]){state[target]=joined;queue[tail++]=target;}
@@ -624,6 +627,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
                             fprint(2,",%ld]",l->inst->pc-p.first);
                         }else fprint(2,"%s[%lld,%lld,%ld]",k?",":"",(t->op==IGOTO && t->pc && p.returns[t->pc-1]==191)?(vlong)k:l->start->val,(t->op==IGOTO && t->pc && p.returns[t->pc-1]==191)?(vlong)k:l->stop->val,l->inst->pc-p.first);
                     }
+                    if(t->altdefault)fprint(2,"%s[%d,%d,%ld]",t->table->nlab?",":"",t->table->nlab,t->table->nlab,t->table->iwild->pc-p.first);
                     fprint(2,"]}");
                 }
                 fprint(2,"]");

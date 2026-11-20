@@ -37,8 +37,8 @@ def boundaries(limbo,w):
  prefix=PREFIX+'include "wmsrv.m";';decl='Probe:module{run:fn(c:chan of (ref Wmsrv->Client,array of byte,Sys->Rwrite));};';source='implement Probe;'+prefix+decl+'client:ref Wmsrv->Client;bytes:array of byte;reply:Sys->Rwrite;run(c:chan of (ref Wmsrv->Client,array of byte,Sys->Rwrite)){alt{(p,a,r):= <-c => client=p;bytes=a;reply=r;}}'
  data,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert rows[0]['accepted'],rows;CMD['verify_nilbranches'](data,rows[0],[],rows=rows)
  interface=w/'join.m';interface.write_text(prefix+decl);h=subprocess.check_output([str(limbo),'-H','-M','Probe','-I',str(ROOT/'module'),str(interface)],text=True);signature=int(re.search(r'^#define LIMBO_NATIVE64_SIGNATURE_Probe_run (0x[0-9a-f]+)U',h,re.M)[1],16);assert E['BASE']['READ']['legacy_instructions'](data,with_exports=True)[-1][0]['signature']==signature
- _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);init=next(r for r in rows if r['name']=='init');assert not init['accepted']and init['pc']>153,init;assert next(r for r in rows if r['name']=='command')['accepted']
- print('PASS real Wmsrv.Client req triple and canonical hash; wider/different tuples closed; AWM init:',init['pc'],init['reason'],flush=True)
+ _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);init=next(r for r in rows if r['name']=='init');assert init['accepted']or init['pc']>153,init;assert next(r for r in rows if r['name']=='command')['accepted']
+ print('PASS real Wmsrv.Client req triple and canonical hash; wider/different tuples closed; AWM init:',init.get('pc','complete'),init.get('reason','accepted'),flush=True)
 def unit():
  base=runpy.run_path(str(ROOT/'utils/tests/native64-alt-pairs.py'))
  src=base['unit']().split('\n#line 1 "native64-alt-pairs.c"')[0]

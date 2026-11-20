@@ -144,6 +144,35 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
 
 static int typedclientchanneladdress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
 
+/* Sys.Rwrite: exact (int, string), including its alignment gap. */
+static int
+typedreplylayout(Type*t,Dis64Layout*l,int nominal)
+{
+ Decl*a;
+ if(!t || t->kind!=Ttuple || !(a=t->ids) || a->store!=Dfield || a->offset || !a->ty || a->ty->kind!=Tint ||
+    !(a=a->next) || a->next || a->store!=Dfield || a->offset!=4 || !a->ty ||
+    (nominal==1?a->ty->kind!=Tstring:nominal==2?(a->ty->kind!=Tstring && a->ty->kind!=Tany):!(a->ty->kind==Tstring || a->ty->kind==Tref || a->ty->kind==Tchan || a->ty->kind==Tarray || a->ty->kind==Tlist || a->ty->kind==Tmodule)) || !dis64layouttype(t,l))return 0;
+ return l->legacybytes==8 && l->bytes==16 && l->alignment==8 && l->count==2 &&
+  l->leaves[0].legacy==0 && l->leaves[0].native==0 && l->leaves[0].oldbytes==4 && l->leaves[0].bytes==4 && l->leaves[0].kind==Tint &&
+  l->leaves[1].legacy==4 && l->leaves[1].native==8 && l->leaves[1].oldbytes==4 && l->leaves[1].bytes==8;
+}
+static int
+typedreplytype(Type*t)
+{Dis64Layout l={0};int ok=typedreplylayout(t,&l,1);dis64layoutfree(&l);return ok;}
+static int
+typedreplyliteral(Type*t)
+{Dis64Layout l={0};int ok=typedreplylayout(t,&l,2);dis64layoutfree(&l);return ok;}
+static int
+typedreplyspan(Dis64Layout*l,unsigned int old,unsigned int*base)
+{unsigned int root;return dis64layoutaddress(l,old,4,0,base) && !(*base%8) && dis64layoutaddress(l,old+4,4,1,&root) && root==*base+8;}
+static int
+typedreplytransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
+{
+ int send=in->op==ISEND,cm=send?in->dm:in->sm,vm=send?in->sm:in->dm,actual;Addr*ca=send?&in->d:&in->s,*va=send?&in->s:&in->d;Type*t=ca->native64type?ca->native64type:ca->decl?ca->decl->ty:nil;long channel;unsigned int wire,value;
+ if((cm!=Afp && cm!=Amp) || (vm!=Afp && vm!=Amp) || in->mm!=Anone || in->branch || !t || t->kind!=Tchan || !typedreplytype(t->tof) || !typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&wire,&actual) || actual!=Tchan || !typedreplyspan(vm==Afp?&p->frame:&p->data,va->reg,&value))return 0;
+ *out=(Dis64Instruction){in->op,send?SRC(vm==Afp?AFP:AMP)|DST(wire):SRC(wire)|DST(vm==Afp?AFP:AMP),136,send?value:channel,send?channel:value};*returned=136;return 1;
+}
+
 /* Primitive channel transfer; aggregate payloads and borrowed outputs stay closed. */
 static int
 typedclienttransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
@@ -154,6 +183,7 @@ typedclienttransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned
  if(indirect){if(!typedclientchanneladdress(ca,cm,p,&channel,&cw,&field,&kind))return typedfail(p,"client-channel-field");}
  else{if(!t || t->kind!=Tchan || !t->tof || !typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&cw,&actual) || actual!=Tchan)return typedfail(p,"channel-transfer-owner");kind=t->tof->kind;}
  root=kind==Tstring || kind==Tref || kind==Tchan || kind==Tarray || kind==Tlist || kind==Tmodule;
+ if(kind==Ttuple && !indirect && typedreplytransfer(in,p,out,returned))return 1;
  if(!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal)return typedfail(p,"channel-transfer-payload");
  width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
  if(!typedoperand(vm,va,root?TypedRoot:kind==Tfix?Tint:kind,in->op==ISEND&&!root&&width<8,0,p,&value,&vw,&actual) || (root && actual!=kind && actual!=Tany))return typedfail(p,"channel-transfer-value");
@@ -202,13 +232,15 @@ typedmappedpayload(Type*t,Dis64Layout*layout)
 static int
 typedclientmappedchannel(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {
- Dis64Layout payload={0},descriptor={0};Decl*d=in->s.decl;Type*t;unsigned int n;int ok=0;
+ Dis64Layout payload={0},descriptor={0};Decl*d=in->s.decl;Type*t;unsigned int n;int ok=0,mixed;
  if(in->sm!=Adesc || !d || !d->desc || d->desc->id!=in->s.offset || !d->desc->map || d->desc->nmap!=1)goto done;
  t=in->dm==Afpind?fn->ty->tof:in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;
- if(!t || t->kind!=Tchan || !typedmappedpayload(t->tof,&payload) || !typedmappedpayload(d->ty,&descriptor))goto done;
- n=payload.count;if(descriptor.count!=n || d->desc->size!=4*n || d->desc->map[0]!=(n==2?0xc0:0xe0))goto done;
+ if(!t || t->kind!=Tchan)goto done;mixed=typedreplytype(t->tof);
+ if(mixed){if(!typedreplylayout(t->tof,&payload,1) || !typedreplylayout(d->ty,&descriptor,0))goto done;}
+ else if(!typedmappedpayload(t->tof,&payload) || !typedmappedpayload(d->ty,&descriptor))goto done;
+ n=payload.count;if(descriptor.count!=n || d->desc->size!=4*n || d->desc->map[0]!=(mixed?0x40:n==2?0xc0:0xe0))goto done;
  if(!typedchanneloutput(in,fn,p,out,returned))goto done;
- out->source=n;*returned=*returned?185:183;ok=1;
+ out->source=mixed?1:n;*returned=*returned?185:183;ok=1;
  done:dis64layoutfree(&payload);dis64layoutfree(&descriptor);return ok?1:typedfail(p,"mapped-channel-layout");
 }
 
@@ -890,7 +922,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             pc=next;
         }else if(c->loads && (in->op==IALT || in->op==INBALT || ((in->op==IMOVW || in->op==ILEA) && in->dm==Afp && in->d.reg>=0 && typedaltslot(&in->d,fn)))){
             if(!typedaltinst(in,fn,p,pc-p->first))goto fail;
-            if(in->op==IALT){unsigned int start=pc-p->first-2-2*p->code[pc-p->first].middle;for(i=start+1;i<=pc-p->first;i++)inside[i]=1;}
+            if(in->op==IALT || in->op==INBALT){unsigned int start=pc-p->first-2,n=p->code[pc-p->first].middle;while(start && n){start--;if(p->returns[start]==189 || p->returns[start]==192 || p->returns[start]==193 || p->returns[start]==198)n--;}if(n){typedfail(p,"alt-setup-shape");goto fail;}for(i=start+1;i<=pc-p->first;i++)inside[i]=1;}
             pc++;
         }else if(c->loads && p->resultgeometry && in->op==IMOVM && in->dm==Afpind && in->d.reg==16){
             if(!typedlocalgeometryreturn(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
@@ -901,6 +933,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             for(d=descriptors;d && d->id!=in->m.offset;d=d->next);
             if(in->sm!=Afp || in->mm!=Adesc || in->dm!=Afpind || in->d.reg!=16 || in->d.offset || in->branch || !in->m.decl || in->m.decl->desc!=d || !typedchanneltriple(in->m.decl->ty) || !d || d->size!=12 || d->nmap!=1 || d->map[0]!=0xe0 || !typedchannelbinding(c,p,in,&base)){typedfail(p,"channel-result-copy");goto fail;}
             p->code[pc-p->first]=(Dis64Instruction){IMOVMP,SRC(AFP)|AXIMM|DST(AFP|AIND),0,base,32};p->returns[pc++-p->first]=171;
+        }else if(c->loads && (in->op==IMOVP || in->op==ISLICEA) && typedreadreplyprep(c,in,p,pc,stop)){pc++;
         }else if(c->loads && in->op==IMOVMP){
             if(!typedaltpaircopy(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && in->op==IMOVP && in->dm==Afpind && in->d.reg==16 && in->d.offset==0){
@@ -934,8 +967,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             p->code[pc-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,32};p->returns[pc-p->first]=1;pc++;
         }else if(c->loads && in->op==ICVTCW && (in->dm==Afpind || in->dm==Ampind) && typedwmref(typedfieldowner(&in->d),"Draw","Pointer")){
             if(!typedpointerparse(in,p,pc-p->first))goto fail;pc++;
-        }else if((c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)) || (c->loads && (in->op==ICVTAC || in->op==ICVTWC || in->op==ICVTCW))){
-            if((c->loads && in->op==ICVTAC && !typedloadbytes(in,p,pc-p->first)) || !typedclientcodec(in,p,pc-p->first))goto fail;pc++;
+        }else if((c->external>=2 && (in->op==ICVTCW || in->op==ICVTCL || in->op==ICVTCF || in->op==ICVTWC || in->op==ICVTLC || in->op==ICVTFC || in->op==ICVTCA || in->op==ICVTAC)) || (c->loads && (in->op==ICVTCA || in->op==ICVTAC || in->op==ICVTWC || in->op==ICVTCW))){
+            if((c->loads && (in->op==ICVTCA || in->op==ICVTAC) && !typedloadbytes(in,p,pc-p->first)) || !typedclientcodec(in,p,pc-p->first))goto fail;pc++;
         }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
                  (c->loads && (in->op==IADDC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
@@ -1012,7 +1045,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     }
     for(i=0;i<p->ntables;i++){
         Dis64TypedTable *t=p->tables+i;unsigned int j,target;
-        for(j=0;j<(unsigned int)t->table->nlab+(t->op!=IGOTO);j++){
+        for(j=0;j<(unsigned int)t->table->nlab+(t->op!=IGOTO || t->altdefault);j++){
             target=(j<(unsigned int)t->table->nlab?t->table->labs[j].inst:t->table->iwild)->pc-p->first;
             if(inside[target]){typedfail(p,"multi-table-setup-branch");goto fail;}
         }

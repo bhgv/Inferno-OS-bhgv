@@ -304,3 +304,12 @@ sweep, showborders и showborder. В C/JIT исполняются исходны
 хвосты списков строк и byte→String после ссылочных аргументов. awm.init
 проходит PC303 и останавливается на PC316 alt-payload-class: смешанная пара
 (int,string) в ALT. Окно AWM и Android UI ещё не запущены.
+
+Следующий этап: [Ответы Rwrite/Rread и неблокирующий ALT](native64-alt-replies.ru.md).
+Все 20 неизменённых тел AWM, включая init, приняты проверенным native64 IR
+и независимо сверены с классическим Dis. Пройдены PC316–377: смешанные
+(int,string), default NBALT, String→byte array, срез байтового ответа и
+(array of byte,string). В отдельном модуле проверены обычные/ALT передачи,
+буферы и полное освобождение. Теперь граница проходит по сборке и подключению
+зависимостей и сервисов AWM: Wmsrv 3/34, Wmclient 5/21, String 7/21, Bufio 0/27
+тел в текущем preflight. Это не запуск окна AWM или Android UI.

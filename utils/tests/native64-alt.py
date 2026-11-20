@@ -34,7 +34,6 @@ def generate(limbo,w):
  print('PASS blocking ALT source:',controls,'corruptions detected; classic operands/tables/maps and unchanged bytes',flush=True)
 def boundaries(limbo,w):
  for source in(
-  'implement A;A:module{run:fn(c:chan of int);};run(c:chan of int){alt{v:= <-c => ; * => ;}}',
   'implement A;A:module{run:fn(c:array of chan of int);};run(c:array of chan of int){alt{(i,v):= <-c => ;}}',
   'implement A;A:module{run:fn(c:chan of (int,int));};run(c:chan of (int,int)){alt{(v,w):= <-c => ;}}',
   'implement A;A:module{run:fn(c:chan of int);};get(c:chan of int):chan of int{return c;}run(c:chan of int){alt{v:= <-get(c) => ;}}'):
@@ -45,8 +44,8 @@ def boundaries(limbo,w):
  for n in(32,33):
   source='implement A;A:module{run:fn(c:chan of int);};out:int;run(c:chan of int){alt{'+''.join('v:= <-c => out=v;'for _ in range(n))+'}}'
   _,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert next(r for r in rows if r['name']=='run')['accepted']==(n==32),rows
- print('PASS ALT boundary: NBALT, arrays, other payload classes and computed channel closed; 32 guards accepted, 33 refused',flush=True)
- _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);init=next(r for r in rows if r['name']=='init');assert not init['accepted']and init['pc']>=142,init;assert next(r for r in rows if r['name']=='command')['accepted']
+ print('PASS ALT boundary: arrays, other payload classes and computed channel closed; 32 guards accepted, 33 refused',flush=True)
+ _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);init=next(r for r in rows if r['name']=='init');assert init['accepted']or init['pc']>=142,init;assert next(r for r in rows if r['name']=='command')['accepted']
  print('PASS real AWM frontier: Window.ctl PC140 passed; init reaches at least the former Wmcontext PC142 barrier',flush=True)
 def unit():
  src=TR['unit']().split('\n#line 1 "native64-channel-transfer.c"')[0];stub='void altdone(Alt*a,Prog*p,Channel*c,int r){USED(a);USED(p);USED(c);USED(r);require(0);}';assert src.count(stub)==1;src=src.replace(stub,'')

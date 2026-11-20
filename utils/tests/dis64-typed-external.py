@@ -673,6 +673,22 @@ def verify(data,r,imports,loads=False,rows=None):
             value=va[0]if vm==2 else maps['frame'if vm else'data'][va[0]];owner=maps['frame'if cm==5 else'data'][ca[0]]
             assert r['code'][pc]==[op,mode,value if sending else owner,(2*ca[1]<<8)|contract,owner if sending else value,204]
             continue
+        if returned in(135,136):
+            assert loads and op==o['op']and mode==o['mode']
+            if returned==135:
+                assert op==OPCODES['IMOVMP']and mode&192==64 and types[o['m']]==(8,b'\x40')and m==0
+                spans=((mode>>3&7,o['s'][0],s),(mode&7,o['d'][0],d))
+            else:
+                assert op in(OPCODES['ISEND'],OPCODES['IRECV'])and o['m']is None and m==136
+                send=op==OPCODES['ISEND'];cm=mode&7 if send else mode>>3&7;vm=mode>>3&7 if send else mode&7
+                ca=o['d']if send else o['s'];va=o['s']if send else o['d'];channel=d if send else s;value=s if send else d
+                assert cm in(0,1)and maps['frame'if cm else'data'][ca[0]]==channel and next(l for l in r['frame'if cm else'data']['leaves']if l[0]==ca[0])[4]==6
+                spans=((vm,va[0],value),)
+            for address,old,new in spans:
+                assert address in(0,1)
+                leaves=r['frame'if address else'data']['leaves'];fields=[next(l for l in leaves if l[0]==old+4*i)for i in range(2)]
+                assert fields[0][2:]==[4,4,9]and fields[1][2:4]==[4,8]and fields[1][4]in ROOTS+(20,)and fields[0][1]==new and fields[1][1]==new+8
+            continue
         if returned in(201,202):
             write=returned==201
             assert loads and o['op']==op==OPCODES['IMOVMP']and o['mode']==mode and mode&192==64 and o['m']is not None and m==0
@@ -691,9 +707,9 @@ def verify(data,r,imports,loads=False,rows=None):
             for address,old,new in((mode>>3&7,o['s'][0],s),(mode&7,o['d'][0],d)):
                 assert address in(0,1)
                 leaves=r['frame'if address else'data']['leaves'];fields=[next(l for l in leaves if l[0]==old+4*i)for i in range(count)]
-                for i,leaf in enumerate(fields):assert leaf[2:]==[4,8,([12,6]if count==2 else[12,3,6])[i]]and leaf[1]==new+8*i
+                for i,leaf in enumerate(fields):assert leaf[2:4]==[4,8]and leaf[4]in ROOTS+(20,)and leaf[1]==new+8*i
             continue
-        if returned in(189,190,191,192,193,195,197,198,199,203):
+        if returned in(134,189,190,191,192,193,195,197,198,199,203):
             assert loads and o['m']is None
             sm=o['mode']>>3&7;assert o['mode']&7==1
             destination=maps['frame'][o['d'][0]]
@@ -714,6 +730,11 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert o['op']==OPCODES['IMOVW']and sm in(4,5)and o['s'][1]in(0,4,8,12,16)
                 assert next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==o['s'][0])[4]==12
                 assert r['code'][pc]==[OPCODES['IMOVL'],o['mode'],maps['frame'if sm==5 else'data'][o['s'][0]],2*o['s'][1],destination,193]
+            elif returned==134:
+                assert o['op']==OPCODES['ILEA']and sm in(0,1)
+                leaves=r['frame'if sm else'data']['leaves'];a=next(l for l in leaves if l[0]==o['s'][0]);b=next(l for l in leaves if l[0]==o['s'][0]+4)
+                assert a[2:]==[4,4,9]and b[2:4]==[4,8]and b[4]in ROOTS+(20,)and b[1]==a[1]+8
+                assert r['code'][pc]==[OPCODES['ILEA'],o['mode'],a[1],136,destination,134]
             elif returned==190:
                 assert o['op']==OPCODES['ILEA']and sm in(0,1)
                 leaf=next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0]);contract=24 if leaf[4]in ROOTS else leaf[3]
@@ -729,13 +750,13 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert o['op']==OPCODES['ILEA']and sm in(0,1)
                 count=2 if returned==195 else 3
                 leaves=r['frame'if sm else'data']['leaves'];fields=[next(l for l in leaves if l[0]==o['s'][0]+4*i)for i in range(count)]
-                for i,leaf in enumerate(fields):assert leaf[2:]==[4,8,([12,6]if count==2 else[12,3,6])[i]]and leaf[1]==fields[0][1]+8*i
+                for i,leaf in enumerate(fields):assert leaf[2:4]==[4,8]and leaf[4]in ROOTS+(20,)and leaf[1]==fields[0][1]+8*i
                 assert r['code'][pc]==[OPCODES['ILEA'],o['mode'],fields[0][1],48 if count==2 else 72,destination,returned]
             else:
-                assert o['op']==OPCODES['IALT']and sm==1
+                assert o['op']in(OPCODES['IALT'],OPCODES['INBALT'])and sm==1
                 headers=original[pc-2:pc];assert all(h['op']==OPCODES['IMOVW']and h['mode']==17 for h in headers)
                 n=sum(h['s'][0]for h in headers)
-                assert r['code'][pc]==[OPCODES['IALT'],o['mode'],maps['frame'][o['s'][0]],n,destination,191]
+                assert r['code'][pc]==[o['op'],o['mode'],maps['frame'][o['s'][0]],n,destination,191]
             continue
         if o['op']==OPCODES['IEXIT']:
             assert loads and o['mode']==27 and o['s']is None and o['m']is None and o['d']is None
@@ -762,7 +783,8 @@ def verify(data,r,imports,loads=False,rows=None):
             continue
         if o['op']==OPCODES['INEWCMP']:
             assert loads and op==o['op']==OPCODES['INEWCMP']and mode==o['mode']and returned in(183,185)
-            size,mapping=types[o['s'][0]];n=size//4;assert n in(2,3)and size==4*n and mapping==bytes([192 if n==2 else 224])
+            size,mapping=types[o['s'][0]];n=size//4;assert n in(2,3)and size==4*n and mapping in(bytes([192 if n==2 else 224]),b'\x40')
+            if mapping==b'\x40':assert size==8;n=1
             mm=mode&192;dm=mode&7;middle=0 if mm==0 else o['m']if mm==64 else maps['frame'if mm==128 else'data'][o['m']]
             if returned==185:assert o['d']==[16,0]and r['result']==[6,8]
             else:assert next(l for l in r['frame'if dm==1 else'data']['leaves']if l[0]==o['d'][0])[4]==6

@@ -48,8 +48,8 @@ def boundaries(limbo,w):
  for declaration,body in(('Other:adt{image:ref Draw->Image;};','run(o:ref Other,x:ref Draw->Image){if(o.image==x); }'),('','run(o:ref Draw->Context,x:chan of (string,chan of (string,ref Draw->Wmcontext))){if(o.wm==x); }')):
   args=body[3:body.index('){')];source='implement Closed;'+PREFIX+declaration+'Closed:module{run:fn'+args+');};'+body
   _,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert not rows[0]['accepted'],rows
- _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);init=next(r for r in rows if r['name']=='init');assert not init['accepted']and init['pc']>178,init;assert next(r for r in rows if r['name']=='command')['accepted']
- print('PASS field reference boundaries; real AWM init:',init['pc'],init['reason'],flush=True)
+ _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);init=next(r for r in rows if r['name']=='init');assert init['accepted']or init['pc']>178,init;assert next(r for r in rows if r['name']=='command')['accepted']
+ print('PASS field reference boundaries; real AWM init:',init.get('pc','complete'),init.get('reason','accepted'),flush=True)
 def unit():
  src=BASE['unit']().split('\n#line 1 "native64-alt-pairs.c"')[0];start=src.index(' optab[IMOVW]=countmovw;');end=src.index(' require(prepare64calls(',start)
  return src+'\n#line 1 "native64-field-reference.c"\n'+(ROOT/'utils/tests/native64-field-reference.c').read_text().replace(' BRANCH_HANDLERS',src[start:end])

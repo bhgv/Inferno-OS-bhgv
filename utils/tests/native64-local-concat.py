@@ -25,8 +25,8 @@ def generate(limbo,w):
   _,r=E['compile_source'](limbo,w,source,interface='',loads=True);assert not next(x for x in r if x['name']=='run')['accepted'],r
  print('PASS local concat boundary: allocating spawn arguments and multiple formal arguments remain closed',flush=True)
 def awmproof(limbo,w):
- _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);command=next(r for r in rows if r['name']=='command');init=next(r for r in rows if r['name']=='init');assert command['accepted']and not init['accepted']and init['pc']>136,init
- print('PASS real awm.init advances past PC136:',init['pc'],init['reason'],flush=True)
+ _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);command=next(r for r in rows if r['name']=='command');init=next(r for r in rows if r['name']=='init');assert command['accepted']and (init['accepted']or init['pc']>136),init
+ print('PASS real awm.init advances past PC136:',init.get('pc','complete'),init.get('reason','accepted'),flush=True)
 def unit():
  src=EX['unit']().split('\n#line 1 "native64-process-exit.c"')[0];before='OP(addc)\n{';assert src.count(before)==1;src=src.replace(before,'static int concatfail;\n'+before+'\n if(concatfail){concatfail=0;failat=allocations+1;}')
  start=src.index(' optab[IMOVW]=countmovw;');end=src.index(' require(prepare64calls(',start)

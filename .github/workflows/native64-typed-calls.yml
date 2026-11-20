@@ -37,6 +37,7 @@ on:
       - 'utils/tests/native64-alt*'
       - 'utils/tests/native64-wmcontext-alt*'
       - 'utils/tests/native64-alt-pairs*'
+      - 'utils/tests/native64-alt-replies*'
       - 'utils/tests/native64-alt-requests*'
       - 'utils/tests/native64-fileio-alt*'
       - 'utils/tests/native64-client-channels*'
@@ -204,6 +205,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/wmcontext-alt.log"
           python3 utils/tests/native64-alt-pairs.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/alt-pairs.log"
+          python3 utils/tests/native64-alt-replies.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/alt-replies.log"
           python3 utils/tests/native64-alt-requests.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/alt-requests.log"
           python3 utils/tests/native64-fileio-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -395,6 +398,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/wmcontext-alt.log"
           python3 utils/tests/native64-alt-pairs.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/alt-pairs.log"
+          python3 utils/tests/native64-alt-replies.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/alt-replies.log"
           python3 utils/tests/native64-alt-requests.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/alt-requests.log"
           python3 utils/tests/native64-fileio-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

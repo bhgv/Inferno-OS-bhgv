@@ -20,7 +20,7 @@ struct Dis64TypedVariadic {
 };
 typedef struct Dis64TypedBody Dis64TypedBody;
 typedef struct Dis64TypedTable Dis64TypedTable;
-struct Dis64TypedTable {unsigned int pc,offset;int op;Case *table;};
+struct Dis64TypedTable {unsigned int pc,offset;int op;Case *table;unsigned int altdefault;};
 struct Dis64TypedBody {
 	Dis64Instruction *code;
 	Dis64TypedSite *sites;
