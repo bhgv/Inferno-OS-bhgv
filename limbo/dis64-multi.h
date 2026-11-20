@@ -13,9 +13,13 @@ static int
 typedbytearrayaddr(Addr *a)
 {
  Type*t;
- return a->decl && (t=a->decl->ty) && t->kind==Tarray && t->tof && t->tof->kind==Tbyte && a->reg==a->decl->offset && !a->offset;
+ return a->decl && (t=a->native64type?a->native64type:a->decl->ty) && t->kind==Tarray && t->tof && t->tof->kind==Tbyte && a->reg==a->decl->offset && !a->offset;
 }
 
+static int typedlibraryinst(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
+static int typedlibraryslicearg(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
+static int typedlibrarymodule(Inst*,Dis64TypedBody*,long*,unsigned int*,int*);
+static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int,int);
 #include "dis64-external.h"
 #include "dis64-variadic.h"
 static int typedwindowlisttype(Addr*);
@@ -785,6 +789,10 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(c->loads && !spawning && kind==Tref && typedwmref(arg->ty,"Draw","Image") && in->op==IINDW){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || !typedimagearrayarg(c,p,frame,end,&at,arg->offset,offset))return 0;continue;
         }
+        if(c->loads && !spawning && (in->sm==Afpind || in->sm==Ampind)){
+            unsigned int view;int k=typedclientreferencekind(kind);
+            if(dis64layoutaddress(&child->frame,arg->offset,k||kind==Tbig||kind==Treal?8:4,k,&view) && typedlibraryargument(in,frame,p,at-p->first,arg->offset,view,kind)){at++;continue;}
+        }
         if(c->loads && kind==Treal && in->op==ICVTWF){
             if(spawning || in->branch || in->mm!=Anone || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !dis64layoutaddress(&child->frame,arg->offset,8,0,&offset) || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual))return typedfail(p,"local-real-argument");
             p->code[at-p->first]=(Dis64Instruction){ICVTWF,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=152;continue;
@@ -830,11 +838,11 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
                !typedinst(clear,stop,p,p->code+at+2-p->first,p->returns+at+2-p->first))return typedfail(p,"local-id-string-argument");
             p->code[at+1-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,offset};p->returns[at+1-p->first]=64;p->returns[at+2-p->first]=238;at+=3;continue;
         }
-        if(c->loads && kind==Tstring && in->op==ICVTAC){
+        if(c->loads && ((kind==Tstring && in->op==ICVTAC) || (kind==Tarray && arg->ty->tof && arg->ty->tof->kind==Tbyte && in->op==ICVTCA))){
             if(arg->next || in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
-               !typedbytearrayaddr(&in->s) || !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || offset>65535 ||
-               !typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual))return typedfail(p,"local-byte-string-argument");
-            p->code[at-p->first]=(Dis64Instruction){ICVTAC,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=64;continue;
+               (in->op==ICVTAC && !typedbytearrayaddr(&in->s)) || !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || offset>65535 ||
+               !typedoperand(in->sm,&in->s,in->op==ICVTAC?Tarray:Tstring,0,0,p,&source,&sm,&actual))return typedfail(p,"local-byte-string-argument");
+            p->code[at-p->first]=(Dis64Instruction){in->op,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=64;continue;
         }
         if(c->loads && kind==Tstring && in->op==IADDC && (child==p || (arg==c->functions[target]->ty->ids && !arg->next))){
             unsigned int mm;long middle;
@@ -898,6 +906,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
 }
 
 #include "dis64-alt.h"
+#include "dis64-library-records.h"
 
 static int
 typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
@@ -932,7 +941,11 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     for(pc=p->first;pc<stop;){
         in=c->instructions[pc];p->badpc=pc;
         if(in==nil){typedfail(p,"multi-instruction-order");goto fail;}
-        if(in->op==IFRAME || (c->external && in->op==IMFRAME)){
+        if(c->loads && in->op==IINDB){
+            if(pc+1>=stop || !typedlibrarybyteindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
+        }else if(c->loads && typedlibraryinst(in,p,pc-p->first,stop)){pc++;
+        }else if(c->loads && in->op==ISLICELA){if(!typedlibrarybytecopy(in,p,pc-p->first))goto fail;pc++;
+        }else if(in->op==IFRAME || (c->external && in->op==IMFRAME)){
             if(in->op==IMFRAME){if(!typedexternalsite(c,p,pc,stop,&next))goto fail;}
             else if(c->loads && in->native64args){if(!typedvariadicsite(c,p,pc,stop,&next))goto fail;}
             else if(!typedmultisite(c,p,pc,stop,depth,&next,&h))goto fail;

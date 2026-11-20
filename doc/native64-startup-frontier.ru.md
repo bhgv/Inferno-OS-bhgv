@@ -321,3 +321,10 @@ sweep, showborders и showborder. В C/JIT исполняются исходны
 Wmclient 5/21, Wmlib 8/25, Winplace 8/21, Titlebar 4/7.
 emuinit остаётся 4/4, AWM — 20/20. Это счётчики checked IR; они не
 означают запуск GUI или admission полного файлового графа.
+
+
+Полная [Bufio](native64-bufio-library.ru.md): 27/27 checked IR, все 27 тел
+исполнены в C/JIT. Текущий снимок: emuinit 4/4, AWM 20/20, Arg 8/8,
+String 21/21, Bufio 27/27, Wmsrv 11/34, Wmclient 5/21, Wmlib 11/25,
+Winplace 8/21, Titlebar 4/7. Рост Wmsrv связан с закрытыми раскладками
+очередей; его полный runtime и GUI этим счётчиком не подтверждаются.

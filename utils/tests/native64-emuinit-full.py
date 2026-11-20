@@ -4,11 +4,11 @@ import argparse,copy,json,os,re,runpy,shlex,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 CMD=runpy.run_path(str(ROOT/'utils/tests/native64-typed-command-files.py'));E=CMD['EXT']
-def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,export_signatures=None):
+def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,export_signatures=None,extra_imports=None):
  expected_functions,expected_tables,expected_sites,entry=shape or ((4,3,3,'0')if module=='Emuinit'else(8,1,1,'~0U'))
  source=(ROOT/'appl/cmd/emuinit.b').read_text()if source is None else source;data,rows=E['compile_source'](limbo,w,source,interface='',loads=True)
  assert len(rows)==expected_functions and all(r['accepted']for r in rows),[(r['name'],r.get('reason'),r.get('pc'))for r in rows]
- imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]
+ imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]+(extra_imports or [])
  proofs=copy.deepcopy(rows)
  if export_signatures is not None:
   for r in proofs:
@@ -52,7 +52,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
   for j,e in enumerate(table):
    size,mapping=import_frames[(e['name'],e['signature'])]if import_frames is not None else(80,[0,192])if namespace=='Command'else frames[(namespace,e['name'])]
    frames[(ti,j)]=(size,mapping);array(f'full_import_map_{ti}_{j}',mapping)
-  lines+=['static const Native64ModuleImport full_import_'+str(ti)+'[]={']+['{'+json.dumps(e['name'])+f',{e["signature"]}U,{frames[(ti,j)][0]},full_import_map_{ti}_{j},{len(frames[(ti,j)][1])},{next((x['contract']for r in rows for x in r.get('externals',[])if x.get('contract')in(72,96,112)and x['name']==e['name']and x['signature']==e['signature']),0)}'+'},'for j,e in enumerate(table)]+['};']
+  lines+=['static const Native64ModuleImport full_import_'+str(ti)+'[]={']+['{'+json.dumps(e['name'])+f',{e["signature"]}U,{frames[(ti,j)][0]},full_import_map_{ti}_{j},{len(frames[(ti,j)][1])},{next((x['contract']for r in rows for x in r.get('externals',[])if x.get('contract')in(12,72,96,112)and x['name']==e['name']and x['signature']==e['signature']),0)}'+'},'for j,e in enumerate(table)]+['};']
  lines+=['static const Native64ModuleTable full_tables[]={']+[f'{{full_import_{ti},{len(t)}}},'for ti,t in enumerate(imports)]+['};']
  lines+=['static const uint full_namespaces[]={'+','.join(map(str,namespaces))+'};']
  for r in rows:
@@ -70,8 +70,8 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
  exports={e['name']:e for e in E['BASE']['READ']['legacy_instructions'](data,with_exports=True)[-1]}
  lines+=['static const Native64ModuleFunction full_functions[]={']
  for r in rows:
-  n=r['name'];e=exports.get(n);nsites=len(r.get('externals',[]))+len(r.get('calls',[]));nt=len(r.get('tables',[]))
-  lines+=['{'+json.dumps(n)+f',{e["signature"]if e else 0}U,{int(e is not None)},full_code_{n},{len(r["code"])},{r["frame"]["bytes"]},full_map_{n},{len(r["frame"]["map"])},'+('full_sites_'+n if nsites else'nil')+f',{nsites},'+('full_cases_'+n if nt else'nil')+f',{nt},{12 if r.get("result_words")else 16 if r.get("result_mixed")else 72 if r.get("result_channels")else 48 if r.get("result_pair")else 96 if r.get("result_geometry")==8 else 112 if r.get("result_geometry")==16 else 0}'+'},']
+  n=r['name'];e=exports.get(r.get('export_name',n));nsites=len(r.get('externals',[]))+len(r.get('calls',[]));nt=len(r.get('tables',[]))
+  lines+=['{'+json.dumps(e['name']if e else n)+f',{e["signature"]if e else 0}U,{int(e is not None)},full_code_{n},{len(r["code"])},{r["frame"]["bytes"]},full_map_{n},{len(r["frame"]["map"])},'+('full_sites_'+n if nsites else'nil')+f',{nsites},'+('full_cases_'+n if nt else'nil')+f',{nt},{12 if r.get("result_words")else 16 if r.get("result_mixed")else 72 if r.get("result_channels")else 48 if r.get("result_pair")else 96 if r.get("result_geometry")==8 else 112 if r.get("result_geometry")==16 else 0}'+'},']
  lines+=['};'];array('full_data_map',rows[0]['data']['map']);initial=E['BASE']['READ']['legacy_instructions'](data,with_types=True,with_data=True)[3]
  strings=[];values=[];layout=rows[0]['data'];ranges=[(t['offset'],t['offset']+(4+4*len(t['rows'])if t['op']==3 else 8+12*len(t['rows'])))for r in rows for t in r.get('tables',[])]
  for old,cell in sorted(initial.items()):

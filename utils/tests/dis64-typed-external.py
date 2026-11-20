@@ -77,6 +77,34 @@ def array_argument(original,code,at,maps,pending,oldoffset,offset):
     assert code[at+1]==[41,45,56,0,offset,127]
     return at+2
 
+# Independent closed layout table: legacy and native field offsets.
+LIBRARY_FIELDS={1:([0,4,8,12,16,24,32,40,44],[0,8,16,20,24,32,40,48,52]),2:([0,4,8],[0,8,16]),3:([0,4,8],[0,8,16]),4:([0,4,8],[0,8,16]),5:([0,4,8],[0,8,16])}
+def library_operand(value,mode,record,maps,result=False):
+    if mode in(4,5):
+        if not record:assert result and mode==5 and value==[16,0];return 32
+        old,native=LIBRARY_FIELDS[record];assert len(value)==2 and value[1]in old
+        return maps['frame'if mode==5 else'data'][value[0]]|(native[old.index(value[1])]<<16)
+    assert not record and mode in(0,1,2)
+    return value[0]if mode==2 else maps['frame'if mode else'data'][value[0]]
+def library_argument(o,c,maps,pending,oldoffset,offset):
+    sid=c[3]>>24;sm=o['mode']>>3&7
+    assert c[5]==155 and sid in LIBRARY_FIELDS and o['m']is None and o['d']==[pending,oldoffset]and o['mode']==(sm<<3)|5 and o['op']in(OPCODES[x]for x in('IMOVP','IMOVW','IMOVL','IMOVF'))
+    assert c==[o['op'],o['mode'],library_operand(o['s'],sm,sid,maps),sid<<24,offset,155]
+def library_step(o,c,maps,first,types):
+    op,mode,source,middle,dest,tag=c;sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192
+    if tag==154:
+        assert source in LIBRARY_FIELDS and op==OPCODES['INEWZ']and o['op']in(OPCODES['INEW'],OPCODES['INEWZ'])and o['m']is None and not middle
+        size,mapping=types[o['s'][0]];assert size==(48 if source==1 else 12)and list(mapping)==[192 if source<=3 else 224]
+        assert mode==o['mode']and dest==library_operand(o['d'],dm,0,maps,True);return
+    assert tag==153 and mode==o['mode'];sid=middle>>24;did=(middle>>16)&255;assert sid or did
+    expected=OPCODES['INEWAZ']if o['op']in(OPCODES['INEWA'],OPCODES['INEWAZ'])else OPCODES['IBEQL']if o['op']==OPCODES['IBEQW']and op==OPCODES['IBEQL']else OPCODES['IBNEL']if o['op']==OPCODES['IBNEW']and op==OPCODES['IBNEL']else o['op'];assert op==expected
+    assert source==library_operand(o['s'],sm,sid,maps)
+    branch=dm==2 and op in BRANCHES
+    assert dest==(o['d'][0]-first if branch else library_operand(o['d'],dm,did,maps,True))
+    if op==OPCODES['INEWAZ']:assert types[o['m']][0]==1 and not any(types[o['m']][1]);mid=0
+    else:mid=0 if not arm else o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']]
+    assert middle==(sid<<24)|(did<<16)|(mid&65535)
+
 def verify(data,r,imports,loads=False,rows=None):
     assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and (rows is not None or 'calls'not in r)
     if r.get('result')==[14,24]:assert r.get('result_channels')==[6,6,6]
@@ -93,6 +121,8 @@ def verify(data,r,imports,loads=False,rows=None):
         assert r['code'][first]==[5,17,descriptor,0,40,0]
         for arg in callee['args']:
             prep=False;screenprep=None;idprep=None;o=original[at]
+            if loads and r['code'][at][5]==155:
+                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);library_argument(o,r['code'][at],maps,pending,oldoffset,arg[0]);at+=1;continue
             if loads and r['code'][at][5]==152:
                 assert arg[1:]==[7,8,8]and o['op']==OPCODES['ICVTWF']and o['m']is None and o['d'][0]==pending
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);assert o['d'][1]==oldoffset
@@ -175,9 +205,9 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert r['code'][at]==[o['op'],o['mode'],source,width,arg[0],role]
             elif r['code'][at][5]in(125,233):
                 assert loads and arg[1]in ROOTS and (r['code'][at][5]!=233 or arg[1]==13);field_argument(o,r['code'][at],arg[0],maps)
-            elif o['op']==OPCODES['ICVTAC']:
-                assert loads and arg[1:]==[13,4,8]and sm in(0,1)and o['m']is None
-                assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0])[4]==3
+            elif o['op']in(OPCODES['ICVTAC'],OPCODES['ICVTCA']):
+                assert loads and arg[1:]==([13,4,8]if o['op']==OPCODES['ICVTAC']else[3,4,8])and sm in(0,1)and o['m']is None
+                assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0])[4]==(3 if o['op']==OPCODES['ICVTAC']else 13)
                 assert r['code'][at]==[o['op'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],0,arg[0],64]
             elif o['op']==OPCODES['IADDC']:
                 mm=1 if o['mode']&192==128 else 0 if o['mode']&192==192 else -1
@@ -278,13 +308,23 @@ def verify(data,r,imports,loads=False,rows=None):
         first,end=e['first'],e['end'];assert previous<first<end<len(original)and not covered.intersection(range(first,end+1));previous=end
         choices=imports if imports and isinstance(imports[0],list)else[imports]
         assert any(e['binding']<len(t)and t[e['binding']]=={'name':e['name'],'signature':e['signature']}for t in choices)
-        o=original[first];mode,offset=e['module'];assert mode in (0,1)and o['op']==11 and o['mode']==(mode<<3)|64|1
-        assert offset==maps['frame'if mode else 'data'][o['s'][0]]
+        o=original[first];mode,offset=e['module'];assert mode in (0,1,4,5)and o['op']==11 and o['mode']==(mode<<3)|64|1
+        assert offset==(library_operand(o['s'],mode,5,maps)|(5<<24)if mode in(4,5)else maps['frame'if mode else 'data'][o['s'][0]])
         pending=o['d'][0];assert r['code'][first]==[11,o['mode'],offset,e['binding'],40,0]and o['m']==e['binding']
         oldoffset=32
         at=first+1;aggregates={a['index']:a['layout']for a in e.get('aggregate_args',[])};nominals={a['index']:a.get('nominal')for a in e.get('aggregate_args',[])}
         assert len(aggregates)==len(e.get('aggregate_args',[]))
         for j,(new,kind,oldbytes,width)in enumerate(e['args']):
+            if at<end and r['code'][at][5]==153:
+                assert loads and kind==3 and original[at]['op']in(OPCODES['ILENA'],OPCODES['IMOVW']);library_step(original[at],r['code'][at],maps,r['first'],types);at+=1
+            if at<end and r['code'][at][5]==155:
+                assert loads;oldoffset=(oldoffset+(7 if oldbytes==8 else 3))&~(7 if oldbytes==8 else 3);library_argument(original[at],r['code'][at],maps,pending,oldoffset,new);at+=1
+                if at<end and r['code'][at][5]==156:
+                    a=original[at];c=r['code'][at];sm=a['mode']>>3&7;arm=a['mode']&192;sid=c[3]>>24
+                    assert kind==3 and a['op']==OPCODES['ISLICEA']and a['d']==[pending,oldoffset]and (sid==0 or sid in LIBRARY_FIELDS) and arm in(64,128,192)
+                    mid=a['m']if arm==64 else maps['frame'if arm==128 else'data'][a['m']]
+                    assert c==[a['op'],a['mode'],library_operand(a['s'],sm,sid,maps),(sid<<24)|(mid&65535),new,156];at+=1
+                oldoffset+=oldbytes;continue
             if at<end and r['code'][at][5]in(127,130):
                 if r['code'][at][5]==127:
                     assert loads and kind==12;oldoffset=(oldoffset+3)//4*4
@@ -460,9 +500,9 @@ def verify(data,r,imports,loads=False,rows=None):
         assert e.get('result_geometry',0)==({96:8,112:16}.get(contract,0))
         if contract:
             b=original[end-1];assert b['op']==39 and b['d']==[pending,16]
-            if contract in(96,112):
+            if contract in(12,96,112):
                 assert loads and not e['inherited']and b['mode']in(5,13)
-                space='frame'if b['mode']==13 else'data';width={96:8,112:16}[contract];old=b['s'][0];native=maps[space][old]
+                space='frame'if b['mode']==13 else'data';width={12:12,96:8,112:16}[contract];old=b['s'][0];native=maps[space][old]
                 assert e['resultoffset']==native and native>=(64 if space=='frame'else 0)and native%4==0
                 for i in range(0,width,4):
                     leaf=next(l for l in r[space]['leaves']if l[0]==old+i)
@@ -494,6 +534,24 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned==159:
+            assert loads and op==o['op']==OPCODES['ISLICELA']and mode==o['mode'];sm=mode>>3&7;dm=mode&7;arm=mode&192
+            assert s==library_operand(o['s'],sm,0,maps)and d==library_operand(o['d'],dm,0,maps)and m==(o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']]);continue
+        if returned in(153,154):
+            assert loads;library_step(o,r['code'][pc],maps,r['first'],types);continue
+        if returned in(157,158):
+            assert loads and mode==o['mode']
+            if returned==157:
+                sid=m>>24;did=(m>>16)&255;sm=mode>>3&7;dm=mode&7;assert op==o['op']==OPCODES['IINDB']and mode&192==128 and m==(sid<<24)|(did<<16)|48
+                assert s==library_operand(o['s'],sm,sid,maps)and d==library_operand(o['d'],dm,did,maps)and r['code'][pc+1][5]==158
+                if sid:assert sid==1 and o['s'][1]==4
+                inside.add(pc+1)
+            else:
+                prev=original[pc-1];assert r['code'][pc-1][5]==157 and op==o['op']and op in(OPCODES[x]for x in('IMOVB','ICVTBW','ICVTWB'))and o['m']is None and m==0
+                sm=mode>>3&7;dm=mode&7;read=sm==5;assert (o['s']if read else o['d'])==[prev['m'],0]
+                value=library_operand(o['d']if read else o['s'],dm if read else sm,0,maps,True)
+                assert [s,d]==([48,value]if read else[value,48])
+            continue
         if returned==131:
             sm=o['mode']>>3&7;dm=o['mode']&7
             assert loads and op==OPCODES['IINDL']and o['op']==OPCODES['IINDW']and sm==1 and o['mode']==8|128|dm and original[pc+1]['op']in(OPCODES['IFRAME'],OPCODES['IMFRAME'])

@@ -238,16 +238,16 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
     if(frame->mm!=Aoff || frame->m.decl==nil || frame->m.decl->iface==nil ||
        frame->m.decl->iface->offset<0 || frame->m.decl->iface->offset>32767 ||
        frame->dm!=Afp || frame->branch!=nil || frame->d.reg<32 || frame->d.reg>(int)p->frame.legacybytes-4 ||
-       !typedoperand(frame->sm,&frame->s,TypedRoot,0,0,p,&module,&ms,&actual) || actual!=Tmodule)
+       (!(c->loads && typedlibrarymodule(frame,p,&module,&ms,&actual)) && !typedoperand(frame->sm,&frame->s,TypedRoot,0,0,p,&module,&ms,&actual)) || actual!=Tmodule)
         return typedfail(p,"external-frame");
     fn=frame->m.decl;
     if(fn->ty==nil || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys!=nil || fn->ty->tof==nil)
         return typedfail(p,"external-signature");
-    while(end<stop && c->instructions[end]!=nil && (c->instructions[end]->dm==Afpind ||
-      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==IINDW || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
+    while(end<stop && c->instructions[end]!=nil && c->instructions[end]->op!=IMCALL && (c->instructions[end]->dm==Afpind ||
+      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==IMOVW || c->instructions[end]->op==ILENA || c->instructions[end]->op==IINDW || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || call->op!=IMCALL || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Aoff || call->m.decl!=fn || call->dm!=frame->sm || call->d.reg!=frame->s.reg ||
-       call->d.decl!=frame->s.decl || call->branch!=nil)return typedfail(p,"external-call");
+       call->d.decl!=frame->s.decl || call->d.offset!=frame->s.offset || call->branch!=nil)return typedfail(p,"external-call");
     mo=module;p->code[pc-p->first]=(Dis64Instruction){IMFRAME,SRC(ms)|AXIMM|DST(AFP),fn->iface->offset,mo,40};at=pc+1;
     for(arg=fn->ty->ids;arg!=nil;arg=arg->next){
         if(at>=end || (in=c->instructions[at])==nil)return typedfail(p,"external-argument");
@@ -257,6 +257,12 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
         offset=(offset+width-1)&~(width-1);
+        while(c->loads && kind==Tarray && arg->ty->tof && arg->ty->tof->kind==Tbyte && in->dm==Afp && (in->op==ILENA||in->op==IMOVW)){
+            if(!typedlibraryinst(in,p,at-p->first,stop))return typedfail(p,"library-array-length");in=c->instructions[++at];
+        }
+        if(c->loads && typedlibraryargument(in,frame,p,at-p->first,arg->offset,offset,kind)){
+            at++;if(at<end && c->instructions[at]->op==ISLICEA){if(kind!=Tarray || !arg->ty->tof || arg->ty->tof->kind!=Tbyte || !typedlibraryslicearg(c->instructions[at],frame,p,at-p->first,arg->offset,offset))return typedfail(p,"library-array-slice");at++;}offset+=width;continue;
+        }
         if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Image") && in->op==IINDW){if(!typedimagearrayarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads && kind==Tint && typedwordargop(in->op)){if(!typedwordargument(in,frame,p,at-p->first,arg->offset,offset))return 0;at++;offset+=4;continue;}
         if(c->loads && kind==Tint && (in->op==ITAIL || in->op==IHEADP)){
@@ -317,6 +323,10 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         if(c->loads && kind==Tadt){
             if(!typedgeometrybinding(binding,fn->ty->tof,p,&local,&contract))return typedfail(p,"external-geometry-result");
             p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(binding->sm==Afp?AFP:AMP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;
+        }else if(c->loads && kind==Ttuple && typedwordtriple(fn->ty->tof)){
+            unsigned int k,part;if(binding->sm!=Afp)return typedfail(p,"word-triple-result");
+            for(k=0;k<3;k++){if(!dis64layoutaddress(&p->frame,binding->s.reg+4*k,4,0,&part) || (k&&part!=local+4*k))return typedfail(p,"word-triple-result");if(!k)local=part;}
+            contract=12;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;
         }else if(c->loads && kind==Ttuple && typedchanneltriple(fn->ty->tof)){
             contract=72;
             if(binding->sm==Afp){if(!typedchannelbinding(c,p,binding,&local))return 0;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;}
