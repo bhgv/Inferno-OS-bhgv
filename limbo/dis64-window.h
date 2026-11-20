@@ -1,5 +1,5 @@
 /* Selected Wmclient.Window payload, derived from its complete trusted .m type.
- * Root fields only; scalar/aggregate fields and nested dereferences stay closed. */
+ * Root fields and closed scalar transfers; nested dereferences stay closed. */
 static int
 typedwindowowner(Addr*a)
 {
@@ -34,3 +34,31 @@ typedwindowfield(Inst*in,Dis64TypedBody*p,unsigned int pc,int probe,unsigned int
  if(which)*which=index;ok=1;
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"window-field-roles");
 }
+
+/* Scalars are relocated only after proving the complete Window record. */
+static int
+typedwindowwordbase(Addr*a,int mode,Dis64TypedBody*p,unsigned int pc,long*base,unsigned int*wire,long*field)
+{static const unsigned int old[]={4,8,12,16,24,28,32,36,44,48,60,64,68,72,76,80,88,92,96,100};
+ static const unsigned int native[]={8,12,16,20,32,36,40,44,56,60,80,84,88,92,96,100,112,116,120,124};
+ Inst probe;unsigned int i;if(!a->native64type||a->native64type->kind!=Tint)return 0;for(i=0;i<20;i++)if(a->offset==old[i])break;if(i==20)return 0;
+ memset(&probe,0,sizeof(probe));probe.op=IMOVP;probe.sm=mode;probe.s=*a;probe.s.offset=0;probe.mm=Anone;probe.dm=Afp;probe.d=*a;
+ if(!typedwindowfield(&probe,p,pc,1,nil))return 0;*base=p->code[pc].source;*wire=USRC(p->code[pc].mode);*field=native[i];return 1;}
+static int
+typedwindowword(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
+{long base,field,value,middle=0,dest;unsigned int wire,sm,dm,mm=AXNON;int actual,branch;
+ if(in->op==IMOVW&&(in->dm==Afpind||in->dm==Ampind)&&typedwindowowner(&in->d)){
+  if(in->mm!=Anone||in->branch||!typedwindowwordbase(&in->d,in->dm,p,pc,&base,&wire,&field)||!typedoperand(in->sm,&in->s,Tint,1,0,p,&value,&sm,&actual))return typedfail(p,"window-word-store");
+  p->code[pc]=(Dis64Instruction){IMOVW,SRC(sm)|DST(wire|AIND),field,value,base};p->returns[pc]=88;return 1;
+ }
+ branch=in->op==IBEQW||in->op==IBNEW||in->op==IBLTW||in->op==IBLEW||in->op==IBGTW||in->op==IBGEW;
+ if((in->op!=IMOVW&&!typedwordargop(in->op)&&!branch)||!typedwindowwordbase(&in->s,in->sm,p,pc,&base,&wire,&field)||base>65535)return typedfail(p,"window-word-load");
+ if(in->op!=IMOVW){unsigned int mode;if(!typedoperand(in->mm==Anone?in->dm:in->mm,in->mm==Anone?&in->d:&in->m,Tint,1,1,p,&middle,&mode,&actual))return 0;mm=mode==AIMM?AXIMM:mode==AFP?AXINF:AXINM;}else if(in->mm!=Anone)return 0;
+ if(branch){if(in->dm!=Apc||in->d.offset<(long)p->first||in->d.offset>=stop)return typedfail(p,"window-word-branch");dest=in->d.offset-p->first;dm=AIMM;}else if(!typedoperand(in->dm,&in->d,Tint,0,0,p,&dest,&dm,&actual))return 0;
+ p->code[pc]=(Dis64Instruction){in->op,SRC(wire|AIND)|mm|DST(dm),middle,(field<<16)|base,dest};p->returns[pc]=89;return 1;}
+
+static int
+typedwindowwordargument(Inst*in,Inst*frame,Dis64TypedBody*p,unsigned int pc,unsigned int old,unsigned int offset)
+{long base,field,middle=0;unsigned int wire,mm=AXNON,mode;int actual;
+ if((in->op!=IMOVW&&!typedwordargop(in->op))||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=old||!typedwindowwordbase(&in->s,in->sm,p,pc,&base,&wire,&field)||base>65535)return typedfail(p,"window-word-argument");
+ if(in->op!=IMOVW){if(!typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mode,&actual))return 0;mm=mode==AIMM?AXIMM:mode==AFP?AXINF:AXINM;}
+ p->code[pc]=(Dis64Instruction){in->op,SRC(wire|AIND)|mm|DST(AFP|AIND),middle,(field<<16)|base,offset};p->returns[pc]=86;return 1;}

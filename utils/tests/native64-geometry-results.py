@@ -45,8 +45,9 @@ def generate(limbo,w):
  for extra,result,body in(('Other:adt{x:int;y:int;};','Other','v:=draw->take();'),('','Draw->Rect','return draw->take();')):
   tail=':Draw->Rect'if body.startswith('return')else''
   source='implement Closed;'+PREFIX+extra+'Fake:module{take:fn():'+result+';};Closed:module{run:fn()'+tail+';};draw:Fake;out:Draw->Rect;run()'+tail+'{'+body+'}'
-  _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert len(closed)==1 and not closed[0]['accepted'],closed
- print('PASS geometry result boundary: foreign ADT and inherited results refused; direct MP results exercised',flush=True)
+  _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert len(closed)==1 and closed[0]['accepted']==body.startswith('return'),closed
+  if body.startswith('return'):assert closed[0].get('result_geometry')==16 and closed[0]['externals'][0]['inherited']==1,closed
+ print('PASS geometry result boundary: foreign ADT refused; canonical inherited Rect admitted with caller proof, direct MP results exercised',flush=True)
  _,records=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True)
  r=next(r for r in records if r['name']=='reshaped');assert r['accepted']or r['pc']>783,r;print('AWM reshaped frontier:',r.get('pc'),r.get('reason'),flush=True)
 def unit():

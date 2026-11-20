@@ -162,7 +162,7 @@ typedimageword(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
  field=in->s.offset;
  if(typedwmref(typedfieldowner(&in->s),"Wmsrv","Client")){if(!typedclientaddress(&in->s,in->sm,p,&base,&sm,&field,&actual) || actual!=Tint)return typedfail(p,"client-word-field");}
  else{
-  if(typeddrawowner(&in->s)!=1 || field<0 || field>28 || field%4)return typedfail(p,"image-word-field");
+  if(typeddrawowner(&in->s)!=1 || field<0 || field>40 || field%4)return typedfail(p,"image-word-field");
   probe.op=IMOVP;probe.s.offset=44;probe.mm=Anone;probe.dm=Afp;probe.branch=nil;
   if(!typeddrawfield(&probe,p,pc,1,nil))return 0;base=p->code[pc].source;sm=USRC(p->code[pc].mode);
  }

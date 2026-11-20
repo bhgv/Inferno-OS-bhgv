@@ -17,6 +17,22 @@ BRANCHES=MODULE['MULTI']['BRANCHES'];ROOTS=MODULE['MULTI']['ROOTS']
 OPCODES=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES
 RAISE=OPCODES['IRAISE']
 
+WINDOW_WORD_FIELDS=dict(zip((4,8,12,16,24,28,32,36,44,48,60,64,68,72,76,80,88,92,96,100),(8,12,16,20,32,36,40,44,56,60,80,84,88,92,96,100,112,116,120,124)))
+def window_word(o,c,maps,first,pending=None,oldoffset=None,new=None):
+ op,mode,source,middle,dest,tag=c;sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192
+ assert op==o['op']
+ if tag==88:
+  assert op==45 and o['m']is None and arm==0 and dm in(4,5)and sm in(0,1,2)and o['d'][1]in WINDOW_WORD_FIELDS
+  assert c==[45,o['mode'],o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]],WINDOW_WORD_FIELDS[o['d'][1]],maps['frame'if dm==5 else'data'][o['d'][0]],88];return
+ assert tag in(86,89)and sm in(4,5)and o['s'][1]in WINDOW_WORD_FIELDS
+ base=maps['frame'if sm==5 else'data'][o['s'][0]];assert source==base|(WINDOW_WORD_FIELDS[o['s'][1]]<<16)
+ if tag==86:assert o['d']==[pending,oldoffset]and dest==new and dm==5
+ else:assert dest==(o['d'][0]-first if dm==2 else maps['frame'if dm else'data'][o['d'][0]])
+ if arm==0 and op!=45:
+  assert tag==89 and dm in(0,1)and mode==o['mode']|(128 if dm else 192)and middle==dest
+ else:
+  assert mode==o['mode']and middle==(0 if arm==0 else o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']])
+
 def compile_source(limbo,work,source,interface=None,loads=False):
     (work/'provider.m').write_text(INTERFACE if interface is None else interface)
     file=work/'external.b';file.write_text(source);ordinary=work/'ordinary.dis';traced=work/'external.dis'
@@ -324,6 +340,10 @@ def verify(data,r,imports,loads=False,rows=None):
         at=first+1;aggregates={a['index']:a['layout']for a in e.get('aggregate_args',[])};nominals={a['index']:a.get('nominal')for a in e.get('aggregate_args',[])}
         assert len(aggregates)==len(e.get('aggregate_args',[]))
         for j,(new,kind,oldbytes,width)in enumerate(e['args']):
+            if at<end and r['code'][at][5]==86:
+                assert loads and kind==9 and oldbytes==width==4;oldoffset=(oldoffset+3)&~3
+                window_word(original[at],r['code'][at],maps,r['first'],pending,oldoffset,new);oldoffset+=4;at+=1;continue
+
             if at<end and r['code'][at][5]==143:
                 assert loads and kind==12 and oldbytes==4 and width==8
                 oldoffset=(oldoffset+3)&~3;a=original[at];h=original[at+1];field=original[at+2];clear=original[at+3];sm=a['mode']>>3&7;dm=a['mode']&7
@@ -528,7 +548,9 @@ def verify(data,r,imports,loads=False,rows=None):
         assert e.get('result_geometry',0)==({96:8,112:16}.get(contract,0))
         if contract:
             b=original[end-1];assert b['op']==39 and b['d']==[pending,16]
-            if contract in(12,96,112):
+            if contract in(96,112)and e['inherited']:
+                assert loads and r.get('result_geometry')=={96:8,112:16}[contract]and b['mode']==45 and b['s']==[16,0]
+            elif contract in(12,96,112):
                 assert loads and not e['inherited']and b['mode']in(5,13)
                 space='frame'if b['mode']==13 else'data';width={12:12,96:8,112:16}[contract];old=b['s'][0];native=maps[space][old]
                 assert e['resultoffset']==native and native>=(64 if space=='frame'else 0)and native%4==0
@@ -640,6 +662,8 @@ def verify(data,r,imports,loads=False,rows=None):
             index=o['d'][0]if dm==2 else maps['frame'if dm else'data'][o['d'][0]]
             assert [op,mode,s,m,d,returned]==[OPCODES['IINDL'],o['mode'],maps['frame'][o['s'][0]],48,index,131]
             continue
+        if returned in(88,89):
+            assert loads;window_word(o,[op,mode,s,m,d,returned],maps,r['first']);continue
         if returned==133:
             sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192;mm=2 if arm==64 else 1 if arm==128 else 0
             assert loads and op==o['op']and mode==o['mode']and sm in(4,5)

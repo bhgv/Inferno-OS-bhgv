@@ -383,3 +383,10 @@ ALT (alt-setup-shape PC173). Следующий шаг — проверяемы�
 байты токена, default/nil запросы и полную отмену ALT/retirement.
 Подготовка aprint внутри ALT закрыта. Настоящее окно AWM и Android ещё
 не запущены; следующий этап — граф Wmclient/Draw и подключение AWM.
+
+
+[Геометрия Wmclient.Window](native64-wmclient-geometry.ru.md):
+7/21 тела вместо 5/21; исходные screenr/imager исполняются в C/JIT с
+реальной Rect-геометрией. Проверены все 20 скалярных полей Window,
+аргумент Rect.inset из поля и переданный результат Rect (1662 вызова).
+Полный Wmclient и настоящее окно AWM ещё не запущены; Wmsrv сохраняет 34/34.

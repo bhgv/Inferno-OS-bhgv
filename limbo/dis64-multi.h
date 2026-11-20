@@ -1116,6 +1116,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if((c->external>=2 && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC)) ||
                  (c->loads && (in->op==IADDC || in->op==IINSC || in->op==ISLICEC || in->op==IINDC || in->op==IBEQC || in->op==IBNEC || in->op==IBLTC || in->op==IBLEC || in->op==IBGTC || in->op==IBGEC))){
             if(!typedclientstring(in,p,pc-p->first,stop))goto fail;pc++;
+        }else if(c->loads && ((in->sm==Afpind||in->sm==Ampind)&&typedwindowowner(&in->s)&&in->s.native64type&&in->s.native64type->kind==Tint || in->op==IMOVW&&(in->dm==Afpind||in->dm==Ampind)&&typedwindowowner(&in->d))){
+            if(!typedwindowword(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->loads && (in->sm==Afpind || in->sm==Ampind) && (typeddrawowner(&in->s)==1 || (typedwmref(typedfieldowner(&in->s),"Wmsrv","Client") && in->s.native64type && in->s.native64type->kind==Tint && (in->op==IBEQW || in->op==IBNEW || in->op==IBLTW || in->op==IBLEW || in->op==IBGTW || in->op==IBGEW))) && (in->op==IMOVW || typedwordargop(in->op) || in->op==IBEQW || in->op==IBNEW || in->op==IBLTW || in->op==IBLEW || in->op==IBGTW || in->op==IBGEW)){
             if(!typedimageword(in,p,pc-p->first,stop))goto fail;pc++;
         }else if(c->loads && (in->op==IORW || in->op==IANDW || in->op==IXORW) && (in->dm==Afpind || in->dm==Ampind) && typedwmref(typedfieldowner(&in->d),"Wmsrv","Client")){

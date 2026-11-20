@@ -439,6 +439,7 @@ def main():
     run([sys.executable,str(tests/'native64-aprint.py'),'--limbo',str(tools/'limbo')],build,env,logs/'aprint.log')
     run([sys.executable,str(tests/'native64-aprint-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'aprint-alt.log')
     run([sys.executable,str(tests/'native64-wmsrv-module.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmsrv-module.log')
+    run([sys.executable,str(tests/'native64-wmclient-geometry.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmclient-geometry.log')
     run([sys.executable,str(tests/'native64-string-word.py'),'--limbo',str(tools/'limbo')],build,env,logs/'string-word.log')
     run([sys.executable,str(tests/'native64-string-library.py'),'--limbo',str(tools/'limbo')],build,env,logs/'string-library.log')
     run([sys.executable,str(tests/'native64-bufio-library.py'),'--limbo',str(tools/'limbo')],build,env,logs/'bufio-library.log')
