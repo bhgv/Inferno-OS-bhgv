@@ -161,6 +161,7 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"client-context-geometry");
 }
 
+static int typedwmcontextchannel(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*);
 static int typedclientaddress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
 static int typedclientchanneladdress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
 
@@ -204,7 +205,7 @@ typedclienttransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned
  Type*t=ca->native64type?ca->native64type:ca->decl?ca->decl->ty:nil;unsigned int cw,vw,width;long channel,value,field=0;int indirect=cm==Afpind || cm==Ampind;
  if(typedroottransfer(in,p,out,returned))return 1;
  if(in->mm!=Anone || in->branch)return typedfail(p,"channel-transfer-owner");
- if(indirect){if(!typedclientchanneladdress(ca,cm,p,&channel,&cw,&field,&kind))return typedfail(p,"client-channel-field");}
+ if(indirect){if(typedwmref(typedfieldowner(ca),"Draw","Wmcontext")){if(!typedwmcontextchannel(ca,cm,p,&channel,&cw,&field))return typedfail(p,"wmcontext-channel-transfer");kind=field==0?Tint:(field==8||field==32)?Tref:Tstring;}else if(!typedclientchanneladdress(ca,cm,p,&channel,&cw,&field,&kind))return typedfail(p,"client-channel-field");}
  else{if(!t || t->kind!=Tchan || !t->tof || !typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&cw,&actual) || actual!=Tchan)return typedfail(p,"channel-transfer-owner");kind=t->tof->kind;}
  root=kind==Tstring || kind==Tref || kind==Tchan || kind==Tarray || kind==Tlist || kind==Tmodule;
  if(kind==Ttuple && !indirect && typedreplytransfer(in,p,out,returned))return 1;
@@ -212,7 +213,7 @@ typedclienttransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned
  width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
  if(in->op==IRECV&&vm==Afpind&&va->reg==16&&!va->offset&&!indirect&&kind==Tint){*out=(Dis64Instruction){IRECV,SRC(cw)|DST(AFP|AIND),4,channel,32};*returned=109;return 1;}
  if(!typedoperand(vm,va,root?TypedRoot:kind==Tfix?Tint:kind,in->op==ISEND&&!root&&width<8,0,p,&value,&vw,&actual) || (root && actual!=kind && actual!=Tany))return typedfail(p,"channel-transfer-value");
- *out=(Dis64Instruction){in->op,in->op==ISEND?SRC(vw)|DST(cw):SRC(cw)|DST(vw),(field<<8)|width|(root?16:0),in->op==ISEND?value:channel,in->op==ISEND?channel:value};*returned=indirect?204:188;return 1;
+ *out=(Dis64Instruction){in->op,in->op==ISEND?SRC(vw)|DST(cw):SRC(cw)|DST(vw),(field<<8)|width|(root?16:0),in->op==ISEND?value:channel,in->op==ISEND?channel:value};*returned=indirect?(typedwmref(typedfieldowner(ca),"Draw","Wmcontext")?94:204):188;return 1;
 }
 
 /* Shared native channel result/capacity geometry, after nominal payload proof. */
@@ -221,9 +222,9 @@ typedchanneloutput(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,uchar*r
 {
  unsigned int dm,mm=AXNON,wire;long destination,capacity=0;int actual;
  if(in->branch)return typedfail(p,"channel-operands");
- if((in->dm==Afpind||in->dm==Ampind)&&typedlibraryrecord(typedfieldowner(&in->d))==8){Addr a=in->d;Type*t=typedfieldowner(&a);unsigned int field=a.offset;long owner;int k;
-  if((field!=0&&field!=4&&field!=8&&field!=16)||in->mm!=Aimm||in->m.offset!=0||in->sm!=Anone||in->op!=(field==0?INEWCW:INEWCP))return typedfail(p,"wmcontext-channel-field");a.offset=0;a.native64type=t;if(!typedoperand(in->dm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&owner,&dm,&k)||k!=Tref)return 0;
-  *out=(Dis64Instruction){in->op,SRC(AXXX)|AXIMM|DST(dm|AIND),0,2*field,owner};*returned=108;return 1;
+ if((in->dm==Afpind||in->dm==Ampind)&&(typedlibraryrecord(typedfieldowner(&in->d))==8||typedlibraryrecord(typedfieldowner(&in->d))==6)){Addr a=in->d;Type*t=typedfieldowner(&a);unsigned int field=a.offset,id=typedlibraryrecord(t);long owner;int k;
+  if((id==6?(field!=0&&field!=4&&field!=8&&field!=12):(field!=0&&field!=4&&field!=8&&field!=16))||in->mm!=Aimm||in->m.offset!=0||in->sm!=Anone||in->op==INEWCMP||in->op!=((field==0||(id==6&&field==12))?INEWCW:INEWCP))return typedfail(p,"wmcontext-channel-field");a.offset=0;a.native64type=t;if(!typedoperand(in->dm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&owner,&dm,&k)||k!=Tref)return 0;
+  *out=(Dis64Instruction){in->op,SRC(AXXX)|AXIMM|DST(dm|AIND),0,(id==6?256:0)|2*field,owner};*returned=108;return 1;
  }
  if(in->dm==Afpind){if(in->d.reg!=16 || in->d.offset || fn->ty->tof->kind!=Tchan)return typedfail(p,"channel-result");destination=32;dm=AFP|AIND;*returned=1;}
  else if(!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&destination,&dm,&actual) || actual!=Tchan)return typedfail(p,"channel-destination");
@@ -236,7 +237,7 @@ static int
 typedclientchannel(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {
  Type*t=in->dm==Afpind?fn->ty->tof:in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;int kind;
- if((in->dm==Afpind||in->dm==Ampind)&&typedlibraryrecord(typedfieldowner(&in->d))==8)return typedchanneloutput(in,fn,p,out,returned);
+ if((in->dm==Afpind||in->dm==Ampind)&&(typedlibraryrecord(typedfieldowner(&in->d))==8||typedlibraryrecord(typedfieldowner(&in->d))==6))return typedchanneloutput(in,fn,p,out,returned);
  if(in->sm!=Anone)return typedfail(p,"channel-operands");
  if(!t || t->kind!=Tchan || !t->tof)return typedfail(p,"channel-payload");kind=t->tof->kind;
  if(!((in->op==INEWCB && kind==Tbyte) || (in->op==INEWCW && (kind==Tint || kind==Tfix)) || (in->op==INEWCL && kind==Tbig) || (in->op==INEWCF && kind==Treal) ||
@@ -279,6 +280,11 @@ typedclientmappedchannel(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,u
 {
  Dis64Layout payload={0},descriptor={0};Decl*d=in->s.decl;Type*t;unsigned int n;int ok=0,mixed;
  if(in->sm!=Adesc || !d || !d->desc || d->desc->id!=in->s.offset || !d->desc->map || d->desc->nmap!=1)goto done;
+ if((in->dm==Afpind||in->dm==Ampind)&&typedlibraryrecord(typedfieldowner(&in->d))==6&&in->d.offset==32){Addr a=in->d;Type*owner=typedfieldowner(&a);long base;unsigned int dm;int actual;
+  t=in->d.native64type;if(!t||t->kind!=Tchan||!typedmappedpayload(t->tof,&payload)||payload.count!=3||!typedmappedpayload(d->ty,&descriptor)||descriptor.count!=3||d->desc->size!=12||d->desc->map[0]!=0xe0||in->mm!=Aimm||in->m.offset||in->branch)goto done;
+  a.offset=0;a.native64type=owner;if(!typedoperand(in->dm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&base,&dm,&actual)||actual!=Tref)goto done;
+  *out=(Dis64Instruction){INEWCMP,SRC(AIMM)|AXIMM|DST(dm|AIND),0,3,base};*returned=92;ok=1;goto done;
+ }
  t=in->dm==Afpind?fn->ty->tof:in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;
  if(!t || t->kind!=Tchan)goto done;mixed=typedreplytype(t->tof);
  if(mixed){if(!typedreplylayout(t->tof,&payload,1) || !typedreplylayout(d->ty,&descriptor,0))goto done;}
@@ -969,6 +975,9 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         contract=child->resultpair>=3?16:child->resulttriple==2?12:child->resultgeometry?(child->resultgeometry==8?96:112):child->resulttriple?72:child->resultpair?48:child->resultbytes | (root?16:0);
         if(c->loads && typedimagearraybinding(c,p,frame,binding,c->functions[target]->ty->tof,pc,at)){
             local=p->code[at-p->first].source;
+        }else if(c->loads&&contract==24&&!child->resultpair&&binding->sm==Afpind&&binding->s.offset==48&&typedlibraryrecord(typedfieldowner(&binding->s))==6&&typedwmref(c->functions[target]->ty->tof,"Draw","Wmcontext")){
+            Addr a=binding->s;Type*t=typedfieldowner(&a);a.offset=0;a.native64type=t;if(!typedoperand(Afp,&a,TypedRoot,0,0,p,&source,&sm,&actual)||actual!=Tref)return typedfail(p,"client-context-result");
+            local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),24,source,32};p->returns[at-p->first]=93;
         }else if(binding->sm==Afp){
             if(child->resultgeometry){if(!typedgeometrybinding(binding,c->functions[target]->ty->tof,p,&local,&contract))return typedfail(p,"local-geometry-result");source=local;sm=AFP;}
             else if(child->resultpair>=3 || child->resulttriple==2){unsigned int k,next,n=child->resulttriple==2?3:2,oldstep=child->resultpair>=4?8:4;
@@ -1048,7 +1057,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             pc=next;
         }else if(c->loads && (in->op==IALT || in->op==INBALT || ((in->op==IMOVW || in->op==ILEA) && in->dm==Afp && in->d.reg>=0 && typedaltslot(&in->d,fn)))){
             if(!typedaltinst(in,fn,p,pc-p->first))goto fail;
-            if(in->op==IALT || in->op==INBALT){unsigned int start=pc-p->first-2,n=p->code[pc-p->first].middle;while(start && n){start--;if(p->returns[start]==189 || p->returns[start]==192 || p->returns[start]==193 || p->returns[start]==198)n--;}if(n){typedfail(p,"alt-setup-shape");goto fail;}for(i=start+1;i<=pc-p->first;i++)inside[i]=1;}
+            if(in->op==IALT || in->op==INBALT){unsigned int start=pc-p->first-2,n=p->code[pc-p->first].middle;while(start && n){start--;if(p->returns[start]==91 || p->returns[start]==189 || p->returns[start]==192 || p->returns[start]==193 || p->returns[start]==198)n--;}if(n){typedfail(p,"alt-setup-shape");goto fail;}for(i=start+1;i<=pc-p->first;i++)inside[i]=1;}
             pc++;
         }else if(c->loads && p->resultgeometry && in->op==IMOVM && in->dm==Afpind && in->d.reg==16){
             if(!typedlocalgeometryreturn(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;

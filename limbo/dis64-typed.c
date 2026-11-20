@@ -140,6 +140,18 @@ typedraise(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
  *out=(Dis64Instruction){IRAISE,SRC(sm)|DST(AXXX),0,source,0};return 1;
 }
 
+/* Reused compiler tuple temporaries retain storage classes from an earlier use.
+ * Only an exact two/three-root scratch group can change its component classes. */
+static int
+typedroottemporary(Addr*a,int sourcekind)
+{Type*t;Dis64Layout l={0};unsigned int i;int ok=0;
+ if(!a->decl||a->decl->store!=Dlocal||!a->decl->sym||a->decl->sym->name[0]!='.'||(a->decl->sym->name[1]!='t'&&a->decl->sym->name[1]!='b')||a->offset||a->reg<a->decl->offset||(a->reg-a->decl->offset)%4)return 0;
+ if(!a->native64type||a->native64type->size!=4||a->native64type->kind!=sourcekind)return 0;
+ t=a->native64type&&a->native64type->kind==Ttuple?a->native64type:a->decl->ty;
+ if(!t||t->kind!=Ttuple||!dis64layouttype(t,&l)||(l.count!=2&&l.count!=3)||l.legacybytes!=4*l.count||l.bytes!=8*l.count||l.alignment!=8||(unsigned int)(a->reg-a->decl->offset)>=l.legacybytes)goto done;
+ for(i=0;i<l.count;i++)if(l.leaves[i].legacy!=4*i||l.leaves[i].native!=8*i||l.leaves[i].oldbytes!=4||l.leaves[i].bytes!=8||l.leaves[i].kind<0)goto done;ok=1;
+ done:dis64layoutfree(&l);return ok;}
+
 static int
 typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out, unsigned char *result)
 {
@@ -214,7 +226,7 @@ typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out,
 	}else if(!typedoperand(in->dm,&in->d,dk,0,0,p,&out->destination,&dm,&destkind)) return 0;
 	if(branch==2){out->mode=SRC(AXXX)|DST(dm);return 1;}
 	if(!typedoperand(in->sm,&in->s,sk,immediate,0,p,&out->source,&sm,&sourcekind)) return 0;
-	if(in->op==IMOVP && sourcekind!=Tany && sourcekind!=destkind) return typedfail(p,"reference-class");
+	if(in->op==IMOVP && sourcekind!=Tany && sourcekind!=destkind && !(p->sourceroles && in->dm==Afp && typedroottemporary(&in->d,sourcekind))) return typedfail(p,"reference-class");
 	if(binary || branch){
 		if(in->mm==Anone){if(branch) return typedfail(p,"missing-comparison");}
 		else if(!typedoperand(in->mm,&in->m,mk,immediate,1,p,&out->middle,&mm,&middlekind)) return 0;

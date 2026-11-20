@@ -358,3 +358,11 @@ Rect_contains. Остаются семь тел, включая wm/childminder �
 с настоящими Limbo peers, каналами и C-геометрией. Остаются init, wm
 (reference-class PC94) и childminder (alt-field-channel PC249). Полный
 серверный цикл, файловый граф и настоящее окно AWM ещё не запущены.
+
+
+[Исполнение исходного Wmsrv.childminder](native64-wmsrv-childminder.ru.md):
+32/34 тела. Расширенный кластер выполняет childminder с настоящими Limbo
+процессами и каналами, включая ALT выдачи контекста, очереди событий,
+изображения и остановку (1236 C/JIT вызовов). `wm` дошёл до Sys.aprint
+(variadic-signature PC164); init зависит от wm. Полный серверный цикл и
+настоящее окно AWM ещё не запущены.

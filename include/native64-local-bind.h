@@ -37,7 +37,7 @@ native64localbind(void)
     }
     if(fetched.op!=ILEA)return 0;
     memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;arrayaddress=!!(contract&1024);if(arrayaddress)contract&=~1024;fieldaddress=!!(contract&512);if(fieldaddress)contract&=~512;altaddress=!!(contract&256);if(altaddress)contract&=~256;width=native64geometryresultwidth(contract)?native64geometryresultwidth(contract):native64fileiowidth(contract)?native64fileiowidth(contract):contract==72?24:contract==88?88:contract==48?16:contract&15;reference=!native64geometryresultwidth(contract) && (contract==72 || !!(contract&16));
-    if(fieldaddress && (altaddress || (contract!=24 && contract!=4) || instruction.add!=(SRC(AFP|AIND)|DST(AFP|AIND)) || instruction.s.i.s!=(contract==4?12:24)))error(exBounds);
+    if(fieldaddress && (altaddress || (contract!=24 && contract!=4) || instruction.add!=(SRC(AFP|AIND)|DST(AFP|AIND)) || (contract==4?instruction.s.i.s!=12:(instruction.s.i.s!=24&&instruction.s.i.s!=88))))error(exBounds);
     if(arrayaddress && (fieldaddress || altaddress || contract!=24 || instruction.add!=(SRC(AFP)|DST(AFP|AIND))))error(exBounds);
     sourcewidth=(fieldaddress||arrayaddress)?8:width;sourceroot=(fieldaddress||arrayaddress)?1:reference;
     offset=fieldaddress?instruction.s.i.f:instruction.s.ind;
@@ -92,11 +92,14 @@ native64localbind(void)
      * A global owner could be replaced while the callee is suspended. */
     if(fieldaddress){
         memmove(&owner,address,sizeof(owner));if(owner==H)error(exNilref);
-        if(owner==nil || (uintptr)owner%8 || (uintptr)owner>(uintptr)-1-32 || D2H(owner)->ref==0)error(exBounds);
+        if(owner==nil || (uintptr)owner%8 || (uintptr)owner>(uintptr)-1-(instruction.s.i.s==88?96:32) || D2H(owner)->ref==0)error(exBounds);
         ownertype=D2H(owner)->t;
         if(contract==4){
             if(ownertype==nil || ownertype==H || ownertype->ref<=0 || ownertype->size!=16 || ownertype->np<0 || ownertype->np>1 || (ownertype->np && ownertype->map[0]))error(exBounds);
             address=(uchar*)owner+12;
+        }else if(instruction.s.i.s==88){
+            if(ownertype==nil||ownertype==H||ownertype->ref<=0||ownertype->size!=96||ownertype->np!=2||ownertype->map[0]!=0xf7||ownertype->map[1]!=0x90)error(exBounds);
+            address=(uchar*)owner+88;
         }else{
             if(ownertype==nil || ownertype==H || ownertype->ref<=0 || ownertype->size!=32 || ownertype->np!=1 || ownertype->map[0]!=0x90)error(exBounds);
             address=(uchar*)owner+24;

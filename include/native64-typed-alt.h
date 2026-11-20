@@ -1,17 +1,27 @@
 #ifndef NATIVE64_TYPED_ALT_H
 #define NATIVE64_TYPED_ALT_H
-/* Complete nonallocating borrowed guard islands in trusted compiler IR. */
+/* Complete borrowed guard islands with checked payload preparation. */
+static int
+native64altcontextprep(const Native64ModuleSpec*s,const Native64ModuleFunction*f,unsigned int at,const Native64TypedStep*p)
+{const Native64TypedStep*a,*n,*c,*v,*z;unsigned int tmp,bit;Inst probe;
+ if(at<5||p->m!=48||USRC(p->mode)!=AFP)return 0;a=f->code+at-5;n=a+1;c=a+2;v=a+3;z=a+4;tmp=n->d;
+ if(a->returned||n->returned!=154||c->returned!=90||v->returned||z->returned||a->op!=IMOVP||a->mode!=(SRC(AMP)|DST(AFP))||a->m||a->d!=p->s||n->op!=INEWZ||n->mode!=(SRC(AIMM)|DST(AFP))||n->s!=8||n->m||c->op!=IMOVMP||c->m!=8||UDST(c->mode)!=(AFP|AIND)||c->d!=tmp||v->op!=IMOVP||v->mode!=(SRC(AFP)|DST(AFP))||v->m||v->s!=tmp||v->d!=p->s+8||z->op!=IMOVP||z->mode!=(SRC(AMP)|DST(AFP))||z->m||z->s!=a->s||z->d!=tmp)return 0;
+ if(!native64modulereadonlynil(s,a->s)||!native64typedcode(&probe,1,a,1,f->bytes,s->databytes)||!native64typedcode(&probe,1,v,1,f->bytes,s->databytes)||!native64typedcode(&probe,1,z,1,f->bytes,s->databytes))return 0;
+ bit=a->s/8;if(!(s->datamap[bit/8]&(128>>(bit%8))))return 0;return 1;
+}
+
 static int
 native64modulealts(const Native64ModuleSpec*s,const Native64ModuleFunction*f)
 {
  unsigned int pc,i,j,k,n,first,mask,bit,mode,w,roots,total=0,covered=0,guards[32],payloads[32],end,limit;long base,offset;const uchar*map;const Native64TypedStep*a,*c,*p,*h;
- for(i=0;i<f->count;i++)if((f->code[i].returned>=189 && f->code[i].returned<=193) || f->code[i].returned==134 || f->code[i].returned==195 || f->code[i].returned==197 || (f->code[i].returned==198 || f->code[i].returned==199 || f->code[i].returned==203))total++;
+ for(i=0;i<f->count;i++)if(f->code[i].returned==91 || (f->code[i].returned>=189 && f->code[i].returned<=193) || f->code[i].returned==134 || f->code[i].returned==195 || f->code[i].returned==197 || (f->code[i].returned==198 || f->code[i].returned==199 || f->code[i].returned==203))total++;
  for(pc=0;pc<f->count;pc++)if(f->code[pc].returned==191){
   a=f->code+pc;if(!native64typedaltstep(a,f->bytes,s->databytes))return 0;n=a->m;base=a->s;
   if(pc<2+2*n)return 0;end=pc-2;
   for(i=0;i<n;i++){
    if(!end)return 0;payloads[n-1-i]=end-1;p=f->code+end-1;if(!native64typedaltstep(p,f->bytes,s->databytes) || p->op!=ILEA)return 0;
    w=native64fileiowidth(p->m)?native64fileiowidth(p->m):p->m==72?24:p->m==48?16:p->m&15;end--;limit=0;
+   if(native64altcontextprep(s,f,end,p))end-=5;
    while(end && !f->code[end-1].returned){Inst probe;const Native64TypedStep*t=f->code+end-1;unsigned int width=(t->op==IMOVP || t->op==ISLICEA)?8:4,length=0;
     if(p->m==48 && end+1<payloads[n-1-i] && t->op==ILENA && f->code[end].op==IMOVP && f->code[end+1].op==ISLICEA && f->code[end].s==t->s && USRC(f->code[end].mode)==USRC(t->mode) && f->code[end].d==p->s && f->code[end+1].d==p->s && (f->code[end+1].mode&ARM)==AXINF && t->d==f->code[end+1].m)length=1;
     if(++limit>8 || (!length && ((t->op!=IMOVP && t->op!=IMOVW && !(t->op==ISLICEA && p->m==48)) || UDST(t->mode)!=USRC(p->mode) || t->d<p->s || t->d+width>p->s+w)))break;
@@ -34,8 +44,9 @@ native64modulealts(const Native64ModuleSpec*s,const Native64ModuleFunction*f)
   if(a->d>=base && a->d<base+8+16*n)return 0;
   for(i=0;i<n;i++){
    c=f->code+guards[i];p=f->code+payloads[i];
-   if((c->returned!=189 && c->returned!=192 && c->returned!=193 && c->returned!=198) || (p->returned!=190 && p->returned!=134 && p->returned!=195 && p->returned!=197 && p->returned!=199 && p->returned!=203) || !native64typedaltstep(c,f->bytes,s->databytes) || !native64typedaltstep(p,f->bytes,s->databytes) ||
+   if((c->returned!=91 && c->returned!=189 && c->returned!=192 && c->returned!=193 && c->returned!=198) || (p->returned!=190 && p->returned!=134 && p->returned!=195 && p->returned!=197 && p->returned!=199 && p->returned!=203) || !native64typedaltstep(c,f->bytes,s->databytes) || !native64typedaltstep(p,f->bytes,s->databytes) ||
       c->d<base+8 || c->d>=base+8+16*n || (c->d-base-8)%16 || p->d!=c->d+8)return 0;
+   if(c->returned==91 && p->m!=((c->m==0||c->m==24)?4:c->m==64?72:24))return 0;
    if(c->returned==198 && (p->returned!=(c->m==8?199:203) || p->m!=(c->m==8?104:120)))return 0;
    if((c->returned==192 && p->m!=24) || (c->returned==193 && p->m!=(c->m==0?4:24)))return 0;
    k=(c->d-base-8)/16;if(mask&(1U<<k))return 0;mask|=1U<<k;

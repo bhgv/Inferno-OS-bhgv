@@ -141,6 +141,18 @@ typedreadreplyprep(TypedMulti*c,Inst*in,Dis64TypedBody*p,unsigned int pc,unsigne
  }
  return 0;
 }
+/* Five operations construct (nil, ref *Wmcontext) after its channel guard. */
+static int
+typedaltcontextprep(Dis64TypedBody*p,unsigned int at,Dis64Instruction*payload)
+{Dis64Instruction*a,*n,*c,*v,*z;unsigned int tmp;
+ if(at<5||payload->middle!=48||USRC(payload->mode)!=AFP)return 0;
+ a=p->code+at-5;n=a+1;c=a+2;v=a+3;z=a+4;tmp=n->destination;
+ return !p->returns[at-5]&&p->returns[at-4]==154&&p->returns[at-3]==90&&!p->returns[at-2]&&!p->returns[at-1]&&
+ a->op==IMOVP&&a->mode==(SRC(AMP)|DST(AFP))&&!a->middle&&a->destination==payload->source&&n->op==INEWZ&&n->mode==(SRC(AIMM)|DST(AFP))&&n->source==8&&!n->middle&&
+ c->op==IMOVMP&&c->middle==8&&UDST(c->mode)==(AFP|AIND)&&c->destination==tmp&&v->op==IMOVP&&v->mode==(SRC(AFP)|DST(AFP))&&!v->middle&&v->source==tmp&&v->destination==payload->source+8&&
+ z->op==IMOVP&&z->mode==(SRC(AMP)|DST(AFP))&&!z->middle&&z->source==a->source&&z->destination==tmp;
+}
+
 static int
 typedaltinst(Inst*in,Decl*fn,Dis64TypedBody*p,unsigned int pc)
 {
@@ -156,11 +168,12 @@ typedaltinst(Inst*in,Decl*fn,Dis64TypedBody*p,unsigned int pc)
     if(!end)return typedfail(p,"alt-setup-shape");slot=end-1;q=p->code+slot;
     if(p->returns[slot]!=190 && p->returns[slot]!=195 && p->returns[slot]!=197 && p->returns[slot]!=199 && p->returns[slot]!=203 && p->returns[slot]!=134)return typedfail(p,"alt-setup-shape");
     width=q->middle==136 || q->middle==48?16:q->middle==72 || q->middle==120?24:q->middle==104?32:q->middle&15;limit=0;
+    if(typedaltcontextprep(p,slot,q))slot-=5;
     while(slot && !p->returns[slot-1]){int length=0;prep=p->code+slot-1;
      if(q->middle==48 && slot+1<end-1 && prep->op==ILENA && p->code[slot].op==IMOVP && p->code[slot+1].op==ISLICEA && p->code[slot].source==prep->source && USRC(p->code[slot].mode)==USRC(prep->mode) && p->code[slot].destination==q->source && p->code[slot+1].destination==q->source && (p->code[slot+1].mode&ARM)==AXINF && prep->destination==p->code[slot+1].middle)length=1;
      if(++limit>8 || (!length && ((prep->op!=IMOVP && prep->op!=IMOVW && !(prep->op==ISLICEA && q->middle==48)) || UDST(prep->mode)!=USRC(q->mode) || prep->destination<q->source || prep->destination+(prep->op==IMOVW?4:8)>q->source+width)))break;slot--;
     }
-    if(!slot || (p->returns[slot-1]!=189 && p->returns[slot-1]!=192 && p->returns[slot-1]!=193 && p->returns[slot-1]!=198))return typedfail(p,"alt-setup-shape");end=slot-1;
+    if(!slot || (p->returns[slot-1]!=91 && p->returns[slot-1]!=189 && p->returns[slot-1]!=192 && p->returns[slot-1]!=193 && p->returns[slot-1]!=198))return typedfail(p,"alt-setup-shape");end=slot-1;
    }
   }
   p->code[pc]=(Dis64Instruction){in->op,SRC(AFP)|DST(AFP),n,base,source};p->returns[pc]=191;return 1;
@@ -169,7 +182,10 @@ typedaltinst(Inst*in,Decl*fn,Dis64TypedBody*p,unsigned int pc)
  slot=in->d.reg-old;if(slot<8 || slot%4 || !dis64layoutaddress(&p->frame,in->d.reg,4,-1,&off))return typedfail(p,"alt-borrowed-slot");
  if(slot%8==0 && in->op==IMOVW){
   if(in->sm==Afpind || in->sm==Ampind){
-   if(typedwmcontextchannel(&in->s,in->sm,p,&source,&sm,&field)){
+   if(typedwmref(typedfieldowner(&in->s),"Wmsrv","Client")){
+    int payload;if(!typedclientaddress(&in->s,in->sm,p,&source,&sm,&field,&payload)||payload!=Tchan||(field!=0&&field!=8&&field!=16&&field!=24&&field!=64))return typedfail(p,"alt-client-channel");
+    p->code[pc]=(Dis64Instruction){IMOVL,SRC(sm)|DST(AFP),field,source,off};p->returns[pc]=91;
+   }else if(typedwmcontextchannel(&in->s,in->sm,p,&source,&sm,&field)){
     p->code[pc]=(Dis64Instruction){IMOVL,SRC(sm)|DST(AFP),field,source,off};p->returns[pc]=193;
    }else if(typedfileiochannel(&in->s,in->sm,p,&source,&sm,&field)){
     p->code[pc]=(Dis64Instruction){IMOVL,SRC(sm)|DST(AFP),field,source,off};p->returns[pc]=198;

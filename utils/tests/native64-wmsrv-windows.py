@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Execute unchanged Wmsrv window lookup, image collection and z-order bodies."""
+"""Execute unchanged Wmsrv windows, queues, context exchanges and childminder."""
 import argparse,copy,os,re,runpy,shlex,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 BUF=runpy.run_path(str(ROOT/'utils/tests/native64-bufio-library.py'));G,CMD,E=BUF['G'],BUF['CMD'],BUF['E']
 EXTRACT=CMD['NS']['S']['FILES']['FILES']['function']
 ORIGINAL=(ROOT/'appl/lib/wmsrv.b').read_text()
-SELECTED=('Client.window','Client.image','clientimages','Client.top','Client.bottom','Client.remove','top','Client.hide','Client.unhide','findfid','addclient','delclient','Client.contains','find','newwmcontext','senderror','Client.setimage','Client.setorigin')
-EXTRA='testclone:fn(w:ref Draw->Wmcontext):ref Draw->Wmcontext;testcontext:fn():ref Draw->Wmcontext;testerror:fn(e:string):string;testset:fn(c:ref Client,tag:string,img:ref Draw->Image):int;testorigin:fn(c:ref Client,x,y:int):int;testreplycode:fn(code:int);testclear:fn();testfind:fn(a:array of ref Client,fid:int):ref Client;testadd:fn(a:array of ref Client,c:ref Client):array of ref Client;testdel:fn(a:array of ref Client,c:ref Client);testhit:fn(c:ref Client,x,y:int):int;testpick:fn(x,y:int):ref Client;testopen:fn();testclient:fn():ref Client;testwindow:fn(tag:string):ref Window;testorder:fn(c:ref Client);'
+SELECTED=('Client.window','Client.image','clientimages','Client.top','Client.bottom','Client.remove','top','Client.hide','Client.unhide','findfid','addclient','delclient','Client.contains','find','newwmcontext','senderror','Client.setimage','Client.setorigin','childminder')
+EXTRA='testchildclient:fn():ref Client;testchild:fn(img:ref Draw->Image):int;testchildstop:fn():int;testclone:fn(w:ref Draw->Wmcontext):ref Draw->Wmcontext;testcontext:fn():ref Draw->Wmcontext;testerror:fn(e:string):string;testset:fn(c:ref Client,tag:string,img:ref Draw->Image):int;testorigin:fn(c:ref Client,x,y:int):int;testreplycode:fn(code:int);testclear:fn();testfind:fn(a:array of ref Client,fid:int):ref Client;testadd:fn(a:array of ref Client,c:ref Client):array of ref Client;testdel:fn(a:array of ref Client,c:ref Client);testhit:fn(c:ref Client,x,y:int):int;testpick:fn(x,y:int):ref Client;testopen:fn();testclient:fn():ref Client;testwindow:fn(tag:string):ref Window;testorder:fn(c:ref Client);'
 INTERFACE=(ROOT/'module/wmsrv.m').read_text();INTERFACE=INTERFACE[:INTERFACE.rindex('};')]+EXTRA+INTERFACE[INTERFACE.rindex('};'):]
 def limbo_body(text):
  brace=text.index('{');depth=0
@@ -20,10 +20,20 @@ def limbo_body(text):
 SOURCE=ORIGINAL
 for m in reversed(list(re.finditer(r'(?m)^([A-Za-z_]\w*(?:\.\w+)?)\(',ORIGINAL))):
  name=m[1]
- if name in SELECTED:continue
+ if name in SELECTED or name.startswith(('Iqueue.','Squeue.','Ptrqueue.')):continue
  body=limbo_body(ORIGINAL[m.start():]);replacement=body[:body.index('{')]+'{raise "unreached test stub";}'
  SOURCE=SOURCE[:m.start()]+replacement+SOURCE[m.start()+len(body):]
 SOURCE=SOURCE.replace('include "wmsrv.m";',INTERFACE)+'''
+testchildclient():ref Client{c:=ref Client;c.kbd=chan of int;c.ptr=chan of ref Pointer;c.ctl=chan of string;c.stop=chan of int;c.images=chan of(ref Point,ref Image,chan of int);c.wmctxt=newwmcontext();return c;}
+
+testchildstop():int{c:=testchildclient();rc:=chan of(string,ref Wmcontext);spawn childminder(c,rc);c.stop<-=0;return 1;}
+testchild(img:ref Image):int{c:=testchildclient();rc:=chan of(string,ref Wmcontext);spawn childminder(c,rc);(e,w):=<-rc;if(w==nil)raise "child context";join:=chan[1]of(ref Client,chan of string);ready:=chan[1]of string;join<-=(c,ready);(z,answer):=<-join;answer<-="ready";if(<-ready!="ready")raise "join tuple";c=z;
+
+ c.kbd<-=65;if(<-w.kbd!=65)raise "child keyboard";c.ctl<-="hello";if(<-w.ctl!="hello")raise "child control";
+ p:=ref Pointer(1,(2,3),4);c.ptr<-=p;q:=<-w.ptr;buttons:=q.buttons;x:=q.xy.x;y:=q.xy.y;when:=q.msec;if(buttons!=1||x!=2||y!=3||when!=4)raise "child pointer";c.ptr<-=nil;
+ reply:=chan of int;c.images<-=(nil,img,reply);if(<-reply!=0)raise "child image ack";value:=<-w.images;if(value==nil)raise "child image";
+ c.images<-=(ref Point(10,20),img,reply);if(<-reply!=0)raise "child origin ack";value=<-w.images;if(value!=nil)raise "child origin nil";value=<-w.images;if(value==nil)raise "child origin image";
+ c.stop<-=0;return 7;}
 testpoint:ref Point;testimage:ref Image;testseen,testreply:int;
 testclone(w:ref Wmcontext):ref Wmcontext{return ref *w;}
 testcontext():ref Wmcontext{return newwmcontext();}
@@ -53,10 +63,10 @@ def generate(limbo,w):
  for fn,size in re.findall(r'^#define F_Draw_(\w+)_size (\d+)',dh,re.M):
   sig=re.search(r'^#define LIMBO_NATIVE64_SIGNATURE_Draw_'+fn+r' (0x[0-9a-f]+)U',dh,re.M)
   if sig:frames[(fn.replace('_','.'),int(sig[1],16))]=(int(size),[int(x,0)for x in re.search(r'^#define F_Draw_'+fn+r'_map \{([^}]*)\}',dh,re.M)[1].split(',')if x])
- rows=G['generate'](limbo,w,SOURCE,'Wmsrv',(36,1,0,'~0U'),import_frames=frames,export_signatures=signatures,source_label="Wmsrv window fixture (18 unchanged bodies, unused bodies raise)")
+ rows=G['generate'](limbo,w,SOURCE,'Wmsrv',(53,1,0,'~0U'),import_frames=frames,export_signatures=signatures,source_label="Wmsrv window fixture (19 selected bodies plus 13 queue bodies; unused bodies raise)")
  global OP_NAMES
  OP_NAMES={name[1:].lower()for name,op in E['OPCODES'].items()if any(c[0]==op for r in rows for c in r['code'])}
- types=('Draw_Chans','Draw_Point','Draw_Rect','F_Draw_Rect_contains','F_Draw_Point_add','F_Draw_Rect_size','Draw_Image','Draw_Screen','Draw_Wmcontext','Wmsrv_Window','Wmsrv_Client');forward=types+('Draw_Display','Sys_FD','Draw_Context')
+ types=('Draw_Chans','Draw_Point','Draw_Rect','F_Draw_Rect_contains','F_Draw_Point_add','F_Draw_Rect_size','F_Draw_Image_origin','Draw_Image','Draw_Screen','Draw_Wmcontext','Wmsrv_Window','Wmsrv_Client');forward=types+('Draw_Display','Sys_FD','Draw_Context')
  (w/'windows-layout.h').write_text('#ifndef WINDOWS_LAYOUT_H\n#define WINDOWS_LAYOUT_H\n'+''.join('typedef struct '+n+' '+n+';\n'for n in forward)+''.join(re.search(r'struct '+n+r' \{.*?\n};',dh if n.startswith('F_')else h,re.S)[0]+'\n'for n in types)+'\n#endif\n')
  p=w/'full.h';s=p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')
  s+='\nstruct LibraryFunction {uint fn,argc,kinds[3],offsets[3],result,contract;};\nstatic const struct LibraryFunction library_functions[]={\n'
@@ -72,25 +82,27 @@ def generate(limbo,w):
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];controls=0
  for r in records:
   for pc,c in enumerate(r['code']):
-   if c[5]not in(90,107,108,109,110,111,141,142,143,153,154,215):continue
+   if c[5]not in(90,91,92,93,94,107,108,109,110,111,141,142,143,153,154,215):continue
    for k in range(6):
     bad=copy.deepcopy(r);bad['code'][pc][k]+=100 if c[5]==154 and k==2 else 1
     try:CMD['verify_nilbranches'](data,bad,imports,rows=records)
     except(AssertionError,KeyError,IndexError,ValueError,StopIteration):controls+=1
     else:raise AssertionError(('window oracle missed',r['export_name'],pc,k))
- print('PASS all 18 original registry/window/order bodies in complete Wmsrv:',controls,'independent mutations, unchanged classic bytes',flush=True)
+ print('PASS all 19 original window/context/childminder bodies in complete Wmsrv:',controls,'independent mutations, unchanged classic bytes',flush=True)
 def unit():
- BUF['unit'].__globals__['OP_NAMES']=(OP_NAMES-{'beqc','bnec','raise','send','recv'})|{'isend','irecv'}
+ BUF['unit'].__globals__['OP_NAMES']=(OP_NAMES-{'beqc','bnec','raise','send','recv','case','exit'})|({'icase'}if 'case'in OP_NAMES else set())|{'isend','irecv'}
  original=BUF['unit']();prefix=original.split('\n#line 1 "native64-bufio-library.c"')[0]
  prefix=prefix.replace('newc(&Tword, movw);','newc(&Tword, actual_movw);').replace('newc(&Tptr, movp);','newc(&Tptr, actual_movp);')
  strings=(ROOT/'libinterp/xec.c').read_text()
  if 'static void\nbranchstring('not in prefix:
   helper=EXTRACT(strings,'static void\nbranchstring(')+'\n';prefix+=helper+'\n'+re.search(r'OP\(beqc\) [^\n]+',strings)[0]+'\n'+re.search(r'OP\(bnec\) [^\n]+',strings)[0]+'\n'
+ if 'OP(iexit)'not in prefix:prefix+='\n'+re.search(r'OP\(iexit\)[^\n]+',strings)[0]+'\n'
+ if 'casepc('not in prefix:prefix=prefix.replace('OP(icase)',EXTRACT(strings,'static Inst*\ncasepc(')+'\nOP(icase)',1)
  prefix+='\n'+EXTRACT(strings,'OP(iraise)\n')+'\n' if 'OP(iraise)'not in prefix else ''
  start=original.rindex(' optab[IMOVW]=countmovw;');end=original.index(' metadata();construction();',start)
  prefix+='\n#include \"windows-layout.h\"\n#define F_Rect_contains F_Draw_Rect_contains\n'+EXTRACT((ROOT/'libinterp/geom.c').read_text(),'void\nRect_contains(')+'\n'
  for n in ('Point_add','Rect_size'):prefix+='\n#define F_'+n+' F_Draw_'+n+'\n'+EXTRACT((ROOT/'libinterp/geom.c').read_text(),'void\n'+n+'(')+'\n'
- return prefix+'\n#line 1 "native64-wmsrv-windows.c"\n'+(ROOT/'utils/tests/native64-wmsrv-windows.c').read_text().replace(' LIBRARY_HANDLERS',original[start:end]+' optab[IBEQC]=actual_beqc; optab[IBNEC]=actual_bnec; optab[IRAISE]=actual_iraise; optab[ISEND]=actual_isend; optab[IRECV]=actual_irecv;')
+ return prefix+'\n#line 1 "native64-wmsrv-windows.c"\n'+(ROOT/'utils/tests/native64-wmsrv-windows.c').read_text().replace(' LIBRARY_HANDLERS',original[start:end]+' optab[IBEQC]=actual_beqc; optab[IBNEC]=actual_bnec; optab[IRAISE]=actual_iraise; optab[ISEND]=actual_isend; optab[IRECV]=actual_irecv; optab[IEXIT]=actual_iexit;')
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);a=p.parse_args()
  if not __debug__:p.error('source checks require assertions')
