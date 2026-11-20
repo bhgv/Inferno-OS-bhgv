@@ -23,7 +23,7 @@ static int
 native64localbind(void)
 {
     VmFetch fetched;Inst instruction;Frame *pending;Type *caller,*callee,*source;Stkext *extent;
-    uintptr base,start,top,target,at,bit,sourcebase;unsigned int width,reference,contract,altaddress,fieldaddress,arrayaddress,sourcewidth,sourceroot;long offset;
+    uintptr base,start,top,target,at,bit,sourcebase;unsigned int width,reference,contract,altaddress,windowaddress,fieldaddress,arrayaddress,sourcewidth,sourceroot;long offset;
     void *owner;Type *ownertype;
     void *address,*destination;
     if(!vmfetch(&fetched))return 0;
@@ -37,8 +37,9 @@ native64localbind(void)
         return fetched.module->native64casec();
     }
     if(fetched.op!=ILEA)return 0;
-    memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;arrayaddress=!!(contract&1024);if(arrayaddress)contract&=~1024;fieldaddress=!!(contract&512);if(fieldaddress)contract&=~512;altaddress=!!(contract&256);if(altaddress)contract&=~256;width=native64wmtuplewidth(contract)?native64wmtuplewidth(contract):native64geometryresultwidth(contract)?native64geometryresultwidth(contract):native64fileiowidth(contract)?native64fileiowidth(contract):contract==72?24:contract==88?88:contract==48?16:contract&15;reference=!native64wmtuplewidth(contract) && !native64geometryresultwidth(contract) && (contract==72 || !!(contract&16));
-    if(fieldaddress && (altaddress || (contract!=24 && contract!=4 && contract!=96 && contract!=112) || instruction.add!=(SRC(AFP|AIND)|DST(AFP|AIND)) || ((contract==96||contract==112)?!native64windowgeometryfield(instruction.s.i.s,width):contract==4?instruction.s.i.s!=12:(instruction.s.i.s!=24&&instruction.s.i.s!=88))))error(exBounds);
+    memmove(&instruction,fetched.pc,sizeof(instruction));contract=instruction.reg;windowaddress=!!(contract&2048);if(windowaddress)contract&=~2048;arrayaddress=!!(contract&1024);if(arrayaddress)contract&=~1024;fieldaddress=!!(contract&512);if(fieldaddress)contract&=~512;altaddress=!!(contract&256);if(altaddress)contract&=~256;width=native64wmtuplewidth(contract)?native64wmtuplewidth(contract):native64geometryresultwidth(contract)?native64geometryresultwidth(contract):native64fileiowidth(contract)?native64fileiowidth(contract):contract==72?24:contract==88?88:contract==48?16:contract&15;reference=!native64wmtuplewidth(contract) && !native64geometryresultwidth(contract) && (contract==72 || !!(contract&16));
+    if(fieldaddress && (altaddress || (contract!=24 && contract!=4 && contract!=96 && contract!=112) || instruction.add!=(SRC(AFP|AIND)|DST(AFP|AIND)) || (windowaddress?(contract!=24||!native64windowrootfield(instruction.s.i.s)):(contract==96||contract==112)?!native64windowgeometryfield(instruction.s.i.s,width):contract==4?instruction.s.i.s!=12:(instruction.s.i.s!=24&&instruction.s.i.s!=88))))error(exBounds);
+    if(windowaddress&&(!fieldaddress||altaddress||arrayaddress))error(exBounds);
     if(arrayaddress && (fieldaddress || altaddress || contract!=24 || instruction.add!=(SRC(AFP)|DST(AFP|AIND))))error(exBounds);
     sourcewidth=(fieldaddress||arrayaddress)?8:width;sourceroot=(fieldaddress||arrayaddress)?1:reference;
     offset=fieldaddress?instruction.s.i.f:instruction.s.ind;
@@ -93,9 +94,9 @@ native64localbind(void)
      * A global owner could be replaced while the callee is suspended. */
     if(fieldaddress){
         memmove(&owner,address,sizeof(owner));if(owner==H)error(exNilref);
-        if(owner==nil || (uintptr)owner%8 || (uintptr)owner>(uintptr)-1-(native64geometryresultwidth(contract)?128:instruction.s.i.s==88?96:32) || D2H(owner)->ref==0)error(exBounds);
+        if(owner==nil || (uintptr)owner%8 || (uintptr)owner>(uintptr)-1-((windowaddress||native64geometryresultwidth(contract))?128:instruction.s.i.s==88?96:32) || D2H(owner)->ref==0)error(exBounds);
         ownertype=D2H(owner)->t;
-        if(contract==96||contract==112){if(ownertype==nil||ownertype==H||ownertype->ref<=0||ownertype->size!=128||ownertype->np!=2||ownertype->map[0]!=0x92||ownertype->map[1]!=0xc4)error(exBounds);address=(uchar*)owner+instruction.s.i.s;}
+        if(windowaddress||contract==96||contract==112){if(ownertype==nil||ownertype==H||ownertype->ref<=0||ownertype->size!=128||ownertype->np!=2||ownertype->map[0]!=0x92||ownertype->map[1]!=0xc4)error(exBounds);address=(uchar*)owner+instruction.s.i.s;}
         else if(contract==4){
             if(ownertype==nil || ownertype==H || ownertype->ref<=0 || ownertype->size!=16 || ownertype->np<0 || ownertype->np>1 || (ownertype->np && ownertype->map[0]))error(exBounds);
             address=(uchar*)owner+12;

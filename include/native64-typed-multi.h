@@ -69,12 +69,19 @@ static int
 native64typedstringprep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
  Native64TypedStep copy=*s;Inst probe;
+ if(s->returned==63)return s->op==ICVTWC&&native64typedwindowcodec(s,fp,mp);
  if(s->returned==181){copy.returned=Native64TypedListPrep;return s->op==IMOVP && native64typedlistprep(&copy,fp,mp);}
  if((s->returned!=180&&s->returned!=87) || (s->returned==87?(s->op!=ILENC&&s->op!=IMOVP&&s->op!=ISLICEC):(s->op!=ICVTWC && s->op!=IADDC)) || UDST(s->mode)!=AFP)return 0;
  copy.returned=0;return native64typedcode(&probe,1,&copy,1,fp,mp);
 }
 
 /* One computed String argument in an already prepared imported frame. */
+static int
+native64typedbytestringarg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const uchar*map,unsigned int np)
+{unsigned int bit;if(s->returned!=70||s->op!=ICVTAC||s->mode!=(SRC(AFP)|DST(AFP|AIND))||s->m||!native64typedrootoperand(AFP,s->s,fp,mp)||!native64typedrootoperand(AFP,s->d,bytes,0)||s->d>65535||map==nil||map==H||np!=(bytes+63)/64)return 0;bit=s->d/8;return !!(map[bit/8]&(128>>(bit%8)));}
+static int
+native64typedimagewordarg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const uchar*map,unsigned int np)
+{Native64TypedStep c=*s;unsigned int bit;if(s->returned!=67||s->op!=IMOVW||(unsigned long)s->s>>16>40||UDST(s->mode)!=(AFP|AIND)||!native64typedwordoperand(AFP,s->d,bytes,0)||s->d>65535||map==nil||map==H||np!=(bytes+63)/64)return 0;c.returned=133;c.mode=(c.mode&~7)|AFP;c.d=64;if(!native64typedimageword(&c,fp,mp))return 0;bit=s->d/8;return !(map[bit/8]&(128>>(bit%8)));}
 static int
 native64typedconcatarg(const Native64TypedStep *s,unsigned int fpbytes,unsigned int mpbytes,unsigned int bytes,const uchar *map,unsigned int np)
 {
@@ -209,7 +216,11 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             if(s->returned==238){checkstep=*s;checkstep.returned=Native64TypedListPrep;if(c->external || s->op!=IMOVP || !native64typedlistprep(&checkstep,fpbytes,mpbytes))return 0;continue;}
             if(s->returned==187){if(!c->external || !native64typedlistprefix(s,fpbytes,mpbytes))return 0;continue;}
             if(s->returned==182){checkstep=*s;checkstep.returned=Native64TypedListPrep;if(c->external || s->op!=IMOVP || !native64typedlistprep(&checkstep,fpbytes,mpbytes))return 0;continue;}
-            if(s->returned==87 || s->returned==180 || s->returned==181){if(!c->external || !native64typedstringprep(s,fpbytes,mpbytes))return 0;continue;}
+            if(s->returned==69||s->returned==71){if(!c->external||!native64typedbytestring(s,fpbytes,mpbytes))return 0;continue;}
+            if(s->returned==70){if(!c->external||!native64typedbytestringarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;continue;}
+            if(s->returned==67){if(!c->external||!native64typedimagewordarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;continue;}
+            if(s->returned==61||s->returned==66){if(!native64typedrootpath(s,fpbytes,mpbytes))return 0;continue;}
+            if(s->returned==63 || s->returned==87 || s->returned==180 || s->returned==181){if(!c->external || !native64typedstringprep(s,fpbytes,mpbytes))return 0;continue;}
             if(s->returned==141){checkstep=*s;checkstep.returned=213;if(!c->external||s->op!=IHEADP||UDST(s->mode)!=AFP||!native64typedwindowlist(&checkstep,fpbytes,mpbytes)||j+2>=stop||steps[j+1].returned!=217||steps[j+1].s!=s->d||steps[j+2].returned!=126||steps[j+2].d!=s->d)return 0;continue;}
             if(s->returned==166 || s->returned==235){
                 checkstep=*s;checkstep.returned=s->m==24?214:Native64TypedDraw;
@@ -244,7 +255,8 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         }
         if(c->contract){
             s=steps+c->end-1;width=native64wmtuplewidth(c->contract)?native64wmtuplewidth(c->contract):native64geometryresultwidth(c->contract)?native64geometryresultwidth(c->contract):c->contract==16?16:c->contract==72?24:c->contract==88?88:c->contract==48?16:c->contract&15;
-            if(s->returned==85){if(!native64wmtuplewidth(c->contract)||!c->external||c->inherited||s->op!=ILEA||s->mode!=(SRC(AFP)|DST(AFP|AIND))||s->m||s->d!=32||s->s<64||s->s%8||(unsigned long)s->s>fpbytes||width>fpbytes-s->s)return 0;
+            if(s->returned==60){if(c->contract!=24||!c->external||c->inherited||s->op!=ILEA||s->mode!=(SRC(AFP|AIND)|DST(AFP|AIND))||s->d!=32||!native64windowrootfield(s->m)||!native64typedrootoperand(AFP,s->s,fpbytes,mpbytes))return 0;
+            }else if(s->returned==85){if(!native64wmtuplewidth(c->contract)||!c->external||c->inherited||s->op!=ILEA||s->mode!=(SRC(AFP)|DST(AFP|AIND))||s->m||s->d!=32||s->s<64||s->s%8||(unsigned long)s->s>fpbytes||width>fpbytes-s->s)return 0;
             }else if(s->returned==131){
                 if(c->contract!=24 || c->inherited || s->op!=ILEA || s->mode!=(SRC(AFP)|DST(AFP|AIND)) || s->m || s->d!=32 || !native64typedrootoperand(AFP,s->s,fpbytes,mpbytes) || !c->first || steps[c->first-1].returned!=131 || steps[c->first-1].op!=IINDL || steps[c->first-1].s!=s->s)return 0;
             }else if(s->returned==81){if(c->inherited||!native64geometryresultwidth(c->contract)||!native64windowgeometryfield(s->m,native64geometryresultwidth(c->contract))||s->op!=ILEA||s->mode!=(SRC(AFP|AIND)|DST(AFP|AIND))||s->d!=32||!native64typedrootoperand(AFP,s->s,fpbytes,mpbytes))return 0;
@@ -293,6 +305,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 else if(j==c->end){p->s.ind=40;if(c->external){p->reg=c->ordinal;p->d.ind=c->moduleoffset;if(c->modulemode&AIND){p->d.i.f=c->moduleoffset&65535;p->d.i.s=(c->moduleoffset>>16)&255;}}else p->d.ins=c->target;}
                 else if(s->op==IMOVM && (native64imagegeometryoffset(s->returned)!=~0U)){p->s.i.f=s->s;p->s.i.s=native64imagegeometryoffset(s->returned);p->reg=s->m;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==84){p->s.i.f=s->s;p->s.i.s=s->m>>8;p->reg=s->m&255;p->d.i.f=40;p->d.i.s=s->d;}
+                else if(s->returned==60){p->reg=2048|512|24;p->s.i.f=s->s;p->s.i.s=s->m;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==85){p->reg=c->contract;p->s.ind=s->s;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==81){p->reg=512|c->contract;p->s.i.f=s->s;p->s.i.s=s->m;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==86){p->reg=s->m;p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;p->d.i.f=40;p->d.i.s=s->d;}
@@ -313,7 +326,11 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 else if(s->returned==238){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
                 else if(s->returned==187){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
                 else if(s->returned==182){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
-                else if(s->returned==87 || s->returned==180 || s->returned==181){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
+                else if(s->returned==69||s->returned==71){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
+                else if(s->returned==70){p->s.ind=s->s;p->d.i.f=40;p->d.i.s=s->d;}
+                else if(s->returned==67){p->reg=0;p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;p->d.i.f=40;p->d.i.s=s->d;}
+                else if(s->returned==61||s->returned==66){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
+                else if(s->returned==63 || s->returned==87 || s->returned==180 || s->returned==181){checkstep=*s;if(s->returned!=63)checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
                 else if(s->returned==141){p->s.ind=s->s;p->reg=0;p->d.ind=s->d;}
                 else if(s->returned==166 || s->returned==235){checkstep=*s;checkstep.returned=s->m==24?214:Native64TypedDraw;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
                 else if(s->returned==Native64TypedArgClear){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}

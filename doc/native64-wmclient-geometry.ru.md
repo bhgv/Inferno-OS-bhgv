@@ -1,5 +1,7 @@
 # Native64: геометрия и ввод Wmclient.Window
 
+Позднейший результат: [полный Wmclient 21/21 и сквозное создание окна](native64-wmclient-module.ru.md). Ниже описан предыдущий этап.
+
 Полный исходник `appl/lib/wmclient.b` принимает 9/21 тел вместо 7/21.
 К ранее исполняемым `Window.screenr` и `Window.imager` добавились
 неизменённые `Window.pointer` и частный `sizetb`.

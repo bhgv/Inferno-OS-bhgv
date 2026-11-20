@@ -533,8 +533,8 @@ typedaggregatebindings(Decl*decls)
 {
  Decl*d;Dis64Layout layout={0};unsigned int i=0,n=0;
  fprint(2,"[");
- for(d=decls;d;d=d->next,i++)if(d->ty && d->ty->kind==Tadt && (typedwordgeometry(d->ty,&layout) || (dis64layoutfree(&layout),typedpointerlayout(d->ty,&layout)))){
-  fprint(2,"%s{\"index\":%ud,\"layout\":",n++?",":"",i);typedlayout(&layout);if(d->ty->decl && d->ty->decl->sym && !strcmp(d->ty->decl->sym->name,"Pointer"))fprint(2,",\"nominal\":\"Draw.Pointer\"");fprint(2,"}");dis64layoutfree(&layout);
+ for(d=decls;d;d=d->next,i++)if(d->ty && d->ty->kind==Tadt && (typedwordchans(d->ty,&layout) || (dis64layoutfree(&layout),typedwordgeometry(d->ty,&layout)) || (dis64layoutfree(&layout),typedpointerlayout(d->ty,&layout)))){
+  fprint(2,"%s{\"index\":%ud,\"layout\":",n++?",":"",i);typedlayout(&layout);if(d->ty->decl&&d->ty->decl->sym&&!strcmp(d->ty->decl->sym->name,"Chans"))fprint(2,",\"nominal\":\"Draw.Chans\"");if(d->ty->decl && d->ty->decl->sym && !strcmp(d->ty->decl->sym->name,"Pointer"))fprint(2,",\"nominal\":\"Draw.Pointer\"");fprint(2,"}");dis64layoutfree(&layout);
  }else dis64layoutfree(&layout);
  fprint(2,"]");
 }

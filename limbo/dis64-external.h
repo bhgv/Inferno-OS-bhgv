@@ -109,6 +109,10 @@ typedwordgeometry(Type*t,Dis64Layout*layout)
  return 1;
 }
 
+static int
+typedwordchans(Type*t,Dis64Layout*l)
+{Decl*d=t?t->decl:nil;return t&&t->kind==Tadt&&d&&d->sym&&d->dot&&d->dot->sym&&!strcmp(d->sym->name,"Chans")&&!strcmp(d->dot->sym->name,"Draw")&&t->ids&&t->ids->sym&&!strcmp(t->ids->sym->name,"desc")&&dis64layouttype(t,l)&&l->legacybytes==4&&l->bytes==4&&l->count==1&&l->alignment==4&&!l->leaves[0].legacy&&!l->leaves[0].native&&l->leaves[0].oldbytes==4&&l->leaves[0].bytes==4&&l->leaves[0].kind==Tint;}
+
 /* A Pointer is nominally distinct from Rect despite four raw Word leaves. */
 static int
 typedpointerlayout(Type*t,Dis64Layout*l)
@@ -209,6 +213,7 @@ static int typedrootargclear(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsi
 static int typedwindowlisttype(Addr*);
 static int typedwindowlist(Inst*,Dis64TypedBody*,Dis64Instruction*,uchar*,Type*);
 static int typedimagegeometryprep(Inst*,Inst*,Dis64TypedBody*,unsigned int);
+static int typedimagewordargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
 static int typedimagegeometry(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
 
 static int typedwmref(Type*,char*,char*);
@@ -217,6 +222,7 @@ static int typedimagearraybinding(TypedMulti*,Dis64TypedBody*,Inst*,Inst*,Type*,
 static int typedwordargop(int);
 static int typedwordargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
 static int typedwindowowner(Addr*);
+static int typedwindowrootbinding(Inst*,Type*,Dis64TypedBody*,unsigned int,unsigned int*);
 static int typedwindowgeometrybinding(Inst*,Type*,Dis64TypedBody*,unsigned int,unsigned int*,unsigned int*);
 static int typedwindowwordargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
 static int typedexternalinthead(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
@@ -224,6 +230,7 @@ static int
 typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned int end,unsigned int*at,unsigned int*offset)
 {
  Dis64Layout layout={0};Inst*in;Addr sourceaddr;long source=0,part;unsigned int i,sm=0,wire,base;int actual,ok=0,prepared=0;
+ if(typedwordchans(arg->ty,&layout)){in=c->instructions[*at];base=(*offset+3)&~3U;if(base>65535-4||in->op!=IMOVW||in->mm!=Anone||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||!typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual)||actual!=Tint)goto done;p->code[*at-p->first]=(Dis64Instruction){IMOVW,SRC(sm)|DST(AFP|AIND),0,source,base};p->returns[(*at)++-p->first]=64;*offset=base+4;ok=1;goto done;}dis64layoutfree(&layout);
  if(!typedwordgeometry(arg->ty,&layout)){
   dis64layoutfree(&layout);
   if(!c->loads || !typedpointerlayout(arg->ty,&layout))goto done;
@@ -254,31 +261,30 @@ typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned
   if(in->mm!=Aimm || in->m.offset!=layout.bytes || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !typedimagegeometry(in,p,*at-p->first,base))goto done;
   (*at)++;
   if(in->sm==Afpind){unsigned int clear=*at;Inst store=*in;store.op=IMOVP;store.sm=Afp;store.s.offset=0;if(!typedrootargclear(c,p,&store,end,at) || (prepared && clear==*at))goto done;}
- }else if(in->op==IMOVM){
-  /* A selected Point can belong to a Rect declaration; prove the expression
-   * type, then every contiguous relocated Tint leaf below. */
-  if(in->mm!=Aimm || in->m.offset!=layout.bytes || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
-     (in->sm!=Afp && in->sm!=Amp) || !in->s.decl || (in->s.native64type?in->s.native64type:in->s.decl->ty)!=arg->ty)goto done;
-  for(i=0;i<layout.count;i++){
-   sourceaddr=in->s;sourceaddr.reg+=4*i;sourceaddr.offset=0;
-   if(!typedoperand(in->sm,&sourceaddr,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || (i && (wire!=sm || part!=source+4*i)))goto done;
-   if(!i){source=part;sm=wire;}
-  }
-  p->code[*at-p->first]=(Dis64Instruction){IMOVM,SRC(sm)|AXIMM|DST(AFP|AIND),layout.bytes,source,base};p->returns[(*at)++-p->first]=64;
  }else{
-  for(i=0;i<layout.count;i++){
-   if(*at<end && (in=c->instructions[*at]) && (in->op==ITAIL || in->op==IHEADP)){
-    if(!c->loads || !typedexternalinthead(c,p,frame,end,at,arg->offset+4*i,base+4*i))goto done;continue;
-   }
-   if(*at>=end || !(in=c->instructions[*at]) || in->op!=IMOVW || in->mm!=Anone || in->branch || in->dm!=Afpind ||
-      in->d.reg!=frame->d.reg || in->d.offset!=arg->offset+4*i || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual))goto done;
-   p->code[*at-p->first]=(Dis64Instruction){IMOVW,SRC(sm)|DST(AFP|AIND),0,source,base+4*i};p->returns[(*at)++-p->first]=64;
+  for(i=0;i<layout.count;){unsigned int bytes=4,old=arg->offset+4*i,native=base+4*i;
+   if(*at>=end||!(in=c->instructions[*at]))goto done;
+   if(in->op==ITAIL||in->op==IHEADP){if(!c->loads||!typedexternalinthead(c,p,frame,end,at,old,native))goto done;i++;continue;}
+   if(in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=old||in->branch)goto done;
+   if(in->op==IMOVM){Dis64Layout src={0};Type*t=in->s.native64type?in->s.native64type:in->s.decl?in->s.decl->ty:nil;unsigned int j;int valid;
+    bytes=in->m.offset;valid=t&&(t->kind==Tadt||t->kind==Ttuple)&&dis64layouttype(t,&src)&&src.bytes==bytes&&src.legacybytes==bytes&&src.count==bytes/4;
+    if(in->mm!=Aimm||(bytes!=8&&bytes!=16)||bytes>4*(layout.count-i)||(in->sm!=Afp&&in->sm!=Amp)||!valid){dis64layoutfree(&src);goto done;}
+    for(j=0;j<src.count;j++)if(src.leaves[j].legacy!=4*j||src.leaves[j].native!=4*j||src.leaves[j].bytes!=4||src.leaves[j].oldbytes!=4||src.leaves[j].kind!=Tint)break;valid=j==src.count;dis64layoutfree(&src);if(!valid)goto done;
+    for(j=0;j<bytes;j+=4){sourceaddr=in->s;sourceaddr.reg+=j;sourceaddr.offset=0;if(!typedoperand(in->sm,&sourceaddr,Tint,0,0,p,&part,&wire,&actual)||actual!=Tint||(j&&part!=source+j)){goto done;}if(!j){source=part;sm=wire;}}
+    p->code[*at-p->first]=(Dis64Instruction){IMOVM,SRC(sm)|AXIMM|DST(AFP|AIND),bytes,source,native};p->returns[(*at)++-p->first]=64;
+   }else if(c->loads&&(in->sm==Afpind||in->sm==Ampind)&&typedwindowowner(&in->s)){if(!typedwindowwordargument(in,frame,p,*at-p->first,old,native))goto done;(*at)++;}
+   else if(c->loads&&typedwordargop(in->op)){if(!typedwordargument(in,frame,p,*at-p->first,old,native))goto done;(*at)++;}
+   else{if(in->op!=IMOVW||in->mm!=Anone||!typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual)||actual!=Tint)goto done;p->code[*at-p->first]=(Dis64Instruction){IMOVW,SRC(sm)|DST(AFP|AIND),0,source,native};p->returns[(*at)++-p->first]=64;}
+   i+=bytes/4;
   }
  }
  *offset=base+layout.bytes;ok=1;
  done:dis64layoutfree(&layout);return ok?1:typedfail(p,"external-geometry-argument");
 }
 
+static int typedbytearrayaddr(Addr*);
+static int typedexternalbytestring(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
+static int typedexternalrootpath(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int,int);
 static int typedexternalheadarg(TypedMulti*,Dis64TypedBody*,Inst*,Decl*,unsigned int,unsigned int*,unsigned int);
 static int typedexternalstringexpr(TypedMulti*,Dis64TypedBody*,Inst*,Decl*,unsigned int,unsigned int*,unsigned int);
 static int typedselectedfieldarg(Inst*,Dis64TypedBody*,unsigned int,unsigned int,int);
@@ -301,7 +307,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
     if(fn->ty==nil || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys!=nil || fn->ty->tof==nil)
         return typedfail(p,"external-signature");
     while(end<stop && c->instructions[end]!=nil && c->instructions[end]->op!=IMCALL && (c->instructions[end]->dm==Afpind || (c->loads && c->instructions[end]->op==IINDW) ||
-      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==IMOVW || c->instructions[end]->op==ILENA || c->instructions[end]->op==ILENC || c->instructions[end]->op==ISLICEC || c->instructions[end]->op==IINDW || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
+      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==IMOVW || c->instructions[end]->op==ILENA || c->instructions[end]->op==ILENC || c->instructions[end]->op==ISLICEC || c->instructions[end]->op==ISLICEA || c->instructions[end]->op==IINDW || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || call->op!=IMCALL || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Aoff || call->m.decl!=fn || call->dm!=frame->sm || call->d.reg!=frame->s.reg ||
        call->d.decl!=frame->s.decl || call->d.offset!=frame->s.offset || call->branch!=nil)return typedfail(p,"external-call");
@@ -320,8 +326,11 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         if(c->loads && typedlibraryargument(in,frame,p,at-p->first,arg->offset,offset,kind)){
             at++;if(at<end && c->instructions[at]->op==ISLICEA){if(kind!=Tarray || !arg->ty->tof || arg->ty->tof->kind!=Tbyte || !typedlibraryslicearg(c->instructions[at],frame,p,at-p->first,arg->offset,offset))return typedfail(p,"library-array-slice");at++;}offset+=width;continue;
         }
+        if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afp||in->sm==Amp)&&typedbytearrayaddr(&in->s)){if(!typedexternalbytestring(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
+        if(c->loads&&root&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afpind||in->sm==Ampind)){if(!typedexternalrootpath(c,p,frame,end,&at,arg->offset,offset,kind))return 0;offset+=8;continue;}
         if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Screen") && in->op==IINDW){if(!typedimagescreenarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Image") && in->op==IINDW){if(!typedimagearrayarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
+        if(c->loads&&kind==Tint&&in->op==IMOVW&&(in->sm==Afpind||in->sm==Ampind)&&typedimagewordargument(in,frame,p,at-p->first,arg->offset,offset)){at++;offset+=4;continue;}
         if(c->loads&&kind==Tint&&(in->sm==Afpind||in->sm==Ampind)&&typedwindowowner(&in->s)){if(!typedwindowwordargument(in,frame,p,at-p->first,arg->offset,offset))return 0;at++;offset+=4;continue;}
         if(c->loads && kind==Tint && typedwordargop(in->op)){if(!typedwordargument(in,frame,p,at-p->first,arg->offset,offset))return 0;at++;offset+=4;continue;}
         if(c->loads && kind==Tint && (in->op==ITAIL || in->op==IHEADP)){
@@ -403,6 +412,8 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
             local=base;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),12,base,32};p->returns[at-p->first]=245;
         }else if(c->loads && typedimagearraybinding(c,p,frame,binding,fn->ty->tof,pc,at)){
             local=p->code[at-p->first].source;
+        }else if(c->loads&&root&&binding->sm==Afpind&&typedwindowrootbinding(binding,fn->ty->tof,p,at-p->first,&local)){
+            contract=24;
         }else if(c->loads && root && binding->sm==Afpind && binding->s.reg!=16){
             unsigned int wire;long base;
             if(kind!=Tref || !typedwmref(fn->ty->tof,"Draw","Image") || binding->s.offset!=20 ||

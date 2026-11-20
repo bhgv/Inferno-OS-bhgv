@@ -119,6 +119,12 @@ typedlocalgeometry(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
   src.offset=0;src.native64type=owner;if(!typedoperand(in->sm==Afpind?Afp:Amp,&src,TypedRoot,0,0,p,&base,&wire,&actual)||actual!=Tref||!typedwmsrvwindowbase(&in->d,in->dm,p,&dst,&dw))goto done;
   *out=(Dis64Instruction){IMOVM,SRC(wire|AIND)|AXIMM|DST(dw),16,base,dst};*returned=110;ok=1;goto done;
  }
+ if(in->op==IMOVM&&read&&(in->dm==Afpind||in->dm==Ampind)&&typedwindowowner(&in->d)&&(typedwindowowner(&in->s)||typeddrawowner(&in->s)==1)){long sb,db,sf,df;unsigned int sw,dw,n,sn,window=typedwindowowner(&in->s);Inst pr;Dis64Layout gl={0};
+  if(in->mm!=Aimm||in->branch||!typedwindowgeometrybase(&in->d,in->dm,p,in->pc-p->first,&db,&dw,&df,&n)||in->m.offset!=n)goto done;
+  if(window){if(!typedwindowgeometrybase(&in->s,in->sm,p,in->pc-p->first,&sb,&sw,&sf,&sn)||sn!=n)goto done;}
+  else{sf=in->s.offset;if(!typedwordgeometry(in->s.native64type,&gl)||gl.bytes!=n||(n==16?(sf!=0&&sf!=16):(sf<0||sf>24||sf%8))){dis64layoutfree(&gl);goto done;}dis64layoutfree(&gl);pr=*in;pr.op=IMOVP;pr.sm=in->sm;pr.s.offset=44;pr.mm=Anone;pr.dm=Afp;if(!typeddrawfield(&pr,p,in->pc-p->first,1,nil))goto done;sb=p->code[in->pc-p->first].source;sw=USRC(p->code[in->pc-p->first].mode);}
+  *out=(Dis64Instruction){IMOVM,SRC(sw|AIND)|AXIMM|DST(dw|AIND),(window<<24)|(sf<<16)|(df<<8)|n,sb,db};*returned=62;ok=1;goto done;
+ }
  if(in->op==IMOVM&&((read&&typedwindowowner(&in->s))||((in->dm==Afpind||in->dm==Ampind)&&typedwindowowner(&in->d)))){if(!typedwindowgeometrycopy(in,p,out,returned))goto done;ok=1;goto done;}
  if(in->op!=IMOVM || in->mm!=Aimm || in->branch || (read && (in->dm==Afpind || in->dm==Ampind)))goto done;
  if(indirect){
@@ -174,3 +180,7 @@ typedimageword(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
  else if(!typedoperand(in->dm,&in->d,Tint,0,0,p,&dest,&dm,&actual) || (dm!=AFP && dm!=AMP))return typedfail(p,"image-word-destination");
  source=(field<<16)|base;p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|mm|DST(dm),middle,source,dest};p->returns[pc]=133;return 1;
 }
+
+static int
+typedimagewordargument(Inst*in,Inst*frame,Dis64TypedBody*p,unsigned int pc,unsigned int old,unsigned int native)
+{Inst probe=*in;long base;unsigned int mode;if(typeddrawowner(&in->s)!=1||in->op!=IMOVW||in->mm!=Anone||in->branch||in->s.offset<0||in->s.offset>40||in->s.offset%4||!in->s.native64type||in->s.native64type->kind!=Tint||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=old)return 0;probe.op=IMOVP;probe.s.offset=44;probe.dm=Afp;if(!typeddrawfield(&probe,p,pc,1,nil))return 0;base=p->code[pc].source;mode=USRC(p->code[pc].mode);p->code[pc]=(Dis64Instruction){IMOVW,SRC(mode)|DST(AFP|AIND),0,(in->s.offset<<16)|base,native};p->returns[pc]=67;return 1;}

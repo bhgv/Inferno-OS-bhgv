@@ -86,3 +86,7 @@ typedwindowgeometrycopy(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*ret)
  {Dis64Layout l={0};int ok=typedwordgeometry(direct->native64type,&l)&&l.bytes==bytes;dis64layoutfree(&l);if(!ok)return 0;}
  for(i=0;i<bytes;i+=4){word=*direct;word.reg+=i;word.offset=0;if(!typedoperand(mode,&word,Tint,0,0,p,&part,&wire,&actual)||actual!=Tint||(i&&part!=value+i))return 0;if(!i)value=part;}
  *out=(Dis64Instruction){IMOVM,read?SRC((in->sm==Afpind?AFP:AMP)|AIND)|AXIMM|DST(mode==Afp?AFP:AMP):SRC(mode==Afp?AFP:AMP)|AXIMM|DST((in->dm==Afpind?AFP:AMP)|AIND),(field<<8)|bytes,read?base:value,read?value:base};*ret=read?83:82;return 1;}
+/* Fresh root results retain their named formal/local Window owner across the call. */
+static int
+typedwindowrootbinding(Inst*b,Type*t,Dis64TypedBody*p,unsigned int pc,unsigned int*base)
+{Addr a=b->s;Inst probe;Decl*d;unsigned int index;if(b->sm!=Afpind||!a.decl||(a.decl->store!=Darg&&(a.decl->store!=Dlocal||!a.decl->sym||a.decl->sym->name[0]=='.'))||a.reg!=a.decl->offset||!t||(t->kind!=Tref&&t->kind!=Tchan))return 0;a.native64base=a.decl->ty;if(!typedwindowowner(&a))return 0;for(d=a.decl->ty->tof->ids;d;d=d->next)if(d->store==Dfield&&d->offset==a.offset)break;if(!d||!tequal(d->ty,t))return 0;memset(&probe,0,sizeof(probe));probe.op=IMOVP;probe.mm=Anone;probe.sm=Afpind;probe.s=a;probe.s.native64type=t;probe.dm=Afp;probe.d=a;if(!typedwindowfield(&probe,p,pc,1,&index))return 0;*base=p->code[pc].source;p->code[pc]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),p->contextfields[pc],*base,32};p->returns[pc]=60;return 1;}

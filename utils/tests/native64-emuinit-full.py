@@ -64,8 +64,16 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
   sites += [(a,b,next(i for i,x in enumerate(rows)if x['first']==target),contract,inherited,0,0,0,0)for a,b,target,desc,off,contract,inherited in r.get('calls',[])]
   if sites:lines+=['static const Native64ModuleSite full_sites_'+n+'[]={']+['{'+','.join(map(str,s))+'},'for s in sorted(sites)]+['};']
   for j,t in enumerate(r.get('tables',[])):
-   assert t['op']in(3,14)
-   lines+=['static const Native64ModuleCaseRow full_rows_'+n+'_'+str(j)+'[]={']+['{'+f'{a},{b},{c}'+'},'for a,b,c in t['rows']]+['};']
+   assert t['op']in(3,14,144)
+   case_rows=[]
+   for k,(a,b,c)in enumerate(t['rows']):
+    if t['op']==144:
+     start='full_case_start_'+n+'_'+str(j)+'_'+str(k);array(start,list(a.encode()))
+     stop='nil'
+     if b is not None:stop='full_case_stop_'+n+'_'+str(j)+'_'+str(k);array(stop,list(b.encode()))
+     case_rows.append('{0,0,'+str(c)+','+start+','+stop+','+str(len(a.encode()))+','+str(len(b.encode())if b is not None else 0)+'},')
+    else:case_rows.append('{'+f'{a},{b},{c}'+'},')
+   lines+=['static const Native64ModuleCaseRow full_rows_'+n+'_'+str(j)+'[]={']+case_rows+['};']
   if r.get('tables'):lines+=['static const Native64ModuleCase full_cases_'+n+'[]={']+['{'+f'{t["pc"]},{t["offset"]},{t["op"]},{len(t["rows"])},{t["fallback"]},full_rows_{n}_{j}'+'},'for j,t in enumerate(r['tables'])]+['};']
  exports={e['name']:e for e in E['BASE']['READ']['legacy_instructions'](data,with_exports=True)[-1]}
  lines+=['static const Native64ModuleFunction full_functions[]={']
@@ -73,7 +81,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
   n=r.get('export_name',r['name']).replace('.','_');e=exports.get(r.get('export_name',n));nsites=len(r.get('externals',[]))+len(r.get('calls',[]));nt=len(r.get('tables',[]))
   lines+=['{'+json.dumps(r.get('export_name',r['name']))+f',{e["signature"]if e else 0}U,{int(e is not None)},full_code_{n},{len(r["code"])},{r["frame"]["bytes"]},full_map_{n},{len(r["frame"]["map"])},'+('full_sites_'+n if nsites else'nil')+f',{nsites},'+('full_cases_'+n if nt else'nil')+f',{nt},{12 if r.get("result_words")else 16 if r.get("result_mixed")else 72 if r.get("result_channels")else 48 if r.get("result_pair")else 96 if r.get("result_geometry")==8 else 112 if r.get("result_geometry")==16 else 0}'+'},']
  lines+=['};'];array('full_data_map',rows[0]['data']['map']);initial=E['BASE']['READ']['legacy_instructions'](data,with_types=True,with_data=True)[3]
- strings=[];values=[];layout=rows[0]['data'];ranges=[(t['offset'],t['offset']+(4+4*len(t['rows'])if t['op']==3 else 8+12*len(t['rows'])))for r in rows for t in r.get('tables',[])]
+ strings=[];values=[];layout=rows[0]['data'];ranges=[(t['offset'],t['offset']+(4+4*len(t['rows'])if t['op']==3 else 12+24*len(t['rows'])if t['op']==144 and t['rows']else 8+12*len(t['rows'])))for r in rows for t in r.get('tables',[])]
  for old,cell in sorted(initial.items()):
   leaf=next(l for l in layout['leaves']if l[0]<=old<l[0]+l[2]);offset=leaf[1]+old-leaf[0]
   if any(a<=offset<b for a,b in ranges):continue
