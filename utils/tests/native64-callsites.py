@@ -26,7 +26,7 @@ def checked_run(command, **options):
         raise
 
 
-def legacy_instructions(data, with_types=False, with_data=False, with_exports=False, with_imports=False, with_arrays=False):
+def legacy_instructions(data, with_types=False, with_data=False, with_exports=False, with_imports=False, with_arrays=True):
     """Independent classic Dis code reader; no diagnostic or Dis64 parser is reused."""
     if with_imports: with_exports=True
     if with_exports: with_types=with_data=True

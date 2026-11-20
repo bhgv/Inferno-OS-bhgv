@@ -137,6 +137,18 @@ def library_step(o,c,maps,first,types):
     else:mid=0 if not arm else o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']]
     assert middle==(sid<<24)|(did<<16)|(mid&65535)
 
+def stringarray_argument(original,code,at,maps,pending,oldoffset,new,role):
+    a,b=original[at:at+2];sm=a['mode']>>3&7;dm=a['mode']&7
+    assert role in(74,76)and a['op']==OPCODES['IINDW']and a['mode']==(sm<<3)|128|dm and sm in(0,1)and dm in(0,1,2)
+    source=maps['frame'if sm else'data'][a['s'][0]];index=a['d'][0]if dm==2 else maps['frame'if dm else'data'][a['d'][0]]
+    assert code[at]==[OPCODES['IINDL'],a['mode'],source,48,index,role]and b['s']==[a['m'],0]and b['d']==[pending,oldoffset]
+    if role==74:assert b['op']==41 and b['mode']==45 and b['m']is None;assert code[at+1]==[41,45,48,0,new,74]
+    else:
+        mm=1 if b['mode']&192==128 else 0 if b['mode']&192==192 else -1
+        assert b['op']==OPCODES['IADDC']and b['mode']==40|(128 if mm else 192)|5 and mm in(0,1)
+        assert code[at+1]==[b['op'],b['mode'],48,maps['frame'if mm else'data'][b['m']],new,76]
+    return at+2
+
 def rootpath_argument(original,code,at,maps,pending,oldoffset,new,r):
     fields={1:{0:0,20:24,40:48,52:64,56:72,84:104},2:dict(zip(range(0,28,4),range(0,56,8))),3:{0:0,4:8,8:16},4:dict(zip(range(0,20,4),range(0,40,8))),5:{0:0,4:8,8:16,12:24}}
     slot=original[at]['d'][0];temp=maps['frame'][slot];n=0
@@ -169,6 +181,13 @@ def verify(data,r,imports,loads=False,rows=None):
         assert r['code'][first]==[5,17,descriptor,0,40,0]
         for arg in callee['args']:
             prep=False;screenprep=None;idprep=None;o=original[at]
+            if loads and r['code'][at][5]==74:
+                assert arg[1:]==[13,4,8];oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);at=stringarray_argument(original,r['code'],at,maps,pending,oldoffset,arg[0],74);continue
+            if loads and r['code'][at][5]==75:
+                assert arg[1:]==[13,4,8]and arg==callee['args'][-1]and at+1==end-bool(contract)
+                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);sm=o['mode']>>3&7;mm=1 if o['mode']&192==128 else 0 if o['mode']&192==192 else -1
+                assert o['op']==OPCODES['IADDC']and o['d']==[pending,oldoffset]and sm in(0,1)and mm in(0,1)
+                assert r['code'][at]==[o['op'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],maps['frame'if mm else'data'][o['m']],arg[0],75];at+=1;continue
             if loads and r['code'][at][5]==61:
                 assert arg[1]in ROOTS;oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);at=rootpath_argument(original,r['code'],at,maps,pending,oldoffset,arg[0],r);continue
             if loads and r['code'][at][5]==155:
@@ -392,6 +411,8 @@ def verify(data,r,imports,loads=False,rows=None):
         at=first+1;aggregates={a['index']:a['layout']for a in e.get('aggregate_args',[])};nominals={a['index']:a.get('nominal')for a in e.get('aggregate_args',[])}
         assert len(aggregates)==len(e.get('aggregate_args',[]))
         for j,(new,kind,oldbytes,width)in enumerate(e['args']):
+            if at<end and r['code'][at][5]==76:
+                assert loads and kind==13 and oldbytes==4 and width==8;oldoffset=(oldoffset+3)&~3;at=stringarray_argument(original,r['code'],at,maps,pending,oldoffset,new,76);oldoffset+=4;continue
             if at<end and r['code'][at][5]==61:
                 assert loads and kind in ROOTS;oldoffset=(oldoffset+3)&~3;at=rootpath_argument(original,r['code'],at,maps,pending,oldoffset,new,r);oldoffset+=oldbytes;continue
             if at<end and r['code'][at][5]==86 and kind==9:

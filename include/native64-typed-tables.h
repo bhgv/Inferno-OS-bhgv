@@ -34,6 +34,7 @@ native64moduletablescheck(const Native64ModuleSpec *s)
     const Native64ModuleCaseRow *r;const Native64TypedStep *step;
     if(!native64modulestringscheck(s))return 0;
     for(i=0;i<s->nstrings;i++)textbytes+=s->strings[i].bytes;
+    for(i=0;i<s->narrays;i++)for(j=0;j<s->arrays[i].count;j++)textbytes+=s->arrays[i].values[j].bytes;
     for(i=0;i<s->nfunctions;i++){
         f=s->functions+i;
         if(f->ncases>256-n || (f->ncases && (f->cases==nil || f->cases==H)))return 0;
@@ -76,6 +77,7 @@ native64moduletablescheck(const Native64ModuleSpec *s)
             }
             for(k=0;k<s->ninitial;k++)if(s->initial[k].offset<t->offset+bytes && t->offset<s->initial[k].offset+s->initial[k].width)return 0;
             for(k=0;k<s->nstrings;k++)if(s->strings[k].offset<t->offset+bytes && t->offset<s->strings[k].offset+8)return 0;
+            for(k=0;k<s->narrays;k++)if(s->arrays[k].offset<t->offset+bytes && t->offset<s->arrays[k].offset+8)return 0;
             for(k=0;k<=i;k++){
                 g=s->functions+k;
                 for(l=0;l<(k==i?j:g->ncases);l++){

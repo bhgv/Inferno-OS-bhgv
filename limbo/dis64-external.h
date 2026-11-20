@@ -283,6 +283,7 @@ typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned
 }
 
 static int typedbytearrayaddr(Addr*);
+static int typedexternalstringarray(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
 static int typedexternalbytestring(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
 static int typedexternalrootpath(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int,int);
 static int typedexternalheadarg(TypedMulti*,Dis64TypedBody*,Inst*,Decl*,unsigned int,unsigned int*,unsigned int);
@@ -326,6 +327,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         if(c->loads && typedlibraryargument(in,frame,p,at-p->first,arg->offset,offset,kind)){
             at++;if(at<end && c->instructions[at]->op==ISLICEA){if(kind!=Tarray || !arg->ty->tof || arg->ty->tof->kind!=Tbyte || !typedlibraryslicearg(c->instructions[at],frame,p,at-p->first,arg->offset,offset))return typedfail(p,"library-array-slice");at++;}offset+=width;continue;
         }
+        if(c->loads&&kind==Tstring&&in->op==IINDW){if(!typedexternalstringarray(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afp||in->sm==Amp)&&typedbytearrayaddr(&in->s)){if(!typedexternalbytestring(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads&&root&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afpind||in->sm==Ampind)){if(!typedexternalrootpath(c,p,frame,end,&at,arg->offset,offset,kind))return 0;offset+=8;continue;}
         if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Screen") && in->op==IINDW){if(!typedimagescreenarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}

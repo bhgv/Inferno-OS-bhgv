@@ -81,16 +81,25 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
   n=r.get('export_name',r['name']).replace('.','_');e=exports.get(r.get('export_name',n));nsites=len(r.get('externals',[]))+len(r.get('calls',[]));nt=len(r.get('tables',[]))
   lines+=['{'+json.dumps(r.get('export_name',r['name']))+f',{e["signature"]if e else 0}U,{int(e is not None)},full_code_{n},{len(r["code"])},{r["frame"]["bytes"]},full_map_{n},{len(r["frame"]["map"])},'+('full_sites_'+n if nsites else'nil')+f',{nsites},'+('full_cases_'+n if nt else'nil')+f',{nt},{12 if r.get("result_words")else 16 if r.get("result_mixed")else 72 if r.get("result_channels")else 48 if r.get("result_pair")else 96 if r.get("result_geometry")==8 else 112 if r.get("result_geometry")==16 else 0}'+'},']
  lines+=['};'];array('full_data_map',rows[0]['data']['map']);initial=E['BASE']['READ']['legacy_instructions'](data,with_types=True,with_data=True)[3]
- strings=[];values=[];layout=rows[0]['data'];ranges=[(t['offset'],t['offset']+(4+4*len(t['rows'])if t['op']==3 else 12+24*len(t['rows'])if t['op']==144 and t['rows']else 8+12*len(t['rows'])))for r in rows for t in r.get('tables',[])]
+ strings=[];values=[];stringarrays=[];layout=rows[0]['data'];ranges=[(t['offset'],t['offset']+(4+4*len(t['rows'])if t['op']==3 else 12+24*len(t['rows'])if t['op']==144 and t['rows']else 8+12*len(t['rows'])))for r in rows for t in r.get('tables',[])]
  for old,cell in sorted(initial.items()):
   leaf=next(l for l in layout['leaves']if l[0]<=old<l[0]+l[2]);offset=leaf[1]+old-leaf[0]
   if any(a<=offset<b for a,b in ranges):continue
+  if cell['kind']=='array':
+   descriptor=E['BASE']['READ']['legacy_instructions'](data,with_types=True)[2][cell['descriptor']];assert descriptor==(4,bytes([128]))or descriptor==(4,[128]),descriptor
+   assert set(cell['initial'])==set(range(0,cell['length']*4,4))
+   elements=[]
+   for k,item in sorted(cell['initial'].items()):
+    assert item['kind']=='string';name=f'full_array_{old}_{k}';text=bytes(item['bytes']);array(name,list(text));elements.append('{'+f'{2*k},{len(text)},{name}'+'}')
+   name=f'full_array_values_{old}';lines.append('static const Native64ModuleString '+name+'[]={'+','.join(elements or ['{0,0,nil}'])+'};');stringarrays.append('{'+f'{offset},{cell["length"]},{name}'+'}');continue
   if cell['kind']=='string':
    name='full_literal_'+str(old);text=bytes(cell['bytes']);array(name,list(text));strings.append('{'+f'{offset},{len(text)},{name}'+'}')
   else:
    width={'byte':1,'word':4,'long':8,'real':8}[cell['kind']];bits=cell.get('high',0)<<32|cell['low'];values.append('{'+f'{offset},{width},{bits}ULL'+'}')
  lines+=['static const Native64ModuleString full_strings[]={'+','.join(strings)+'};','static const Native64ModuleInit full_initial[]={'+','.join(values or ['{0,0,0}'])+'};']
- lines+=['static const Native64ModuleSpec full_spec={'+json.dumps(module)+','+json.dumps('trusted/'+module)+',full_functions,'+str(len(rows))+','+entry+','+f'{layout["bytes"]},full_data_map,{len(layout["map"])},full_initial,{len(values)},full_tables,{len(imports)},c2string,full_strings,{len(strings)},fullload'+'};']
+ lines+=['static const Native64ModuleStringArray full_arrays[]={'+','.join(stringarrays or ['{0,0,nil}'])+'};']
+ if stringarrays:lines+=['static Array*fullarray(unsigned int count){return H2D(Array*,heaparray(&Tptr,count));}']
+ lines+=['static const Native64ModuleSpec full_spec={'+json.dumps(module)+','+json.dumps('trusted/'+module)+',full_functions,'+str(len(rows))+','+entry+','+f'{layout["bytes"]},full_data_map,{len(layout["map"])},full_initial,{len(values)},full_tables,{len(imports)},c2string,full_strings,{len(strings)},fullload,full_arrays,{len(stringarrays)},'+('fullarray'if stringarrays else'nil')+'};']
  variables=[]
  for i,r in enumerate(rows):
   for j,v in enumerate(r.get('variadics',[])):

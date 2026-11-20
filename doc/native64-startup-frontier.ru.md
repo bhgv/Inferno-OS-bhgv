@@ -399,3 +399,10 @@ wmctl команд, включая recvimage/putimage/drawborder, с контр�
 сервисами, полным освобождением и сохранением
 classic bytes. Настоящие AWM/Android GUI ещё не запущены; следующая граница
 — Wmlib 11/25, Titlebar 4/7, Winplace 8/21 и настоящие Draw/Tk сервисы.
+
+## Полный Titlebar
+
+[Titlebar 7/7](native64-titlebar-module.ru.md): статический массив команд,
+локальные String-array аргументы/конкатенации, 2112 C/JIT процессов по всем
+64 флагам с оригинальными new/title/settitle/sendctl/minsize. Tk контролируемый;
+настоящие AWM/Android GUI ещё не запущены.

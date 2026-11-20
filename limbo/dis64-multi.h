@@ -400,6 +400,24 @@ typedimagearrayaddr(Addr*a)
  return a->decl && t && t->kind==Tarray && typedwmref(t->tof,"Draw","Image") && a->reg==a->decl->offset && !a->offset;
 }
 static int
+typedstringarray(Addr*a)
+{Type*t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;return a->decl&&t&&t->kind==Tarray&&t->tof&&t->tof->kind==Tstring&&a->reg==a->decl->offset&&!a->offset;}
+static int
+typedstringarraystable(TypedMulti*c,Inst*in)
+{unsigned int i;Inst*v;if(in->sm==Afp)return 1;if(in->sm!=Amp||!in->s.decl||in->s.decl->store!=Dglobal)return 0;for(i=0;i<c->count;i++){v=c->instructions[i];if(v&&((v->dm==Amp&&v->d.decl==in->s.decl)||(v->op==ILEA&&v->sm==Amp&&v->s.decl==in->s.decl)))return 0;}return 1;}
+static int
+typedstringarrayindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc)
+{long array,index,value;unsigned int sm,dm,vm;int actual;Addr*a;
+ if(in->op!=IINDW||in->sm!=Afp||!typedstringarray(&in->s)||in->mm!=Afp||!in->m.decl||in->m.offset||in->branch||!use||use->op!=IMOVP||use->mm!=Anone||use->branch||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual)||!typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual))return typedfail(p,"string-array-index");
+ a=use->sm==Afpind?&use->s:&use->d;if(a->decl!=in->m.decl||a->reg!=in->m.reg||a->offset||!typedoperand(use->sm==Afpind?use->dm:use->sm,use->sm==Afpind?&use->d:&use->s,TypedRoot,0,0,p,&value,&vm,&actual)||(actual!=Tstring&&actual!=Tany))return typedfail(p,"string-array-element");
+ p->code[pc]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};p->returns[pc]=255;p->code[pc+1]=(Dis64Instruction){IMOVP,use->sm==Afpind?SRC(AFP|AIND)|DST(vm):SRC(vm)|DST(AFP|AIND),0,use->sm==Afpind?48:value,use->sm==Afpind?value:48};p->returns[pc+1]=255;return 1;}
+static int
+typedexternalstringarray(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,unsigned int*at,unsigned int old,unsigned int native)
+{Inst*in=c->instructions[*at],*use;long array,index,middle;unsigned int sm,dm,mm;int actual;
+ if(*at+1>=end||!typedstringarray(&in->s)||!typedstringarraystable(c,in)||in->mm!=Afp||!in->m.decl||in->m.offset||in->branch||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual)||!typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual))return typedfail(p,"external-string-array-index");use=c->instructions[*at+1];
+ if(use->op!=IADDC||use->sm!=Afpind||use->s.decl!=in->m.decl||use->s.reg!=in->m.reg||use->s.offset||use->branch||use->dm!=Afpind||use->d.reg!=frame->d.reg||use->d.offset!=old||!typedoperand(use->mm,&use->m,Tstring,0,1,p,&middle,&mm,&actual))return typedfail(p,"external-string-array-concat");
+ p->code[*at-p->first]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};p->returns[(*at)++-p->first]=76;p->code[*at-p->first]=(Dis64Instruction){IADDC,SRC(AFP|AIND)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,48,native};p->returns[(*at)++-p->first]=76;return 1;}
+static int
 typedregistryarray(Addr*a)
 {Type*t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;return a->decl&&t&&t->kind==Tarray&&typedwmref(t->tof,"Wmsrv","Client")&&a->reg==a->decl->offset&&!a->offset;}
 static int
@@ -433,7 +451,7 @@ static int
 typedimagearraynew(Inst*in,Dis64TypedBody*p,unsigned int pc)
 {
  Decl*d=in->m.decl;long source,dest;unsigned int sm,dm;int actual;
- if((in->op!=INEWA && in->op!=INEWAZ) || !(typedimagearrayaddr(&in->d)||typedregistryarray(&in->d)) || in->mm!=Adesc || !d || !d->desc || d->desc->id!=in->m.offset || !(typedwmref(d->ty,"Draw","Image")||typedwmref(d->ty,"Wmsrv","Client")) || d->desc->size!=4 || d->desc->nmap!=1 || d->desc->map[0]!=0x80 || in->branch ||
+ if((in->op!=INEWA && in->op!=INEWAZ) || !(typedimagearrayaddr(&in->d)||typedregistryarray(&in->d)||typedstringarray(&in->d)) || in->mm!=Adesc || !d || !d->desc || d->desc->id!=in->m.offset || !(typedwmref(d->ty,"Draw","Image")||typedwmref(d->ty,"Wmsrv","Client")||d->ty&&d->ty->kind==Tstring) || d->desc->size!=4 || d->desc->nmap!=1 || d->desc->map[0]!=0x80 || in->branch ||
     !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) || !typedoperand(in->dm,&in->d,Tarray,0,0,p,&dest,&dm,&actual) || (dm!=AFP && dm!=AMP))return typedfail(p,"image-array-allocation");
  p->code[pc]=(Dis64Instruction){INEWAZ,SRC(sm)|AXIMM|DST(dm),2,source,dest};p->returns[pc]=254;return 1;
 }
@@ -943,6 +961,14 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             if(prepared){unsigned int clear=at;Inst store=*in;store.op=IMOVP;store.sm=Afp;store.s.offset=0;if(!typedrootargclear(c,p,&store,end,&at) || clear==at)return typedfail(p,"local-screen-image-clear");}
             continue;
         }
+        if(c->loads&&!spawning&&kind==Tstring&&in->op==IINDW&&typedstringarray(&in->s)){
+            Inst*use=at+1<end?c->instructions[at+1]:nil;long array,index;unsigned int am,im;int actual;
+            if(!use||!typedstringarraystable(c,in)||in->mm!=Afp||!in->m.decl||in->m.offset||in->branch||use->op!=IMOVP||use->sm!=Afpind||use->s.decl!=in->m.decl||use->s.reg!=in->m.reg||use->s.offset||use->mm!=Anone||use->branch||use->dm!=Afpind||use->d.reg!=frame->d.reg||use->d.offset!=arg->offset||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&am,&actual)||!typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&im,&actual)||!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset))return typedfail(p,"local-string-array-argument");
+            p->code[at-p->first]=(Dis64Instruction){IINDL,SRC(am)|AXINF|DST(im),48,array,index};p->returns[at++-p->first]=74;p->code[at-p->first]=(Dis64Instruction){IMOVP,SRC(AFP|AIND)|DST(AFP|AIND),0,48,offset};p->returns[at++-p->first]=74;continue;
+        }
+        if(c->loads&&!spawning&&kind==Tstring&&in->op==IADDC){long middle;unsigned int mm;
+            if(arg->next||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||!typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual)||!typedoperand(in->mm,&in->m,Tstring,0,1,p,&middle,&mm,&actual)||!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset))return typedfail(p,"local-string-concat-argument");p->code[at-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,offset};p->returns[at++-p->first]=75;continue;
+        }
         if(c->loads && !spawning && kind==Tref && typedwmref(arg->ty,"Draw","Image") && in->op==IINDW){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || !typedimagearrayarg(c,p,frame,end,&at,arg->offset,offset))return 0;continue;
         }
@@ -1138,13 +1164,15 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->external>=2 && in->op==IMOVP && in->dm==Afpind && in->d.reg==16 && in->d.offset==0){
             if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
 
+        }else if(c->loads && in->op==IINDW && typedstringarray(&in->s)){
+            if(pc+1>=stop||!typedstringarrayindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
         }else if(c->loads && in->op==IINDW && typedregistryarray(&in->s)){
             if(pc+1>=stop||!typedregistryindex(in,c->instructions[pc+1],p,pc-p->first,stop,fn->ty->tof))goto fail;inside[pc+1-p->first]=1;pc+=2;
         }else if(c->loads && in->op==IINDW && typedimagearrayaddr(&in->s) && pc+2<stop && c->instructions[pc+1]->op==IHEADP){
             if(!typedimagearraywindowindex(in,c->instructions[pc+1],c->instructions[pc+2],p,pc-p->first))goto fail;inside[pc+1-p->first]=inside[pc+2-p->first]=1;pc+=3;
         }else if(c->loads && in->op==ISLICEA && in->dm==Afpind && fn->ty->tof->kind==Tarray && typedwmref(fn->ty->tof->tof,"Draw","Image")){
             if(!typedimagearrayslice(in,p,pc-p->first,fn->ty->tof))goto fail;pc++;
-        }else if(c->loads && (in->op==INEWA || in->op==INEWAZ) && (typedimagearrayaddr(&in->d)||typedregistryarray(&in->d))){
+        }else if(c->loads && (in->op==INEWA || in->op==INEWAZ) && (typedimagearrayaddr(&in->d)||typedregistryarray(&in->d)||typedstringarray(&in->d))){
             if(!typedimagearraynew(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==IINDW && typedimagearrayaddr(&in->s) && pc+1<stop && (c->instructions[pc+1]->op==IFRAME || c->instructions[pc+1]->op==IMFRAME)){
             if(!typedimagearrayresultindex(in,p,pc-p->first))goto fail;pc++;

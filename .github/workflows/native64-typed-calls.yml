@@ -57,6 +57,7 @@ on:
       - 'utils/tests/native64-wmsrv-module*'
       - 'utils/tests/native64-wmclient-geometry*'
       - 'utils/tests/native64-wmclient-module*'
+      - 'utils/tests/native64-titlebar-module*'
       - 'utils/tests/native64-string-word*'
       - 'utils/tests/native64-string-library*'
       - 'utils/tests/native64-bufio-library*'
@@ -256,6 +257,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/wmclient-geometry.log"
           python3 utils/tests/native64-wmclient-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/wmclient-module.log"
+          python3 utils/tests/native64-titlebar-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/titlebar-module.log"
           python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/string-word.log"
           python3 utils/tests/native64-string-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -469,6 +472,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/wmclient-geometry.log"
           python3 utils/tests/native64-wmclient-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/wmclient-module.log"
+          python3 utils/tests/native64-titlebar-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/titlebar-module.log"
           python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/string-word.log"
           python3 utils/tests/native64-string-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

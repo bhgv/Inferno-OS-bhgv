@@ -70,6 +70,6 @@ Dis64 pair boot и emuinit boot проходят.
 
 Это крупный шаг к AWM, но не готовый графический сеанс. Текущий приём
 полных исходников: AWM 20/20, Wmsrv 34/34, Wmclient 21/21, String 21/21,
-Bufio 27/27; Wmlib 11/25, Titlebar 4/7 и Winplace 8/21. До реального окна
+Bufio 27/27; Wmlib 11/25, [Titlebar 7/7](native64-titlebar-module.ru.md) и Winplace 8/21. До реального окна
 нужно довести эти зависимости и подключить настоящие Draw/Tk сервисы.
 Android arm64 GUI и arm64/riscv64 исполнение этим amd64 тестом не проверены.
