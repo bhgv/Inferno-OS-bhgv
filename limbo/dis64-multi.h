@@ -1035,7 +1035,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     p->reason=nil;p->ntables=0;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
     if(c->loads){
         unsigned int before=p->frame.bytes;
-        if(!typedstatframe(c,fn,p,stop))goto fail;
+        if(!typedwmtupleframe(c,fn,p,stop)||!typedstatframe(c,fn,p,stop))goto fail;
         if(p->frame.bytes-before>32*1024*1024-c->cost){typedfail(p,"multi-storage-budget");goto fail;}
         c->cost+=p->frame.bytes-before;
     }

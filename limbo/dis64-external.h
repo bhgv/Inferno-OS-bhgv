@@ -1,3 +1,4 @@
+static int typedwmref(Type*,char*,char*);
 static int typedchannelbinding(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int*);
 /* Fixed-arity imported calls in trusted final compiler IR. No load/file admission. */
 /* One native-only mixed result: Sys.fstat -> (int, Sys.Dir).
@@ -42,6 +43,38 @@ typedstatresult(Decl *fn,Inst *binding,Dis64TypedBody *p,unsigned int *base,int 
  ok=1;
  done:dis64layoutfree(&result);return ok;
 }
+
+/* Closed Wmlib tuple results; every scalar and root leaf is checked. */
+static unsigned int
+typedwmtuple(Type*t,Dis64Layout*l)
+{Decl*d;unsigned int c=0;if(!t||t->kind!=Ttuple||!(d=t->ids)||!d->ty||!d->next||!d->next->ty)return 0;
+ if(d->ty->kind==Tstring&&d->next->ty->kind==Tint&&!d->next->next)c=80;
+ else if(d->ty->kind==Tstring&&typedwmref(d->next->ty,"Draw","Image")&&d->next->next&&d->next->next->ty&&d->next->next->ty->kind==Tstring&&!d->next->next->next)c=124;
+ else if(d->ty->kind==Tadt&&d->ty->decl&&d->ty->decl->sym&&!strcmp(d->ty->decl->sym->name,"Rect")&&d->ty->decl->dot&&d->ty->decl->dot->sym&&!strcmp(d->ty->decl->dot->sym->name,"Draw")&&d->next->ty->kind==Tint&&!d->next->next)c=92;
+ if(!c||!dis64layouttype(t,l))return 0;
+ if(c==80){if(l->legacybytes!=8||l->bytes!=16||l->count!=2||l->alignment!=8||l->leaves[0].legacy||l->leaves[0].native||l->leaves[0].oldbytes!=4||l->leaves[0].bytes!=8||l->leaves[0].kind!=Tstring||l->leaves[1].legacy!=4||l->leaves[1].native!=8||l->leaves[1].oldbytes!=4||l->leaves[1].bytes!=4||l->leaves[1].kind!=Tint)return 0;}
+ else if(c==92){unsigned int i;if(l->legacybytes!=20||l->bytes!=20||l->count!=5||l->alignment!=4)return 0;for(i=0;i<5;i++)if(l->leaves[i].legacy!=i*4||l->leaves[i].native!=i*4||l->leaves[i].oldbytes!=4||l->leaves[i].bytes!=4||l->leaves[i].kind!=Tint)return 0;}
+ else{unsigned int i;static const int kinds[]={Tstring,Tref,Tstring};if(l->legacybytes!=12||l->bytes!=24||l->count!=3||l->alignment!=8)return 0;for(i=0;i<3;i++)if(l->leaves[i].legacy!=4*i||l->leaves[i].native!=8*i||l->leaves[i].oldbytes!=4||l->leaves[i].bytes!=8||l->leaves[i].kind!=kinds[i])return 0;}
+ return c;}
+static unsigned int
+typedwmtuplebinding(Decl*fn,Inst*b,Dis64TypedBody*p,unsigned int*base,int relocate)
+{Dis64Layout l={0};unsigned int c,i,j,first,end,delta,next;int ok=0;
+ c=typedwmtuple(fn->ty->tof,&l);if(!c||b->sm!=Afp||b->s.reg<32)goto done;
+ for(first=0;first<p->frame.count;first++)if(p->frame.leaves[first].legacy==(unsigned int)b->s.reg)break;
+ if(first>p->frame.count||l.count>p->frame.count-first)goto done;*base=(p->frame.leaves[first].native+7)&~7U;
+ for(i=0;i<l.count;i++){Dis64LayoutLeaf*a=l.leaves+i,*v=p->frame.leaves+first+i;if(v->legacy!=b->s.reg+a->legacy||v->oldbytes!=a->oldbytes||v->bytes!=a->bytes||v->kind!=a->kind||(!relocate&&v->native!=*base+a->native))goto done;}
+ end=p->frame.leaves[first+l.count-1].native+p->frame.leaves[first+l.count-1].bytes;if(*base>Dis64LayoutBytes-l.bytes||end>*base+l.bytes)goto done;next=first+l.count<p->frame.count?p->frame.leaves[first+l.count].native:p->frame.bytes;delta=next<*base+l.bytes?(*base+l.bytes-next+7)&~7U:0;
+ if(relocate){if(delta>Dis64LayoutBytes-p->frame.bytes)goto done;for(i=0;i<l.count;i++)p->frame.leaves[first+i].native=*base+l.leaves[i].native;for(j=first+l.count;j<p->frame.count;j++)p->frame.leaves[j].native+=delta;p->frame.bytes=(p->frame.bytes+delta+7)&~7U;}
+ if(*base>p->frame.bytes||l.bytes>p->frame.bytes-*base)goto done;ok=1;
+ done:dis64layoutfree(&l);return ok?c:0;}
+static int
+typedwmtupleframe(TypedMulti*c,Decl*owner,Dis64TypedBody*p,unsigned int stop)
+{unsigned int pc,end,base;Inst*in,*call,*b;Decl*fn,*arg;Dis64Layout l={0};unsigned int contract,bytes;
+ for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IMFRAME||!(fn=in->m.decl)||!fn->ty||fn->ty->kind!=Tfn)continue;contract=typedwmtuple(fn->ty->tof,&l);bytes=l.legacybytes;dis64layoutfree(&l);if(!contract)continue;
+  end=pc+1;while(end<stop&&c->instructions[end]&&c->instructions[end]->op!=IMCALL&&c->instructions[end]->op!=IMFRAME&&!c->instructions[end]->branch)end++;if(end<=pc+1||end>=stop||!(call=c->instructions[end])||call->op!=IMCALL||call->m.decl!=fn||!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;
+  for(arg=owner->ty->ids;arg;arg=arg->next)if(!arg->ty||(b->s.reg<arg->offset+arg->ty->size&&b->s.reg+bytes>arg->offset))return typedfail(p,"wm-tuple-result-formal-overlap");
+  if(!typedwmtuplebinding(fn,b,p,&base,1))return typedfail(p,"wm-tuple-result-layout");
+ }return 1;}
 
 /* Repack only exact fstat caller-result groups before translating any body
  * instruction. Destructured locals can otherwise drop the tuple's status pad.
@@ -358,6 +391,8 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
             contract=72;
             if(binding->sm==Afp){if(!typedchannelbinding(c,p,binding,&local))return 0;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;}
             else{if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || !p->resulttriple)return typedfail(p,"channel-result-inherit");inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;}
+        }else if(c->loads && kind==Ttuple && (contract=typedwmtuplebinding(fn,binding,p,&local,0))){
+            p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=85;
         }else if(c->loads && kind==Ttuple){
             if(!typedstatresult(fn,binding,p,&local,0))return typedfail(p,"external-result-kind");
             contract=88;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;

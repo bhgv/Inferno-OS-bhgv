@@ -52,7 +52,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
   for j,e in enumerate(table):
    size,mapping=import_frames[(e['name'],e['signature'])]if import_frames is not None else(80,[0,192])if namespace=='Command'else frames[(namespace,e['name'])]
    frames[(ti,j)]=(size,mapping);array(f'full_import_map_{ti}_{j}',mapping)
-  lines+=['static const Native64ModuleImport full_import_'+str(ti)+'[]={']+['{'+json.dumps(e['name'])+f',{e["signature"]}U,{frames[(ti,j)][0]},full_import_map_{ti}_{j},{len(frames[(ti,j)][1])},{next((x['contract']for r in rows for x in r.get('externals',[])if x.get('contract')in(12,72,96,112)and x['name']==e['name']and x['signature']==e['signature']),0)}'+'},'for j,e in enumerate(table)]+['};']
+  lines+=['static const Native64ModuleImport full_import_'+str(ti)+'[]={']+['{'+json.dumps(e['name'])+f',{e["signature"]}U,{frames[(ti,j)][0]},full_import_map_{ti}_{j},{len(frames[(ti,j)][1])},{next((x['contract']for r in rows for x in r.get('externals',[])if x.get('contract')in(12,72,80,92,96,112,124)and x['name']==e['name']and x['signature']==e['signature']),0)}'+'},'for j,e in enumerate(table)]+['};']
  lines+=['static const Native64ModuleTable full_tables[]={']+[f'{{full_import_{ti},{len(t)}}},'for ti,t in enumerate(imports)]+['};']
  lines+=['static const uint full_namespaces[]={'+','.join(map(str,namespaces))+'};']
  for r in rows:

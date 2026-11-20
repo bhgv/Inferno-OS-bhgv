@@ -2,6 +2,7 @@
 #define NATIVE64_TYPED_MULTI_H
 #include "native64-typed-code.h"
 #include "native64-stat-result.h"
+#include "native64-wm-tuple.h"
 #include "native64-geometry-result.h"
 typedef struct Native64TypedCall Native64TypedCall;
 struct Native64TypedCall {
@@ -139,14 +140,14 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
     if(!native64model() || out==nil || steps==nil || calls==nil || !count || count>65536 || capacity<count || n>count/2 ||
        fpbytes<64 || fpbytes>1024*1024 || fpbytes%8 || mpbytes>1024*1024 || mpbytes%8)return 0;
     for(i=0;i<n;i++){
-        c=calls+i;width=native64geometryresultwidth(c->contract)?native64geometryresultwidth(c->contract):c->contract==16?16:c->contract==72?24:c->contract==88?88:c->contract==48?16:c->contract&15;
+        c=calls+i;width=native64wmtuplewidth(c->contract)?native64wmtuplewidth(c->contract):native64geometryresultwidth(c->contract)?native64geometryresultwidth(c->contract):c->contract==16?16:c->contract==72?24:c->contract==88?88:c->contract==48?16:c->contract&15;
         if(c->first>=count || c->end>=count-1 || c->end<=c->first || (i && c->first<=calls[i-1].end) ||
            c->callee==nil || c->callee==H || (!c->external && (c->target==nil || c->target==H)) || c->ordinal>536870911 || c->inherited>1 ||
            c->external>1 || (c->external && (c->ordinal>32767 || !native64librarymoduleoperand(c->modulemode,c->moduleoffset,fpbytes,mpbytes))) ||
            c->callee->size<64 || c->callee->size>65536 || c->callee->size%8 ||
-           ((c->contract==72)!=(c->resultcontract==72)) || (c->resultcontract && c->resultcontract!=16 && c->resultcontract!=48 && c->resultcontract!=72 && !native64geometryresultwidth(c->resultcontract)) ||
+           ((c->contract==72)!=(c->resultcontract==72)) || (c->resultcontract && c->resultcontract!=16 && c->resultcontract!=48 && c->resultcontract!=72 && !native64wmtuplewidth(c->resultcontract) && !native64geometryresultwidth(c->resultcontract)) ||
            ((native64geometryresultwidth(c->contract) || native64geometryresultwidth(c->resultcontract)) && (c->contract!=c->resultcontract || (c->inherited && (!c->external || c->callerresultcontract!=c->contract)))) ||
-           (c->contract==48 && c->external) || (c->contract==88 && (!c->external || c->inherited || c->callee->size!=72 || c->callee->np!=2 || c->callee->map[0] || c->callee->map[1]!=0x80)) || (c->contract && !native64geometryresultwidth(c->contract) && c->contract!=16 && c->contract!=48 && c->contract!=72 && c->contract!=88 && ((c->contract&~31) || (width!=1 && width!=4 && width!=8) || ((c->contract&16) && width!=8))) ||
+           ((native64wmtuplewidth(c->contract)||native64wmtuplewidth(c->resultcontract))&&(!c->external||c->inherited||c->contract!=c->resultcontract)) || (c->contract==48 && c->external) || (c->contract==88 && (!c->external || c->inherited || c->callee->size!=72 || c->callee->np!=2 || c->callee->map[0] || c->callee->map[1]!=0x80)) || (c->contract && !native64wmtuplewidth(c->contract) && !native64geometryresultwidth(c->contract) && c->contract!=16 && c->contract!=48 && c->contract!=72 && c->contract!=88 && ((c->contract&~31) || (width!=1 && width!=4 && width!=8) || ((c->contract&16) && width!=8))) ||
            (c->inherited && !c->contract) || (c->contract && c->end<c->first+2))return 0;
         s=steps+c->first;
         if(c->external){
@@ -242,8 +243,9 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                (unsigned long)s->d>(unsigned int)c->callee->size || width>(unsigned int)c->callee->size-s->d || s->d%width)return 0;
         }
         if(c->contract){
-            s=steps+c->end-1;width=native64geometryresultwidth(c->contract)?native64geometryresultwidth(c->contract):c->contract==16?16:c->contract==72?24:c->contract==88?88:c->contract==48?16:c->contract&15;
-            if(s->returned==131){
+            s=steps+c->end-1;width=native64wmtuplewidth(c->contract)?native64wmtuplewidth(c->contract):native64geometryresultwidth(c->contract)?native64geometryresultwidth(c->contract):c->contract==16?16:c->contract==72?24:c->contract==88?88:c->contract==48?16:c->contract&15;
+            if(s->returned==85){if(!native64wmtuplewidth(c->contract)||!c->external||c->inherited||s->op!=ILEA||s->mode!=(SRC(AFP)|DST(AFP|AIND))||s->m||s->d!=32||s->s<64||s->s%8||(unsigned long)s->s>fpbytes||width>fpbytes-s->s)return 0;
+            }else if(s->returned==131){
                 if(c->contract!=24 || c->inherited || s->op!=ILEA || s->mode!=(SRC(AFP)|DST(AFP|AIND)) || s->m || s->d!=32 || !native64typedrootoperand(AFP,s->s,fpbytes,mpbytes) || !c->first || steps[c->first-1].returned!=131 || steps[c->first-1].op!=IINDL || steps[c->first-1].s!=s->s)return 0;
             }else if(s->returned==81){if(c->inherited||!native64geometryresultwidth(c->contract)||!native64windowgeometryfield(s->m,native64geometryresultwidth(c->contract))||s->op!=ILEA||s->mode!=(SRC(AFP|AIND)|DST(AFP|AIND))||s->d!=32||!native64typedrootoperand(AFP,s->s,fpbytes,mpbytes))return 0;
             }else if(s->returned==93){
@@ -291,6 +293,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 else if(j==c->end){p->s.ind=40;if(c->external){p->reg=c->ordinal;p->d.ind=c->moduleoffset;if(c->modulemode&AIND){p->d.i.f=c->moduleoffset&65535;p->d.i.s=(c->moduleoffset>>16)&255;}}else p->d.ins=c->target;}
                 else if(s->op==IMOVM && (native64imagegeometryoffset(s->returned)!=~0U)){p->s.i.f=s->s;p->s.i.s=native64imagegeometryoffset(s->returned);p->reg=s->m;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==84){p->s.i.f=s->s;p->s.i.s=s->m>>8;p->reg=s->m&255;p->d.i.f=40;p->d.i.s=s->d;}
+                else if(s->returned==85){p->reg=c->contract;p->s.ind=s->s;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==81){p->reg=512|c->contract;p->s.i.f=s->s;p->s.i.s=s->m;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==86){p->reg=s->m;p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==93){p->reg=512|24;p->s.i.f=s->s;p->s.i.s=88;p->d.i.f=40;p->d.i.s=32;}

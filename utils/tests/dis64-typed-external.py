@@ -585,7 +585,15 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert leaf==[old+i,native+i,4,4,9]
                     assert not(r[space]['map'][(native+i)//64]&(128>>((native+i)//8%8)))
 
-            if r['code'][end-1][5]==81:pass
+            if r['code'][end-1][5]==85:
+                assert loads and not e['inherited']and contract in(80,92,124)and b['mode']==13 and b['m']is None
+                kinds={80:[13,9],92:[9]*5,124:[13,12,13]}[contract];native_offsets={80:[0,8],92:[0,4,8,12,16],124:[0,8,16]}[contract];width={80:16,92:20,124:24}[contract]
+                old=b['s'][0];base=maps['frame'][old];assert e['resultoffset']==base and base>=64 and base%8==0
+                for j,(kind,off)in enumerate(zip(kinds,native_offsets)):
+                    assert next(l for l in r['frame']['leaves']if l[0]==old+4*j)==[old+4*j,base+off,4,8 if kind in(12,13)else 4,kind]
+                for j in range(width):assert bool(r['frame']['map'][(base+j)//64]&(128>>((base+j)//8%8)))==(contract==80 and j<8 or contract==124)
+                assert r['code'][end-1]==[39,13,base,0,32,85]
+            elif r['code'][end-1][5]==81:pass
             elif r['code'][end-1][5]==131:
                 index=original[first-1];assert loads and contract==24 and not e['inherited']and index['op']==OPCODES['IINDW']and index['mode']>>3&7==1 and b['mode']==45 and b['s']==[index['m'],0]
                 assert e['resultoffset']==maps['frame'][index['s'][0]]and r['code'][end-1]==[39,13,e['resultoffset'],0,32,131]
