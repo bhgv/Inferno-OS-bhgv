@@ -136,6 +136,10 @@ typedpointerword(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
  long base,value;unsigned int wire,vm;int actual,branch=in->op==IBEQW || in->op==IBNEW;
  if(!in->s.native64type || in->s.native64type->kind!=Tint || in->s.offset<0 || in->s.offset>12 || in->s.offset%4 || !typedpointeraddress(&in->s,in->sm,p,&base,&wire))return typedfail(p,"pointer-word-owner");
  if(branch){
+  if(in->mm==Afp || in->mm==Amp){long other;unsigned int om;int actual;
+   if(in->dm!=Apc||!in->branch||in->d.offset!=in->branch->pc||in->branch->pc<(int)p->first||in->branch->pc>=(int)stop||!typedoperand(in->mm,&in->m,Tint,0,1,p,&other,&om,&actual))return typedfail(p,"pointer-word-middle");
+   p->code[pc]=(Dis64Instruction){in->op,SRC(wire|AIND)|(om==AFP?AXINF:AXINM)|DST(AIMM),(in->s.offset<<16)|other,base,in->branch->pc-p->first};p->returns[pc]=138;return 1;
+  }
   if(in->mm!=Aimm || in->m.offset || in->dm!=Apc || !in->branch || in->d.offset!=in->branch->pc || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop)return typedfail(p,"pointer-word-branch");
   p->code[pc]=(Dis64Instruction){in->op,SRC(wire|AIND)|AXIMM|DST(AIMM),in->s.offset,base,in->branch->pc-p->first};p->returns[pc]=229;
  }else{
@@ -144,6 +148,12 @@ typedpointerword(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
  }
  return 1;
 }
+
+/* Whole canonical Pointer values contain four raw Word32 cells. */
+static int
+typedpointercopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
+{long source,dest;unsigned int sm,dm;if(in->op!=IMOVM||in->mm!=Aimm||in->m.offset!=16||in->branch||in->s.offset||in->d.offset||!typedpointeraddress(&in->s,in->sm,p,&source,&sm)||!typedpointeraddress(&in->d,in->dm,p,&dest,&dm))return typedfail(p,"pointer-copy");
+ p->code[pc]=(Dis64Instruction){IMOVM,SRC(sm|AIND)|AXIMM|DST(dm|AIND),16,source,dest};p->returns[pc]=139;return 1;}
 
 /* Exact direct Draw.Point/Rect storage; inherited ADT results stay closed. */
 static int

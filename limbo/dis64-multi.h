@@ -24,6 +24,19 @@ static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigne
 #include "dis64-variadic.h"
 static int typedwindowlisttype(Addr*);
 
+/* Lists of the canonical Draw.Pointer use one native root per element. */
+static int
+typedpointertype(Type*t)
+{Dis64Layout l={0};int ok=t && t->kind==Tref && typedpointerlayout(t->tof,&l);dis64layoutfree(&l);return ok;}
+static int
+typedpointerlisttype(Addr*a)
+{Type*t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;return a->decl && t && t->kind==Tlist && typedpointertype(t->tof) && a->reg==a->decl->offset && !a->offset;}
+static int
+typedpointerlist(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
+{int cons=in->op==ICONSP,head=in->op==IHEADP,actual;unsigned int sm,dm;long source,dest;Addr*a=cons?&in->s:&in->d;Type*t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;
+ if(in->branch||in->mm!=Anone||(!cons&&!typedpointerlisttype(&in->s))||(!head&&!typedpointerlisttype(&in->d))||((cons||head)&&!typedpointertype(t))||!typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&source,&sm,&actual)||!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&dest,&dm,&actual))return typedfail(p,"pointer-list");
+ *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,dest};*returned=213;return 1;}
+
 /* List primitives belong only to the selected importing-client lowering. */
 static int
 typedclientlist(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
@@ -656,7 +669,7 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  if(value->native64type && value->decl && value->decl->store==Dlocal && value->decl->sym && value->decl->sym->name[0]=='.' && value->decl->sym->name[1]=='t' && value->reg==value->decl->offset && !value->offset)valuetype=value->native64type;
  if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
     !value->decl || !value->decl->ty ||
-    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedwindowlisttype(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
+    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedintlisttype(value) && !typedpointerlisttype(value) && !typedwindowlisttype(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
     !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
     !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || (!valuetype || kind!=valuetype->kind) || (typedloadreftype(value) && sm!=AFP && !(sm==AMP && typedloadglobalclient(value,p))) ||
     !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || (kind==Tchan && middle>65535) ||
@@ -958,6 +971,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             pc++;
         }else if(c->loads && p->resultgeometry && in->op==IMOVM && in->dm==Afpind && in->d.reg==16){
             if(!typedlocalgeometryreturn(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+        }else if(c->loads && in->op==IMOVM && (in->sm==Afpind||in->sm==Ampind) && (in->dm==Afpind||in->dm==Ampind) && typedwmref(typedfieldowner(&in->s),"Draw","Pointer")){
+            if(!typedpointercopy(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==IMOVM){
             if(!typedlocalgeometry(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && p->resulttriple && in->op==IMOVMP){
@@ -1049,6 +1064,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(c->loads){p->code[pc-p->first].source=0;p->returns[pc-p->first]=UDST(p->code[pc-p->first].mode)==(AFP|AIND)?174:172;}pc++;
         }else if(c->loads && (in->op==ICONSM || in->op==IHEADM || (in->op==ITAIL && typedrectlisttype(&in->s)))){
             if(!typedrectlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+        }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) && ((in->op!=ICONSP && typedpointerlisttype(&in->s)) || (in->op!=IHEADP && typedpointerlisttype(&in->d)))){
+            if(!typedpointerlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSW || in->op==IHEADW || (in->op==ITAIL && typedintlisttype(&in->s)))){
             if(!typedclientintlist(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) &&

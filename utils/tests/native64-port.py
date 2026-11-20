@@ -439,6 +439,7 @@ def main():
     run([sys.executable,str(tests/'native64-string-word.py'),'--limbo',str(tools/'limbo')],build,env,logs/'string-word.log')
     run([sys.executable,str(tests/'native64-string-library.py'),'--limbo',str(tools/'limbo')],build,env,logs/'string-library.log')
     run([sys.executable,str(tests/'native64-bufio-library.py'),'--limbo',str(tools/'limbo')],build,env,logs/'bufio-library.log')
+    run([sys.executable,str(tests/'native64-wmsrv-queues.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmsrv-queues.log')
     run([sys.executable,str(tests/'native64-mp-client-nil.py'),'--limbo',str(tools/'limbo')],build,env,logs/'mp-client-nil.log')
     run([sys.executable,str(tests/'native64-pointer-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-args.log')
     run([sys.executable,str(tests/'native64-pointer-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-fields.log')

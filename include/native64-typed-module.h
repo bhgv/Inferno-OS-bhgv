@@ -325,7 +325,7 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
 {
  unsigned int i,k,j,found,bit;const Native64TypedStep*step;const Native64ModuleSite*site;const Native64ModuleImport*request;const uchar*map;
  for(i=0;i<f->count;i++){
-  step=f->code+i;if((step->returned>=208 && step->returned<=212)||step->returned==215 || step->returned==246 || step->returned==247)continue;if(step->op!=IMOVM && !(step->returned==64 && (step->mode&ARM)==AXIMM && UDST(step->mode)==(AFP|AIND)) && native64imagegeometryoffset(step->returned)==~0U)continue;
+  step=f->code+i;if((step->returned>=208 && step->returned<=212)||step->returned==215 || step->returned==246 || step->returned==247 || step->returned==139)continue;if(step->op!=IMOVM && !(step->returned==64 && (step->mode&ARM)==AXIMM && UDST(step->mode)==(AFP|AIND)) && native64imagegeometryoffset(step->returned)==~0U)continue;
   found=0;
   for(k=0;k<f->nsites;k++){
    site=f->sites+k;if(i<=site->first || i>=site->end)continue;
@@ -387,9 +387,13 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].first<j && f->sites[k].contract==24 && !f->sites[k].inherited)found++;
             if(found!=1)return 0;
         }
+        for(j=0;j<f->count;j++)if(f->code[j].returned==138 || f->code[j].returned==139){unsigned int k,mode,offset;step=f->code+j;if(!native64typedpointerpair(step,f->bytes,s->databytes)||(step->returned==138&&(step->d<0||(unsigned long)step->d>=f->count)))return 0;
+            for(k=0;k<2;k++){mode=k?(step->returned==139?UDST(step->mode)&~AIND:(step->mode&ARM)==AXINF?AFP:AMP):USRC(step->mode)&~AIND;offset=k?(step->returned==139?step->d:step->m&65535):step->s;map=mode==AFP?f->map:s->datamap;bit=offset/8;if(!!(map[bit/8]&(128>>(bit%8)))!=(!k||step->returned==139))return 0;}
+            for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j&&j<=f->sites[at].end)return 0;
+        }
         for(j=0;j<f->count;j++)if(f->code[j].returned==153 || f->code[j].returned==154){
             unsigned int k,w[2],r[2],mode,offset,id;long mid;step=f->code+j;if(!native64typedlibrary(step,f->bytes,s->databytes) || (native64typedbranch(step->op) && (unsigned long)step->d>=f->count))return 0;
-            if(step->returned==154){if(UDST(step->mode)==AFP){bit=step->d/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;}}
+            if(step->returned==154){if(UDST(step->mode)==AFP||UDST(step->mode)==AMP){map=UDST(step->mode)==AFP?f->map:s->datamap;bit=step->d/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}}
             else{
                 if(!native64libraryshape(step,w,r))return 0;mid=native64librarymiddle(step);
                 for(k=0;k<3;k++){if(k==2&&(step->mode&ARM)==AXNON)continue;if(k==1&&native64typedbranch(step->op))continue;

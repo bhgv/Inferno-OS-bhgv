@@ -534,6 +534,16 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned in(138,139):
+            sm=o['mode']>>3&7;dm=o['mode']&7;assert loads and sm in(4,5)and o['s'][1]in(0,4,8,12)and op==o['op']and mode==o['mode']
+            source=maps['frame'if sm==5 else'data'][o['s'][0]];assert source==s
+            if returned==138:
+                arm=mode&192;assert op in(OPCODES['IBEQW'],OPCODES['IBNEW'])and dm==2 and arm in(128,192)
+                assert m==(o['s'][1]<<16)|maps['frame'if arm==128 else'data'][o['m']]and d==o['d'][0]-r['first']
+            else:
+                assert op==OPCODES['IMOVM']and dm in(4,5)and o['s'][1]==o['d'][1]==0 and o['m']==m==16 and mode&192==64
+                assert d==maps['frame'if dm==5 else'data'][o['d'][0]]
+            continue
         if returned==159:
             assert loads and op==o['op']==OPCODES['ISLICELA']and mode==o['mode'];sm=mode>>3&7;dm=mode&7;arm=mode&192
             assert s==library_operand(o['s'],sm,0,maps)and d==library_operand(o['d'],dm,0,maps)and m==(o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']]);continue

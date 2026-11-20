@@ -163,6 +163,12 @@ native64typedpointerword(const Native64TypedStep*s,unsigned int fp,unsigned int 
 }
 
 static int
+native64typedpointerpair(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{unsigned int sm=USRC(s->mode),dm=UDST(s->mode),mm=s->mode&ARM;long field=(unsigned long)s->m>>16,other=s->m&65535;
+ if(s->returned==139)return s->op==IMOVM&&s->mode==(SRC(sm)|AXIMM|DST(dm))&&(sm==(AFP|AIND)||sm==(AMP|AIND))&&(dm==(AFP|AIND)||dm==(AMP|AIND))&&s->m==16&&native64typedrootoperand(sm&~AIND,s->s,fp,mp)&&native64typedrootoperand(dm&~AIND,s->d,fp,mp);
+ return s->returned==138&&(s->op==IBEQW||s->op==IBNEW)&&s->mode<=255&&dm==AIMM&&(mm==AXINF||mm==AXINM)&&(sm==(AFP|AIND)||sm==(AMP|AIND))&&s->m>=0&&field<=12&&field%4==0&&native64typedrootoperand(sm&~AIND,s->s,fp,mp)&&native64typedwordoperand(mm==AXINF?AFP:AMP,other,fp,mp);}
+
+static int
 native64typedclientcompare(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
  unsigned int sm=USRC(s->mode),mm=s->mode&ARM;
@@ -474,6 +480,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         }
         if(s->returned==173){if(!native64typedcontextcopy(s,fpbytes,mpbytes))return 0;continue;}
         if((s->returned>=145 && s->returned<=147) || (s->returned>=149 && s->returned<=151)){if(!native64typednumericresult(s,fpbytes,mpbytes))return 0;continue;}
+        if(s->returned==138 || s->returned==139){if(!native64typedpointerpair(s,fpbytes,mpbytes) || (s->returned==138 && (s->d<0 || (unsigned long)s->d>=count)))return 0;continue;}
         if(s->returned==159){if(!native64librarybytecopy(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==157 || s->returned==158){if(!native64librarybyte(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==153 || s->returned==154){if(!native64typedlibrary(s,fpbytes,mpbytes) || (native64typedbranch(s->op) && (unsigned long)s->d>=count))return 0;continue;}
@@ -606,6 +613,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==183){p->d.ind=s->d;continue;}
         if(s->returned==185){p->d.i.f=32;p->d.i.s=0;continue;}
         if((s->returned>=145 && s->returned<=147) || (s->returned>=149 && s->returned<=151)){p->d.i.f=32;p->d.i.s=s->returned<=147?4*(s->returned-145):0;continue;}
+        if(s->returned==138 || s->returned==139){p->s.i.f=s->s;p->s.i.s=s->returned==138?(unsigned long)s->m>>16:0;if(s->returned==138){p->reg=s->m&65535;p->d.ins=out+s->d;}else{p->reg=16;p->d.i.f=s->d;p->d.i.s=0;}continue;}
         if(s->returned==159){p->reg=s->m;p->d.ind=s->d;continue;}
         if(s->returned==157){p->reg=48;if(USRC(s->mode)&AIND){p->s.i.f=s->s&65535;p->s.i.s=8;}else p->s.ind=s->s;if(UDST(s->mode)&AIND){p->d.i.f=s->d&65535;p->d.i.s=(unsigned long)s->d>>16;}else p->d.imm=s->d;continue;}
         if(s->returned==158){p->reg=0;if(USRC(s->mode)&AIND){p->s.i.f=48;p->s.i.s=0;if(UDST(s->mode)&AIND){p->d.i.f=32;p->d.i.s=0;}else p->d.ind=s->d;}else{p->s.imm=s->s;p->d.i.f=48;p->d.i.s=0;}continue;}

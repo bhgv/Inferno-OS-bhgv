@@ -42,7 +42,7 @@ native64typedlibrary(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
  unsigned int sm=USRC(s->mode),dm=UDST(s->mode),mm=s->mode&ARM,w[2],r[2],sid=(unsigned long)s->m>>24,did=(s->m>>16)&255;
  long mid=native64librarymiddle(s);
  if(s->mode>255 || s->m<0 || (unsigned long)s->m>0x05ffffffUL)return 0;
- if(s->returned==154)return s->op==INEWZ&&s->mode==(SRC(AIMM)|DST(dm))&&s->s>=1&&s->s<=Native64LibraryRecords&&!s->m&&((dm==AFP&&native64typedrootoperand(dm,s->d,fp,mp))||(dm==(AFP|AIND)&&s->d==32));
+ if(s->returned==154)return s->op==INEWZ&&s->mode==(SRC(AIMM)|DST(dm))&&s->s>=1&&s->s<=Native64LibraryRecords&&!s->m&&(((dm==AFP||dm==AMP)&&native64typedrootoperand(dm,s->d,fp,mp))||(dm==(AFP|AIND)&&s->d==32));
  if(s->returned!=153 || (!sid&&!did) || !native64libraryshape(s,w,r) || !native64libraryoperand(sm,s->s,sid,w[0],r[0],fp,mp,0))return 0;
  if(native64typedbranch(s->op)){if(did||dm!=AIMM||s->d<0)return 0;}
  else if(!native64libraryoperand(dm,s->d,did,w[1],r[1],fp,mp,1) || dm==AIMM)return 0;
