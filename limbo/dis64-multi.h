@@ -975,6 +975,8 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         contract=child->resultpair>=3?16:child->resulttriple==2?12:child->resultgeometry?(child->resultgeometry==8?96:112):child->resulttriple?72:child->resultpair?48:child->resultbytes | (root?16:0);
         if(c->loads && typedimagearraybinding(c,p,frame,binding,c->functions[target]->ty->tof,pc,at)){
             local=p->code[at-p->first].source;
+        }else if(c->loads&&child->resultgeometry&&binding->sm==Afpind&&binding->s.reg!=16){
+            if(!typedwindowgeometrybinding(binding,c->functions[target]->ty->tof,p,at-p->first,&local,&contract))return typedfail(p,"local-window-geometry-result");
         }else if(c->loads&&contract==24&&!child->resultpair&&binding->sm==Afpind&&binding->s.offset==48&&typedlibraryrecord(typedfieldowner(&binding->s))==6&&typedwmref(c->functions[target]->ty->tof,"Draw","Wmcontext")){
             Addr a=binding->s;Type*t=typedfieldowner(&a);a.offset=0;a.native64type=t;if(!typedoperand(Afp,&a,TypedRoot,0,0,p,&source,&sm,&actual)||actual!=Tref)return typedfail(p,"client-context-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),24,source,32};p->returns[at-p->first]=93;

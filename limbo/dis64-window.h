@@ -62,3 +62,27 @@ typedwindowwordargument(Inst*in,Inst*frame,Dis64TypedBody*p,unsigned int pc,unsi
  if((in->op!=IMOVW&&!typedwordargop(in->op))||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=old||!typedwindowwordbase(&in->s,in->sm,p,pc,&base,&wire,&field)||base>65535)return typedfail(p,"window-word-argument");
  if(in->op!=IMOVW){if(!typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mode,&actual))return 0;mm=mode==AIMM?AXIMM:mode==AFP?AXINF:AXINM;}
  p->code[pc]=(Dis64Instruction){in->op,SRC(wire|AIND)|mm|DST(AFP|AIND),middle,(field<<16)|base,offset};p->returns[pc]=86;return 1;}
+
+/* Exact whole geometry leaves inside the complete canonical Window. */
+static int
+typedwindowgeometrybase(Addr*a,int mode,Dis64TypedBody*p,unsigned int pc,long*base,unsigned int*wire,long*field,unsigned int*bytes)
+{Dis64Layout l={0};Inst probe;unsigned int old=a->offset;int ok=0;
+ if(!typedwindowowner(a)||!typedwordgeometry(a->native64type,&l))goto done;*bytes=l.bytes;
+ if(l.bytes==16){if(old!=4&&old!=24&&old!=68)goto done;*field=old==4?8:old==24?32:88;}
+ else{switch(old){case 4:*field=8;break;case 12:*field=16;break;case 24:*field=32;break;case 32:*field=40;break;case 60:*field=80;break;case 68:*field=88;break;case 76:*field=96;break;case 96:*field=120;break;default:goto done;}}
+ memset(&probe,0,sizeof(probe));probe.op=IMOVP;probe.sm=mode;probe.s=*a;probe.s.offset=0;probe.mm=Anone;probe.dm=Afp;probe.d=*a;if(!typedwindowfield(&probe,p,pc,1,nil))goto done;*base=p->code[pc].source;*wire=USRC(p->code[pc].mode);ok=1;
+ done:dis64layoutfree(&l);return ok;}
+/* A named formal keeps this heap result alive across suspended callees.
+ * LEA records a field-value type; prove the original formal owner separately. */
+static int
+typedwindowgeometrybinding(Inst*b,Type*t,Dis64TypedBody*p,unsigned int pc,unsigned int*local,unsigned int*contract)
+{long base,field;unsigned int wire,bytes;Addr a=b->s;if(b->sm!=Afpind||b->s.reg==16||!a.decl||a.decl->store!=Darg||a.reg!=a.decl->offset)return 0;a.native64base=a.decl->ty;a.native64type=a.decl->ty;if(!typedwindowowner(&a))return 0;a.native64type=t;if(!typedwindowgeometrybase(&a,b->sm,p,pc,&base,&wire,&field,&bytes)||(wire&~AIND)!=AFP)return 0;
+ *local=base;*contract=bytes==8?96:112;p->code[pc]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),field,base,32};p->returns[pc]=81;return 1;}
+static int
+typedwindowgeometrycopy(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*ret)
+{Addr*a,*direct,word;unsigned int read,mode,bytes,wire,i;long base,field,value=0,part;int actual;
+ read=in->sm==Afpind||in->sm==Ampind;a=read?&in->s:&in->d;direct=read?&in->d:&in->s;mode=read?in->dm:in->sm;
+ if(in->op!=IMOVM||in->mm!=Aimm||in->branch||(mode!=Afp&&mode!=Amp)||!typedwindowgeometrybase(a,read?in->sm:in->dm,p,in->pc-p->first,&base,&wire,&field,&bytes)||in->m.offset!=bytes)return 0;
+ {Dis64Layout l={0};int ok=typedwordgeometry(direct->native64type,&l)&&l.bytes==bytes;dis64layoutfree(&l);if(!ok)return 0;}
+ for(i=0;i<bytes;i+=4){word=*direct;word.reg+=i;word.offset=0;if(!typedoperand(mode,&word,Tint,0,0,p,&part,&wire,&actual)||actual!=Tint||(i&&part!=value+i))return 0;if(!i)value=part;}
+ *out=(Dis64Instruction){IMOVM,read?SRC((in->sm==Afpind?AFP:AMP)|AIND)|AXIMM|DST(mode==Afp?AFP:AMP):SRC(mode==Afp?AFP:AMP)|AXIMM|DST((in->dm==Afpind?AFP:AMP)|AIND),(field<<8)|bytes,read?base:value,read?value:base};*ret=read?83:82;return 1;}

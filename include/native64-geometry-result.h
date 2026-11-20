@@ -1,5 +1,8 @@
 #ifndef NATIVE64_GEOMETRY_RESULT_H
 #define NATIVE64_GEOMETRY_RESULT_H
+static int
+native64windowgeometryfield(unsigned int field,unsigned int bytes)
+{return bytes==16?(field==8||field==32||field==88):bytes==8&&(field==8||field==16||field==32||field==40||field==80||field==88||field==96||field==120);}
 /* Private result contracts: raw Word32 Draw.Point/Rect, never roots. */
 static unsigned int
 native64geometryresultwidth(unsigned int contract)

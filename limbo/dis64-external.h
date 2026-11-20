@@ -184,6 +184,7 @@ static int typedimagearraybinding(TypedMulti*,Dis64TypedBody*,Inst*,Inst*,Type*,
 static int typedwordargop(int);
 static int typedwordargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
 static int typedwindowowner(Addr*);
+static int typedwindowgeometrybinding(Inst*,Type*,Dis64TypedBody*,unsigned int,unsigned int*,unsigned int*);
 static int typedwindowwordargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
 static int typedexternalinthead(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
 static int
@@ -195,6 +196,10 @@ typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned
   if(!c->loads || !typedpointerlayout(arg->ty,&layout))goto done;
   base=(*offset+3)&~3U;if(base>65535-16)goto done;
   in=c->instructions[*at];sourceaddr=in->s;sourceaddr.offset=0;
+  if((in->sm==Afp||in->sm==Amp)&&in->op==IMOVM&&in->mm==Aimm&&in->m.offset==16&&!in->branch&&in->dm==Afpind&&in->d.reg==frame->d.reg&&in->d.offset==arg->offset&&in->s.native64type==arg->ty){
+   for(i=0;i<16;i+=4){Addr a=in->s;a.reg+=i;a.offset=0;if(!typedoperand(in->sm,&a,Tint,0,0,p,&part,&wire,&actual)||actual!=Tint||(i&&part!=source+i))goto done;if(!i)source=part;}
+   p->code[*at-p->first]=(Dis64Instruction){IMOVM,SRC(wire)|AXIMM|DST(AFP|AIND),16,source,base};p->returns[(*at)++-p->first]=64;*offset=base+16;ok=1;goto done;
+  }
   if(in->op!=IMOVM || (in->sm!=Afpind && in->sm!=Ampind) || in->mm!=Aimm || in->m.offset!=16 || in->branch || in->s.offset || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
      !sourceaddr.decl || !sourceaddr.decl->ty || sourceaddr.decl->ty->kind!=Tref || sourceaddr.decl->ty->tof!=arg->ty ||
      !typedoperand(in->sm==Afpind?Afp:Amp,&sourceaddr,TypedRoot,0,0,p,&source,&wire,&actual) || actual!=Tref)goto done;
@@ -342,7 +347,8 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         if(at+1!=end || (binding=c->instructions[at])==nil || binding->op!=ILEA || binding->mm!=Anone ||
            binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil)return typedfail(p,"external-result");
         if(c->loads && kind==Tadt){
-            if(binding->sm==Afpind&&binding->s.reg==16&&!binding->s.offset&&p->resultgeometry){Dis64Layout l={0};if(!typedwordgeometry(fn->ty->tof,&l)||l.bytes!=p->resultgeometry){dis64layoutfree(&l);return typedfail(p,"geometry-result-inherit");}contract=l.bytes==8?96:112;dis64layoutfree(&l);inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;}
+            if(binding->sm==Afpind&&binding->s.reg!=16){if(!typedwindowgeometrybinding(binding,fn->ty->tof,p,at-p->first,&local,&contract))return typedfail(p,"window-geometry-result");}
+            else if(binding->sm==Afpind&&binding->s.reg==16&&!binding->s.offset&&p->resultgeometry){Dis64Layout l={0};if(!typedwordgeometry(fn->ty->tof,&l)||l.bytes!=p->resultgeometry){dis64layoutfree(&l);return typedfail(p,"geometry-result-inherit");}contract=l.bytes==8?96:112;dis64layoutfree(&l);inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;}
             else{if(!typedgeometrybinding(binding,fn->ty->tof,p,&local,&contract))return typedfail(p,"external-geometry-result");p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(binding->sm==Afp?AFP:AMP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;}
         }else if(c->loads && kind==Ttuple && typedwordtriple(fn->ty->tof)){
             unsigned int k,part;if(binding->sm!=Afp)return typedfail(p,"word-triple-result");

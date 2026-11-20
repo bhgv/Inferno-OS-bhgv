@@ -18,6 +18,22 @@ OPCODES=runpy.run_path(str(ROOT/'utils/tests/dis64-bound-call.py'))['OP'].CODES
 RAISE=OPCODES['IRAISE']
 
 WINDOW_WORD_FIELDS=dict(zip((4,8,12,16,24,28,32,36,44,48,60,64,68,72,76,80,88,92,96,100),(8,12,16,20,32,36,40,44,56,60,80,84,88,92,96,100,112,116,120,124)))
+WINDOW_GEOMETRY_FIELDS={16:{4:8,24:32,68:88},8:{4:8,12:16,24:32,32:40,60:80,68:88,76:96,96:120}}
+def window_geometry(o,c,maps,r,pending=None,oldoffset=None,new=None):
+ op,mode,source,middle,dest,tag=c;sm=o['mode']>>3&7;dm=o['mode']&7
+ assert op==o['op']and mode==o['mode']and tag in(81,82,83,84)
+ width={96:8,112:16}.get(r.get('contract',0),0)if tag==81 else o['m'];assert width in(8,16)
+ side='d'if tag==82 else's';hm=dm if side=='d'else sm;assert hm in(4,5)and len(o[side])==2 and o[side][1]in WINDOW_GEOMETRY_FIELDS[width]
+ space='frame'if hm==5 else'data';base=maps[space][o[side][0]];field=WINDOW_GEOMETRY_FIELDS[width][o[side][1]]
+ assert next(l for l in r[space]['leaves']if l[0]==o[side][0])[3:]==[8,12]and r[space]['map'][base//64]&(128>>(base//8%8))
+ if tag==81:assert op==39 and o['m']is None and o['d']==[pending,16]and c==[39,45,base,field,32,81];return
+ assert op==42 and o['mode']&192==64
+ if tag==84:assert o['d']==[pending,oldoffset]and c==[42,o['mode'],base,(field<<8)|width,new,84];return
+ vm=sm if tag==82 else dm;part=o['s']if tag==82 else o['d'];assert vm in(0,1)and len(part)==1
+ raw=maps['frame'if vm else'data'][part[0]]
+ for i in range(0,width,4):assert next(l for l in r['frame'if vm else'data']['leaves']if l[0]==part[0]+i)==[part[0]+i,raw+i,4,4,9]
+ assert c==[42,o['mode'],raw if tag==82 else base,(field<<8)|width,base if tag==82 else raw,tag]
+
 def window_word(o,c,maps,first,pending=None,oldoffset=None,new=None):
  op,mode,source,middle,dest,tag=c;sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192
  assert op==o['op']
@@ -139,6 +155,9 @@ def verify(data,r,imports,loads=False,rows=None):
             prep=False;screenprep=None;idprep=None;o=original[at]
             if loads and r['code'][at][5]==155:
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);library_argument(o,r['code'][at],maps,pending,oldoffset,arg[0]);at+=1;continue
+            if loads and r['code'][at][5]==84:
+                assert arg[1]==1 and arg[2]==arg[3]and arg[3]in(8,16)
+                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);window_geometry(original[at],r['code'][at],maps,r,pending,oldoffset,arg[0]);at+=1;continue
             if loads and r['code'][at][5]==152:
                 assert arg[1:]==[7,8,8]and o['op']==OPCODES['ICVTWF']and o['m']is None and o['d'][0]==pending
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);assert o['d'][1]==oldoffset
@@ -252,6 +271,9 @@ def verify(data,r,imports,loads=False,rows=None):
             if r['code'][end-1][5]==131:
                 index=original[first-1];assert loads and contract==24 and not inherited and index['op']==OPCODES['IINDW']and index['mode']>>3&7==1 and binding['mode']==45 and binding['s']==[index['m'],0]
                 assert offset==maps['frame'][index['s'][0]]and r['code'][end-1]==[39,13,offset,0,32,131]
+            elif r['code'][end-1][5]==81:
+                assert loads and contract in(96,112)and not inherited
+                proof=dict(r,contract=contract);window_geometry(binding,r['code'][end-1],maps,proof,pending);assert offset==r['code'][end-1][2]
             elif r['code'][end-1][5]==93:
                 assert loads and contract==24 and not inherited and binding['mode']==45 and binding['s'][1]==48 and offset==maps['frame'][binding['s'][0]]
                 assert r['code'][end-1]==[39,45,offset,24,32,93]
@@ -449,7 +471,7 @@ def verify(data,r,imports,loads=False,rows=None):
             if kind==1:
                 assert loads and j in aggregates
                 layout=aggregates.pop(j);n=2 if oldbytes==8 else 4 if oldbytes==16 else 0
-                assert nominals[j]in(None,'Draw.Pointer') and (nominals[j]!='Draw.Pointer' or r['code'][at][5]==227)
+                assert nominals[j]in(None,'Draw.Pointer') and (nominals[j]!='Draw.Pointer' or r['code'][at][5]in(64,227))
                 assert n and width==oldbytes and layout=={'legacy_bytes':oldbytes,'bytes':width,'map':[0],'leaves':[[4*k,4*k,4,4,9]for k in range(n)]}
                 if r['code'][at][5]==141:
                     assert a['op']==OPCODES['IHEADP']and sm in(0,1)and a['mode']==(sm<<3)|1 and a['m']is None
@@ -463,7 +485,9 @@ def verify(data,r,imports,loads=False,rows=None):
                     temp=maps['frame'][a['d'][0]]
                     assert r['code'][at]==[41,a['mode'],maps['frame'if sm==5 else'data'][a['s'][0]],16 if a['s'][1]==8 else 24,temp,166]
                     at+=1;a=original[at];sm=a['mode']>>3&7;assert sm==5 and maps['frame'][a['s'][0]]==temp
-                if a['op']==OPCODES['IMOVM']and sm in(4,5):
+                if r['code'][at][5]==84:
+                    assert nominals[j]is None;window_geometry(a,r['code'][at],maps,r,pending,oldoffset,new);at+=1
+                elif a['op']==OPCODES['IMOVM']and sm in(4,5):
                     field=a['s'][1]
                     assert oldbytes in(8,16)and a['mode']==(sm<<3)|64|5 and a['m']==oldbytes and a['d']==[pending,oldoffset]
                     # Window.r has classic offset4 and native offset8; Image starts at0.
@@ -548,7 +572,9 @@ def verify(data,r,imports,loads=False,rows=None):
         assert e.get('result_geometry',0)==({96:8,112:16}.get(contract,0))
         if contract:
             b=original[end-1];assert b['op']==39 and b['d']==[pending,16]
-            if contract in(96,112)and e['inherited']:
+            if r['code'][end-1][5]==81:
+                assert loads and contract in(96,112)and not e['inherited'];window_geometry(b,r['code'][end-1],maps,dict(r,contract=contract),pending);assert e['resultoffset']==r['code'][end-1][2]
+            elif contract in(96,112)and e['inherited']:
                 assert loads and r.get('result_geometry')=={96:8,112:16}[contract]and b['mode']==45 and b['s']==[16,0]
             elif contract in(12,96,112):
                 assert loads and not e['inherited']and b['mode']in(5,13)
@@ -559,7 +585,8 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert leaf==[old+i,native+i,4,4,9]
                     assert not(r[space]['map'][(native+i)//64]&(128>>((native+i)//8%8)))
 
-            if r['code'][end-1][5]==131:
+            if r['code'][end-1][5]==81:pass
+            elif r['code'][end-1][5]==131:
                 index=original[first-1];assert loads and contract==24 and not e['inherited']and index['op']==OPCODES['IINDW']and index['mode']>>3&7==1 and b['mode']==45 and b['s']==[index['m'],0]
                 assert e['resultoffset']==maps['frame'][index['s'][0]]and r['code'][end-1]==[39,13,e['resultoffset'],0,32,131]
             elif r['code'][end-1][5]==245:
@@ -662,6 +689,8 @@ def verify(data,r,imports,loads=False,rows=None):
             index=o['d'][0]if dm==2 else maps['frame'if dm else'data'][o['d'][0]]
             assert [op,mode,s,m,d,returned]==[OPCODES['IINDL'],o['mode'],maps['frame'][o['s'][0]],48,index,131]
             continue
+        if returned in(82,83):
+            assert loads;window_geometry(o,[op,mode,s,m,d,returned],maps,r);continue
         if returned in(88,89):
             assert loads;window_word(o,[op,mode,s,m,d,returned],maps,r['first']);continue
         if returned==133:

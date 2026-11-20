@@ -37,11 +37,11 @@ def generate(limbo,w):
  return rows
 
 def refusals(limbo,w):
- for declaration,owner,expression in(('Other:adt{image:ref Draw->Image;};','Other','c.image'),('Fake:module{Window:adt{image:ref Draw->Image;};};','Fake->Window','c.image'),('','Window','c.r')):
+ for declaration,owner,expression in(('Other:adt{image:ref Draw->Image;};','Other','c.image'),('Fake:module{Window:adt{image:ref Draw->Image;};};','Fake->Window','c.image'),('OtherGeometry:adt{r:Draw->Rect;};','OtherGeometry','c.r')):
   source='implement Closed;include "sys.m";include "draw.m";include "tk.m";include "wmclient.m";wmclient:Wmclient;Window:import wmclient;'+declaration+'Closed:module{run:fn(c:ref '+owner+');};'+('value:Draw->Rect;'if expression=='c.r'else'value:ref Draw->Image;')+'run(c:ref '+owner+'){value='+expression+';}'
   _,rows=G['E']['compile_source'](limbo,w,source,interface='',loads=True)
   assert len(rows)==1 and not rows[0]['accepted'],rows
- print('PASS Window compiler boundary: other ADT, wrong namespace and aggregate field remain closed; ordinary bytes preserved',flush=True)
+ print('PASS Window compiler boundary: other ADT, wrong namespace and foreign aggregate owner remain closed; ordinary bytes preserved',flush=True)
  source='implement Owners;include "sys.m";include "draw.m";include "tk.m";include "wmclient.m";wmclient:Wmclient;Window:import wmclient;Other:adt{'+''.join('n'+str(i)+':int;'for i in range(21))+'screen:ref Draw->Screen;};Owners:module{bad:fn(w:ref Window,o:ref Other);good:fn(w:ref Window);};display:ref Draw->Display;screen:ref Draw->Screen;getw(w:ref Window):ref Window{return w;}geto(o:ref Other):ref Other{return o;}bad(w:ref Window,o:ref Other){display=getw(w).display;screen=geto(o).screen;}good(w:ref Window){display=getw(w).display;}'
  data,rows=G['E']['compile_source'](limbo,w,source,interface='',loads=True)
  assert next(r for r in rows if r['name']=='good')['accepted']and not next(r for r in rows if r['name']=='bad')['accepted'],rows

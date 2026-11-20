@@ -61,6 +61,7 @@ typedimagegeometry(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offset)
 {
  Inst probe=*in;long field=in->s.offset;Dis64Layout layout={0};int ok;unsigned int bytes;
  long base;unsigned int wire;
+ if(typedwindowowner(&in->s)){unsigned int n;if(!typedwindowgeometrybase(&in->s,in->sm,p,pc,&base,&wire,&field,&n)||in->m.offset!=n)return typedfail(p,"client-window-geometry-argument");p->code[pc]=(Dis64Instruction){IMOVM,SRC(wire|AIND)|AXIMM|DST(AFP|AIND),(field<<8)|n,base,offset};p->returns[pc]=84;return 1;}
  if(typedwmref(typedfieldowner(&in->s),"Draw","Pointer")){
   if(field!=4 || !typedwordgeometry(in->s.native64type,&layout) || layout.bytes!=8 || in->m.offset!=8 || !typedpointeraddress(&in->s,in->sm,p,&base,&wire)){dis64layoutfree(&layout);return typedfail(p,"pointer-point-owner");}
   dis64layoutfree(&layout);p->code[pc]=(Dis64Instruction){IMOVM,SRC(wire|AIND)|AXIMM|DST(AFP|AIND),8,base,offset};p->returns[pc]=230;return 1;
@@ -118,6 +119,7 @@ typedlocalgeometry(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
   src.offset=0;src.native64type=owner;if(!typedoperand(in->sm==Afpind?Afp:Amp,&src,TypedRoot,0,0,p,&base,&wire,&actual)||actual!=Tref||!typedwmsrvwindowbase(&in->d,in->dm,p,&dst,&dw))goto done;
   *out=(Dis64Instruction){IMOVM,SRC(wire|AIND)|AXIMM|DST(dw),16,base,dst};*returned=110;ok=1;goto done;
  }
+ if(in->op==IMOVM&&((read&&typedwindowowner(&in->s))||((in->dm==Afpind||in->dm==Ampind)&&typedwindowowner(&in->d)))){if(!typedwindowgeometrycopy(in,p,out,returned))goto done;ok=1;goto done;}
  if(in->op!=IMOVM || in->mm!=Aimm || in->branch || (read && (in->dm==Afpind || in->dm==Ampind)))goto done;
  if(indirect){
   image=read?&in->s:&in->d;direct=read?&in->d:&in->s;mode=read?in->dm:in->sm;field=image->offset;
