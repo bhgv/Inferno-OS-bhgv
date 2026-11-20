@@ -12,7 +12,7 @@ def generate(limbo,w):
    public=fn.replace('_','.',1)if '_'in fn else fn;size=re.search(r'^#define F_'+name+'_'+fn+r'_size (\d+)',h,re.M);mp=re.search(r'^#define F_'+name+'_'+fn+r'_map \{([^}]*)\}',h,re.M)
    if size and mp:frames[(public,int(sig,16))]=(int(size[1]),[int(x,0)for x in mp[1].split(',')if x])
    if name=='Wmclient':sigs[public]=int(sig,16)
- h=(w/'Draw.h').read_text();(w/'geometry-layout.h').write_text('typedef struct F_Draw_Rect_size F_Draw_Rect_size;\n'+re.search(r'struct F_Draw_Rect_size \{.*?\n};',h,re.S)[0]+'\n')
+ h=(w/'Draw.h').read_text();(w/'geometry-layout.h').write_text(''.join('typedef struct F_Draw_'+n+' F_Draw_'+n+';\n'+re.search(r'struct F_Draw_'+n+r' \{.*?\n};',h,re.S)[0]+'\n'for n in('Rect_size','Rect_inset','Rect_dx','Rect_dy')))
  source=(R/'appl/lib/wmclient.b').read_text();data,rows=G['E']['compile_source'](limbo,w,source,interface='',loads=True);tables=G['E']['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];assert (len(rows),len(tables),sum(len(r.get('variadics',[]))for r in rows))==(21,5,11)
  (w/'window-native.h').write_text(re.sub(r'struct Sys_FD \{.*?\n};','',(w/'Wmclient.h').read_text(),flags=re.S))
  rows=G['generate'](limbo,w,source,'Wmclient',(len(rows),len(tables),sum(len(r.get('variadics',[]))for r in rows),'~0U'),import_frames=frames,export_signatures=sigs)
@@ -35,7 +35,8 @@ def unit(w):
  extract=CMD['NS']['S']['FILES']['FILES']['function'];vm=(ROOT/'libinterp/xec.c').read_text();strings=(ROOT/'libinterp/string.c').read_text()
  for sig in('static uchar*\narrayaddress(','static void\narrayindex(','static void\nnewarray(','static void\nbranchstring(','static Inst*\ncasepc(','static uvlong\ncaseccell('):
   if sig not in src:src+='\n'+extract(vm,sig)+'\n'
- src+='\n#include \"window-native.h\"\n#include \"geometry-layout.h\"\n#define F_Rect_size F_Draw_Rect_size\n'+extract((ROOT/'libinterp/geom.c').read_text(),'void\nRect_size(')+'\n'
+ src+='\n#include \"window-native.h\"\n#include \"geometry-layout.h\"\n'
+ for n in('Rect_size','Rect_inset','Rect_dx','Rect_dy'):src+='\n#define F_'+n+' F_Draw_'+n+'\n'+extract((ROOT/'libinterp/geom.c').read_text(),'void\n'+n+'(')+'\n'
  src+='\n'+extract(strings,'String*\nslicer(')+'\n'
  for n in sorted(OP_NAMES):
   n={'load':'iload','goto':'igoto','send':'isend','recv':'irecv','exit':'iexit','raise':'iraise','case':'icase','casec':'casec'}.get(n,n)
@@ -51,13 +52,14 @@ def main():
   if arch in('arm64','riscv64'):cc+=['-DDIS64_TEST_'+arch.upper()+'=1','-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
   cc+=[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+[str(ROOT/('lib9/'+n+'.c'))for n in('sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+CMD['FILES']['releaseflags'](cc)+['-pthread','-lm','-o',str(w/'unit')];subprocess.run(cc,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(w/'unit')],check=True,timeout=180)
-  for label,before,after,predicate in (
-   ('Window root result field','else if(s->returned==60){p->reg=2048|512|24;p->s.i.f=s->s;p->s.i.s=s->m;','else if(s->returned==60){p->reg=2048|512|24;p->s.i.f=s->s;p->s.i.s=s->m==48?0:s->m;','Window context/display/control channel'),
-   ('byte slice lower bound','else if(s->returned==69||s->returned==71){checkstep=*s;checkstep.returned=0;','else if(s->returned==69||s->returned==71){checkstep=*s;if(s->returned==69&&s->op==ISLICEA)checkstep.s=1;checkstep.returned=0;','original byte slice String conversion')):
-   for name in ('native64-typed-module.h','native64-sys-module.h'):(w/name).write_text((ROOT/'include'/name).read_text())
-   text=(ROOT/'include/native64-typed-multi.h').read_text();assert text.count(before)==1;(w/'native64-typed-multi.h').write_text(text.replace(before,after,1));subprocess.run(cc,check=True);r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(w/'unit')],capture_output=True,text=True,timeout=180)
+  for label,header,before,after,predicate in (
+   ('Window root result field','native64-typed-multi.h','else if(s->returned==60){p->reg=2048|512|24;p->s.i.f=s->s;p->s.i.s=s->m;','else if(s->returned==60){p->reg=2048|512|24;p->s.i.f=s->s;p->s.i.s=s->m==48?0:s->m;','Window context/display/control channel'),
+   ('byte slice lower bound','native64-typed-multi.h','else if(s->returned==69||s->returned==71){checkstep=*s;checkstep.returned=0;','else if(s->returned==69||s->returned==71){checkstep=*s;if(s->returned==69&&s->op==ISLICEA)checkstep.s=1;checkstep.returned=0;','original byte slice String conversion'),
+   ('Window image rectangle field','native64-typed-code.h','p->d.i.s=(s->m>>8)&255;continue;}','p->d.i.s=((s->m>>8)&255)==8?32:(s->m>>8)&255;continue;}','original nested context putimage and drawborder completion')):
+   for name in ('native64-typed-module.h','native64-sys-module.h','native64-typed-multi.h','native64-typed-code.h'):(w/name).write_text((ROOT/'include'/name).read_text())
+   text=(ROOT/'include'/header).read_text();assert text.count(before)==1;(w/header).write_text(text.replace(before,after,1));subprocess.run(cc,check=True);r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(w/'unit')],capture_output=True,text=True,timeout=180)
    assert r.returncode==10 and predicate in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(label,r.returncode,r.stdout[-1000:],r.stderr[-1000:])
-   for name in ('native64-typed-module.h','native64-sys-module.h','native64-typed-multi.h'):(w/name).unlink()
+   for name in ('native64-typed-module.h','native64-sys-module.h','native64-typed-multi.h','native64-typed-code.h'):(w/name).unlink()
    print('PASS complete Wmclient active control:',label,flush=True)
 
 if __name__=='__main__':main()

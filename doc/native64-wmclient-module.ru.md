@@ -30,15 +30,15 @@ ADT или нового сериализованного формата Dis им
 
 ## Исполнение и проверка
 
-`utils/tests/native64-wmclient-module.py` включён в native64-port. Он строит
+`utils/tests/native64-wmclient-module.py` включён в native64-port и оба задания native64-typed-calls CI. Он строит
 весь исходный модуль, получает signatures и import frames из канонических
 headers и проверяет исходные операнды независимым classic decoder.
 Проверяются 138 искажений новых инструкций и 110 искажений variadic records.
 Runtime отвергает 46 неверных mode/extent вариантов до выделения памяти.
 Все 195/196 точек отказа конструктора C/JIT дают атомарный rollback.
 
-120 сквозных прогонов исполняют оригинальные `init`, `window`, `readscreenrect`,
-`sizetb`, `Window.wmctl`, `wmreq` и `drawborder` по достижимым веткам:
+168 сквозных прогонов исполняют оригинальные `init`, `window`, `readscreenrect`,
+`sizetb`, `Window.wmctl`, `wmreq`, `recvimage`, `putimage` и `drawborder` по достижимым веткам:
 
 * интерпретатор и amd64 JIT, кванты 1/3/1000;
 * Plain и окно с titlebar; настоящий VM канал управления и mapped Window;
@@ -46,16 +46,22 @@ Runtime отвергает 46 неверных mode/extent вариантов д
   буфера и срез в строку с передачей в s2r;
 * focus/size/move/rect/default запросы; точные Tk/Titlebar строки,
   преобразования чисел, многовременные String выражения и срез запроса;
+* путь без оконного менеджера через Window → Wmcontext → Context → Display
+  → Image, Screen.allocate, Image для заголовка/клиента и точная геометрия
+  четырёх сторон рамки;
+* подключённый connfd и реальный вариадический gateway с контролируемым
+  fprint; буферизованный images канал отдаёт сначала nil, затем Image;
 * сохранность полей и полное освобождение всех объектов/модулей/каналов.
 
-Rect.size взят из производственного `libinterp/geom.c`. Sys I/O, Tk,
+Rect.size/inset/dx/dy взяты из производственного `libinterp/geom.c`. Sys I/O, Tk,
 Titlebar и Wmlib в этом тесте — контролируемые сервисы. Тест не запускает
 настоящую графическую систему и не доказывает исполнение всех веток
-принятых функций. В частности, полный putimage/recvimage и cursor loop
-здесь не исполняются.
+принятых функций. Cursor loop, повторная замена изображения и все варианты
+ошибок графических сервисов здесь не исполняются.
 
-Активные контроли меняют адрес root-результата Window и нижнюю границу
-byte slice; ошибку обнаруживают проверки результата исходного кода.
+Активные контроли меняют адрес root-результата Window, нижнюю границу
+byte slice и поле назначения Image → Window Rect. Ошибку обнаруживают
+проверки результата исходного кода.
 Сохранены предыдущие call-prep, String preparation, Window geometry,
 Wmsrv и AWM cluster regression gates. Чистая amd64 console сборка,
 Dis64 pair boot и emuinit boot проходят.
