@@ -436,6 +436,7 @@ def main():
     run([sys.executable,str(tests/'native64-local-geometry-results.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-geometry-results.log')
     run([sys.executable,str(tests/'native64-rect-list.py'),'--limbo',str(tools/'limbo')],build,env,logs/'rect-list.log')
     run([sys.executable,str(tests/'native64-format-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'format-fields.log')
+    run([sys.executable,str(tests/'native64-call-prep.py'),'--limbo',str(tools/'limbo')],build,env,logs/'call-prep.log')
     run([sys.executable,str(tests/'native64-aprint.py'),'--limbo',str(tools/'limbo')],build,env,logs/'aprint.log')
     run([sys.executable,str(tests/'native64-aprint-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'aprint-alt.log')
     run([sys.executable,str(tests/'native64-wmsrv-module.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmsrv-module.log')

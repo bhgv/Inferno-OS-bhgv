@@ -5,11 +5,11 @@ typedwmref(Type*t,char*module,char*name)
  Decl*d;return t && t->kind==Tref && t->tof && t->tof->kind==Tadt && (d=t->tof->decl) && d->sym && d->dot && d->dot->sym && !strcmp(d->sym->name,name) && !strcmp(d->dot->sym->name,module);
 }
 static int
-typedwmcontextchannel(Addr*a,int mode,Dis64TypedBody*p,long*base,unsigned int*wire,long*field)
+typedwmcontextaddress(Addr*a,int mode,Dis64TypedBody*p,long*base,unsigned int*wire,long*field)
 {
  static char*names[]={"kbd","ptr","ctl","wctl","images","connfd","ctxt"};
  Type*t=typedfieldowner(a);Decl*d;Addr owner;Dis64Layout layout={0};unsigned int i;int actual,ok=0;
- if((mode!=Afpind && mode!=Ampind) || !typedwmref(t,"Draw","Wmcontext") || a->offset<0 || a->offset>16 || a->offset%4 ||
+ if((mode!=Afpind && mode!=Ampind) || !typedwmref(t,"Draw","Wmcontext") || a->offset<0 || a->offset>24 || a->offset%4 ||
     !dis64layouttype(t->tof,&layout) || layout.legacybytes!=28 || layout.bytes!=56 || layout.alignment!=8 || layout.count!=7)goto done;
  for(i=0,d=t->tof->ids;i<7;i++,d=d->next){
   if(!d || d->store!=Dfield || !d->sym || strcmp(d->sym->name,names[i]) || d->offset!=4*i || !d->ty ||
@@ -23,3 +23,7 @@ typedwmcontextchannel(Addr*a,int mode,Dis64TypedBody*p,long*base,unsigned int*wi
  *wire|=AIND;*field=2*a->offset;ok=1;
  done:dis64layoutfree(&layout);return ok;
 }
+
+static int
+typedwmcontextchannel(Addr*a,int mode,Dis64TypedBody*p,long*base,unsigned int*wire,long*field)
+{return a->offset<=16&&typedwmcontextaddress(a,mode,p,base,wire,field);}

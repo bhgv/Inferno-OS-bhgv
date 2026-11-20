@@ -86,6 +86,7 @@ native64modulelists(const Native64ModuleSpec *spec,const Native64ModuleFunction 
  for(i=0;i<fn->count;i++){
   step=fn->code+i;
   if(step->returned==153||step->returned==141)continue;
+  if(step->returned==58){mode=USRC(step->mode);if(step->op!=IHEADP||step->mode!=(SRC(mode)|DST(AFP|AIND))||step->m||step->d<64||step->d%8||!native64typedrootoperand(mode,step->s,fn->bytes,spec->databytes))return 0;map=mode==AFP?fn->map:spec->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;continue;}
   if((step->returned>=248 && step->returned<=250) || step->returned==252 || step->returned==253)continue;
   if(step->returned==213 && !native64typedwindowlist(step,fn->bytes,spec->databytes))return 0;
   if(step->op!=ICONSP && step->op!=IHEADP && step->op!=ITAIL && step->op!=ICONSW && step->op!=IHEADW)continue;
@@ -189,13 +190,19 @@ native64modulestringpreps(const Native64ModuleSpec*s,const Native64ModuleFunctio
 {
  unsigned int i,j,k,n,found,bit,mode;long slot;const uchar*map;const Native64TypedStep*step;const Native64ModuleSite*site=nil;const Native64ModuleImport*request;
  for(i=0;i<f->count;i++){
-  step=f->code+i;if(step->returned!=180 && step->returned!=181)continue;
+  step=f->code+i;if(step->returned!=87 && step->returned!=180 && step->returned!=181)continue;
+  if(step->returned==87){const Native64TypedStep*copy,*slice;long len;unsigned int z;if(i+2>=f->count||step->op!=ILENC||!native64typedstringprep(step,f->bytes,s->databytes))return 0;len=step->d;copy=step+1;slice=step+2;
+   if(copy->returned!=87||copy->op!=IMOVP||USRC(copy->mode)!=USRC(step->mode)||copy->s!=step->s||!native64typedstringprep(copy,f->bytes,s->databytes)||slice->returned!=87||slice->op!=ISLICEC||slice->d!=copy->d||(slice->mode&ARM)!=AXINF||slice->m!=len||!native64typedstringprep(slice,f->bytes,s->databytes))return 0;slot=copy->d;
+   for(z=0;z<3;z++){unsigned int role=z!=1;long off=z==0?step->s:z==1?len:slot;mode=z==0?USRC(step->mode):AFP;map=mode==AFP?f->map:s->datamap;bit=off/8;if(!!(map[bit/8]&(128>>(bit%8)))!=role)return 0;}
+   mode=USRC(slice->mode);if(mode!=AIMM){map=mode==AFP?f->map:s->datamap;bit=slice->s/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
+  }else{
   if(step->returned!=180 || step->op!=ICVTWC || !native64typedstringprep(step,f->bytes,s->databytes))return 0;
   slot=step->d;bit=slot/8;if((f->map[bit/8]&(0x80>>(bit%8)))==0)return 0;
   mode=USRC(step->mode);if(mode!=AIMM){map=mode==AFP?f->map:s->datamap;bit=step->s/8;if(map[bit/8]&(0x80>>(bit%8)))return 0;}
+  }
   found=0;for(k=0;k<f->nsites;k++)if(f->sites[k].first<i && i<f->sites[k].end){if(found++)return 0;site=f->sites+k;}
   if(!found || site->external!=1 || site->end>=f->count || site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
-  request=s->tables[site->table].imports+site->target;j=i+1;n=0;
+  request=s->tables[site->table].imports+site->target;j=i+(f->code[i].returned==87?3:1);n=0;
   while(j<site->end && f->code[j].returned==180){
    step=f->code+j;if(n++>=8 || step->op!=IADDC || step->d!=slot || !native64typedstringprep(step,f->bytes,s->databytes) || !((USRC(step->mode)==AFP && step->s==slot) || ((step->mode&ARM)==AXINF && step->m==slot)))return 0;
    for(k=0;k<2;k++){mode=k?((step->mode&ARM)==AXINF?AFP:AMP):USRC(step->mode);map=mode==AFP?f->map:s->datamap;bit=(k?step->m:step->s)/8;if((map[bit/8]&(0x80>>(bit%8)))==0)return 0;}j++;
@@ -472,7 +479,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 if(!(map[bit/8]&(0x80>>(bit%8))))return 0;
             }
         }
-        for(j=0;j<f->count;j++)if((f->code[j].op==IADDC && f->code[j].returned!=64 && f->code[j].returned!=180) || (f->code[j].op==IINDC && f->code[j].returned!=137) || f->code[j].op==IINSC || f->code[j].op==ISLICEC){
+        for(j=0;j<f->count;j++)if(f->code[j].returned!=87 && ((f->code[j].op==IADDC && f->code[j].returned!=64 && f->code[j].returned!=180) || (f->code[j].op==IINDC && f->code[j].returned!=137) || f->code[j].op==IINSC || f->code[j].op==ISLICEC)){
             unsigned int k,modes[3],offsets[3],roots[3];
             step=f->code+j;
             if(!native64typedstringstep(step,f->bytes,s->databytes))return 0;

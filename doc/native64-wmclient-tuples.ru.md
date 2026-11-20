@@ -64,3 +64,6 @@ Titlebar.sendctl (PC 511), а wmreq — с tuple результата на по�
 variadic fprint с Window.ctxt.connfd (PC 666). Следующий связанный блок —
 подготовка этих аргументов, head list в startinput и оставшиеся image/cursor
 вызовы. Настоящее окно AWM и Android GUI ещё не запущены.
+
+Следующий блок подготовки аргументов описан в
+[native64-call-prep.ru.md](native64-call-prep.ru.md).

@@ -629,8 +629,10 @@ static int
 typedexternalstringexpr(TypedMulti*c,Dis64TypedBody*p,Inst*frame,Decl*arg,unsigned int end,unsigned int*at,unsigned int offset)
 {
  Inst*in=c->instructions[*at],*first=in;unsigned int n=0,sm,mm;long source,middle;int actual;
- if(in->op!=ICVTWC || in->dm!=Afp || !in->d.decl || in->d.decl->store!=Dlocal || !in->d.decl->sym || in->d.decl->sym->name[0]!='.' || in->d.decl->sym->name[1]!='t' || in->d.offset || !typedclientcodec(in,p,*at-p->first))return typedfail(p,"external-string-expression");
- p->returns[(*at)++-p->first]=180;
+ if(in->op==ILENC){Inst*copy,*slice;long len;unsigned int lm;if(*at+2>=end||in->mm!=Anone||in->branch||in->dm!=Afp||!typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual)||actual!=Tstring||!typedoperand(Afp,&in->d,Tint,0,0,p,&len,&lm,&actual)||!typedinst(in,end,p,p->code+*at-p->first,p->returns+*at-p->first))return typedfail(p,"external-slice-length");p->returns[(*at)++-p->first]=87;
+  copy=c->instructions[*at];slice=c->instructions[*at+1];if(copy->op!=IMOVP||copy->sm!=in->sm||copy->s.reg!=in->s.reg||copy->s.decl!=in->s.decl||copy->s.offset||copy->dm!=Afp||copy->mm!=Anone||copy->branch||!copy->d.decl||copy->d.decl->store!=Dlocal||!copy->d.decl->sym||copy->d.decl->sym->name[0]!='.'||copy->d.decl->sym->name[1]!='t'||copy->d.offset||!typedinst(copy,end,p,p->code+*at-p->first,p->returns+*at-p->first))return typedfail(p,"external-slice-copy");p->returns[(*at)++-p->first]=87;
+  if(slice->op!=ISLICEC||slice->dm!=Afp||slice->d.reg!=copy->d.reg||slice->d.decl!=copy->d.decl||slice->d.offset||slice->mm!=Afp||slice->m.reg!=in->d.reg||slice->m.decl!=in->d.decl||!typedclientstring(slice,p,*at-p->first,end))return typedfail(p,"external-slice-range");p->returns[(*at)++-p->first]=87;first=copy;
+ }else{if(in->op!=ICVTWC || in->dm!=Afp || !in->d.decl || in->d.decl->store!=Dlocal || !in->d.decl->sym || in->d.decl->sym->name[0]!='.' || in->d.decl->sym->name[1]!='t' || in->d.offset || !typedclientcodec(in,p,*at-p->first))return typedfail(p,"external-string-expression");p->returns[(*at)++-p->first]=180;}
  while(*at<end && (in=c->instructions[*at]) && in->op==IADDC && in->dm==Afp){
   if(n++>=8 || in->d.decl!=first->d.decl || in->d.reg!=first->d.reg || in->d.offset ||
      !((in->sm==Afp && in->s.decl==first->d.decl && in->s.reg==first->d.reg && !in->s.offset) || in->mm==Anone || (in->mm==Afp && in->m.decl==first->d.decl && in->m.reg==first->d.reg && !in->m.offset)) || !typedclientstring(in,p,*at-p->first,end))return typedfail(p,"external-string-expression");

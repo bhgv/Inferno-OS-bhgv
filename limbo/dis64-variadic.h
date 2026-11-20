@@ -1,3 +1,7 @@
+static int typedwindowowner(Addr*);
+static int typedwindowfield(Inst*,Dis64TypedBody*,unsigned int,int,unsigned int*);
+static int typedwmcontextaddress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*);
+static int typedloadlisttype(Addr*);
 /* Trusted checked LOAD profile only. Actual instantiated arguments come from
  * the compiler FRAME annotation, never from format text or descriptor bits. */
 /* Only nominal Wmsrv.Window.tag in a typed String tail, not a format/FD. */
@@ -9,6 +13,17 @@ typedvariadicwindowtag(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int off
     !typedwmsrvwindowbase(&in->s,in->sm,p,&base,&wire))return typedfail(p,"variadic-window-tag");
  p->code[pc]=(Dis64Instruction){IMOVP,SRC(wire)|DST(AFP|AIND),0,base,offset};p->returns[pc]=222;return 1;
 }
+
+/* The exact Window.ctxt -> Wmcontext.connfd prefix and compiler nil clear. */
+static int
+typedvariadicfd(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int*at,unsigned int end,unsigned int old)
+{Inst*a,*b,*z;long base,temp,field;unsigned int wire;int actual;if(*at+2>=end)return 0;a=c->instructions[*at];b=c->instructions[*at+1];z=c->instructions[*at+2];
+ if(a->op!=IMOVP||a->sm!=Afpind||a->s.offset!=40||!typedwindowowner(&a->s)||a->dm!=Afp||a->mm!=Anone||a->branch||!typedwmref(a->s.native64type,"Draw","Wmcontext")||!typedwindowfield(a,p,*at-p->first,0,nil))return typedfail(p,"variadic-fd-owner");
+ temp=p->code[*at-p->first].destination;p->code[*at-p->first].middle=48;p->returns[*at-p->first]=59;
+ if(b->op!=IMOVP||b->sm!=Afpind||b->s.reg!=a->d.reg||b->s.decl!=a->d.decl||b->s.offset!=20||!typedwmref(b->s.native64type,"Sys","FD")||b->dm!=Afpind||b->d.reg!=frame->d.reg||b->d.offset!=old||b->mm!=Anone||b->branch||!typedwmcontextaddress(&b->s,b->sm,p,&base,&wire,&field)||base!=temp)return typedfail(p,"variadic-fd-field");
+ p->code[*at+1-p->first]=(Dis64Instruction){IMOVP,SRC(wire)|DST(AFP|AIND),40,base,64};p->returns[*at+1-p->first]=59;
+ if(z->op!=IMOVP||z->sm!=Amp||z->dm!=Afp||z->d.reg!=a->d.reg||z->d.decl!=a->d.decl||z->mm!=Anone||z->branch||!z->s.decl||!z->s.decl->ty||z->s.decl->ty->kind!=Tany||!typedoperand(Amp,&z->s,TypedRoot,0,0,p,&base,&wire,&actual)||!typedinst(z,end,p,p->code+*at+2-p->first,p->returns+*at+2-p->first))return typedfail(p,"variadic-fd-clear");
+ p->returns[*at+2-p->first]=59;*at+=3;return 1;}
 
 static int
 typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int stop,unsigned int*next)
@@ -62,6 +77,11 @@ typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int sto
  at=pc+1;
  for(arg=actual->ids,i=0;arg;arg=arg->next,i++){
     if(at>=end || !(in=c->instructions[at]))return typedfail(p,"variadic-setup");
+    if(op==3&&i==0&&in->dm==Afp){if(!typedvariadicfd(c,p,frame,&at,end,arg->offset))return 0;continue;}
+    if(arg->ty->kind==Tstring&&i>=(op==3?2:1)&&in->op==IHEADP){
+     if(in->mm!=Anone||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||!typedloadlisttype(&in->s)||!typedoperand(in->sm,&in->s,Tlist,0,0,p,&source,&sm,&kind)||kind!=Tlist)return typedfail(p,"variadic-string-head");
+     p->code[at-p->first]=(Dis64Instruction){IHEADP,SRC(sm)|DST(AFP|AIND),0,source,64+8*i};p->returns[at++-p->first]=58;continue;
+    }
     root=arg->ty->kind==Tstring || arg->ty->kind==Tref;
     width=arg->ty->kind==Tbig || arg->ty->kind==Treal?8:4;
     store=root?IMOVP:arg->ty->kind==Treal?IMOVF:width==8?IMOVL:IMOVW;

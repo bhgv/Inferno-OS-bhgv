@@ -52,6 +52,7 @@ on:
       - 'utils/tests/native64-local-geometry-results*'
       - 'utils/tests/native64-rect-list*'
       - 'utils/tests/native64-format-fields*'
+      - 'utils/tests/native64-call-prep*'
       - 'utils/tests/native64-aprint*'
       - 'utils/tests/native64-wmsrv-module*'
       - 'utils/tests/native64-wmclient-geometry*'
@@ -242,6 +243,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/rect-list.log"
           python3 utils/tests/native64-format-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/format-fields.log"
+          python3 utils/tests/native64-call-prep.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/call-prep.log"
           python3 utils/tests/native64-aprint.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/aprint.log"
           python3 utils/tests/native64-aprint-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -451,6 +454,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/rect-list.log"
           python3 utils/tests/native64-format-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/format-fields.log"
+          python3 utils/tests/native64-call-prep.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/call-prep.log"
           python3 utils/tests/native64-aprint.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/aprint.log"
           python3 utils/tests/native64-aprint-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

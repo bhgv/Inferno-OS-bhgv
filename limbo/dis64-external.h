@@ -301,7 +301,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
     if(fn->ty==nil || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys!=nil || fn->ty->tof==nil)
         return typedfail(p,"external-signature");
     while(end<stop && c->instructions[end]!=nil && c->instructions[end]->op!=IMCALL && (c->instructions[end]->dm==Afpind || (c->loads && c->instructions[end]->op==IINDW) ||
-      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==IMOVW || c->instructions[end]->op==ILENA || c->instructions[end]->op==IINDW || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
+      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==IMOVW || c->instructions[end]->op==ILENA || c->instructions[end]->op==ILENC || c->instructions[end]->op==ISLICEC || c->instructions[end]->op==IINDW || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || call->op!=IMCALL || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Aoff || call->m.decl!=fn || call->dm!=frame->sm || call->d.reg!=frame->s.reg ||
        call->d.decl!=frame->s.decl || call->d.offset!=frame->s.offset || call->branch!=nil)return typedfail(p,"external-call");
@@ -332,7 +332,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
             if(offset>65535-8 || !typedexternalheadarg(c,p,frame,arg,end,&at,offset))return 0;
             offset+=8;continue;
         }
-        if(c->loads && kind==Tstring && in->op==ICVTWC){
+        if(c->loads && kind==Tstring && (in->op==ICVTWC||in->op==ILENC)){
             if(offset>65535-8 || !typedexternalstringexpr(c,p,frame,arg,end,&at,offset))return 0;
             offset+=8;continue;
         }

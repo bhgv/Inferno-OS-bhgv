@@ -314,7 +314,19 @@ def verify(data,r,imports,loads=False,rows=None):
             oldop=41 if kind in(12,13)else 118 if kind==4 else 46 if kind==7 else 45
             newop=oldop if kind in(4,7,12,13)else OPCODES['ICVTWL']
             a=original[at];sm=a['mode']>>3&7
-            if r['code'][at][5]==95:
+            if r['code'][at][5]==59:
+                assert op==3 and j==0 and kind==12 and a['op']==41 and a['mode']==41 and a['s'][1]==40 and a['m']is None
+                owner=maps['frame'][a['s'][0]];temp=maps['frame'][a['d'][0]];b=original[at+1];z=original[at+2]
+                assert b==dict(op=41,mode=45,m=None,s=[a['d'][0],20],d=[pending,legacy])and z['op']==41 and z['mode']==1 and z['m']is None and z['d']==a['d']
+                assert next(l for l in r['data']['leaves']if l[0]==z['s'][0])[4]==20
+                assert r['code'][at:at+3]==[[41,41,owner,48,temp,59],[41,45,temp,40,64,59],[41,1,maps['data'][z['s'][0]],0,temp,59]]
+                for off in(owner,temp):assert r['frame']['map'][off//64]&(128>>(off//8%8))
+                at+=3;continue
+            if r['code'][at][5]==58:
+                assert kind==13 and j>=(1 if op!=3 else 2)and a['op']==OPCODES['IHEADP']and sm in(0,1)and a['mode']==(sm<<3)|5 and a['m']is None and a['d']==[pending,legacy]
+                old=a['s'][0];source=maps['frame'if sm else'data'][old];assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==old)[2:]==[4,8,10]
+                assert r['code'][at]==[a['op'],a['mode'],source,0,native,58]
+            elif r['code'][at][5]==95:
                 assert kind==9 and j>=(1 if op!=3 else 2)and a['op']==45 and sm in(4,5)and a['mode']==(sm<<3)|5 and a['m']is None and a['s'][1]in(16,36,40,44)and a['d']==[pending,legacy]
                 source=maps['frame'if sm==5 else'data'][a['s'][0]];field={16:32,36:72,40:76,44:80}[a['s'][1]]
                 leaf=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==a['s'][0]);assert leaf[3:]==[8,12]
@@ -450,6 +462,17 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert r['code'][at]==[a['op'],a['mode'],maps['frame'if sm else'data'][a['s'][0]],0,target,187];at+=1
                 assert 0<count<=256 and original[at]['mode']==13 and maps['frame'][original[at]['s'][0]]==temp
             stringprep=None
+            if at+2<end and r['code'][at][5]==87:
+                assert loads and kind==13;a,b,c=original[at:at+3];sm=a['mode']>>3&7
+                assert a['op']==OPCODES['ILENC']and a['m']is None and a['mode']==(sm<<3)|1 and sm in(0,1)
+                assert b['op']==41 and b['mode']==a['mode']and b['s']==a['s']and b['m']is None
+                assert c['op']==OPCODES['ISLICEC']and c['mode']&7==1 and c['mode']&192==128 and c['m']==a['d'][0]and c['d']==b['d']
+                oldtemp=b['d'][0];temp=maps['frame'][oldtemp];source=maps['frame'if sm else'data'][a['s'][0]];length=maps['frame'][a['d'][0]];cs=c['mode']>>3&7
+                for space,old,k in(('frame'if sm else'data',a['s'][0],13),('frame',a['d'][0],9),('frame',oldtemp,13)):
+                    assert next(l for l in r[space]['leaves']if l[0]==old)[4]==k
+                low=c['s'][0]if cs==2 else maps['frame'if cs else'data'][c['s'][0]]
+                assert r['code'][at:at+3]==[[a['op'],a['mode'],source,0,length,87],[41,b['mode'],source,0,temp,87],[c['op'],c['mode'],low,length,temp,87]]
+                at+=3;stringprep=(temp,oldtemp)
             if at<end and r['code'][at][5]==180:
                 assert loads and kind==13;oldtemp=original[at]['d'][0];temp=maps['frame'][oldtemp];nprep=0
                 while at<end and r['code'][at][5]==180:
