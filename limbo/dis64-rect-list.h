@@ -14,7 +14,9 @@ typedrectlist(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
  if(in->branch || (!cons&&!typedrectlisttype(&in->s)) || (!head&&!typedrectlisttype(&in->d)))goto done;
  if(in->op==ITAIL){if(in->mm!=Anone || !typedoperand(in->sm,&in->s,Tlist,0,0,p,&source,&sm,&actual) || actual!=Tlist || !typedoperand(in->dm,&in->d,Tlist,0,0,p,&destination,&dm,&actual) || actual!=Tlist)goto done;*out=(Dis64Instruction){ITAIL,SRC(sm)|DST(dm),0,source,destination};*returned=250;ok=1;goto done;}
  if((!cons&&!head) || in->mm!=Aimm || in->m.offset!=16)goto done;
- a=cons?in->s:in->d;t=a.native64type?a.native64type:a.decl?a.decl->ty:nil;if(!typedwordgeometry(t,&l) || l.bytes!=16)goto done;
+ a=cons?in->s:in->d;t=a.native64type?a.native64type:a.decl?a.decl->ty:nil;
+ if(cons && t && t->kind==Ttuple){if(!dis64layouttype(t,&l)||l.bytes!=16||l.legacybytes!=16||l.count!=4)goto done;for(i=0;i<4;i++)if(l.leaves[i].kind!=Tint||l.leaves[i].bytes!=4||l.leaves[i].native!=4*i||l.leaves[i].legacy!=4*i)goto done;}
+ else if(!typedwordgeometry(t,&l) || l.bytes!=16)goto done;
  if(cons && (in->sm==Afpind || in->sm==Ampind)){
   if(in->s.offset!=4 || !typedwmsrvwindowbase(&in->s,in->sm,p,&source,&sm))goto done;
  }else{

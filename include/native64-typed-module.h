@@ -1143,7 +1143,7 @@ native64modulemake(void *arg)
         if(!native64typedmulticode(m->prog+b->offsets[i],f->count,f->code,f->count,f->bytes,s->databytes,b->calls,f->nsites))error(exInval);
         for(j=0;j<f->count;j++){
             if(f->code[j].op==INEWAZ)m->prog[b->offsets[i]+j].reg=f->code[j].returned==254?refarraytype:s->nfunctions+1+b->imports;
-            if(f->code[j].returned==77&&f->code[j].op==IMOVMP)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples+(((unsigned long)f->code[j].m>>16)==124?mapped2:0);
+            if(f->code[j].returned==77&&f->code[j].op==IMOVMP)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples+(((unsigned long)f->code[j].m>>16)==48?0:mapped2);
             if(f->code[j].returned==68)m->prog[b->offsets[i]+j].reg=recordids[11];
             if(f->code[j].returned==154)m->prog[b->offsets[i]+j].s.imm=recordids[f->code[j].s];
             if(f->code[j].returned==90)m->prog[b->offsets[i]+j].reg=recordids[8];

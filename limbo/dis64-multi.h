@@ -953,6 +953,10 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
+        if(c->loads && !spawning && kind==Tadt && typedwordlay(arg->ty)){
+            if(!((in->op==IMOVW&&in->mm==Anone)||(in->op==IMOVM&&in->mm==Aimm&&in->m.offset==4)) || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) || actual!=Tint)return typedfail(p,"local-lay-argument");
+            p->code[at-p->first]=(Dis64Instruction){IMOVW,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=64;continue;
+        }
         if(c->loads && !spawning && kind==Ttuple){
             Dis64Layout tuple={0};unsigned int j,src=0,dst=0,x,y;int valid=dis64layouttype(arg->ty,&tuple),actual;long part;unsigned int wire;
             if(!valid || (tuple.bytes!=8 && tuple.bytes!=16) || tuple.bytes!=tuple.legacybytes || tuple.count!=tuple.bytes/4 || in->op!=IMOVM || in->mm!=Aimm || in->m.offset!=tuple.bytes || in->branch || (in->sm!=Afp && in->sm!=Amp) || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset)valid=0;

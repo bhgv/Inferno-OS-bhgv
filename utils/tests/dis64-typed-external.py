@@ -256,7 +256,13 @@ def verify(data,r,imports,loads=False,rows=None):
                 screenprep=(o['d'][0],temp[1]);at+=1;o=original[at];assert o['s'][0]==screenprep[0]and o['mode']>>3&7==5
             sm=o['mode']>>3&7
             assert o['d']==[pending,next(x[0]for x in callee['frame']['leaves']if x[1]==arg[0])]
-            if arg[1]in(1,14):
+            if arg[1:]==[1,4,4]:
+                assert loads and sm in(0,1,2)and ((o['op']==45 and o['m']is None and o['mode']==(sm<<3)|5)or(o['op']==42 and o['m']==4 and sm in(0,1)and o['mode']==(sm<<3)|64|5))
+                assert next(l for l in callee['frame']['leaves']if l[1]==arg[0])[2:]==[4,4,9]
+                source=o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]]
+                if sm!=2:assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0])[2:]==[4,4,9]
+                assert r['code'][at]==[45,(sm<<3)|5,source,0,arg[0],64]
+            elif arg[1]in(1,14):
                 assert loads and arg[2]==arg[3]and arg[3]in(8,16)
                 assert o['op']==OPCODES['IMOVM']and o['mode']==(sm<<3)|64|5 and o['m']==arg[3]
                 width=arg[3];role=r['code'][at][5]
@@ -727,20 +733,20 @@ def verify(data,r,imports,loads=False,rows=None):
         if pc in covered:continue
         o=original[pc]
         if returned==77:
-            c=r['result_aggregate'];width={12:12,48:16,80:16,92:20,124:24}[c];count={12:3,48:2,80:2,92:5,124:3}[c]
+            c=r['result_aggregate'];width={12:12,48:16,72:24,80:16,92:20,96:8,112:16,124:24}[c];count={12:3,48:2,72:3,80:2,92:5,96:2,112:4,124:3}[c]
             sm=o['mode']>>3&7;assert loads and op==o['op']and o['d'][0]==16 and o['d'][1]%4==0
-            field=o['d'][1]//4;assert field<count;off=8*field if c in(48,124)else(8 if c==80 and field else 4*field)
+            field=o['d'][1]//4;assert field<count;off=8*field if c in(48,72,124)else(8 if c==80 and field else 4*field)
             n=8 if op==41 else 4 if op==45 else o['m']if op==42 else width if op==OPCODES['IMOVMP']else 0
-            root=c in(48,124)or(c==80 and field==0)
+            root=c in(48,72,124)or(c==80 and field==0)
             assert n and n<=width-off and op in(41,45,42,OPCODES['IMOVMP'])and d==32 and m==(c<<16)|(n<<8)|off
             assert mode==(sm<<3)|(64 if op in(42,OPCODES['IMOVMP'])else 0)|5 and sm in(0,1,2)
             assert s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
             if op in(41,45):assert o['m']is None and root==(op==41)
             elif op==42:
-                assert c in(12,92)and sm in(0,1)and n%4==0
+                assert c in(12,92,96,112)and sm in(0,1)and n%4==0
                 for k in range(0,n,4):assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0]+k)==[o['s'][0]+k,s+k,4,4,9]
             else:
-                assert c in(48,124)and field==0 and sm==1 and types[o['m']][0]==4*count and list(types[o['m']][1])==[192 if c==48 else 224]
+                assert c in(48,72,124)and field==0 and sm==1 and types[o['m']][0]==4*count and list(types[o['m']][1])==[192 if c==48 else 224]
                 for k in range(count):assert maps['frame'][o['s'][0]+4*k]==s+8*k
             continue
         if returned==68:

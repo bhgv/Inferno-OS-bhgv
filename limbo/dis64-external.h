@@ -61,7 +61,7 @@ typedwmtuplebinding(Decl*fn,Inst*b,Dis64TypedBody*p,unsigned int*base,int reloca
 {Dis64Layout l={0};unsigned int c,i,j,first,end,delta,next;int ok=0;
  c=typedaggregatecontract(fn->ty->tof,&l);if(!c)c=typedwmtuple(fn->ty->tof,&l);if(!c||b->sm!=Afp||b->s.reg<32)goto done;
  for(first=0;first<p->frame.count;first++)if(p->frame.leaves[first].legacy==(unsigned int)b->s.reg)break;
- if(first>p->frame.count||l.count>p->frame.count-first)goto done;*base=(p->frame.leaves[first].native+7)&~7U;
+ if(first>p->frame.count||l.count>p->frame.count-first)goto done;*base=(p->frame.leaves[first].native+((c==96||c==112)?3:7))&~((c==96||c==112)?3U:7U);
  for(i=0;i<l.count;i++){Dis64LayoutLeaf*a=l.leaves+i,*v=p->frame.leaves+first+i;if(v->legacy!=b->s.reg+a->legacy||v->oldbytes!=a->oldbytes||v->bytes!=a->bytes||v->kind!=a->kind||(!relocate&&v->native!=*base+a->native))goto done;}
  end=p->frame.leaves[first+l.count-1].native+p->frame.leaves[first+l.count-1].bytes;if(*base>Dis64LayoutBytes-l.bytes||end>*base+l.bytes)goto done;next=first+l.count<p->frame.count?p->frame.leaves[first+l.count].native:p->frame.bytes;delta=next<*base+l.bytes?(*base+l.bytes-next+7)&~7U:0;
  if(relocate){if(delta>Dis64LayoutBytes-p->frame.bytes)goto done;for(i=0;i<l.count;i++)p->frame.leaves[first+i].native=*base+l.leaves[i].native;for(j=first+l.count;j<p->frame.count;j++)p->frame.leaves[j].native+=delta;p->frame.bytes=(p->frame.bytes+delta+7)&~7U;}
@@ -113,6 +113,11 @@ typedwordgeometry(Type*t,Dis64Layout*layout)
 static int
 typedwordchans(Type*t,Dis64Layout*l)
 {Decl*d=t?t->decl:nil;return t&&t->kind==Tadt&&d&&d->sym&&d->dot&&d->dot->sym&&!strcmp(d->sym->name,"Chans")&&!strcmp(d->dot->sym->name,"Draw")&&t->ids&&t->ids->sym&&!strcmp(t->ids->sym->name,"desc")&&dis64layouttype(t,l)&&l->legacybytes==4&&l->bytes==4&&l->count==1&&l->alignment==4&&!l->leaves[0].legacy&&!l->leaves[0].native&&l->leaves[0].oldbytes==4&&l->leaves[0].bytes==4&&l->leaves[0].kind==Tint;}
+
+/* Winplace's private Lay carries one raw Word despite its methods. */
+static int
+typedwordlay(Type*t)
+{Dis64Layout l={0};Decl*d=t?t->decl:nil;int ok=0;if(!t||t->kind!=Tadt||!d||!d->sym||strcmp(d->sym->name,"Lay")||!((d->dot&&d->dot->sym&&!strcmp(d->dot->sym->name,"Winplace"))||(!d->dot&&impdecl&&impdecl->sym&&!strcmp(impdecl->sym->name,"Winplace"))))return 0;d=t->ids;if(d&&d->store==Dfield&&d->sym&&!strcmp(d->sym->name,"d")&&d->ty&&d->ty->kind==Tint&&!d->offset&&dis64layouttype(t,&l)&&l.count==1&&l.bytes==4&&l.legacybytes==4&&l.alignment==4&&!l.leaves[0].legacy&&!l.leaves[0].native&&l.leaves[0].oldbytes==4&&l.leaves[0].bytes==4&&l.leaves[0].kind==Tint)ok=1;dis64layoutfree(&l);return ok;}
 
 /* A Pointer is nominally distinct from Rect despite four raw Word leaves. */
 static int
