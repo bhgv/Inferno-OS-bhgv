@@ -66,6 +66,21 @@ Client[id]. Полный Wmlib проверен на 195/196 точек отка
 Arm64/riscv64 здесь добавлены в существующие CI-маршруты; их локальное
 исполнение не заявляется.
 
+Отдельный прогон Android ARM64 использует NDK r27c, статический Bionic
+API 29 и QEMU user mode:
+
+```sh
+NATIVE64_RUNNER=qemu-aarch64 python3 utils/tests/native64-awm-startup.py \
+  --limbo /path/to/host/limbo --android-ndk /path/to/android-ndk-r27c
+```
+
+На Bionic прошли все шесть сочетаний C/JIT и quanta 1/3/1000, оба
+отрицательных контроля, 36 отказов при повреждении registry metadata и
+195/196 откатов выделения Wmlib. Android GUI CI сохраняет вывод в
+`bionic-awm-startup.log`. В этом прогоне Sys/Draw/Tk и приложение панели
+предоставляет тестовый стенд. Линковка NativeActivity с native64 Draw/Tk,
+фиксированными Sys и форматтером проверяется отдельным шагом.
+
 При регрессии Emuinit обновлена устаревшая raw-IR фикстура variadic test:
 она явно предоставляет nil implementation-module и запрещающий неожиданные
 nominal-сравнения tequal, а при замене descriptor operand на module operand

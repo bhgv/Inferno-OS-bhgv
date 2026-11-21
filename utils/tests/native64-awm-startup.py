@@ -81,15 +81,30 @@ def unit(w,ops,methods):
  return src+'\n#line 1 "native64-awm-startup.c"\n'+(ROOT/'utils/tests/native64-awm-startup.c').read_text().replace(' GRAPH_HANDLERS',handlers)
 
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);a=p.parse_args()
+ p=argparse.ArgumentParser(description=__doc__)
+ p.add_argument('--limbo',required=True,type=Path)
+ p.add_argument('--android-ndk',type=Path,help='build the ARM64/Bionic fixture with NDK clang')
+ a=p.parse_args()
  if not __debug__:p.error('source oracles require assertions')
+ runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''))
+ arch=os.environ.get('NATIVE64_ARCH','amd64')
+ compiler=shlex.split(os.environ.get('CC','cc'))
+ platform_includes=('Linux/'+arch+'/include','Linux/386/include')
+ default_flags='-O0 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'
+ if a.android_ndk:
+  clang=a.android_ndk.resolve()/'toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang'
+  if not clang.is_file():p.error('Missing NDK ARM64 clang: '+str(clang))
+  arch='arm64'
+  compiler=[str(clang)]
+  platform_includes=('Android/arm64/include','Android/arm/include')
+  default_flags='-O2 -g -DNDEBUG -fno-strict-aliasing -static'
+ cc=compiler+shlex.split(os.environ.get('NATIVE64_CFLAGS',default_flags))
+ if arch in('arm64','riscv64'):cc+=['-DDIS64_TEST_'+arch.upper()+'=1','-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
  with tempfile.TemporaryDirectory(prefix='awm-startup-',dir=ROOT)as td:
   w=Path(td);CMD['generate'](a.limbo.resolve(),w,'Command',False,argv=True,local=True,pair=True,raises=True);ops,methods=generate(a.limbo.resolve(),w);(w/'unit.c').write_text(unit(w,ops,methods))
-  arch=os.environ.get('NATIVE64_ARCH','amd64');cc=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('NATIVE64_CFLAGS','-O0 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
-  if arch in('arm64','riscv64'):cc+=['-DDIS64_TEST_'+arch.upper()+'=1','-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
-  cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
+  cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in platform_includes+('emu/port','include','libinterp')]
   command=cc+[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+[str(ROOT/('lib9/'+n+'.c'))for n in('sprint','snprint','vsnprint','dofmt','fmt','fmtlock','fmtquote','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+CMD['FILES']['releaseflags'](cc)+['-pthread','-lm','-o',str(w/'unit')]
-  subprocess.run(command,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(w/'unit')],check=True,timeout=240)
+  subprocess.run(command,check=True);subprocess.run(runner+[str(w/'unit')],check=True,timeout=240)
   original=(w/'unit.c').read_text()
   # Reproduce the two integration failures; success must depend on real quoting
   # and on the exact checked Client.id read, not just module construction.
@@ -106,7 +121,7 @@ def main():
     p.write_text(text.replace(before,before[:-1]+'||USRC(f->code[j+1].mode)==(AFP|AIND))'))
     predicate='full Wmlib constructor'
    subprocess.run(command,check=True)
-   result=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(w/'unit')],capture_output=True,text=True,timeout=240)
+   result=subprocess.run(runner+[str(w/'unit')],capture_output=True,text=True,timeout=240)
    assert result.returncode==10 and predicate in result.stderr and 'Sanitizer'not in result.stderr and 'runtime error:'not in result.stderr,(label,result.returncode,result.stderr[-2000:])
    for name in ('native64-sys-module.h','native64-typed-module.h'):
     if (w/name).exists():(w/name).unlink()
