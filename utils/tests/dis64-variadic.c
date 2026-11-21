@@ -1,5 +1,9 @@
 #include <stdio.h>
 static void varircheck(int ok,char*why){if(!ok){fprintf(stderr,"variadic IR: %s\n",why);exit(10);}}
+/* These raw scalar/String IR cases have no implementation module or nominal
+ * ADTs. Real source gates link the full compiler's impdecl and tequal instead. */
+Decl *impdecl;
+int tequal(Type*a,Type*b){USED(a);USED(b);varircheck(0,"unexpected nominal type comparison");return 0;}
 static void stringflowcheck(void){
  Type text={0},word={0},fn={0};Decl arg={0},global={0},caller={0},*functions[]={&caller};Desc frame={0},data={0};uchar fm[]={0,128},dm[]={128};Inst code[6]={{0}};Dis64TypedBody p={0};int i,j,branches[]={IBEQC,IBNEC,IBLTC,IBLEC,IBGTC,IBGEC};
  text.kind=Tstring;text.size=text.align=4;word.kind=Tint;word.size=word.align=4;fn.kind=Tfn;fn.tof=&word;fn.ids=&arg;arg.ty=&text;arg.store=Darg;arg.offset=32;global.ty=&text;global.store=Dglobal;
@@ -47,10 +51,10 @@ int main(void){
   code[i==0?0:i<4?1:2]=saved;fn.sig=0x4c0624b6U;fm[1]=0x80;formal.ty=&text;
  }
  /* The actual per-use type refines only compiler temporary roots in LOAD. */
- code[0].op=IMFRAME;code[0].native64args=nil;code[0].sm=Afp;code[0].s.reg=32;code[0].s.decl=&arg;code[0].mm=Aoff;code[0].m.decl=&callee;
+ code[0].op=IMFRAME;code[0].native64args=nil;code[0].sm=Afp;code[0].s.reg=32;code[0].s.decl=&arg;code[0].s.offset=0;code[0].mm=Aoff;code[0].m.decl=&callee;
  fn.varargs=0;fn.ids=nil;code[1]=code[2];code[1].pc=1;code[1].next=code+2;code[2]=code[3];code[2].pc=2;code[2].next=code+3;code[3]=code[4];code[3].pc=3;code[3].next=code+4;code[4]=code[5];code[4].pc=4;code[4].next=nil;
  temp.ty=&ref;code[1].s.native64type=code[3].s.native64type=&text;
- varircheck(dis64typedloads(&caller,&global,fns,1,code,5,5,&p),"reused managed temporary per-use String type");dis64typedfree(&p);
+ {int accepted=dis64typedloads(&caller,&global,fns,1,code,5,5,&p);if(!accepted)fprintf(stderr,"temporary refinement pc=%u reason=%s\n",p.badpc,p.reason);varircheck(accepted,"reused managed temporary per-use String type");}dis64typedfree(&p);
  varircheck(!dis64typedexternal(&caller,&global,fns,1,code,5,5,&p),"temporary refinement LOAD-only");dis64typedfree(&p);
  tmpname.name="named";varircheck(!dis64typedloads(&caller,&global,fns,1,code,5,5,&p),"ordinary local cannot refine nominal root type");dis64typedfree(&p);tmpname.name=".t0";
  code[1].s.native64type=&word;varircheck(!dis64typedloads(&caller,&global,fns,1,code,5,5,&p),"scalar annotation cannot refine a root");dis64typedfree(&p);

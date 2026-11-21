@@ -59,7 +59,14 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
   n=r.get('export_name',r['name']).replace('.','_');array('full_map_'+n,r['frame']['map']);lines+=['static const Native64TypedStep full_code_'+n+'[]={']+['{'+','.join(map(str,c))+'},'for c in r['code']]+['};']
   sites=[]
   for e in r.get('externals',[]):
-   tables=[i for i,t in enumerate(imports)if e['binding']<len(t)and t[e['binding']]=={'name':e['name'],'signature':e['signature']}];assert len(tables)==1
+   tables=[i for i,t in enumerate(imports)if e['binding']<len(t)and t[e['binding']]=={'name':e['name'],'signature':e['signature']}]
+   if len(tables)>1:
+    # Equal signatures such as several modules' init() do not identify a namespace.
+    # Match the exact mapped module operand to its source-proved LOAD table.
+    mode,offset=e['module'];scope=rows if mode==0 else[r]
+    loaded={c[3]for body in scope for c in body['code']if c[0]==E['OPCODES']['ILOAD']and c[1]&7==mode and c[4]==offset}
+    tables=[i for i in tables if i in loaded]
+   assert len(tables)==1,(r['name'],e['name'],e['module'],tables)
    sites.append((e['first'],e['end'],e['binding'],e['contract'],e['inherited'],1,tables[0],*e['module']))
   sites += [(a,b,next(i for i,x in enumerate(rows)if x['first']==target),contract,inherited,0,0,0,0)for a,b,target,desc,off,contract,inherited in r.get('calls',[])]
   if sites:lines+=['static const Native64ModuleSite full_sites_'+n+'[]={']+['{'+','.join(map(str,s))+'},'for s in sorted(sites)]+['};']
@@ -150,8 +157,11 @@ def main():
   header.write_text(changed.replace(before,'if(0)return 0;',1));subprocess.run(command,check=True);r=subprocess.run(runner+[str(binary)],capture_output=True,text=True,timeout=180)
   assert r.returncode==10 and 'metadata refusal before allocation/publication'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
   print('PASS complete emuinit active control: removed native frame-map validation detected',flush=True)
-  header.unlink();header=w/'native64-typed-module.h';original=(ROOT/'include/native64-typed-module.h').read_text();before='if(!(map[bit/8]&(128>>(bit%8))))return 0;';assert original.count(before)==1
-  header.write_text(original.replace(before,'if(0)return 0;',1));subprocess.run(command,check=True);r=subprocess.run(runner+[str(binary)],capture_output=True,text=True,timeout=180)
+  header.unlink();header=w/'native64-typed-module.h';original=(ROOT/'include/native64-typed-module.h').read_text()
+  start=original.index('for(j=0;j<f->count;j++)if(f->code[j].returned!=153 && (f->code[j].op==IBEQC')
+  stop=original.index('for(j=0;j<f->count;j++)if(native64typedbranch',start)
+  region=original[start:stop];before='if(!(map[bit/8]&(128>>(bit%8))))return 0;';assert region.count(before)==1
+  header.write_text(original[:start]+region.replace(before,'if(0)return 0;',1)+original[stop:]);subprocess.run(command,check=True);r=subprocess.run(runner+[str(binary)],capture_output=True,text=True,timeout=180)
   assert r.returncode==10 and 'malformed Arg String roles refused'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
   print('PASS Arg active control: removed String branch root-map validation detected',flush=True)
 

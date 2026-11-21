@@ -61,6 +61,7 @@ on:
       - 'utils/tests/native64-aggregate-result*'
       - 'utils/tests/native64-winplace-module*'
       - 'utils/tests/native64-wmlib-snarf*'
+      - 'utils/tests/native64-awm-startup*'
       - 'utils/tests/native64-string-word*'
       - 'utils/tests/native64-string-library*'
       - 'utils/tests/native64-bufio-library*'
@@ -270,6 +271,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/winplace-module.log"
           python3 utils/tests/native64-wmlib-snarf.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/wmlib-snarf.log"
+          python3 utils/tests/native64-awm-startup.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/awm-startup.log"
           python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/string-word.log"
           python3 utils/tests/native64-string-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -493,6 +496,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/winplace-module.log"
           python3 utils/tests/native64-wmlib-snarf.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/wmlib-snarf.log"
+          python3 utils/tests/native64-awm-startup.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/awm-startup.log"
           python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/string-word.log"
           python3 utils/tests/native64-string-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
