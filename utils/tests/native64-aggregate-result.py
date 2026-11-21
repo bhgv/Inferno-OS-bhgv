@@ -6,8 +6,8 @@ ROOT=Path(__file__).resolve().parents[2]
 B=runpy.run_path(str(ROOT/'utils/tests/native64-local-geometry-args.py'));G,CMD,E=B['G'],B['CMD'],B['E']
 DECL='Winplace:module{run:fn(n:int);};'
 SOURCE='''implement Winplace;include "sys.m";include "draw.m";Point,Rect:import Draw;'''+DECL+'''EW,NS:con iota;Lay:adt{d:int;mkr:fn(l:self Lay,r:Rect):Rect;};
-pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
-run(n:int){(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
+bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
+run(n:int){buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
 swappt(p:Point,n:int):Point{if(n<0)return p;return(p.y,p.x);}
 mixed(n:int):(string,int){if(n<0)return (text(n),n);return ("positive",n);}
 text(n:int):string{if(n<0)return "negative";return "positive";}firstword(r:(int,int)):int{return r.t0;}
@@ -16,17 +16,17 @@ nested(n:int):((int,int),int){return((n,2),3);}
 roots(n:int):(ref Draw->Context,string){if(n<0)return(nil,"negative");return(nil,"positive");}
 triple(n:int):(string,ref Draw->Image,string){v:(string,ref Draw->Image,string);if(n<0)v=("negative",nil,"end");else v=("positive",nil,"end");return v;}forward(n:int):(string,ref Draw->Image,string){return triple(n);}
 '''
-SOURCE+=''.join(re.search(r'(?m)^'+n+r'\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/wmlib.b').read_text(),re.S)[0]for n in('splitqword','qslice','qword','s2r'))
+SOURCE+=''.join(re.search(r'(?m)^'+n+r'\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/wmlib.b').read_text(),re.S)[0]for n in('splitqword','qslice','qword','s2r','bplong'))
 SOURCE+=re.search(r'(?m)^select\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/winplace.b').read_text(),re.S)[0]
 SOURCE+=re.search(r'(?m)^Lay\.mkr\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/winplace.b').read_text(),re.S)[0]
 def generate(limbo,w):
  m=w/'aggregate.m';m.write_text(DECL);h=subprocess.check_output([str(limbo),'-H','-M','Winplace',str(m)],text=True);sigs={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Winplace_(\w+) (0x[0-9a-f]+)U',h,re.M)}
- rows=G['generate'](limbo,w,SOURCE,'Winplace',(16,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
- p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout'))+'};\n')
+ rows=G['generate'](limbo,w,SOURCE,'Winplace',(17,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
+ p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf'))+'};\n')
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);count=0
  for row in records:
   for pc,c in enumerate(row['code']):
-   if c[5]!=77:continue
+   if c[5]not in(77,157,158):continue
    for k in range(6):
     bad=copy.deepcopy(row);bad['code'][pc][k]+=1
     try:CMD['verify_nilbranches'](data,bad,[],rows=records)
@@ -43,7 +43,7 @@ def generate(limbo,w):
  print('PASS Lay argument boundary: foreign single Word ADT refused',flush=True)
 
 
- for name,expected in(('wmlib',14),('winplace',21)):
+ for name,expected in(('wmlib',15),('winplace',21)):
   source=(ROOT/('appl/lib/'+name+'.b')).read_text();data,records=E['compile_source'](limbo,w,source,interface='',loads=True);imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]
   assert sum(r['accepted']for r in records)==expected,[(r['name'],r.get('reason'))for r in records]
   for row in records:
@@ -58,7 +58,8 @@ def unit():
  src=src.replace(extract(src,'void\ncvtup('),'void cvtup(Rune*,String*);',1);strings=(ROOT/'libinterp/string.c').read_text()
  for sig in('void\ncvtup(','String*\nslicer(','OP(indc)','OP(insc)','OP(slicec)','OP(cvtcw)'):src+='\n'+extract(strings,sig)+'\n'
  vm=(ROOT/'libinterp/xec.c').read_text()
- for sig in('OP(consm)','OP(headm)'):src+='\n'+extract(vm,sig)+'\n'
+ for sig in('static uchar*\narrayaddress(','static void\narrayindex(','static void\nnewarray(','OP(newaz)','OP(indb)','OP(cvtwb)','OP(shrw)','OP(consm)','OP(headm)'):
+  if sig not in src:src+='\n'+extract(vm,sig)+'\n'
  return src+'\n#line 1 "native64-aggregate-result.c"\n'+(ROOT/'utils/tests/native64-aggregate-result.c').read_text().replace(' AGGREGATE_HANDLERS',handlers)
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',type=Path,required=True);a=p.parse_args()
@@ -68,7 +69,8 @@ def main():
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')];binary=w/'unit';command=cc+[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+[str(ROOT/('lib9/'+n+'.c'))for n in('sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+CMD['FILES']['releaseflags'](cc)+['-pthread','-lm','-o',str(binary)];subprocess.run(command,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],check=True,timeout=180)
   for header,before,after,predicate in(
    ('native64-typed-module.h','if(flow!=complete)return 0;','if(0)return 0;','malformed aggregate or undefined path refused'),
-   ('native64-typed-code.h','p->reg=(s->op==IMOVM)?(s->m>>8)&255:0;','p->reg=(s->op==IMOVM)?8:0;','original Wmlib s2r rectangle')):
+   ('native64-typed-code.h','p->reg=(s->op==IMOVM)?(s->m>>8)&255:0;','p->reg=(s->op==IMOVM)?8:0;','original Wmlib s2r rectangle'),
+   ('native64-typed-code.h','p->s.imm=s->s;p->d.i.f=48;p->d.i.s=0;','p->s.imm=s->s;p->d.i.f=48;p->d.i.s=1;','original Wmlib bplong bytes and guards')):
    for name in('native64-typed-module.h','native64-typed-multi.h','native64-typed-code.h'):(w/name).write_text((ROOT/'include'/name).read_text())
    text=(w/header).read_text();assert text.count(before)==1;(w/header).write_text(text.replace(before,after));subprocess.run(command,check=True);result=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],capture_output=True,text=True,timeout=180)
    assert result.returncode==10 and predicate in result.stderr and 'Sanitizer'not in result.stderr and 'runtime error:'not in result.stderr,(header,result.returncode,result.stderr[-1000:])

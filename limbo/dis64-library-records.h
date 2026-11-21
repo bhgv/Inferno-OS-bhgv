@@ -98,9 +98,9 @@ static int
 typedlibrarymodule(Inst*frame,Dis64TypedBody*p,long*value,unsigned int*mode,int*actual)
 {unsigned int id;if((frame->sm!=Afpind&&frame->sm!=Ampind)||typedlibraryrecord(typedfieldowner(&frame->s))!=5||frame->s.offset!=4||!typedlibraryoperand(frame->sm,&frame->s,TypedRoot,p,value,mode,actual,&id))return 0;*value|=5L<<24;*actual=Tmodule;return 1;}
 
-/* Borrowed byte address is consumed exactly once by the next instruction. */
+/* A byte borrow permits one pure Word shift before its single consumer. */
 static int
-typedlibrarybyteindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc)
+typedlibrarybyteindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc,unsigned int gap)
 {
  long source,index,value;unsigned int sm,dm,vm,sid=0,did=0;int actual,read;Addr*a;
  if(in->op!=IINDB || (!typedbytearrayaddr(&in->s) && !(typedlibraryrecord(typedfieldowner(&in->s))==1 && in->s.offset==4)) || in->mm!=Afp || !in->m.decl || in->m.offset || in->branch || !typedlibraryoperand(in->sm,&in->s,TypedRoot,p,&source,&sm,&actual,&sid) || !typedlibraryoperand(in->dm,&in->d,Tint,p,&index,&dm,&actual,&did) || !use || use->branch || use->mm!=Anone)return typedfail(p,"library-byte-index");
@@ -108,8 +108,8 @@ typedlibrarybyteindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc)
  if((!read&&use->dm!=Afpind) || a->decl!=in->m.decl || a->reg!=in->m.reg || a->offset || (read?(use->op!=IMOVB&&use->op!=ICVTBW):(use->op!=IMOVB&&use->op!=ICVTWB)))return typedfail(p,"library-byte-consumer");
  if(read && use->dm==Afpind && use->d.reg==16 && !use->d.offset && use->op==ICVTBW && p->resultkind==Tint){value=32;vm=AFP|AIND;}
  else if(!typedoperand(read?use->dm:use->sm,read?&use->d:&use->s,use->op==IMOVB?Tbyte:Tint,!read,0,p,&value,&vm,&actual))return 0;
- p->code[pc]=(Dis64Instruction){IINDB,SRC(sm)|AXINF|DST(dm),((long)sid<<24)|((long)did<<16)|48,source,index};p->returns[pc]=157;
- p->code[pc+1]=(Dis64Instruction){use->op,read?SRC(AFP|AIND)|DST(vm):SRC(vm)|DST(AFP|AIND),0,read?48:value,read?value:48};p->returns[pc+1]=158;return 1;
+ p->code[pc]=(Dis64Instruction){IINDB,SRC(sm)|AXINF|DST(dm),((long)sid<<24)|((long)did<<16)|((long)gap<<8)|48,source,index};p->returns[pc]=157;
+ p->code[pc+1+gap]=(Dis64Instruction){use->op,read?SRC(AFP|AIND)|DST(vm):SRC(vm)|DST(AFP|AIND),0,read?48:value,read?value:48};p->returns[pc+1+gap]=158;return 1;
 }
 
 static int

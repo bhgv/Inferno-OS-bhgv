@@ -70,13 +70,24 @@ native64librarybyte(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
  unsigned int sm=USRC(s->mode),dm=UDST(s->mode),width=s->op==IMOVB?1:4;long value;
  if(s->mode>255)return 0;
  if(s->returned==157){unsigned int sid=(unsigned long)s->m>>24,did=(s->m>>16)&255;
- return s->op==IINDB && s->mode==(SRC(sm)|AXINF|DST(dm)) && (s->m&65535)==48 && sid<=1 && did<=1 && native64libraryoperand(sm,s->s,sid,8,1,fp,mp,0) && (!sid || ((unsigned long)s->s>>16)==8) && native64libraryoperand(dm,s->d,did,4,0,fp,mp,0);
+ return s->op==IINDB && s->mode==(SRC(sm)|AXINF|DST(dm)) && ((s->m&65535)==48 || ((s->m&65535)==(48|(1<<8)) && !sid && sm==AFP)) && sid<=1 && did<=1 && native64libraryoperand(sm,s->s,sid,8,1,fp,mp,0) && (!sid || ((unsigned long)s->s>>16)==8) && native64libraryoperand(dm,s->d,did,4,0,fp,mp,0);
  }
  if(s->returned!=158 || s->m || (s->op!=IMOVB && s->op!=ICVTBW && s->op!=ICVTWB))return 0;
  if(sm==(AFP|AIND)){if(s->s!=48 || (s->op!=IMOVB&&s->op!=ICVTBW) || s->mode!=(SRC(sm)|DST(dm)))return 0;value=s->d;sm=dm;if(dm==(AFP|AIND))return s->op==ICVTBW && s->d==32;if(sm==AIMM)return 0;}
  else{if(dm!=(AFP|AIND)||s->d!=48||(s->op!=IMOVB&&s->op!=ICVTWB)||s->mode!=(SRC(sm)|DST(dm)))return 0;value=s->s;}
  if(sm==AIMM)return value>=-536870912L && value<=536870911L && (width!=1 || (value>=0&&value<=255));
  return native64typedcodeoperand(sm,value,fp,mp) && value%width==0 && width<=(sm==AFP?fp:mp)-value;
+}
+static int
+native64librarybytepair(const Native64TypedStep*steps,unsigned int count,unsigned int at)
+{
+ const Native64TypedStep*s=steps+at,*v;unsigned int gap;
+ if(s->returned==158){if(at&&steps[at-1].returned==157)return (steps[at-1].m&65535)==48;if(at<2||steps[at-2].returned!=157)return 0;at-=2;s=steps+at;}
+ if(s->returned!=157)return 0;gap=(s->m>>8)&255;
+ if(gap>1||at+1+gap>=count||steps[at+1+gap].returned!=158)return 0;
+ if(!gap)return 1;
+ v=steps+at+1;
+ return USRC(s->mode)==AFP && s->s>=64 && s->s<=1024*1024-8 && !(s->m>>24) && v->returned==0 && v->op==ISHRW && v->mode==(SRC(AIMM)|AXINF|DST(AFP)) && v->s>=0 && v->s<=31 && v->d>=64 && v->d<=1024*1024-4 && v->d%4==0 && v->m>=64 && v->m<=1024*1024-4 && v->m%4==0 && (v->d+4<=s->s||v->d>=s->s+8);
 }
 static int
 native64libraryslicearg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const uchar*map,unsigned int np)

@@ -302,8 +302,11 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
     for(i=0;i<count;){
         if(k<n && i==calls[k].first){i=calls[k++].end+1;continue;}
         checkstep=steps[i];
-        if(checkstep.returned==157 && (i+1>=count || steps[i+1].returned!=158 || native64typedblocked(i+1,calls,n)))return 0;
-        if(checkstep.returned==158 && (!i || steps[i-1].returned!=157 || native64typedblocked(i-1,calls,n)))return 0;
+        if(checkstep.returned==157 || checkstep.returned==158){unsigned int gap,j;
+            if(!native64librarybytepair(steps,count,i))return 0;
+            if(checkstep.returned==157){gap=(checkstep.m>>8)&255;for(j=1;j<=1+gap;j++)if(native64typedblocked(i+j,calls,n))return 0;}
+            else{gap=i&&steps[i-1].returned==157?0:1;for(j=1;j<=1+gap;j++)if(native64typedblocked(i-j,calls,n))return 0;}
+        }
         if(native64typedbranch(checkstep.op)){
             if(checkstep.d<0 || (unsigned long)checkstep.d>=count || native64typedblocked(checkstep.d,calls,n) || native64typedprotectedentry(steps,count,checkstep.d))return 0;
             if(!native64typedbranchprobe(&probe,&checkstep,fpbytes,mpbytes))return 0;

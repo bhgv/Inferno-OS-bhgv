@@ -889,12 +889,15 @@ def verify(data,r,imports,loads=False,rows=None):
         if returned in(157,158):
             assert loads and mode==o['mode']
             if returned==157:
-                sid=m>>24;did=(m>>16)&255;sm=mode>>3&7;dm=mode&7;assert op==o['op']==OPCODES['IINDB']and mode&192==128 and m==(sid<<24)|(did<<16)|48
-                assert s==library_operand(o['s'],sm,sid,maps)and d==library_operand(o['d'],dm,did,maps)and r['code'][pc+1][5]==158
+                sid=m>>24;did=(m>>16)&255;sm=mode>>3&7;dm=mode&7;gap=m>>8&255;assert gap in(0,1);assert op==o['op']==OPCODES['IINDB']and mode&192==128 and m==(sid<<24)|(did<<16)|(gap<<8)|48
+                assert s==library_operand(o['s'],sm,sid,maps)and d==library_operand(o['d'],dm,did,maps)and r['code'][pc+1+gap][5]==158
                 if sid:assert sid==1 and o['s'][1]==4
-                inside.add(pc+1)
+                if gap:
+                    shift=r['code'][pc+1];assert sid==0 and sm==1 and shift[0]==OPCODES['ISHRW']and shift[1]==(2<<3|128|1)and shift[5]==0 and 0<=shift[2]<=31 and shift[4]>=64 and (shift[4]+4<=s or shift[4]>=s+8)
+                inside.update(range(pc+1,pc+2+gap))
             else:
-                prev=original[pc-1];assert r['code'][pc-1][5]==157 and op==o['op']and op in(OPCODES[x]for x in('IMOVB','ICVTBW','ICVTWB'))and o['m']is None and m==0
+                back=1 if pc and r['code'][pc-1][5]==157 else 2
+                prev=original[pc-back];assert r['code'][pc-back][5]==157 and (r['code'][pc-back][3]>>8&255)==back-1 and op==o['op']and op in(OPCODES[x]for x in('IMOVB','ICVTBW','ICVTWB'))and o['m']is None and m==0
                 sm=mode>>3&7;dm=mode&7;read=sm==5;assert (o['s']if read else o['d'])==[prev['m'],0]
                 value=library_operand(o['d']if read else o['s'],dm if read else sm,0,maps,True)
                 assert [s,d]==([48,value]if read else[value,48])

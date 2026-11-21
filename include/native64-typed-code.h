@@ -333,7 +333,7 @@ native64typedarraycall(const Native64TypedStep*s,unsigned int fp,unsigned int mp
 static int
 native64typedprotectedentry(const Native64TypedStep*steps,unsigned int count,unsigned int target)
 {
- return target<count && (steps[target].returned==158 || (steps[target].returned==111&&(steps[target].op==IMOVP||native64typedbranch(steps[target].op))) || steps[target].returned==142 || (target&&steps[target].returned==213&&steps[target-1].returned==255&&steps[target-1].op==IINDL) || (steps[target].returned==255 && steps[target].op==IMOVP) ||
+ return target<count && ((target && steps[target-1].returned==157 && ((steps[target-1].m>>8)&255)) || steps[target].returned==158 || (steps[target].returned==111&&(steps[target].op==IMOVP||native64typedbranch(steps[target].op))) || steps[target].returned==142 || (target&&steps[target].returned==213&&steps[target-1].returned==255&&steps[target-1].op==IINDL) || (steps[target].returned==255 && steps[target].op==IMOVP) ||
   (target && steps[target-1].returned==131 && steps[target-1].op==IINDL));
 }
 static int

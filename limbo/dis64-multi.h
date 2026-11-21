@@ -1166,7 +1166,14 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         else if(c->loads && (typedrawborrow(p,&in->s,in->sm,pc)>=0 || typedrawborrow(p,&in->d,in->dm,pc)>=0)){if(!typedrawuse(p,in,pc,stop,-1))goto fail;pc++;}
         else if(c->loads&&p->resultaggregate&&in->dm==Afpind&&in->d.reg==16&&(in->op==IMOVP||in->op==IMOVW||in->op==IMOVM||in->op==IMOVMP)){if(!typedaggregatereturn(in,p,pc-p->first))goto fail;pc++;}
         else if(c->loads && in->op==IINDB){
-            if(pc+1>=stop || !typedlibrarybyteindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
+            unsigned int gap=0;Inst*shift;
+            if(pc+1>=stop)goto fail;shift=c->instructions[pc+1];
+            if(shift->op==ISHRW){
+                gap=1;
+                if(pc+2>=stop || in->sm!=Afp || in->s.offset || shift->branch || shift->sm!=Aimm || shift->s.offset<0 || shift->s.offset>31 || shift->mm!=Afp || shift->dm!=Afp || !typedinst(shift,stop,p,p->code+pc+1-p->first,p->returns+pc+1-p->first))goto fail;
+            }
+            if(!typedlibrarybyteindex(in,c->instructions[pc+1+gap],p,pc-p->first,gap))goto fail;
+            for(i=1;i<=1+gap;i++)inside[pc+i-p->first]=1;pc+=2+gap;
         }else if(c->loads&&in->op==IMOVP&&(in->sm==Afpind||in->sm==Ampind)&&(in->dm==Afpind||in->dm==Ampind)&&typedrootfieldcopy(in,p,pc-p->first)){pc++;
         }else if(c->loads && (in->op==INEW||in->op==INEWZ||in->op==IMOVMP)&&typedwindowconstruct(in,p,pc-p->first)){pc++;
         }else if(c->loads && typedlibraryinst(in,p,pc-p->first,stop)){pc++;
