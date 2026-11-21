@@ -5,15 +5,16 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 B=runpy.run_path(str(ROOT/'utils/tests/native64-local-geometry-args.py'));G,CMD,E=B['G'],B['CMD'],B['E']
 DECL='Winplace:module{run:fn(n:int);};'
-SOURCE='''implement Winplace;include "sys.m";include "draw.m";Point,Rect:import Draw;'''+DECL+'''EW,NS:con iota;Lay:adt{d:int;mkr:fn(l:self Lay,r:Rect):Rect;};
-bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
-run(n:int){buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
+SOURCE='''implement Winplace;include "sys.m";include "draw.m";include "tk.m";Point,Rect:import Draw;'''+DECL+'''EW,NS:con iota;Lay:adt{d:int;mkr:fn(l:self Lay,r:Rect):Rect;};
+topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
+run(n:int){buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;(top,event):=tkpair(n);topout=top;eventout=event;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
 swappt(p:Point,n:int):Point{if(n<0)return p;return(p.y,p.x);}
 mixed(n:int):(string,int){if(n<0)return (text(n),n);return ("positive",n);}
 text(n:int):string{if(n<0)return "negative";return "positive";}firstword(r:(int,int)):int{return r.t0;}
 five(n:int):(int,int,int,int,int){return(n,2,3,4,5);}
 nested(n:int):((int,int),int){return((n,2),3);}
 roots(n:int):(ref Draw->Context,string){if(n<0)return(nil,"negative");return(nil,"positive");}
+tkpair(n:int):(ref Tk->Toplevel,chan of string){p:(ref Tk->Toplevel,chan of string);if(n<0)return(nil,nil);p=(nil,nil);return p;}
 triple(n:int):(string,ref Draw->Image,string){v:(string,ref Draw->Image,string);if(n<0)v=("negative",nil,"end");else v=("positive",nil,"end");return v;}forward(n:int):(string,ref Draw->Image,string){return triple(n);}
 '''
 SOURCE+=''.join(re.search(r'(?m)^'+n+r'\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/wmlib.b').read_text(),re.S)[0]for n in('splitqword','qslice','qword','s2r','bplong'))
@@ -21,8 +22,8 @@ SOURCE+=re.search(r'(?m)^select\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/winplace.b')
 SOURCE+=re.search(r'(?m)^Lay\.mkr\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/winplace.b').read_text(),re.S)[0]
 def generate(limbo,w):
  m=w/'aggregate.m';m.write_text(DECL);h=subprocess.check_output([str(limbo),'-H','-M','Winplace',str(m)],text=True);sigs={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Winplace_(\w+) (0x[0-9a-f]+)U',h,re.M)}
- rows=G['generate'](limbo,w,SOURCE,'Winplace',(17,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
- p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf'))+'};\n')
+ rows=G['generate'](limbo,w,SOURCE,'Winplace',(18,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
+ p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout'))+'};\n')
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);count=0
  for row in records:
   for pc,c in enumerate(row['code']):
@@ -37,6 +38,18 @@ def generate(limbo,w):
   ty='list of '+payload;source='implement Closed;include "sys.m";include "draw.m";'+extra+'Closed:module{run:fn():('+ty+','+ty+','+ty+');};run():('+ty+','+ty+','+ty+'){return(nil,nil,nil);}'
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert not closed[0]['accepted'],closed
  print('PASS aggregate boundary: Point and foreign record list triples refused',flush=True)
+ for result in ('ref Tk->Toplevel,chan of int','ref Draw->Context,chan of string'):
+  source='implement Closed;include "sys.m";include "draw.m";include "tk.m";Closed:module{run:fn():('+result+');};run():('+result+'){return(nil,nil);}'
+  _,closed=E['compile_source'](limbo,w,source,interface='',loads=True)
+  assert not closed[0]['accepted'],closed
+ print('PASS Tk tuple boundary: wrong channel payload and wrong record refused',flush=True)
+ source=(ROOT/'appl/wm/atoolbar.b').read_text()
+ data,records=E['compile_source'](limbo,w,source,interface='',loads=True)
+ imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]
+ toolbar=next(r for r in records if r['name']=='toolbar')
+ assert toolbar['accepted'] and any(e['name']=='toplevel' and e['contract']==116 for e in toolbar['externals']),toolbar
+ CMD['verify_nilbranches'](data,toolbar,imports,rows=records)
+ print('PASS original atoolbar: checked Tk tuple import and destination map',flush=True)
  for name in('Other','Lay'):
   source='implement Closed;'+name+':adt{d:int;};Closed:module{run:fn(x:'+name+');};run(x:'+name+'){take(x);}take(x:'+name+'){}'
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert not next(r for r in closed if r['name']=='run')['accepted'],closed

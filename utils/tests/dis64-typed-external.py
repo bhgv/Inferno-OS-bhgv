@@ -419,7 +419,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert loads and contract==24 and not inherited and binding['mode']==45 and binding['s'][1]==48 and offset==maps['frame'][binding['s'][0]]
                 assert r['code'][end-1]==[39,45,offset,24,32,93]
             elif r['code'][end-1][5]==85:
-                assert loads and contract in(80,92,124)and not inherited and binding['mode']==13
+                assert loads and contract in(80,92,116,124)and not inherited and binding['mode']==13
                 assert offset==maps['frame'][binding['s'][0]]and r['code'][end-1]==[39,13,offset,0,32,85]
             elif inherited:
                 assert binding['mode']==45 and binding['s']==[16,0]and offset==32
@@ -814,12 +814,12 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert next(l for l in r['frame']['leaves']if l[0]==oldbase+oldoff)==[oldbase+oldoff,base+newoff,8 if kind==4 else 4,4 if kind==9 else 8,kind]
                 for i in range(88):assert bool(r['frame']['map'][(base+i)//64]&(128>>((base+i)//8%8)))==(8<=i<40)
             if r['code'][end-1][5]==85:
-                assert loads and not e['inherited']and contract in(80,92,124)and b['mode']==13 and b['m']is None
-                kinds={80:[13,9],92:[9]*5,124:[13,12,13]}[contract];native_offsets={80:[0,8],92:[0,4,8,12,16],124:[0,8,16]}[contract];width={80:16,92:20,124:24}[contract]
+                assert loads and not e['inherited']and contract in(80,92,116,124)and b['mode']==13 and b['m']is None
+                kinds={80:[13,9],92:[9]*5,116:[12,6],124:[13,12,13]}[contract];native_offsets={80:[0,8],92:[0,4,8,12,16],116:[0,8],124:[0,8,16]}[contract];width={80:16,92:20,116:16,124:24}[contract]
                 old=b['s'][0];base=maps['frame'][old];assert e['resultoffset']==base and base>=64 and base%8==0
                 for j,(kind,off)in enumerate(zip(kinds,native_offsets)):
-                    assert next(l for l in r['frame']['leaves']if l[0]==old+4*j)==[old+4*j,base+off,4,8 if kind in(12,13)else 4,kind]
-                for j in range(width):assert bool(r['frame']['map'][(base+j)//64]&(128>>((base+j)//8%8)))==(contract==80 and j<8 or contract==124)
+                    assert next(l for l in r['frame']['leaves']if l[0]==old+4*j)==[old+4*j,base+off,4,8 if kind in(6,12,13)else 4,kind]
+                for j in range(width):assert bool(r['frame']['map'][(base+j)//64]&(128>>((base+j)//8%8)))==(contract==80 and j<8 or contract in(116,124))
                 assert r['code'][end-1]==[39,13,base,0,32,85]
             elif r['code'][end-1][5]==81:pass
             elif r['code'][end-1][5]==60:
@@ -856,11 +856,11 @@ def verify(data,r,imports,loads=False,rows=None):
         if returned==79:rawarray_operation(o,r['code'][pc],maps,types,r);continue
         if returned==65:rawarray_use(original,r['code'],pc,maps,r);continue
         if returned==77:
-            c=r['result_aggregate'];width={12:12,48:16,72:24,80:16,92:20,96:8,112:16,124:24}[c];count={12:3,48:2,72:3,80:2,92:5,96:2,112:4,124:3}[c]
+            c=r['result_aggregate'];width={12:12,48:16,72:24,80:16,92:20,96:8,112:16,116:16,124:24}[c];count={12:3,48:2,72:3,80:2,92:5,96:2,112:4,116:2,124:3}[c]
             sm=o['mode']>>3&7;assert loads and op==o['op']and o['d'][0]==16 and o['d'][1]%4==0
-            field=o['d'][1]//4;assert field<count;off=8*field if c in(48,72,124)else(8 if c==80 and field else 4*field)
+            field=o['d'][1]//4;assert field<count;off=8*field if c in(48,72,116,124)else(8 if c==80 and field else 4*field)
             n=8 if op==41 else 4 if op==45 else o['m']if op==42 else width if op==OPCODES['IMOVMP']else 0
-            root=c in(48,72,124)or(c==80 and field==0)
+            root=c in(48,72,116,124)or(c==80 and field==0)
             assert n and n<=width-off and op in(41,45,42,OPCODES['IMOVMP'])and d==32 and m==(c<<16)|(n<<8)|off
             assert mode==(sm<<3)|(64 if op in(42,OPCODES['IMOVMP'])else 0)|5 and sm in(0,1,2)
             assert s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
@@ -869,7 +869,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert c in(12,92,96,112)and sm in(0,1)and n%4==0
                 for k in range(0,n,4):assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0]+k)==[o['s'][0]+k,s+k,4,4,9]
             else:
-                assert c in(48,72,124)and field==0 and sm==1 and types[o['m']][0]==4*count and list(types[o['m']][1])==[192 if c==48 else 224]
+                assert c in(48,72,116,124)and field==0 and sm==1 and types[o['m']][0]==4*count and list(types[o['m']][1])==[192 if c in(48,116) else 224]
                 for k in range(count):assert maps['frame'][o['s'][0]+4*k]==s+8*k
             continue
         if returned==68:

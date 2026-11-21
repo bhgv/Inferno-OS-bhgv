@@ -1128,7 +1128,7 @@ native64modulemake(void *arg)
     Module *m;unsigned int i,j,k,pc=0,link=0,ordinal,refarrays=0,refarraytype=0,bytes=0,triples=0,contexts=0,contexttype=0,pointers=0,pointertype=0,mapped2=0,mapped3=0,filewrite=0,fileread=0,mixedreply=0,replytype=0,records=0,rawcount=0,cursor=0,cursortype=0,rawtypes[4]={0},recordids[Native64LibraryRecords+1]={0};Import *imports;const Native64ModuleImport *request;const Native64ModuleTable *table;const Native64ModuleSite *site;const Native64ModuleInit *v;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==79&&s->functions[i].code[j].op==INEWAZ)rawtypes[s->functions[i].code[j].m]=1;
     for(i=1;i<4;i++)rawcount+=rawtypes[i];
-    for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==77&&s->functions[i].code[j].op==IMOVMP){if(((unsigned long)s->functions[i].code[j].m>>16)==48)mapped2=1;else mapped3=1;}
+    for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==77&&s->functions[i].code[j].op==IMOVMP){if(native64aggregatewidth((unsigned long)s->functions[i].code[j].m>>16)==16)mapped2=1;else mapped3=1;}
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].op==INEWAZ){if(s->functions[i].code[j].returned==254)refarrays=1;else if(s->functions[i].code[j].returned!=79)bytes=1;}
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==242)pointers=1;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==171)triples=1;
@@ -1185,7 +1185,7 @@ native64modulemake(void *arg)
         for(j=0;j<f->count;j++){
             if(f->code[j].op==INEWAZ)m->prog[b->offsets[i]+j].reg=f->code[j].returned==254?refarraytype:s->nfunctions+1+b->imports;
             if(f->code[j].returned==79&&f->code[j].op==INEWAZ)m->prog[b->offsets[i]+j].reg=rawtypes[f->code[j].m];
-            if(f->code[j].returned==77&&f->code[j].op==IMOVMP)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples+(((unsigned long)f->code[j].m>>16)==48?0:mapped2);
+            if(f->code[j].returned==77&&f->code[j].op==IMOVMP)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples+(native64aggregatewidth((unsigned long)f->code[j].m>>16)==16?0:mapped2);
             if(f->code[j].returned==68)m->prog[b->offsets[i]+j].reg=recordids[f->code[j].m];
             if(f->code[j].returned==154)m->prog[b->offsets[i]+j].s.imm=recordids[f->code[j].s];
             if(f->code[j].returned==90)m->prog[b->offsets[i]+j].reg=recordids[8];

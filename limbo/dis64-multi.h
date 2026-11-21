@@ -1140,7 +1140,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
            binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil)return typedfail(p,"multi-result");
         kind=child->resultkind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         contract=child->resultaggregate?child->resultaggregate:child->resultpair>=3?16:child->resulttriple==2?12:child->resultgeometry?(child->resultgeometry==8?96:112):child->resulttriple?72:child->resultpair?48:child->resultbytes | (root?16:0);
-        if(child->resultaggregate&&binding->sm==Afp){if(!typedwmtuplebinding(c->functions[target],binding,p,&local,0))return typedfail(p,"local-aggregate-result-binding");p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=(contract==80||contract==92||contract==124)?85:128|contract;}
+        if(child->resultaggregate&&binding->sm==Afp){if(!typedwmtuplebinding(c->functions[target],binding,p,&local,0))return typedfail(p,"local-aggregate-result-binding");p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=(contract==80||contract==92||contract==116||contract==124)?85:128|contract;}
         else if(c->loads && typedimagearraybinding(c,p,frame,binding,c->functions[target]->ty->tof,pc,at)){
             local=p->code[at-p->first].source;
         }else if(c->loads&&child->resultgeometry&&binding->sm==Afpind&&binding->s.reg!=16){

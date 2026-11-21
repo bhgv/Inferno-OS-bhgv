@@ -50,6 +50,7 @@ typedstatresult(Decl *fn,Inst *binding,Dis64TypedBody *p,unsigned int *base,int 
 static unsigned int
 typedwmtuple(Type*t,Dis64Layout*l)
 {Decl*d;unsigned int c=0;if(!t||t->kind!=Ttuple||!(d=t->ids)||!d->ty||!d->next||!d->next->ty)return 0;
+ if(typedwmref(d->ty,"Tk","Toplevel")&&d->next->ty->kind==Tchan&&!d->next->next)return typedaggregatecontract(t,l);
  if(d->ty->kind==Tstring&&d->next->ty->kind==Tint&&!d->next->next)c=80;
  else if(d->ty->kind==Tstring&&typedwmref(d->next->ty,"Draw","Image")&&d->next->next&&d->next->next->ty&&d->next->next->ty->kind==Tstring&&!d->next->next->next)c=124;
  else if(d->ty->kind==Tadt&&d->ty->decl&&d->ty->decl->sym&&!strcmp(d->ty->decl->sym->name,"Rect")&&d->ty->decl->dot&&d->ty->decl->dot->sym&&!strcmp(d->ty->decl->dot->sym->name,"Draw")&&d->next->ty->kind==Tint&&!d->next->next)c=92;
@@ -61,7 +62,7 @@ typedwmtuple(Type*t,Dis64Layout*l)
 static unsigned int
 typedwmtuplebinding(Decl*fn,Inst*b,Dis64TypedBody*p,unsigned int*base,int relocate)
 {Dis64Layout l={0};unsigned int c,i,j,first,end,delta,next;int ok=0;
- c=typedaggregatecontract(fn->ty->tof,&l);if(!c)c=typedwmtuple(fn->ty->tof,&l);if(!c||b->sm!=Afp||b->s.reg<32)goto done;
+ c=typedaggregatecontract(fn->ty->tof,&l);if(!c){dis64layoutfree(&l);c=typedwmtuple(fn->ty->tof,&l);}if(!c||b->sm!=Afp||b->s.reg<32)goto done;
  for(first=0;first<p->frame.count;first++)if(p->frame.leaves[first].legacy==(unsigned int)b->s.reg)break;
  if(first>p->frame.count||l.count>p->frame.count-first)goto done;*base=(p->frame.leaves[first].native+((c==96||c==112)?3:7))&~((c==96||c==112)?3U:7U);
  for(i=0;i<l.count;i++){Dis64LayoutLeaf*a=l.leaves+i,*v=p->frame.leaves+first+i;if(v->legacy!=b->s.reg+a->legacy||v->oldbytes!=a->oldbytes||v->bytes!=a->bytes||v->kind!=a->kind||(!relocate&&v->native!=*base+a->native))goto done;}
