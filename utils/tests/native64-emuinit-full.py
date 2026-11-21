@@ -4,6 +4,33 @@ import argparse,copy,json,os,re,runpy,shlex,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 CMD=runpy.run_path(str(ROOT/'utils/tests/native64-typed-command-files.py'));E=CMD['EXT']
+def checked_catches(data,rows):
+ _,code,types,_,_,_,_,classic=E['BASE']['READ']['legacy_instructions'](data,with_catches=True)
+ verified=[]
+ for i,row in enumerate(rows):
+  first=row['first'];end=first+len(row['code'])
+  selected=[c for c in classic if first<=c[1]<end]
+  reported=row.get('catches',[])
+  assert len(selected)==len(reported)
+  for record, (slot,start,stop,cleanup,typed,arms,fallback) in zip(reported,selected):
+   assert row['result']==[0,0] and not typed and fallback==-1 and len(arms)==1
+   leaves={leaf[0]:leaf[1] for leaf in row['frame']['leaves'] if leaf[2:4]==[4,8]}
+   pattern,target=arms[0]
+   clear=[]
+   if cleanup!=-1:
+    size,bits=types[cleanup]
+    clear=[0]*len(row['frame']['map'])
+    for b,mask in enumerate(bits):
+     for j in range(8):
+      if mask&(128>>j):
+       old=4*(8*b+j);assert old<size
+       native=leaves[old];clear[native//64]|=128>>(native//8%8)
+   expected=dict(first=start-first,end=stop-first,target=target-first,slot=leaves[slot],pattern=pattern,cleanup=clear)
+   assert record==expected,(row['name'],record,expected)
+   verified.append((i,record))
+ assert len(verified)==len(classic)
+ return verified
+
 def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,export_signatures=None,extra_imports=None,source_label=None):
  expected_functions,expected_tables,expected_sites,entry=shape or ((4,3,3,'0')if module=='Emuinit'else(8,1,1,'~0U'))
  source=(ROOT/'appl/cmd/emuinit.b').read_text()if source is None else source;data,rows=E['compile_source'](limbo,w,source,interface='',loads=True)
@@ -106,7 +133,14 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
  lines+=['static const Native64ModuleString full_strings[]={'+','.join(strings)+'};','static const Native64ModuleInit full_initial[]={'+','.join(values or ['{0,0,0}'])+'};']
  lines+=['static const Native64ModuleStringArray full_arrays[]={'+','.join(stringarrays or ['{0,0,nil}'])+'};']
  if stringarrays:lines+=['static Array*fullarray(unsigned int count){return H2D(Array*,heaparray(&Tptr,count));}']
- lines+=['static const Native64ModuleSpec full_spec={'+json.dumps(module)+','+json.dumps('trusted/'+module)+',full_functions,'+str(len(rows))+','+entry+','+f'{layout["bytes"]},full_data_map,{len(layout["map"])},full_initial,{len(values)},full_tables,{len(imports)},c2string,full_strings,{len(strings)},fullload,full_arrays,{len(stringarrays)},'+('fullarray'if stringarrays else'nil')+'};']
+ catches=[]
+ for i,h in checked_catches(data,rows):
+  cleanup='nil'
+  if h['cleanup']:
+   cleanup=f'full_catch_cleanup_{i}';array(cleanup,h['cleanup'])
+  catches.append('{'+f'{i},{h["first"]},{h["end"]},{h["target"]},{h["slot"]},'+json.dumps(h['pattern'])+f',{cleanup},{len(h["cleanup"])}'+'}')
+ if catches:lines+=['static const Native64ModuleCatch full_catches[]={'+','.join(catches)+'};']
+ lines+=['static const Native64ModuleSpec full_spec={'+json.dumps(module)+','+json.dumps('trusted/'+module)+',full_functions,'+str(len(rows))+','+entry+','+f'{layout["bytes"]},full_data_map,{len(layout["map"])},full_initial,{len(values)},full_tables,{len(imports)},c2string,full_strings,{len(strings)},fullload,full_arrays,{len(stringarrays)},'+('fullarray'if stringarrays else'nil')+(','+f'full_catches,{len(catches)}'if catches else'')+'};']
  variables=[]
  for i,r in enumerate(rows):
   for j,v in enumerate(r.get('variadics',[])):

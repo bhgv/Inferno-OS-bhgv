@@ -306,6 +306,9 @@ typedresults(Dis64TypedBody *p)
 
 
 
+/* Only the checked report and its C metadata generator carry catch tables. */
+static Except *typedreportcatches;
+
 static int
 typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned int stop, Dis64TypedBody *p,int loads)
 {
@@ -315,7 +318,7 @@ typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned in
 	if(p->code!=nil || p->reason!=nil) return typedfail(p,"nonempty-output");
 	if(fn!=nil && fn->pc!=nil && fn->pc->pc>=0) p->first=fn->pc->pc;
 	if(fn==nil || fn->ty==nil || fn->pc==nil || fn->ty->kind!=Tfn || fn->ty->varargs ||
-	   fn->handler || fn->ty->polys!=nil || fn->ty->tof==nil || fn->pc->pc<0)
+	   (fn->handler && !(loads && typedreportcatches)) || fn->ty->polys!=nil || fn->ty->tof==nil || fn->pc->pc<0)
 		return typedfail(p,"function-result-or-polymorphism");
 	p->resultkind=fn->ty->tof->kind;p->resulttype=fn->ty->tof;
 	switch(p->resultkind){
@@ -474,7 +477,9 @@ dis64typedlocal(Decl *fn,Decl *globals,Decl **functions,int nf,Inst *input,unsig
 void
 dis64typedfree(Dis64TypedBody *p)
 {
-    unsigned int i;for(i=0;i<p->nvariadic;i++)dis64layoutfree(&p->variadic[i].frame);free(p->variadic);
+	unsigned int i;
+	free(p->catchcleanup);
+    for(i=0;i<p->nvariadic;i++)dis64layoutfree(&p->variadic[i].frame);free(p->variadic);
 	free(p->tables);free(p->contextfields);free(p->external);free(p->sites);free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
 }
 
@@ -600,7 +605,7 @@ typedsignature(Decl *fn)
 }
 
 void
-dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, long count)
+dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, long count, Except *catches)
 {
 	Dis64TypedBody p;
 	Decl *fn;
@@ -613,6 +618,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 	char *loads=getenv("LIMBO_DIS64_TYPED_LOAD");
 	char *multi=getenv("LIMBO_DIS64_TYPED_MULTI");
 	if(enabled==nil || strcmp(enabled,"1")!=0) return;
+	if(loads!=nil && !strcmp(loads,"1"))typedreportcatches=catches;
 	for(n=0;n<nfunctions;n++){
 		fn=functions[n]; stop=count;
 		for(j=0;j<nfunctions;j++) if(functions[j]->pc->pc>fn->pc->pc && functions[j]->pc->pc<stop) stop=functions[j]->pc->pc;
@@ -675,6 +681,12 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             if((multi!=nil && strcmp(multi,"1")==0) || (external!=nil && strcmp(external,"1")==0) || (loads!=nil && strcmp(loads,"1")==0)){
                 fprint(2,",\"signature\":");typedsignature(fn);fprint(2,",\"export_name\":");typedexportname(fn);
             }
+            if(p.catchpattern){
+                fprint(2,",\"catches\":[{\"first\":%ud,\"end\":%ud,\"target\":%ud,\"slot\":%ud,\"pattern\":",p.catchfirst,p.catchend,p.catchtarget,p.catchslot);
+                typedquote(p.catchpattern);fprint(2,",\"cleanup\":[");
+                if(p.catchcleanup)for(i=0;i<(p.frame.bytes+63)/64;i++)fprint(2,"%s%ud",i?",":"",(unsigned int)p.catchcleanup[i]);
+                fprint(2,"]}]");
+            }
 			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair && p.resultpair<3)fprint(2,",\"result_pair\":[%d,%d]",p.resultpair==2?Tstring:Tmodule,p.resultpair==2?Tstring:Tlist);if(p.resultpair>=3)fprint(2,",\"result_mixed\":[%d,%d]",p.resultpair==3?Tint:p.resultpair==4?Tbig:Treal,Tstring);if(p.resulttriple==2)fprint(2,",\"result_words\":[%d,%d,%d]",Tint,Tint,Tint);if(p.resulttriple==1)fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);if(p.resultaggregate)fprint(2,",\"result_aggregate\":%d",p.resultaggregate);if(p.resultgeometry)fprint(2,",\"result_geometry\":%d",p.resultgeometry);
 			fprint(2,",\"descriptor\":%d,\"data_descriptor\":%d,\"frame\":",fn->desc->id,descriptors->id);
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);
@@ -685,4 +697,5 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 		}
 		fprint(2,"}\n"); dis64typedfree(&p);
 	}
+	typedreportcatches=nil;
 }

@@ -1217,6 +1217,47 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
 #include "dis64-alt.h"
 #include "dis64-library-records.h"
 
+/* One forward string catch in a void function. Translate the cleanup map
+ * only after frame repacking has fixed the native offsets. */
+static int
+typedcatch(Dis64TypedBody *p, uchar *inside)
+{
+ Except *e,*found=nil;
+ Label *label;
+ unsigned int first,end,target,slot,i,bit,n;
+ Desc *d;
+ for(e=typedreportcatches;e;e=e->next){
+  if(!e->p1->reach&&!e->p2->reach)continue;
+  if(getpc(e->p1)<p->first||getpc(e->p1)>=p->first+p->count)continue;
+  if(found)return typedfail(p,"catch-count");
+  found=e;
+ }
+ if(!found||p->resultkind!=Tnone||found->ne||!found->c||found->c->nlab!=1||
+    found->c->iwild||!found->d||found->d->ty!=rtexception)
+  return typedfail(p,"catch-shape");
+ label=found->c->labs;
+ if(!label->start||label->start!=label->stop||!label->start->decl||!label->start->decl->sym||!label->inst)
+  return typedfail(p,"catch-label");
+ first=getpc(found->p1)-p->first;end=getpc(found->p2)-p->first;target=label->inst->pc-p->first;
+ if(first>=end||end>p->count||target<end||target>=p->count||
+    (inside&&inside[target])||!dis64layoutaddress(&p->frame,found->d->offset,4,1,&slot))
+  return typedfail(p,"catch-layout");
+ d=found->desc;
+ if(d){
+  n=(p->frame.bytes+63)/64;
+  p->catchcleanup=allocmem(n);
+  memset(p->catchcleanup,0,n);
+  if(d->nmap<0||d->nmap>(p->frame.legacybytes+31)/32||!d->map)return typedfail(p,"catch-cleanup");
+  for(i=0;i<(unsigned int)d->nmap*8;i++)if(d->map[i/8]&(128>>(i%8))){
+   if(!dis64layoutaddress(&p->frame,4*i,4,1,&bit))return typedfail(p,"catch-cleanup");
+   bit/=8;p->catchcleanup[bit/8]|=128>>(bit%8);
+  }
+ }
+ p->catchpattern=label->start->decl->sym;
+ p->catchfirst=first;p->catchend=end;p->catchtarget=target;p->catchslot=slot;
+ return 1;
+}
+
 static int
 typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
 {
@@ -1234,7 +1275,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
      * Command files serialize strings only, so replay through the byte folder. */
     if(i && c->external>=2)for(pc=0;pc<p->count;pc++)
         if((p->code[pc].op==IMOVB || p->code[pc].op==ICVTBW) && USRC(p->code[pc].mode)==AMP){i=0;typedfail(p,"unsupported-opcode");break;}
-    if(i){c->state[index]=2;c->height[index]=1;return 1;}
+    if(i){if(fn->handler&&!typedcatch(p,nil))goto fail;c->state[index]=2;c->height[index]=1;return 1;}
     if(p->reason==nil || (strcmp(p->reason,"unsupported-opcode") && !((c->external>=2 || c->loads) && p->code && !p->frame.reason && !p->data.reason)))goto fail;
     p->reason=nil;p->ntables=0;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
     if(c->loads){
@@ -1439,6 +1480,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }
     }
     if((c->external<2 && !c->loads && !p->nsites && !p->nexternal) || !typedresults(p))goto fail;
+    if(fn->handler&&!typedcatch(p,inside))goto fail;
     free(inside);p->tail=c->loads?5:c->external?4:3;c->state[index]=2;c->height[index]=h;return 1;
 fail:
     free(inside);c->state[index]=3;return 0;

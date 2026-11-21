@@ -37,6 +37,10 @@ struct Dis64TypedBody {
 	unsigned int first, count, badpc;
 	int resultkind, tail, resultpair, resulttriple, resultgeometry, sourceroles, resultaggregate;
     Type *resulttype;
+    Sym *catchpattern;
+    unsigned int catchfirst,catchend,catchtarget,catchslot;
+    unsigned char *catchcleanup;
+
     long rawreg[2];unsigned int rawclass[2],rawuntil[2];
 	unsigned int target, targetdesc, callend, resultoffset, resultcontract;
 	unsigned int resultbytes;
@@ -52,5 +56,5 @@ int dis64typedloads(Decl*, Decl*, Decl**, int, Inst*, unsigned int, unsigned int
 int dis64typedclient(Decl*, Decl*, Decl**, int, Inst*, unsigned int, unsigned int, Dis64TypedBody*);
 int dis64typedcommand(Decl*, Decl*, Decl**, int, Inst*, unsigned int, unsigned int, Dis64TypedBody*);
 void dis64typedfree(Dis64TypedBody*);
-void dis64typedreport(Decl*, Decl**, int, Inst*, long);
+void dis64typedreport(Decl*, Decl**, int, Inst*, long, Except*);
 #endif

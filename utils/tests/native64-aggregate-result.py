@@ -6,8 +6,9 @@ ROOT=Path(__file__).resolve().parents[2]
 B=runpy.run_path(str(ROOT/'utils/tests/native64-local-geometry-args.py'));G,CMD,E=B['G'],B['CMD'],B['E']
 DECL='Winplace:module{run:fn(n:int);};'
 SOURCE='''implement Winplace;include "sys.m";include "draw.m";include "tk.m";include "sh.m";Point,Rect:import Draw;'''+DECL+'''EW,NS:con iota;Lay:adt{d:int;mkr:fn(l:self Lay,r:Rect):Rect;};
-nodes:list of ref Sh->Listnode;menutext:string;topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
-run(n:int){rest:=tl nodes;entry:=hd rest;added:=ref Sh->Listnode(nil,entry.word);nodes=added::nodes;front:=hd nodes;menutext=front.word;buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;(top,event):=tkpair(n);topout=top;eventout=event;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
+catchvalue:int;nodes:list of ref Sh->Listnode;menutext:string;topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
+run(n:int){rest:=tl nodes;entry:=hd rest;added:=ref Sh->Listnode(nil,entry.word);nodes=added::nodes;front:=hd nodes;menutext=front.word;buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;catchprobe(n);(top,event):=tkpair(n);topout=top;eventout=event;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
+catchprobe(n:int){{if(n<0)raise "fail:fixture";}exception{"fail:*"=>catchvalue=17;}}
 swappt(p:Point,n:int):Point{if(n<0)return p;return(p.y,p.x);}
 mixed(n:int):(string,int){if(n<0)return (text(n),n);return ("positive",n);}
 text(n:int):string{if(n<0)return "negative";return "positive";}firstword(r:(int,int)):int{return r.t0;}
@@ -22,8 +23,8 @@ SOURCE+=re.search(r'(?m)^select\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/winplace.b')
 SOURCE+=re.search(r'(?m)^Lay\.mkr\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/winplace.b').read_text(),re.S)[0]
 def generate(limbo,w):
  m=w/'aggregate.m';m.write_text(DECL);h=subprocess.check_output([str(limbo),'-H','-M','Winplace',str(m)],text=True);sigs={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Winplace_(\w+) (0x[0-9a-f]+)U',h,re.M)}
- rows=G['generate'](limbo,w,SOURCE,'Winplace',(18,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
- p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout','nodes','menutext'))+'};\n')
+ rows=G['generate'](limbo,w,SOURCE,'Winplace',(19,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
+ p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout','nodes','menutext','catchvalue'))+'};\n')
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);count=0
  for row in records:
   for pc,c in enumerate(row['code']):
@@ -54,13 +55,11 @@ def generate(limbo,w):
   if row['name'] in ('initbuiltin','builtin_delmenu','delmenu','word','runbuiltin','builtin_menu'):
    CMD['verify_nilbranches'](data,row,imports,rows=records)
  print('PASS original atoolbar: checked Tk tuple import, destination map, console and menu removal',flush=True)
- # Isolate the catch table from the constructor and imported call in the original startup body.
- startup,count=re.subn(r'\{\s*(node := ref Listnode.*?shctxt.run\(args, 0\);)\s*\} exception \{\s*"fail:\*" =>\s*;\s*\}',r'\1',source,flags=re.S)
- assert count==1
- _,startup_rows=E['compile_source'](limbo,w,startup,interface='',loads=True)
- init=next(r for r in startup_rows if r['name']=='init')
+ init=next(r for r in records if r['name']=='init')
  assert init['accepted'] and any(e['name']=='Context.run' and e['contract']==24 for e in init['externals']),init
- print('PASS atoolbar startup probe: Context.run and all other operations lower with the catch omitted',flush=True)
+ [(_,catch)]=G['checked_catches'](data,records)
+ assert catch['pattern']=='fail:*' and any(catch['cleanup'])
+ print('PASS original atoolbar init: independent Dis exception range, slot, label and cleanup map',flush=True)
  data,records=E['compile_source'](limbo,w,(ROOT/'appl/lib/tkclient.b').read_text(),interface='',loads=True)
  assert len(records)==16 and all(r['accepted'] for r in records),[(r['name'],r.get('reason')) for r in records]
  top=next(r for r in records if r['name']=='toplevel')

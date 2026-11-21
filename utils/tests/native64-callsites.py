@@ -26,8 +26,9 @@ def checked_run(command, **options):
         raise
 
 
-def legacy_instructions(data, with_types=False, with_data=False, with_exports=False, with_imports=False, with_arrays=True):
+def legacy_instructions(data, with_types=False, with_data=False, with_exports=False, with_imports=False, with_arrays=True, with_catches=False):
     """Independent classic Dis code reader; no diagnostic or Dis64 parser is reused."""
+    if with_catches: with_imports=True
     if with_imports: with_exports=True
     if with_exports: with_types=with_data=True
     at = 0
@@ -132,6 +133,19 @@ def legacy_instructions(data, with_types=False, with_data=False, with_exports=Fa
                     table.append(dict(signature=signature,name=name()))
                 tables.append(table)
             assert number()==0
+            if with_catches:
+                catches=[]
+                if header[1]&32:
+                    count=number()
+                    assert 0<=count<=65536
+                    for _ in range(count):
+                        slot,first,end,cleanup,labels=[number() for _ in range(5)]
+                        assert 0<=labels and 0<=first<=end<=len(code)
+                        arms=[(name(),number()) for _ in range(labels&0xffff)]
+                        fallback=number()
+                        catches.append((slot,first,end,cleanup,labels>>16,arms,fallback))
+                    assert number()==0
+                return header,code,types,initial,module,exports,tables,catches
             return header,code,types,initial,module,exports,tables
         return header,code,types,initial,module,exports
     return header, code, types, initial
