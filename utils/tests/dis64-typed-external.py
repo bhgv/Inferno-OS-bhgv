@@ -245,6 +245,13 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert r['code'][at]==[o['op'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],maps['frame'if mm else'data'][o['m']],arg[0],75];at+=1;continue
             if loads and r['code'][at][5]==61:
                 assert arg[1]in ROOTS;oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);at=rootpath_argument(original,r['code'],at,maps,pending,oldoffset,arg[0],r);continue
+            if loads and arg[1]==13 and r['code'][at][5]==153:
+                a,b,z=original[at:at+3];temp=maps['frame'][a['d'][0]];oldtarget=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0])
+                assert a['op']==41 and a['mode']==41 and a['s'][1]==16;library_step(a,r['code'][at],maps,r['first'],types);assert r['code'][at][3]==12<<24
+                assert b['op']==OPCODES['IADDC']and b['mode']==133 and b['m']==a['d'][0]and b['d']==[pending,oldtarget]
+                assert r['code'][at+1]==[b['op'],133,maps['data'][b['s'][0]],temp,arg[0],64]
+                assert z['op']==41 and z['mode']==1 and z['m']is None and z['d']==a['d']and next(l for l in r['data']['leaves']if l[0]==z['s'][0])[4]==20
+                assert r['code'][at+2]==[41,1,maps['data'][z['s'][0]],0,temp,181];at+=3;continue
             if loads and r['code'][at][5]==155:
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);library_argument(o,r['code'][at],maps,pending,oldoffset,arg[0]);at+=1;continue
             if loads and r['code'][at][5]==84:
@@ -415,6 +422,14 @@ def verify(data,r,imports,loads=False,rows=None):
             oldop=41 if kind in(12,13)else 118 if kind==4 else 46 if kind==7 else 45
             newop=oldop if kind in(4,7,12,13)else OPCODES['ICVTWL']
             a=original[at];sm=a['mode']>>3&7
+            if r['code'][at][5]==153:
+                assert kind==13 and j>=(1 if op!=3 else 2)and a['op']==41 and a['mode']==41 and a['s'][1]==16
+                library_step(a,r['code'][at],maps,r['first'],types);assert r['code'][at][3]==12<<24
+                b=original[at+1];z=original[at+2];temp=maps['frame'][a['d'][0]]
+                assert b['op']==OPCODES['IADDC']and b['mode']==133 and b['m']==a['d'][0]and b['d']==[pending,legacy]
+                assert r['code'][at+1]==[b['op'],133,maps['data'][b['s'][0]],temp,native,57]
+                assert z['op']==41 and z['mode']==1 and z['m']is None and z['d']==a['d']and next(l for l in r['data']['leaves']if l[0]==z['s'][0])[4]==20
+                assert r['code'][at+2]==[41,1,maps['data'][z['s'][0]],0,temp,223];at+=3;continue
             if r['code'][at][5]==59:
                 assert op==3 and j==0 and kind==12 and a['op']==41 and a['mode']==41 and a['s'][1]==40 and a['m']is None
                 owner=maps['frame'][a['s'][0]];temp=maps['frame'][a['d'][0]];b=original[at+1];z=original[at+2]
@@ -863,7 +878,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert op in(OPCODES['ISEND'],OPCODES['IRECV'])and o['m']is None
                 send=op==OPCODES['ISEND'];cm=dm if send else sm;vm=sm if send else dm;ca=o['d']if send else o['s'];va=o['s']if send else o['d'];channel=d if send else s;value=s if send else d;width=m&255
                 assert width in(16,24)and vm in(0,1)and channel==maps['frame'if cm in(1,5)else'data'][ca[0]]and m==((((16 if width==16 else 64)<<8)if cm in(4,5)else 0)|width)
-                if cm in(4,5):assert (ca[1],width)in((12,16),(32,24))
+                if cm in(4,5):assert (ca[1],width)in((8,16),(12,16),(32,24))
                 else:assert cm in(0,1)
                 for i in range(width//8):assert next(l for l in r['frame'if vm else'data']['leaves']if l[0]==va[0]+4*i)[1:4]==[value+8*i,4,8]
             continue
@@ -1332,7 +1347,9 @@ def verify(data,r,imports,loads=False,rows=None):
         if op==RAISE:
             assert loads and mode in(3,11)and m==d==returned==0
             address=mode>>3&7;leaves=r['frame'if address else'data']['leaves']
-            assert any(leaf[1]==s and leaf[3:]==[8,13]for leaf in leaves)
+            if not any(leaf[1]==s and leaf[3:]==[8,13]for leaf in leaves):
+                assert address==1 and pc>0 and original[pc-1]['op']==OPCODES['IADDC']and r['code'][pc-1][0]==OPCODES['IADDC']and r['code'][pc-1][1]&7==1 and r['code'][pc-1][4]==s
+                assert any(leaf[1]==s and leaf[3]==8 and leaf[4]in set(ROOTS)|{20}for leaf in leaves)and r['frame']['map'][s//64]&(128>>(s//8%8));inside.add(pc)
         if r.get('result_channels'):
             assert r['result_channels']==[6,6,6]and r['result']==[14,24]
             if o['op']==43:

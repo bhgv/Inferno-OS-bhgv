@@ -234,7 +234,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             if(s->returned==70){if(!c->external||!native64typedbytestringarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;continue;}
             if(s->returned==67){if(!c->external||!native64typedimagewordarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;continue;}
             if(s->returned==61||s->returned==66){if(!native64typedrootpath(s,fpbytes,mpbytes))return 0;continue;}
-            if(s->returned==63 || s->returned==87 || s->returned==180 || s->returned==181){if(!c->external || !native64typedstringprep(s,fpbytes,mpbytes))return 0;continue;}
+            if(s->returned==63 || s->returned==87 || s->returned==180 || s->returned==181){if((!c->external&&s->returned!=181) || !native64typedstringprep(s,fpbytes,mpbytes))return 0;continue;}
             if(s->returned==141){checkstep=*s;checkstep.returned=213;if(!c->external||s->op!=IHEADP||UDST(s->mode)!=AFP||!native64typedwindowlist(&checkstep,fpbytes,mpbytes)||j+2>=stop||steps[j+1].returned!=217||steps[j+1].s!=s->d||steps[j+2].returned!=126||steps[j+2].d!=s->d)return 0;continue;}
             if(s->returned==166 || s->returned==235){
                 checkstep=*s;checkstep.returned=s->m==24?214:Native64TypedDraw;
@@ -259,7 +259,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 continue;
             }
             if(s->op==IADDC){
-                if((!c->external && !(c->inherited && c->target==out) && !(j==c->first+1 && j+1==c->end-(c->contract?1:0) && s->d==64) && !(j==c->first+2 && steps[j-1].returned==237 && steps[j+1].returned==238 && j+2==c->end-(c->contract?1:0) && s->d==64)) || c->callee->np<0 || !native64typedconcatarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+                if((!c->external && !(j>c->first+1&&steps[j-1].returned==153&&steps[j-1].op==IMOVP&&steps[j-1].m==(12L<<24)&&j+1<stop&&steps[j+1].returned==181) && !(c->inherited && c->target==out) && !(j==c->first+1 && j+1==c->end-(c->contract?1:0) && s->d==64) && !(j==c->first+2 && steps[j-1].returned==237 && steps[j+1].returned==238 && j+2==c->end-(c->contract?1:0) && s->d==64)) || c->callee->np<0 || !native64typedconcatarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
             }
             if((s->op!=IMOVB && s->op!=IMOVW && s->op!=IMOVL && s->op!=IMOVF && s->op!=IMOVP) ||

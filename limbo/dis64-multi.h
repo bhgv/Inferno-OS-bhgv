@@ -273,7 +273,7 @@ static int
 typedroottransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {int send=in->op==ISEND,cm=send?in->dm:in->sm,vm=send?in->sm:in->dm,actual,payload;Addr*ca=send?&in->d:&in->s,*va=send?&in->s:&in->d;Type*t=ca->native64type?ca->native64type:ca->decl?ca->decl->ty:nil;Dis64Layout l={0},*storage;long channel,field=0;unsigned int cw,base,next,i,n;int ok=0;
  if(in->mm!=Anone||in->branch||!t||t->kind!=Tchan||!typedmappedpayload(t->tof,&l))goto done;n=l.count;
- if(cm==Afpind||cm==Ampind){if(typedlibraryrecord(typedfieldowner(ca))==12&&ca->offset==12&&n==2){Addr a=*ca;a.offset=0;a.native64type=typedfieldowner(ca);if(!typedoperand(cm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&channel,&cw,&actual)||actual!=Tref)goto done;cw|=AIND;field=16;}else if(ca->offset!=32||n!=3||!typedclientaddress(ca,cm,p,&channel,&cw,&field,&payload)||payload!=Tchan||field!=64)goto done;}
+ if(cm==Afpind||cm==Ampind){if(typedlibraryrecord(typedfieldowner(ca))==12&&ca->offset==12&&n==2){Addr a=*ca;a.offset=0;a.native64type=typedfieldowner(ca);if(!typedoperand(cm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&channel,&cw,&actual)||actual!=Tref)goto done;cw|=AIND;field=16;}else if(typedwmref(typedfieldowner(ca),"Draw","Context")&&ca->offset==8&&n==2){Addr a=*ca;a.offset=0;a.native64type=typedfieldowner(ca);if(!typedoperand(cm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&channel,&cw,&actual)||actual!=Tref)goto done;cw|=AIND;field=16;}else if(ca->offset!=32||n!=3||!typedclientaddress(ca,cm,p,&channel,&cw,&field,&payload)||payload!=Tchan||field!=64)goto done;}
  else if(!typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&cw,&actual)||actual!=Tchan)goto done;
  if(vm!=Afp&&vm!=Amp)goto done;storage=vm==Afp?&p->frame:&p->data;
  for(i=0;i<n;i++){if(!dis64layoutaddress(storage,va->reg+4*i,4,1,&next)||(i&&next!=base+8*i))goto done;if(!i)base=next;}
@@ -1030,6 +1030,10 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(c->loads && !spawning && kind==Tint && (in->op==ITAIL || in->op==IHEADP)){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || offset<64 || offset>65535 || !typedexternalinthead(c,p,frame,end,&at,arg->offset,offset))return typedfail(p,"local-int-head-argument");
             continue;
+        }
+        if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&typedlibraryrecord(typedfieldowner(&in->s))==12&&in->s.offset==16){unsigned int z;
+            if((!spawning&&arg->next)||!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||!typedexternalstringexpr(c,p,frame,arg,end,&at,offset))return typedfail(p,"local-client-string-expression");
+            if(spawning)for(z=at;z<end;z++){Inst*q=c->instructions[z];if(q->op!=IMOVP||q->mm!=Anone||q->branch||((q->dm!=Afpind||q->d.reg!=frame->d.reg)&&q->dm!=Afp))return typedfail(p,"spawn-string-following-allocation");}continue;
         }
         if(spawning && (in->op!=op || (in->sm!=Afp && in->sm!=Amp && in->sm!=Aimm)))return typedfail(p,"spawn-argument");
         /* No later allocating argument may follow the pending String root. */

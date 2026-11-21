@@ -25,6 +25,15 @@ typedvariadicfd(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int*at,unsigne
  if(z->op!=IMOVP||z->sm!=Amp||z->dm!=Afp||z->d.reg!=a->d.reg||z->d.decl!=a->d.decl||z->mm!=Anone||z->branch||!z->s.decl||!z->s.decl->ty||z->s.decl->ty->kind!=Tany||!typedoperand(Amp,&z->s,TypedRoot,0,0,p,&base,&wire,&actual)||!typedinst(z,end,p,p->code+*at+2-p->first,p->returns+*at+2-p->first))return typedfail(p,"variadic-fd-clear");
  p->returns[*at+2-p->first]=59;*at+=3;return 1;}
 
+/* Exact private Client.dir String expression in one variadic tail slot. */
+static int
+typedvariadicclientexpr(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int*at,unsigned int end,unsigned int old,unsigned int native)
+{Inst*a=c->instructions[*at],*b,*z;long source,middle;unsigned int sm,mm;int actual;
+ if(*at+2>=end||a->op!=IMOVP||a->sm!=Afpind||typedlibraryrecord(typedfieldowner(&a->s))!=12||a->s.offset!=16||a->dm!=Afp||a->mm!=Anone||a->branch||!a->d.decl||a->d.decl->store!=Dlocal||!a->d.decl->sym||a->d.decl->sym->name[0]!='.'||a->d.decl->sym->name[1]!='t'||a->d.offset||!typedlibraryinst(a,p,*at-p->first,end))return typedfail(p,"variadic-client-string-owner");
+ b=c->instructions[*at+1];z=c->instructions[*at+2];
+ if(b->op!=IADDC||b->sm!=Amp||b->mm!=Afp||b->m.reg!=a->d.reg||b->m.decl!=a->d.decl||b->m.offset||b->dm!=Afpind||b->d.reg!=frame->d.reg||b->d.offset!=old||b->branch||!typedoperand(Amp,&b->s,Tstring,0,0,p,&source,&sm,&actual)||actual!=Tstring||!typedoperand(Afp,&b->m,Tstring,0,1,p,&middle,&mm,&actual)||actual!=Tstring)return typedfail(p,"variadic-client-string-value");
+ p->code[*at+1-p->first]=(Dis64Instruction){IADDC,SRC(AMP)|AXINF|DST(AFP|AIND),middle,source,native};p->returns[*at+1-p->first]=57;
+ if(z->op!=IMOVP||z->sm!=Amp||z->dm!=Afp||z->d.reg!=a->d.reg||z->d.decl!=a->d.decl||z->d.offset||z->mm!=Anone||z->branch||!z->s.decl||!z->s.decl->ty||z->s.decl->ty->kind!=Tany||!z->s.decl->sym||strcmp(z->s.decl->sym->name,"nil")||!typedinst(z,end,p,p->code+*at+2-p->first,p->returns+*at+2-p->first))return typedfail(p,"variadic-client-string-clear");p->returns[*at+2-p->first]=223;*at+=3;return 1;}
 static int
 typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int stop,unsigned int*next)
 {
@@ -82,6 +91,7 @@ typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int sto
      if(in->mm!=Anone||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||!typedloadlisttype(&in->s)||!typedoperand(in->sm,&in->s,Tlist,0,0,p,&source,&sm,&kind)||kind!=Tlist)return typedfail(p,"variadic-string-head");
      p->code[at-p->first]=(Dis64Instruction){IHEADP,SRC(sm)|DST(AFP|AIND),0,source,64+8*i};p->returns[at++-p->first]=58;continue;
     }
+    if(arg->ty->kind==Tstring&&i>=(op==3?2:1)&&in->op==IMOVP&&in->dm==Afp&&typedlibraryrecord(typedfieldowner(&in->s))==12){if(!typedvariadicclientexpr(c,p,frame,&at,end,arg->offset,64+8*i))return 0;continue;}
     root=arg->ty->kind==Tstring || arg->ty->kind==Tref;
     width=arg->ty->kind==Tbig || arg->ty->kind==Treal?8:4;
     store=root?IMOVP:arg->ty->kind==Treal?IMOVF:width==8?IMOVL:IMOVW;
