@@ -335,7 +335,8 @@ condenselabel(label: string): string
 
 initbuiltin(ctxt: ref Context, nil: Sh): string
 {
-	if (tbtop == nil) {
+	top := tbtop;
+	if (top == nil) {
 		sys = load Sys Sys->PATH;
 		sys->fprint(sys->fildes(2), "wm: cannot load wm as a builtin\n");
 		raise "fail:usage";
@@ -438,10 +439,35 @@ builtin_delmenu(nil: ref Context, nil: Sh, nil: list of ref Listnode): string
 
 delmenu(m: string)
 {
-	for (i := int cmd(tbtop, m + " index end"); i >= 0; i--)
-		if (cmd(tbtop, m + " type " + string i) == "cascade")
-			delmenu(cmd(tbtop, m + " entrycget " + string i + " -menu"));
-	cmd(tbtop, "destroy " + m);
+	# Resume each parent at its next entry after destroying the submenu.
+	parents: list of string;
+	indices: list of int;
+	indexcmd := m + " index end";
+	i := int cmd(tbtop, indexcmd);
+	for(;;){
+		if(i < 0){
+			destroycmd := "destroy " + m;
+			cmd(tbtop, destroycmd);
+			if(parents == nil)
+				return;
+			m = hd parents;
+			parents = tl parents;
+			i = hd indices;
+			indices = tl indices;
+		}else{
+			typecmd := m + " type " + string i;
+			if(cmd(tbtop, typecmd) == "cascade"){
+				entrycmd := m + " entrycget " + string i + " -menu";
+				submenu := cmd(tbtop, entrycmd);
+				parents = m :: parents;
+				indices = (i - 1) :: indices;
+				m = submenu;
+				indexcmd = m + " index end";
+				i = int cmd(tbtop, indexcmd);
+			}else
+				i--;
+		}
+	}
 }
 
 getself(): Shellbuiltin
