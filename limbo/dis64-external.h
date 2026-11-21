@@ -1,3 +1,4 @@
+static unsigned int typedlibraryrecord(Type*);
 static int typedwmref(Type*,char*,char*);
 static int typedchannelbinding(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int*);
 /* Fixed-arity imported calls in trusted final compiler IR. No load/file admission. */
@@ -327,6 +328,10 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
         offset=(offset+width-1)&~(width-1);
+        while(c->loads && in->op==ILENA && in->dm==Afp && in->mm==Anone && !in->branch && typedbytearrayaddr(&in->s)){
+            if(!typedinst(in,stop,p,p->code+at-p->first,p->returns+at-p->first))return typedfail(p,"byte-array-length-prep");
+            p->returns[at-p->first]=153;if(++at>=end)return typedfail(p,"byte-array-length-prep");in=c->instructions[at];
+        }
         while(c->loads && kind==Tarray && arg->ty->tof && arg->ty->tof->kind==Tbyte && in->dm==Afp && (in->op==ILENA||in->op==IMOVW)){
             if(!typedlibraryinst(in,p,at-p->first,stop))return typedfail(p,"library-array-length");in=c->instructions[++at];
         }
@@ -335,6 +340,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         }
         if(c->loads&&kind==Tstring&&in->op==IINDW){if(!typedexternalstringarray(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afp||in->sm==Amp)&&typedbytearrayaddr(&in->s)){if(!typedexternalbytestring(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
+        if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&typedlibraryrecord(typedfieldowner(&in->s))==12&&in->s.offset==16){if(!typedexternalstringexpr(c,p,frame,arg,end,&at,offset))return 0;offset+=8;continue;}
         if(c->loads&&root&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afpind||in->sm==Ampind)){if(!typedexternalrootpath(c,p,frame,end,&at,arg->offset,offset,kind))return 0;offset+=8;continue;}
         if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Screen") && in->op==IINDW){if(!typedimagescreenarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Image") && in->op==IINDW){if(!typedimagearrayarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}

@@ -44,7 +44,7 @@ native64typedlibrary(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
  long mid=native64librarymiddle(s);
  if(s->mode>255 || s->m<0 || (unsigned long)s->m>((unsigned long)Native64LibraryRecords<<24|0xffffffUL))return 0;
  if(s->returned==154)return s->op==INEWZ&&s->mode==(SRC(AIMM)|DST(dm))&&s->s>=1&&s->s<=Native64LibraryRecords&&!s->m&&(((dm==AFP||dm==AMP)&&native64typedrootoperand(dm,s->d,fp,mp))||(dm==(AFP|AIND)&&s->d==32));
- if(s->returned!=153 || (!sid&&!did) || !native64libraryshape(s,w,r) || !native64libraryoperand(sm,s->s,sid,w[0],r[0],fp,mp,0))return 0;
+ if(s->returned!=153 || (!sid&&!did && !(s->op==ILENA && sm==AFP && dm==AFP)) || !native64libraryshape(s,w,r) || !native64libraryoperand(sm,s->s,sid,w[0],r[0],fp,mp,0))return 0;
  if(native64typedbranch(s->op)){if(did||dm!=AIMM||s->d<0)return 0;}
  else if(!native64libraryoperand(dm,s->d,did,w[1],r[1],fp,mp,1) || dm==AIMM)return 0;
  if(mm==AXNON)return mid==0;
@@ -54,7 +54,7 @@ static int
 native64typedlibraryarg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const unsigned char*map,unsigned int np)
 {
  unsigned int sm=USRC(s->mode),sid=(unsigned long)s->m>>24,w[2],r[2],i,bit;
- if(s->returned!=155 || (s->op!=IMOVP && s->op!=IMOVW && s->op!=IMOVL && s->op!=IMOVF) || s->mode!=(SRC(sm)|DST(AFP|AIND)) || (sm!=(AFP|AIND)&&sm!=(AMP|AIND)) || !sid || sid>Native64LibraryRecords || s->m!=((long)sid<<24) || !native64libraryshape(s,w,r) || !native64libraryoperand(sm,s->s,sid,w[0],r[0],fp,mp,0) || !native64libraryoperand(AFP,s->d,0,w[1],r[1],bytes,0,0) || np!=(bytes+63)/64 || map==nil || map==H)return 0;
+ if(s->returned!=155 || (s->op!=IMOVP && s->op!=IMOVW && s->op!=IMOVL && s->op!=IMOVF) || s->mode!=(SRC(sm)|DST(AFP|AIND)) || (sid?(sm!=(AFP|AIND)&&sm!=(AMP|AIND)):(s->op!=IMOVP||sm!=AFP)) || sid>Native64LibraryRecords || s->m!=((long)sid<<24) || !native64libraryshape(s,w,r) || !native64libraryoperand(sm,s->s,sid,w[0],r[0],fp,mp,0) || !native64libraryoperand(AFP,s->d,0,w[1],r[1],bytes,0,0) || np!=(bytes+63)/64 || map==nil || map==H)return 0;
  for(i=0;i<w[1];i++){bit=(s->d+i)/8;if(!!(map[bit/8]&(128>>(bit%8)))!=r[1])return 0;}return 1;
 }
 /* Only the complete Filler layout's BufioFill field may supply a module. */

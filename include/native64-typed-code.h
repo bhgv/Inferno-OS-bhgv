@@ -364,7 +364,7 @@ native64typedbytestring(const Native64TypedStep*s,unsigned int fp,unsigned int m
 {Native64TypedStep c=*s;Inst out;if(s->returned==71)return s->op==IMOVP&&s->mode==(SRC(AMP)|DST(AFP))&&!s->m&&native64typedrootoperand(AMP,s->s,fp,mp)&&native64typedrootoperand(AFP,s->d,fp,mp);if(s->returned!=69||UDST(s->mode)!=AFP||(s->op!=IMOVP&&s->op!=ISLICEA))return 0;c.returned=0;return native64typedcode(&out,1,&c,1,fp,mp);}
 static int
 native64typedwindowclone(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
-{return s->returned==68&&s->op==IMOVMP&&s->mode==(SRC(AMP)|AXIMM|DST(AFP|AIND))&&s->m==11&&s->s>=0&&s->s%8==0&&(unsigned long)s->s<=mp&&128<=mp-s->s&&native64typedrootoperand(AFP,s->d,fp,mp);}
+{return s->returned==68&&s->op==IMOVMP&&s->mode==(SRC(AMP)|AXIMM|DST(AFP|AIND))&&(s->m==11||s->m==12)&&s->s>=0&&s->s%8==0&&(unsigned long)s->s<=mp&&native64librarybytes(s->m)<=mp-s->s&&native64typedrootoperand(AFP,s->d,fp,mp);}
 static int
 native64rootpathfield(unsigned int kind,unsigned int field)
 {return kind==1?native64windowrootfield(field):kind==2?field<=48&&field%8==0:kind==3?field<=16&&field%8==0:kind==4?field<=32&&field%8==0:kind==5?field<=24&&field%8==0:0;}
@@ -726,7 +726,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==65){native64rawusecode(p,s);if(native64typedbranch(s->op))p->d.ins=out+s->d;continue;}
         if(s->returned==77){p->reg=(s->op==IMOVM)?(s->m>>8)&255:0;p->d.i.f=32;p->d.i.s=s->m&255;continue;}
         if(s->returned==73){p->reg=0;p->s.i.f=s->s;p->s.i.s=(s->m>>8)&4095;p->d.i.f=s->d;p->d.i.s=s->m&255;continue;}
-        if(s->returned==68){p->reg=11;p->d.i.f=s->d;p->d.i.s=0;continue;}
+        if(s->returned==68){p->reg=s->m;p->d.i.f=s->d;p->d.i.s=0;continue;}
         if(s->returned==61||s->returned==66){p->reg=0;p->d.ind=s->d;if(s->returned==61){p->s.i.f=s->s;p->s.i.s=s->m&65535;}continue;}
         if(s->returned==62){p->reg=s->m&255;p->s.i.f=s->s;p->s.i.s=(s->m>>16)&255;p->d.i.f=s->d;p->d.i.s=(s->m>>8)&255;continue;}
         if(s->returned==63){p->reg=0;if(s->op==ICVTCW){p->d.i.f=s->d;p->d.i.s=s->m;}else{p->s.i.f=s->s;p->s.i.s=s->m;p->d.ind=s->d;}continue;}

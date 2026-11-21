@@ -8,6 +8,17 @@ typedwmcontextrecord(Type*t)
   if(i<5){v=v->tof;if(!v||(i==0?v->kind!=Tint:i==1?!typedwmref(v,"Draw","Pointer"):i==4?!typedwmref(v,"Draw","Image"):v->kind!=Tstring))goto done;}else if(!typedwmref(v,i==5?"Sys":"Draw",i==5?"FD":"Context"))goto done;
  }if(d)goto done;ok=1;
  done:dis64layoutfree(&l);return ok;}
+/* Private Wmlib.Client is distinct from Wmsrv.Client even when dot is nil. */
+static int
+typedwmlibclient(Type*t)
+{static char*names[]={"ptrpid","kbdpid","ctlpid","req","dir","ctlfd","winfd"};Dis64Layout l={0};Decl*d,*a;unsigned int i,kind;int ok=0;
+ if(!t||t->kind!=Tadt||!t->decl||!t->decl->sym||strcmp(t->decl->sym->name,"Client")||!((t->decl->dot&&t->decl->dot->sym&&!strcmp(t->decl->dot->sym->name,"Wmlib"))||(!t->decl->dot&&impdecl&&impdecl->sym&&!strcmp(impdecl->sym->name,"Wmlib")))||!dis64layouttype(t,&l)||l.legacybytes!=28||l.bytes!=48||l.count!=7||l.alignment!=8)goto done;
+ for(i=0,d=t->ids;i<7;i++,d=d->next){Type*v;if(!d||d->store!=Dfield||!d->sym||strcmp(d->sym->name,names[i])||d->offset!=4*i||!(v=d->ty))goto done;kind=i<3?Tint:i==3?Tchan:i==4?Tstring:Tref;if(v->kind!=kind||l.leaves[i].legacy!=4*i||l.leaves[i].native!=native64libraryoffset(12,i)||l.leaves[i].bytes!=native64librarywidth(12,i)||l.leaves[i].oldbytes!=4||l.leaves[i].kind!=kind)goto done;
+  if(i==3){v=v->tof;if(!v||v->kind!=Ttuple||!(a=v->ids)||a->store!=Dfield||a->offset||!a->ty||a->ty->kind!=Tarray||!a->ty->tof||a->ty->tof->kind!=Tbyte||!(a=a->next)||a->next||a->store!=Dfield||a->offset!=4||!a->ty||a->ty->kind!=Tchan||!a->ty->tof||a->ty->tof->kind!=Ttuple)goto done;
+   a=a->ty->tof->ids;if(!a||a->store!=Dfield||a->offset||!a->ty||a->ty->kind!=Tint||!(a=a->next)||a->next||a->store!=Dfield||a->offset!=4||!a->ty||a->ty->kind!=Tstring)goto done;
+  }else if(i>=5&&!typedwmref(v,"Sys","FD"))goto done;
+ }if(d)goto done;ok=1;
+ done:dis64layoutfree(&l);return ok;}
 static unsigned int
 typedlibraryrecord(Type*t)
 {
@@ -17,7 +28,7 @@ typedlibraryrecord(Type*t)
  if(!strcmp(t->decl->sym->name,"Toplevel")){unsigned int j;int kinds[]={Tref,Tchan,Tref,Tref,Tint,Tint,Tint,Tint};if(!t->decl->dot||!t->decl->dot->sym||strcmp(t->decl->dot->sym->name,"Tk")||!dis64layouttype(t,&l)||l.legacybytes!=32||l.bytes!=48||l.count!=8||l.alignment!=8){dis64layoutfree(&l);return 0;}for(j=0;j<8;j++)if(l.leaves[j].legacy!=4*j||l.leaves[j].native!=native64libraryoffset(10,j)||l.leaves[j].bytes!=native64librarywidth(10,j)||l.leaves[j].oldbytes!=4||l.leaves[j].kind!=kinds[j])break;dis64layoutfree(&l);return j==8?10:0;}
  if(!strcmp(t->decl->sym->name,"Wmcontext"))return typedwmcontextrecord(t)?8:0;
  if(!strcmp(t->decl->sym->name,"Point")){ok=typedwordgeometry(t,&l)&&l.bytes==8;dis64layoutfree(&l);return ok?9:0;}
- if(!strcmp(t->decl->sym->name,"Client")){ok=typedclientlayout(t,&l);dis64layoutfree(&l);return ok?6:0;}
+ if(!strcmp(t->decl->sym->name,"Client")){if(typedwmlibclient(t))return 12;ok=typedclientlayout(t,&l);dis64layoutfree(&l);return ok?6:0;}
  if(!strcmp(t->decl->sym->name,"Window")){memset(&ref,0,sizeof(ref));ref.kind=Tref;ref.tof=t;return typedwmsrvwindow(&ref)?7:0;}
  if(!strcmp(t->decl->sym->name,"Iobuf"))id=1;else if(!strcmp(t->decl->sym->name,"Iqueue"))id=2;else if(!strcmp(t->decl->sym->name,"Squeue"))id=3;else if(!strcmp(t->decl->sym->name,"Ptrqueue"))id=4;else if(!strcmp(t->decl->sym->name,"Filler"))id=5;
  if(!id || !dis64layouttype(t,&l) || l.bytes!=native64librarybytes(id) || l.count!=(n=native64libraryfields(id)))goto done;
@@ -90,6 +101,9 @@ static int
 typedlibraryargument(Inst*in,Inst*frame,Dis64TypedBody*p,unsigned int pc,unsigned int old,unsigned int native,int kind)
 {
  unsigned int sm,sid;long value;int actual,root=typedclientreferencekind(kind);
+ if(in->sm==Afp && kind==Tarray && typedbytearrayaddr(&in->s) && in->op==IMOVP && in->mm==Anone && !in->branch && in->dm==Afpind && in->d.reg==frame->d.reg && in->d.offset==old && typedoperand(Afp,&in->s,Tarray,0,0,p,&value,&sm,&actual)){
+  p->code[pc]=(Dis64Instruction){IMOVP,SRC(AFP)|DST(AFP|AIND),0,value,native};p->returns[pc]=155;return 1;
+ }
  if((in->sm!=Afpind && in->sm!=Ampind) || !typedlibraryrecord(typedfieldowner(&in->s)) || in->op!=(root?IMOVP:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW) || in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=old || !typedlibraryoperand(in->sm,&in->s,root?TypedRoot:kind,p,&value,&sm,&actual,&sid))return 0;
  p->code[pc]=(Dis64Instruction){in->op,SRC(sm)|DST(AFP|AIND),(long)sid<<24,value,native};p->returns[pc]=155;return 1;
 }
@@ -135,8 +149,17 @@ static int
 typedwindowrecord(Type*t,Dis64Layout*l)
 {unsigned int i;if(t&&t->kind==Tref)t=t->tof;if(!t||t->kind!=Tadt||!t->decl||!t->decl->sym||strcmp(t->decl->sym->name,"Window")||!t->decl->dot||!t->decl->dot->sym||strcmp(t->decl->dot->sym->name,"Wmclient")||!dis64layouttype(t,l)||l->legacybytes!=104||l->bytes!=128||l->alignment!=8||l->count!=26)return 0;for(i=0;i<26;i++)if(l->leaves[i].legacy!=4*i||l->leaves[i].native!=native64libraryoffset(11,i)||l->leaves[i].oldbytes!=4||l->leaves[i].bytes!=native64librarywidth(11,i)||l->leaves[i].kind!=(native64libraryroot(11,i)?i==13?Tchan:Tref:Tint))return 0;return 1;}
 static int
+typedwmlibclone(Inst*in,Dis64TypedBody*p,unsigned int pc)
+{Decl*d=in->m.decl;Dis64Layout l={0};unsigned int first,base,i,dm;long dest;int actual,ok=0;Addr a;
+ if(in->op!=IMOVMP||in->sm!=Amp||in->mm!=Adesc||in->dm!=Afpind||in->d.offset||in->branch||!d||!d->desc||d->desc->id!=in->m.offset||d->desc->size!=28||d->desc->nmap!=1||d->desc->map[0]!=0x1e||!typedwmlibclient(d->ty)||!dis64layouttype(d->ty,&l)||!in->s.decl||in->s.reg!=in->s.decl->offset||in->s.offset||typedlibraryrecord(typedfieldowner(&in->d))!=12)goto done;
+ for(first=0;first<p->data.count;first++)if(p->data.leaves[first].legacy==(unsigned int)in->s.reg)break;if(first>p->data.count||7>p->data.count-first)goto done;base=p->data.leaves[first].native;for(i=0;i<7;i++){Dis64LayoutLeaf*v=p->data.leaves+first+i;if(v->legacy!=in->s.reg+l.leaves[i].legacy||v->native!=base+l.leaves[i].native||v->kind!=l.leaves[i].kind||v->bytes!=l.leaves[i].bytes||v->oldbytes!=4)goto done;}
+ a=in->d;a.offset=0;a.native64type=typedfieldowner(&a);if(!typedoperand(Afp,&a,TypedRoot,0,0,p,&dest,&dm,&actual)||actual!=Tref||!pc||p->returns[pc-1]!=154||p->code[pc-1].source!=12||p->code[pc-1].destination!=dest)goto done;
+ p->code[pc]=(Dis64Instruction){IMOVMP,SRC(AMP)|AXIMM|DST(AFP|AIND),12,base,dest};p->returns[pc]=68;ok=1;
+ done:dis64layoutfree(&l);return ok;}
+static int
 typedwindowconstruct(Inst*in,Dis64TypedBody*p,unsigned int pc)
 {Dis64Layout l={0};Decl*d;long dest;unsigned int dm,i,first,base;int actual,ok=0;
+ if(typedwmlibclone(in,p,pc))return 1;
  if(in->op==INEW||in->op==INEWZ){d=in->s.decl;if(in->sm!=Adesc||in->mm!=Anone||in->branch||!d||!d->desc||d->desc->id!=in->s.offset||d->desc->size!=104||d->desc->nmap!=3||d->desc->map[0]!=0x84||d->desc->map[1]!=0x26||d->desc->map[2]!=4||!typedwindowrecord(d->ty,&l)||!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&dest,&dm,&actual)||dm!=AFP||actual!=Tref)goto done;p->code[pc]=(Dis64Instruction){INEWZ,SRC(AIMM)|DST(AFP),0,11,dest};p->returns[pc]=154;ok=1;goto done;}
  if(in->op!=IMOVMP||in->sm!=Amp||in->mm!=Adesc||in->dm!=Afpind||in->d.offset||in->branch||!(d=in->m.decl)||!d->desc||d->desc->id!=in->m.offset||d->desc->size!=104||d->desc->nmap!=3||d->desc->map[0]!=0x84||d->desc->map[1]!=0x26||d->desc->map[2]!=4||!typedwindowrecord(d->ty,&l)||!in->s.decl||in->s.reg!=in->s.decl->offset||in->s.offset||!typedwindowowner(&in->d))goto done;
  for(first=0;first<p->data.count;first++)if(p->data.leaves[first].legacy==(unsigned int)in->s.reg)break;if(first>p->data.count||26>p->data.count-first)goto done;base=p->data.leaves[first].native;for(i=0;i<26;i++){Dis64LayoutLeaf*v=p->data.leaves+first+i;if(v->legacy!=in->s.reg+l.leaves[i].legacy||v->native!=base+l.leaves[i].native||v->kind!=l.leaves[i].kind||v->bytes!=l.leaves[i].bytes||v->oldbytes!=4)goto done;}
