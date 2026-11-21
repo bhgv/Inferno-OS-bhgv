@@ -98,9 +98,11 @@ init(ctxt: ref Draw->Context, argv: list of string)
 	argv = tl argv;
 	if(argv == nil)
 		argv = "wm/atoolbar" :: nil;
-	spawn command(clientctxt, argv, sync);
-	if((e := <-sync) != nil)
-		fatal("cannot run command: " + e);
+	if(hd argv != "-nopanel"){
+		spawn command(clientctxt, argv, sync);
+		if((e := <-sync) != nil)
+			fatal("cannot run command: " + e);
+	}
 
 	fakekbd = chan of string;
 	for(;;) alt {

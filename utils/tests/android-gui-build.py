@@ -34,6 +34,7 @@ def main():
     parser.add_argument('--native64-sys-fixed', action='store_true', help='register all 39 fixed Sys exports; variadic and AWM startup remain unavailable')
     parser.add_argument('--native64-draw', action='store_true', help='select native64 Draw C frames/registration; full GUI startup stays guarded')
     parser.add_argument('--native64-tk', action='store_true', help='select native64 Tk C frames/registration; full GUI startup stays guarded')
+    parser.add_argument('--native64-awm', action='store_true', help='select the compiled-in native64 AWM startup without the panel')
     parser.add_argument('--cmake', default='cmake')
     parser.add_argument('--ninja', default='ninja')
     args = parser.parse_args()
@@ -43,6 +44,8 @@ def main():
         parser.error("GUI fixed Sys selection requires coherent Draw and Tk")
     if args.native64_tk != args.native64_draw:
         parser.error("Draw and Tk must be selected together: devgui directly calls both interfaces")
+    if args.native64_awm and not args.native64_formatter:
+        parser.error("Native64 AWM startup requires --native64-formatter")
     build, tools, ndk, app = (path.resolve() for path in
                              (args.build_root, args.host_tools, args.ndk, args.app_root))
     for source in (ROOT, app):
@@ -88,6 +91,9 @@ def main():
         flags += ' -DDIS_NATIVE64_GUI_DRAW=1' if args.native64_draw else ''
         flags += ' -DDIS_NATIVE64_GUI_SYS_FIXED=1' if args.native64_sys_fixed else ''
         flags += ' -DDIS_NATIVE64_FORMATTER=1' if args.native64_formatter else ''
+        if args.native64_awm:
+            flags += ' -DDIS64_PILOT_LOADER=1 -DDIS_NATIVE64_AWM_BOOT=1'
+            stream.write('NATIVE64_BOOT_AWM_HEADERS='+str(core/'libinterp/awm-native64.h')+'\n')
         stream.write("\nDISMODELFLAGS='"+flags+"'\n")
         if args.native64_tk:
             stream.write('NATIVE64_BOOT_TK_HEADERS='+str(core/'libinterp/tk-native64.h')+'\n')
@@ -112,6 +118,7 @@ def main():
          '-DCMAKE_MAKE_PROGRAM='+ninja, '-DANDROID_ABI=arm64-v8a',
          '-DANDROID_PLATFORM=android-21', '-DANDROID_STL=c++_static',
          '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON', '-DINFERNO_ROOT='+str(core),
+         '-DINFERNO_BUNDLE_RUNTIME='+('ON' if args.native64_awm else 'OFF'),
          '-DCMAKE_BUILD_TYPE=Debug'], app, env, logs/'cmake.log')
     run([args.cmake, '--build', str(build/'native'), '--parallel', '2'], app, env, logs/'native-link.log')
     library = build/'native/libinferno_os_app.so'
@@ -125,6 +132,8 @@ def main():
     symbols = subprocess.check_output([str(llvm/'llvm-nm'), '-D', '--defined-only', str(library)], text=True)
     (logs/'symbols.txt').write_text(symbols)
     required = ['ANativeActivity_onCreate', 'android_main', 'amain']
+    if args.native64_awm:
+        required.append('native64awmboot')
     if args.native64_formatter:
         required += ['Sys_'+name+'64' for name in ('print', 'fprint', 'sprint', 'aprint')]
         required += ['Sys_bindframe64', 'Sys_setframes64', 'Sys_clearframes64', 'Sys_bindsite64', 'Sys_callsite64']
@@ -143,10 +152,9 @@ def main():
                   core_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                   app_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=app, text=True).strip(),
                   library_sha256=hashlib.sha256(library.read_bytes()).hexdigest(),
-                  gui_native_linked=True, awm_started=False,
-                  remaining='Native64 builtin registration and general managed Dis64 compiler/runtime admission')
+                  gui_native_linked=True, awm_boot_selected=args.native64_awm, awm_started=False)
     (build/'result.json').write_text(json.dumps(report, indent=2)+'\n')
-    print('PASS complete Android ARM64 GUI native link; AWM startup is not yet admitted', flush=True)
+    print('PASS complete Android ARM64 GUI native link', flush=True)
 
 
 if __name__ == '__main__':

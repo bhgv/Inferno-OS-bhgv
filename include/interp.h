@@ -586,6 +586,9 @@ extern	Module*		prepare64pilot(char*, uchar*, ulong, int);
 extern	Module*		prepare64calls(char*, uchar*, ulong, int); // Unpublished checked owner; caller supplies file policy.
 extern	int		dis64selectlaunch(char*); // Startup-only named Inferno experimental selection.
 extern	int		dis64launchmode(void); // Freeze and read host startup policy, not wire admission.
+#ifdef DIS_NATIVE64_AWM_BOOT
+extern	Module*		native64awmboot(int);
+#endif
 extern	int		dis64launchcompatible(Module*); // Cache profile compatibility, never proof authority.
 extern	Module*		parsedmod(char*, int, ulong, Qid);
 extern	void		prefabmodinit(void);

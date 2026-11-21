@@ -1,4 +1,4 @@
-name: Android ARM64 GUI native link (AWM pending)
+name: Android ARM64 GUI and AWM build
 on:
   pull_request:
     branches: [experiment]
@@ -18,6 +18,7 @@ on:
       - 'emu/port/**'
       - 'include/**'
       - 'libdraw/**'
+      - 'libmemdraw/**'
       - 'libtk/**'
       - 'libinterp/**'
       - 'libfreetype/**'
@@ -97,10 +98,16 @@ jobs:
           python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
             --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
             --build-root "$RUNNER_TEMP/android-gui-tk" --native64-tk --native64-draw --native64-sys-fixed --native64-formatter
+      - name: Link the Android ARM64 native64 AWM boot profile
+        run: |
+          python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
+            --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
+            --build-root "$RUNNER_TEMP/android-awm" --native64-tk --native64-draw \
+            --native64-sys-fixed --native64-formatter --native64-awm
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Android-arm64-GUI-native-link-not-AWM-APK
+          name: Android-arm64-GUI-build
           path: |
             ${{ runner.temp }}/bionic-managed.log
             ${{ runner.temp }}/bionic-sys-format.log
@@ -111,5 +118,8 @@ jobs:
             ${{ runner.temp }}/android-gui-tk/logs/
             ${{ runner.temp }}/android-gui-tk/result.json
             ${{ runner.temp }}/android-gui-tk/native/libinferno_os_app.so
+            ${{ runner.temp }}/android-awm/logs/
+            ${{ runner.temp }}/android-awm/result.json
+            ${{ runner.temp }}/android-awm/native/libinferno_os_app.so
           if-no-files-found: warn
           retention-days: 14

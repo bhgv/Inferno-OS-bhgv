@@ -4,6 +4,7 @@
 #include "error.h"
 
 #include <unistd.h>
+#include <sys/mman.h>
 
 
 #include <android/log.h>
@@ -17,12 +18,12 @@
 #define ORIG_ALLOC 1
 
 
-#define sbrk sbrk_
-
-void* sbrk(size_t l){
-#undef malloc
-	return malloc( l );
-#define malloc malloc_
+/* Pool arenas are permanent, page-aligned mappings. Keep their address space
+ * independent of Bionic's allocation tags and malloc metadata. */
+static void*
+poolarena(size_t size)
+{
+	return mmap(nil, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 }
 
 
@@ -96,9 +97,9 @@ struct
 } table = {
 	3,
 	{
-		{ "main",  0, 	32*1024*1024, 31,  8*1024, 0, 31*1024*1024 },
-		{ "heap",  1, 	32*1024*1024, 31,  8*1024, 0, 31*1024*1024 },
-		{ "image", 2,   64*1024*1024+256, 31, 32*1024, 1, 63*1024*1024 },
+		{ "main",  0, 	32*1024*1024, POOLQUANTA,  8*1024, 0, 31*1024*1024 },
+		{ "heap",  1, 	32*1024*1024, POOLQUANTA,  8*1024, 0, 31*1024*1024 },
+		{ "image", 2,   64*1024*1024+256, POOLQUANTA, 32*1024, 1, 63*1024*1024 },
 	}
 };
 
@@ -371,9 +372,10 @@ LOGE("dopoolalloc sz=%d, pc=%x", asize, pc);
 	while(t) {
 		if(t->size == size) {
 			t = t->fwd;
+			size = t->size;
 			pooldel(p, t);
 			t->magic = MAGIC_A;
-			p->cursize += t->size;
+			p->cursize += size;
 			if(p->cursize > p->hw)
 				p->hw = p->cursize;
 			unlock(&p->l);
@@ -450,16 +452,14 @@ LOGE("dopoolalloc 5");
 	}
 
 	p->nbrk++;
-	t = (Bhdr *)sbrk(alloc);
-	if(t == (void*)-1) {
+	t = poolarena(alloc);
+	if(t == MAP_FAILED) {
+		p->arenasize -= alloc;
 		p->nbrk--;
 		unlock(&p->l);
 LOGE("dopoolalloc 6 errno=%d", errno);
 		return nil;
 	}
-	/* Double alignment */
-	t = (Bhdr *)(((ulong)t + 7) & ~7);
-
 	if(p->chain != nil && (char*)t-(char*)B2LIMIT(p->chain)-ldr == 0){
 		/* can merge chains */
 		if(0)print("merging chains %p and %p in %s\n", p->chain, t, p->name);
@@ -805,7 +805,7 @@ free(void *v)
 {
 	Bhdr *b;
 
-	if(v != nil && v > 0x1000 && v < 0xffff0000) {
+	if(v != nil && v != H) {
 		if(Npadlong)
 			v = (ulong*)v-Npadlong;
 		D2B(b, v);
@@ -820,7 +820,7 @@ realloc(void *v, size_t size)
 {
 	void *nv;
 
-	if(v <= 0x1000 || v >= 0xffff0000)
+	if(v == H)
 		v = nil;
 
 	if(size == 0)
@@ -836,7 +836,7 @@ realloc(void *v, size_t size)
 		nv = (ulong*)nv+Npadlong;
 		setrealloctag(nv, getcallerpc(&v));
 		if(v == nil)
-			setmalloctag(v, getcallerpc(&v));
+			setmalloctag(nv, getcallerpc(&v));
 	} else 
 		print("realloc failed from %lux\n", getcallerpc(&v));
 	return nv;

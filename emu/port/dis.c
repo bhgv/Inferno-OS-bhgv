@@ -1400,7 +1400,11 @@ disinit(void *a)
 	FPsave(&up->env->fpu);
 
 	opinit();
-#ifndef DIS_NATIVE64_SCALAR_BOOT
+#ifdef DIS_NATIVE64_AWM_BOOT
+	sysmodinit();
+	drawmodinit();
+	tkmodinit();
+#elif !defined(DIS_NATIVE64_SCALAR_BOOT)
 	modinit();
 #elif defined(DIS_NATIVE64_BOOT_MATH)
 	mathmodinit();
@@ -1419,6 +1423,12 @@ disinit(void *a)
 #endif
 	excinit();
 
+#ifdef DIS_NATIVE64_AWM_BOOT
+	root = native64awmboot(!!cflag);
+	if(root == nil)
+		panic("constructing native64 AWM startup: %r");
+	p = schedmod(root);
+#else
 #if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
 #ifdef DIS_NATIVE64_BOOT_EMUINIT
 	if(dis64bootemuinit){
@@ -1444,6 +1454,7 @@ disinit(void *a)
 		}
 		p = schedmod(root);
 	}
+#endif
 
 	memmove(p->osenv, up->env, sizeof(Osenv));
 	o = p->osenv;

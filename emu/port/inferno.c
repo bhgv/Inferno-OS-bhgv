@@ -1639,6 +1639,7 @@ Sys_file2chan(void *fp)
 	volatile struct {
 		Sys_FileIO *file; // Partial channel pair owned until publication.
 		int released; // Restore VM ownership when registration raises.
+		int rooted; // Keep the pair live while registration releases the VM.
 	} result;
 	Sys_FileIO *old, *published;
 	char *directory, *name, saved[ERRMAX];
@@ -1652,15 +1653,20 @@ Sys_file2chan(void *fp)
 	name = string2c(f->file);
 	result.file = H;
 	result.released = 0;
+	result.rooted = 0;
 	if(waserror()){
 		if(result.released)
 			acquire();
 		memmove(saved, up->env->errstr, sizeof(saved));
+		if(result.rooted)
+			ptrdel(D2H(result.file));
 		destroy(result.file);
 		memmove(up->env->errstr, saved, sizeof(saved));
 		nexterror();
 	}
 	result.file = H2D(Sys_FileIO*, heap(TFileIO));
+	ptradd(D2H(result.file));
+	result.rooted = 1;
 	result.file->read = cnewc(FioTread, movtmp, 16);
 	result.file->write = cnewc(FioTwrite, movtmp, 16);
 	release();
@@ -1668,6 +1674,7 @@ Sys_file2chan(void *fp)
 	status = srvf2c(directory, name, result.file);
 	acquire();
 	result.released = 0;
+	ptrdel(D2H(result.file));
 	poperror();
 	if(status < 0){
 		memmove(saved, up->env->errstr, sizeof(saved));

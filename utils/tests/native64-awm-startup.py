@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Run unchanged emuinit -> AWM with nine real native Limbo modules and controlled devices."""
-import argparse,copy,os,re,runpy,shlex,subprocess,tempfile
+import argparse,copy,os,re,runpy,shlex,shutil,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 ALT=runpy.run_path(str(ROOT/'utils/tests/native64-aprint-alt.py'));G,CMD=ALT['G'],ALT['CMD'];E=G['E']
 MODULES=(('boot','Emuinit','appl/cmd/emuinit.b',4),('arg','Arg','appl/lib/arg.b',8),('awm','Wm','appl/wm/awm.b',20),('string','String','appl/lib/string.b',21),('wmsrv','Wmsrv','appl/lib/wmsrv.b',34),('wmclient','Wmclient','appl/lib/wmclient.b',21),('winplace','Winplace','appl/lib/winplace.b',21),('wmlib','Wmlib','appl/lib/wmlib.b',25),('titlebar','Titlebar','appl/lib/titlebar.b',7))
-def generate(limbo,w):
+def generate(limbo,w,metadata=None):
  interface=w/'graph.m';interface.write_text(''.join('include "'+n+'.m";'for n in('sys','draw','tk','string','wmsrv','wmlib','titlebar','wmclient','winplace','arg','sh'))+'Wm:module{init:fn(ctxt:ref Draw->Context,argv:list of string);};Emuinit:module{init:fn();};')
  frames={};signatures={};headers={}
  for name in('Sys','Draw','Tk','String','Wmsrv','Wmlib','Titlebar','Wmclient','Winplace','Arg','Sh','Wm','Emuinit'):
@@ -36,6 +36,10 @@ def generate(limbo,w):
   if prefix=='awm':awmglobals={x[0]:x[1]for x in rows[0]['globals']}
  (w/'full.h').unlink()
  body='static const GraphSpec graph_specs[]={'+','.join(modules)+'};\n'
+ if metadata is not None:
+  headers=[(w/('graph-'+prefix+'.h')).read_text() for prefix,_,_,_ in MODULES]
+  metadata.write_text('/* Generated from the checked native64 AWM sources. */\n'+'\n'.join(headers)+body)
+  return
  body+='static const uint awm_screen_offset='+str(awmglobals['screen'])+';\n'
  for name in ('Sys','Draw','Tk'):
   refs={}
@@ -54,7 +58,7 @@ def generate(limbo,w):
  for fn in re.findall(r'^struct F_Draw_((?:Point|Rect)_\w+) \{',h,re.M):
   methods.append(fn);geometry+='typedef struct F_Draw_'+fn+' F_Draw_'+fn+';\n'+re.search(r'struct F_Draw_'+fn+r' \{.*?\n};',h,re.S)[0]+'\n'
  (w/'geometry-layout.h').write_text(geometry)
- print('PASS startup graph: 9 unchanged modules,',sum(x[1]for x in summaries),'bodies, independent source/call/map proofs and identical classic bytes',summaries,flush=True)
+ print('PASS startup graph: 9 source modules,',sum(x[1]for x in summaries),'bodies, independent source/call/map proofs and identical classic bytes',summaries,flush=True)
  return ops,methods
 
 def unit(w,ops,methods):
@@ -84,8 +88,14 @@ def main():
  p=argparse.ArgumentParser(description=__doc__)
  p.add_argument('--limbo',required=True,type=Path)
  p.add_argument('--android-ndk',type=Path,help='build the ARM64/Bionic fixture with NDK clang')
+ p.add_argument('--metadata',type=Path,help='generate trusted startup metadata instead of running the fixture')
  a=p.parse_args()
  if not __debug__:p.error('source oracles require assertions')
+ limbo=Path(shutil.which(str(a.limbo)) or a.limbo).resolve()
+ if a.metadata:
+  with tempfile.TemporaryDirectory(prefix='awm-metadata-') as directory:
+   generate(limbo,Path(directory),a.metadata)
+  return
  runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''))
  arch=os.environ.get('NATIVE64_ARCH','amd64')
  compiler=shlex.split(os.environ.get('CC','cc'))
@@ -101,7 +111,7 @@ def main():
  cc=compiler+shlex.split(os.environ.get('NATIVE64_CFLAGS',default_flags))
  if arch in('arm64','riscv64'):cc+=['-DDIS64_TEST_'+arch.upper()+'=1','-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
  with tempfile.TemporaryDirectory(prefix='awm-startup-',dir=ROOT)as td:
-  w=Path(td);CMD['generate'](a.limbo.resolve(),w,'Command',False,argv=True,local=True,pair=True,raises=True);ops,methods=generate(a.limbo.resolve(),w);(w/'unit.c').write_text(unit(w,ops,methods))
+  w=Path(td);CMD['generate'](limbo,w,'Command',False,argv=True,local=True,pair=True,raises=True);ops,methods=generate(limbo,w);(w/'unit.c').write_text(unit(w,ops,methods))
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in platform_includes+('emu/port','include','libinterp')]
   command=cc+[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+[str(ROOT/('lib9/'+n+'.c'))for n in('sprint','snprint','vsnprint','dofmt','fmt','fmtlock','fmtquote','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+CMD['FILES']['releaseflags'](cc)+['-pthread','-lm','-o',str(w/'unit')]
   subprocess.run(command,check=True);subprocess.run(runner+[str(w/'unit')],check=True,timeout=240)

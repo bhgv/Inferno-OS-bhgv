@@ -1584,3 +1584,9 @@ utfnleng(char *s, int nb, int *ngood)
 #include "emuinit-native64.h"
 #include "native64-emuinit-boot.h"
 #endif
+
+#ifdef DIS_NATIVE64_AWM_BOOT
+#include "native64-typed-module.h"
+#include "native64-sys-module.h"
+#include "native64-awm-boot.h"
+#endif

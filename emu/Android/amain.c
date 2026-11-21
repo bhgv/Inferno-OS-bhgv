@@ -3,6 +3,7 @@
 #include	"error.h"
 #include	"interp.h"
 #include "legacy-native-abi.h"
+#include "native64-scalar-boot.h"
 #include	"kernel.h"
 #include	"draw.h"
 #include	"version.h"
@@ -265,6 +266,7 @@ nofence(void)
 
 
 /* Read bounded startup text and quote the root as one complete Plan 9 argument. */
+#ifndef DIS_NATIVE64_AWM_BOOT
 static char*
 loadcmdstr(char *root)
 {
@@ -286,6 +288,7 @@ loadcmdstr(char *root)
 	fclose(file);
 	return smprint("-r%q %s", root, command);
 }
+#endif
 
 
 /* Parse startup options within the argument vector before initializing the emulator. */
@@ -326,11 +329,15 @@ amain(void)
 		fclose(f);
 	}
 
+#ifdef DIS_NATIVE64_AWM_BOOT
+	opt = smprint("-r%q -g%dx%d wm/awm -nopanel", rootdir, Xsize, Ysize);
+#else
 	opt = loadcmdstr(rootdir);
 	if(opt == nil || opt[0] == '\0'){
 		free(opt);
 		opt = smprint("-r%q -g%dx%d wm/awm", rootdir, Xsize, Ysize);
 	}
+#endif
 	if(opt == nil){
 		LOGE("Cannot allocate Inferno startup command");
 		is_run = 0;
@@ -351,11 +358,20 @@ amain(void)
 	if(opt)
 		free(opt);
 
+#ifdef DIS_NATIVE64_AWM_BOOT
+	if(!dis64selectlaunch("dis64-calls")){
+		LOGE("Cannot select Android ARM64 native64 AWM startup");
+		is_run = 0;
+		return;
+	}
+	LOGI("Starting Android ARM64 native64 AWM");
+#else
 	if(!legacynativeabi()){
 		LOGE("Installed legacy builtin tables require int32/ref32; native64 registration is not enabled");
 		is_run = 0;
 		return;
 	}
+#endif
 
 //	option(argc, argv, usage);
 	displaychan = strtochan("x8r8g8b8");
