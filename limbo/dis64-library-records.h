@@ -112,7 +112,8 @@ static int
 typedlibrarymodule(Inst*frame,Dis64TypedBody*p,long*value,unsigned int*mode,int*actual)
 {unsigned int id;if((frame->sm!=Afpind&&frame->sm!=Ampind)||typedlibraryrecord(typedfieldowner(&frame->s))!=5||frame->s.offset!=4||!typedlibraryoperand(frame->sm,&frame->s,TypedRoot,p,value,mode,actual,&id))return 0;*value|=5L<<24;*actual=Tmodule;return 1;}
 
-/* A byte borrow permits one pure Word shift before its single consumer. */
+/* A byte borrow owns its sole consumer. The caller proves either one Word
+ * shift or the bounded cursor sequence with two pointer-free Word leaf calls. */
 static int
 typedlibrarybyteindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc,unsigned int gap)
 {

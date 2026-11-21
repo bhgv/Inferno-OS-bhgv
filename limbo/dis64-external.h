@@ -2,7 +2,7 @@ static unsigned int typedlibraryrecord(Type*);
 static int typedwmref(Type*,char*,char*);
 static int typedchannelbinding(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int*);
 /* Fixed-arity imported calls in trusted final compiler IR. No load/file admission. */
-/* One native-only mixed result: Sys.fstat -> (int, Sys.Dir).
+/* Closed native-only mixed results: Sys.stat/fstat -> (int, Sys.Dir).
  * Prove every scalar/root leaf against both the declaration and caller frame.
  * No aggregate return forwarding or general tuple-call ABI is admitted. */
 static int
@@ -12,10 +12,11 @@ typedstatresult(Decl *fn,Inst *binding,Dis64TypedBody *p,unsigned int *base,int 
  static const unsigned int native[]={0,8,16,24,32,40,48,52,56,60,64,72,80,84};
  static const int kinds[]={Tint,Tstring,Tstring,Tstring,Tstring,Tbig,Tint,Tint,Tint,Tint,Tint,Tbig,Tint,Tint};
  Dis64Layout result={0};Dis64LayoutLeaf *leaf,*cell;Type *t,*fd;Decl *field,*formal;unsigned int i,j,first=0,end,delta;int ok=0;
- if(!(formal=fn->ty->ids) || formal->next || !formal->ty || formal->ty->kind!=Tref || !(fd=formal->ty->tof) || fd->kind!=Tadt ||
-    !fd->decl || !fd->decl->sym || strcmp(fd->decl->sym->name,"FD") || !fd->decl->dot || !fd->decl->dot->sym || strcmp(fd->decl->dot->sym->name,"Sys") ||
-    !fd->ids || fd->ids->next || !fd->ids->ty || fd->ids->ty->kind!=Tint || fd->ids->offset || fd->size!=4)return 0;
- if(!fn->sym || strcmp(fn->sym->name,"fstat") || !fn->dot || !fn->dot->sym || strcmp(fn->dot->sym->name,"Sys") ||
+ if(!(formal=fn->ty->ids)||formal->next||!formal->ty||!fn->sym)return 0;
+ if(!strcmp(fn->sym->name,"stat")){if(formal->ty->kind!=Tstring)return 0;}
+ else if(!strcmp(fn->sym->name,"fstat")){if(formal->ty->kind!=Tref || !(fd=formal->ty->tof) || fd->kind!=Tadt || !fd->decl || !fd->decl->sym || strcmp(fd->decl->sym->name,"FD") || !fd->decl->dot || !fd->decl->dot->sym || strcmp(fd->decl->dot->sym->name,"Sys") || !fd->ids || fd->ids->next || !fd->ids->ty || fd->ids->ty->kind!=Tint || fd->ids->offset || fd->size!=4)return 0;}
+ else return 0;
+ if(!fn->sym || (strcmp(fn->sym->name,"fstat") && strcmp(fn->sym->name,"stat")) || !fn->dot || !fn->dot->sym || strcmp(fn->dot->sym->name,"Sys") ||
     !(t=fn->ty->tof) || t->kind!=Ttuple || !(field=t->ids) || !field->ty || field->ty->kind!=Tint ||
     !(field=field->next) || field->next || !field->ty || field->ty->kind!=Tadt || !field->ty->decl ||
     !field->ty->decl->sym || strcmp(field->ty->decl->sym->name,"Dir") || !field->ty->decl->dot ||
@@ -78,7 +79,7 @@ typedwmtupleframe(TypedMulti*c,Decl*owner,Dis64TypedBody*p,unsigned int stop)
   if(!typedwmtuplebinding(fn,b,p,&base,1))return typedfail(p,"wm-tuple-result-layout");
  }return 1;}
 
-/* Repack only exact fstat caller-result groups before translating any body
+/* Repack only exact stat/fstat caller-result groups before translating any body
  * instruction. Destructured locals can otherwise drop the tuple's status pad.
  * Legacy bytes/descriptors stay unchanged; all native users share this plan. */
 static int
@@ -86,9 +87,9 @@ typedstatframe(TypedMulti *c,Decl *owner,Dis64TypedBody *p,unsigned int stop)
 {
  unsigned int pc,end,base;Inst *in,*binding,*call;Decl *arg,*fn;
  for(pc=p->first;pc<stop;pc++){
-  in=c->instructions[pc];if(!in || in->op!=IMFRAME || !(fn=in->m.decl) || !fn->sym || strcmp(fn->sym->name,"fstat") ||
+  in=c->instructions[pc];if(!in || in->op!=IMFRAME || !(fn=in->m.decl) || !fn->sym || (strcmp(fn->sym->name,"fstat") && strcmp(fn->sym->name,"stat")) ||
      !fn->dot || !fn->dot->sym || strcmp(fn->dot->sym->name,"Sys"))continue;
-  end=pc+1;while(end<stop && c->instructions[end] && c->instructions[end]->dm==Afpind)end++;
+  end=pc+1;while(end<stop && c->instructions[end] && (c->instructions[end]->dm==Afpind||(c->instructions[end]->dm==Afp&&(c->instructions[end]->op==IMOVP||c->instructions[end]->op==IADDC))))end++;
   if(end<=pc+1 || end>=stop || !(call=c->instructions[end]) || call->op!=IMCALL || call->m.decl!=fn ||
      !(binding=c->instructions[end-1]) || binding->op!=ILEA || binding->sm!=Afp || binding->s.reg<32 || binding->s.reg>Dis64LayoutBytes-72 ||
      !fn->ty || fn->ty->kind!=Tfn || !fn->ty->tof)return typedfail(p,"external-result-kind");
@@ -315,7 +316,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
     if(fn->ty==nil || fn->ty->kind!=Tfn || fn->ty->varargs || fn->ty->polys!=nil || fn->ty->tof==nil)
         return typedfail(p,"external-signature");
     while(end<stop && c->instructions[end]!=nil && c->instructions[end]->op!=IMCALL && (c->instructions[end]->dm==Afpind || (c->loads && c->instructions[end]->op==IINDW) ||
-      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==IMOVW || c->instructions[end]->op==ILENA || c->instructions[end]->op==ILENC || c->instructions[end]->op==ISLICEC || c->instructions[end]->op==ISLICEA || c->instructions[end]->op==IINDW || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
+      (c->loads && c->instructions[end]->dm==Afp && (c->instructions[end]->op==IMOVW || c->instructions[end]->op==ILENA || c->instructions[end]->op==ILENC || c->instructions[end]->op==ISLICEC || c->instructions[end]->op==ISLICEA || c->instructions[end]->op==IINDW || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL || c->instructions[end]->op==IMOVP || (c->instructions[end]->op==ICONSP||c->instructions[end]->op==ICONSW) || c->instructions[end]->op==ICVTWC || c->instructions[end]->op==IADDC))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || call->op!=IMCALL || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Aoff || call->m.decl!=fn || call->dm!=frame->sm || call->d.reg!=frame->s.reg ||
        call->d.decl!=frame->s.decl || call->d.offset!=frame->s.offset || call->branch!=nil)return typedfail(p,"external-call");
@@ -359,7 +360,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
             if(offset>65535-8 || !typedexternalstringexpr(c,p,frame,arg,end,&at,offset))return 0;
             offset+=8;continue;
         }
-        if(c->loads && kind==Tlist && arg->ty->tof && arg->ty->tof->kind==Tstring && in->op==IMOVP && in->dm==Afp){
+        if(c->loads && kind==Tlist && arg->ty->tof && (arg->ty->tof->kind==Tstring||arg->ty->tof->kind==Tint) && in->op==IMOVP && in->dm==Afp){
             listinit=in;
             if(typedloadlisttype(&in->s))listrole=187;
             if(!(listrole==187?typedexternalstringprefix(c,p,frame,end,&at):typedexternalstringlist(c,p,frame,end,&at)) || at>=end || !(in=c->instructions[at]))return typedfail(p,"external-list-argument");

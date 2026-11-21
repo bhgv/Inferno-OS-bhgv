@@ -57,6 +57,9 @@ typedselectedfieldarg(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offs
 
 /* Exact Image.r/clipr or Wmsrv.Window.r and their Point halves. */
 static int
+typedrawpairgeometry(Type*t,Dis64Layout*l)
+{Decl*d;unsigned int i;if(!t||t->kind!=Ttuple||!dis64layouttype(t,l)||l->legacybytes!=8||l->bytes!=8||l->alignment!=4||l->count!=2)return 0;for(i=0,d=t->ids;i<2;i++,d=d->next)if(!d||!d->ty||d->ty->kind!=Tint||l->leaves[i].legacy!=4*i||l->leaves[i].native!=4*i||l->leaves[i].bytes!=4||l->leaves[i].oldbytes!=4)return 0;return !d;}
+static int
 typedimagegeometry(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int offset)
 {
  Inst probe=*in;long field=in->s.offset;Dis64Layout layout={0};int ok;unsigned int bytes;
@@ -150,8 +153,8 @@ typedlocalgeometry(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
   *returned=(window||pointer)?215:read?(bytes==16?208:209):(bytes==16?210:211);
  }else{
   if((in->sm!=Afp && in->sm!=Amp) || (in->dm!=Afp && in->dm!=Amp))goto done;
-  t=in->s.native64type?in->s.native64type:in->s.decl?in->s.decl->ty:nil;if(!typedwordgeometry(t,&l))goto done;bytes=l.bytes;
-  t=in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;if(!typedwordgeometry(t,&other) || other.bytes!=bytes || in->m.offset!=bytes)goto done;
+  t=in->s.native64type?in->s.native64type:in->s.decl?in->s.decl->ty:nil;if(!typedwordgeometry(t,&l)){dis64layoutfree(&l);if(!typedrawpairgeometry(t,&l))goto done;}bytes=l.bytes;
+  t=in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;if(!typedwordgeometry(t,&other)){dis64layoutfree(&other);if(!typedrawpairgeometry(t,&other))goto done;}if(other.bytes!=bytes || in->m.offset!=bytes)goto done;
   for(i=0;i<bytes;i+=4){a=in->s;a.reg+=i;a.offset=0;if(!typedoperand(in->sm,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || (i && part!=base+i))goto done;if(!i)base=part;
    a=in->d;a.reg+=i;a.offset=0;if(!typedoperand(in->dm,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || (i && part!=value+i))goto done;if(!i)value=part;}
   *out=(Dis64Instruction){IMOVM,SRC(in->sm==Afp?AFP:AMP)|AXIMM|DST(in->dm==Afp?AFP:AMP),bytes,base,value};*returned=212;

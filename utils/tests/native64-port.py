@@ -409,6 +409,8 @@ def main():
         build, env, logs/'emuinit-fd.log')
     run([sys.executable, str(tests/'native64-emuinit-fstat.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'emuinit-fstat.log')
+    run([sys.executable, str(tests/'native64-emuinit-fstat.py'), '--limbo', str(tools/'limbo'), '--stat'],
+        build, env, logs/'emuinit-stat.log')
     run([sys.executable, str(tests/'native64-emuinit-bytes.py'), '--limbo', str(tools/'limbo')],
         build, env, logs/'emuinit-bytes.log')
     run([sys.executable, str(tests/'native64-emuinit-getenv.py'), '--limbo', str(tools/'limbo')],

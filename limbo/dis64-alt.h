@@ -102,6 +102,7 @@ static int
 typedaltpaircopy(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {
  Decl*d=in->m.decl;unsigned int i,j,k,n,off[2],next;Dis64Layout*l;Addr*a;
+ if(d&&typedcursortype(d->ty,1)){if(in->op!=IMOVMP||in->mm!=Adesc||!d->desc||d->desc->id!=in->m.offset||d->desc->size!=12||d->desc->nmap!=1||!d->desc->map||d->desc->map[0]!=0xa0||in->branch)return typedfail(p,"cursor-copy-type");for(i=0;i<2;i++){k=i?in->dm:in->sm;a=i?&in->d:&in->s;if((k!=Afp&&k!=Amp)||a->offset||!typedcursorspan(k==Afp?&p->frame:&p->data,a->reg,off+i))return typedfail(p,"cursor-copy-span");}*out=(Dis64Instruction){IMOVMP,SRC(in->sm==Afp?AFP:AMP)|AXIMM|DST(in->dm==Afp?AFP:AMP),0,off[0],off[1]};*returned=50;return 1;}
  if(d && typedfileiopayload(d->ty))return typedfileiocopy(in,p,out,returned);
  if(d && typedreplyliteral(d->ty)){
   if(in->op!=IMOVMP || in->mm!=Adesc || !d->desc || d->desc->id!=in->m.offset || d->desc->size!=8 || d->desc->nmap!=1 || !d->desc->map || d->desc->map[0]!=0x40 || in->branch)return typedfail(p,"reply-copy-type");
@@ -213,7 +214,8 @@ typedaltinst(Inst*in,Decl*fn,Dis64TypedBody*p,unsigned int pc)
   if(use && use->kind==Ttuple){
    unsigned int first,next,i,n=typedrootcount(use);Dis64Layout*l=in->sm==Afp?&p->frame:&p->data;
    unsigned int fio=typedfileiopayload(use);
-   if(typedreplyliteral(use)){
+   if(typedcursortype(use,0)){if((in->sm!=Afp&&in->sm!=Amp)||in->s.offset||!typedcursorspan(l,in->s.reg,&first))return typedfail(p,"cursor-alt-span");source=first;sm=in->sm==Afp?AFP:AMP;width=152;
+   }else if(typedreplyliteral(use)){
     if((in->sm!=Afp && in->sm!=Amp) || !in->s.decl || in->s.reg!=in->s.decl->offset || in->s.offset || !typedreplyspan(l,in->s.reg,&first))return typedfail(p,"reply-payload-span");source=first;sm=in->sm==Afp?AFP:AMP;width=136;
    }else if(fio){
     if((in->sm!=Afp && in->sm!=Amp) || !in->s.decl || in->s.reg!=in->s.decl->offset || in->s.offset || !typedfileiospan(l,in->s.reg,fio,&first))return typedfail(p,"fileio-payload-span");

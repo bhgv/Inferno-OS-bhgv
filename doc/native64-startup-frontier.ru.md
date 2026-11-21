@@ -1,408 +1,49 @@
-# Диагностический барьер startup-функций
+# Проверенная граница startup-модулей
 
-AWM preflight теперь отдельно проверяет checked LOAD diagnostics для всех
-16 исходных startup-модулей. На текущем compiler это 380 функций, из которых
-37 принимаются как отдельные checked IR bodies. Это не допуск файла к загрузке
-и не утверждение о запуске этих функций или полного AWM.
+Текущий checked LOAD preflight принимает **236 из 380 функций** в 16 исходных
+startup-модулях. Для каждой ordinary-компиляции с `-i` classic Dis побайтно
+совпадает с результатом компиляции при включённых native64 diagnostics.
 
-Для каждого исходника выполняются две ordinary-компиляции с `-i`: без
-LIMBO_DIS64_* и с typed/external/load diagnostics. Их classic Dis обязан
-совпадать побайтово. Результат сохраняет SHA classic bytes, причину отказа,
-PC, opcode и операнды, независимо прочитанные из classic Dis. Для FRAME
-показываются также четыре следующих инструкции подготовки вызова.
-Отказ layout/signature до обхода тела не приписывается случайной инструкции.
+| Исходник | Принятые тела |
+|---|---:|
+| appl/cmd/emuinit.b | 4/4 |
+| appl/wm/awm.b | 20/20 |
+| appl/wm/atoolbar.b | 12/26 |
+| appl/lib/arg.b | 8/8 |
+| appl/lib/bufio.b | 27/27 |
+| appl/lib/env.b | 6/7 |
+| appl/lib/filepat.b | 0/6 |
+| appl/lib/readdir.b | 1/8 |
+| appl/lib/string.b | 21/21 |
+| appl/lib/wmsrv.b | 34/34 |
+| appl/lib/wmclient.b | 21/21 |
+| appl/lib/winplace.b | 21/21 |
+| appl/lib/wmlib.b | 25/25 |
+| appl/lib/titlebar.b | 7/7 |
+| appl/lib/tkclient.b | 7/16 |
+| appl/cmd/sh/sh.b | 22/129 |
 
-Одинаковые имена методов разных ADT, например top/get/put в wmsrv, допустимы:
-идентичность записи задаётся парой name/first. Они не теряются при построении
-словаря по одному имени. Проверка принимает как доказательство только
-нормальное завершение reporter, валидный JSON и неизменённые classic bytes;
-sanitizer/crash не считается обычным отказом функции.
+Команда для воспроизведения:
 
-Основной путь остаётся `emuinit → /dis/wm/awm.dis → mod->init(nil,args)`.
-Текущие первые барьеры полного emuinit:
-
-| Функция | PC | Причина | Контекст |
-|---|---:|---|---|
-| init | 7 | multi-callee | FRAME вызова getenv |
-| loadmod | 69 | multi-call | FRAME вариадического Sys->sprint в fallback |
-| getenv | 96 | external-argument | MFRAME Sys->open; следующий IADDC пишет String в pending argument |
-| unquoted | 134 | unsupported-opcode | IINDC — индексирование строки |
-
-FRAME/MFRAME в таблице обозначают место отказа разбора вызова, а не общий
-запрет этих операторов. Более поздние барьеры могут стать видны после
-устранения первого. Например, unquoted рекурсивен; отчёт не утверждает,
-что одно добавление IINDC сделает функцию исполнимой.
-
-Полный preflight сохраняет прежние static LOAD hashes и четыре file-profile
-проверки, добавляя checked_frontier в каждую запись JSON:
-
-```sh
-python3 utils/tests/awm-native64-preflight.py --limbo /path/to/limbo --report startup.json
-python3 utils/tests/awm-native64-preflight.py --limbo /path/to/limbo --checked-only --report frontier.json
+```
+python3 utils/tests/awm-native64-preflight.py --limbo /path/to/limbo --checked-only --report /path/to/report.json
 ```
 
-Вторая команда предназначена для быстрого анализа checked IR: static imports
-и четыре file profiles в этом режиме не проверяются. Обе команды явно
-помечают отсутствие runtime acceptance. 32-битный формат и ABI не меняются.
-
-
-Следующий этап: [computed String arguments](native64-typed-concat-args.ru.md).
-После его compiler lowering первый барьер getenv перемещается к PC101:
-сравнение ref Sys->FD с nil (load-nil-roles). Таблица выше сохраняет снимок
-предыдущего compiler; актуальные координаты следует получать preflight.
-
-Следующий проверенный участок: [неизменённая unquoted](native64-emuinit-unquoted.ru.md).
-Теперь её полное тело принимается checked compiler и исполняется в native
-module через C/JIT, включая self-tail recursion. Это не запуск полного emuinit.
-
-Следующий участок: [прямое сравнение Sys.FD с nil](native64-emuinit-fd.ru.md).
-getenv теперь проходит PC101 и останавливается на PC104: Sys.fstat возвращает
-aggregate (int, Dir). Полный emuinit/AWM всё ещё закрыт.
-
-Следующий участок: [Sys.fstat result и caller tuple layout](native64-emuinit-fstat.ru.md).
-getenv теперь проходит PC104 и останавливается на PC112 (INEWA byte array).
-Полный emuinit/AWM пока не исполняется; classic bytes сохранены.
-
-Следующий участок: [owned byte arrays](native64-emuinit-bytes.ru.md).
-getenv проходит INEWA PC112; первый отказ теперь PC113, вычисленный `len buf`
-в аргументах Sys.read. Полный startup пока не исполняется.
-
-Следующий проверенный этап: [полные getenv и unquoted](native64-emuinit-getenv.ru.md), C/JIT с настоящими телами Sys open/fstat/read и управляемым файловым транспортом. Полный startup ещё не запущен.
-
-Следующий этап: [реальные variadic-планы и boot Sys.fstat](native64-emuinit-varargs.ru.md). fstat теперь зарегистрирован в обычном выбранном boot-профиле; все три variadic source-плана проверяются и воспроизводятся через typed gateways. Полные init/loadmod пока не исполняются.
-
-Следующий проверенный этап: [program-owned FRAME/MCALL и C/JIT](native64-sys-program.ru.md). Мост связывает exact original PCs с typed binder/trampoline; полные init/loadmod пока не исполняются.
-
-Следующий этап: [полный неизменённый emuinit](native64-emuinit-full.ru.md): 4/4 checked bodies, owning C/JIT и Limbo-вызов `Command.init(nil,args)` с управляемыми сервисами. Это ещё не загрузка настоящего AWM.
-
-Следующий этап: [настоящий emuinit boot](native64-emuinit-boot.ru.md): полный исходный startup в выбранном Linux профиле, реальные Sys/formatter/file reader и checked файловый Command. Arg и настоящий AWM ещё не допускаются.
-
-Следующий этап: [настоящий Arg](native64-arg.ru.md), 8/8 checked bodies и 324 реальных C/JIT процесса emuinit с нормальным разбором argv. AWM/Draw/Tk и Android window ещё впереди.
-
-Следующий этап: [форматирование координат WM](native64-coordinate-format.ru.md): неизменённые awm.r2s/wmclient.r2s, typed numeric tails и inherited Sys result; AWM 2/20, wmclient 5/21. Полный графический startup ещё не допускается.
-
-Следующий этап: [поля Draw.Context](native64-context-fields.ru.md): checked AWM init проходит PC51 и nil test wm, первый отказ теперь PC61 — Rect argument вызова reshape. Это ещё не runtime acceptance полного AWM.
-
-Следующий этап: [Point/Rect в imported arguments](native64-geometry-args.ru.md): AWM init проходит reshape PC61, следующий отказ PC72 — Window.image. Реальные Limbo-to-Limbo C/JIT вызовы проверяются отдельным gate; полного AWM окна ещё нет.
-
-Следующий этап: [Window roots и список startinput](native64-window-startup.ru.md): AWM init проходит PC72/84; следующий checked отказ PC93 — makescreen. Полного AWM окна ещё нет.
-
-Следующий этап: [Draw payload roots и Image.display](native64-draw-fields.ru.md): makescreen проходит Display.color на PC1222; следующий отказ PC1227 — global result binding Screen.allocate. Init остаётся на PC93.
-
-Следующий этап: [makescreen и MP root results](native64-makescreen.ru.md): весь makescreen допускается (23 инструкции, 3 Draw calls); init проходит PC93 и останавливается на PC97 — triple-channel result Wmsrv.init.
-
-Следующий этап: [тройка каналов](native64-channel-triples.ru.md): AWM init проходит Wmsrv.init PC97 и останавливается на Draw.Context allocation PC100. Provider Wmsrv.init — на managed channel allocation PC27.
-
-Следующий этап: [Context allocation/copy](native64-context-new.ru.md): AWM init проходит PC100 и доходит до PC116 (fatal -> kill -> computed Sys.open path).
-
-Следующий этап: [String preparation и temporary clear](native64-string-prep.ru.md): настоящие kill/fatal принимаются целиком; AWM init доходит до PC120 INEWCP. Полный init и UI пока не запущены.
-
-Следующий этап: [primitive channel allocation](native64-channel-new.ru.md): AWM init проходит PC120 и останавливается на spawn setup PC127/ISPAWN PC131. Wmsrv mapped channel PC27 остаётся отдельным барьером.
-
-Следующий этап: [mapped tuple channels](native64-mapped-channels.ru.md): Wmsrv.init проходит PC27–29 и доходит до spawn setup PC30. AWM init остаётся на spawn setup PC127/131.
-
-Следующий этап: [checked local spawn](native64-spawn.ru.md): spawn выполняется в C/JIT для полностью проверенных void bodies. AWM/Wmsrv init sites остаются PC127/30 с причиной multi-callee; дальше блокируют command PC1392 и wm PC40.
-
-Следующий этап: [borrowed List prefixes](native64-list-prefix.ru.md): awm.command проходит Sh.run preparation PC1392 и доходит до ISEND PC1401. Spawned handlers пока не принимаются целиком; Wmsrv wm остаётся PC40.
-
-Следующий этап: [primitive channel SEND/RECV](native64-channel-transfer.ru.md): awm.command проходит ISEND PC1401 и доходит до ICONSW PC1404 (fd list). Проверен реальный scheduler/wakeup, но command и GUI целиком пока не принимаются.
-
-Следующий этап: [списки 32-битных int](native64-integer-lists.ru.md).
-AWM command проходит построение fd list для Sys.pctl на PC1404;
-следующий checked отказ — PC1457 IEXIT. Полного графического запуска ещё нет.
-
-Следующий этап: [завершение процесса](native64-process-exit.ru.md).
-Весь настоящий awm.command принимается. AWM init проходит spawn PC127/131
-и доходит до PC136: computed String argument локального fatal.
-Полного графического запуска ещё нет; Wmsrv wm остаётся на PC40.
-
-Следующий этап: [computed String local argument](native64-local-concat.ru.md).
-AWM init проходит fatal PC136 и доходит до PC140 IMOVW (typed-span),
-чтения win.ctl при подготовке ALT. Весь command остаётся accepted.
-Графического запуска пока нет.
-
-Следующий этап: [блокирующий ALT](native64-alt.ru.md): простые int/String
-guards работают в C/JIT с настоящими очередями. AWM init проходит PC140
-Window.ctl и доходит до PC142 Wmcontext.ctl; command остаётся accepted.
-Полного графического event loop ещё нет.
-
-Следующий этап: [Wmcontext channels и ref ALT](native64-wmcontext-alt.ru.md).
-AWM init проходит ctl/kbd/ptr и PC149 reference payload, останавливается
-на PC151: tuple (ref Client, chan of string) из join. Command остаётся accepted;
-полного графического event loop ещё нет.
-
-Следующий этап: [пара ref/channel в ALT](native64-alt-pairs.ru.md).
-Настоящий awm.init проходит адрес пары из join на PC151 и останавливается
-на PC153: tuple из req. Command остаётся accepted. Это продвижение typed
-frontier; полный AWM event loop и Android UI ещё не запущены.
-
-Следующий этап: [request tuple в ALT](native64-alt-requests.ru.md).
-Настоящий awm.init проходит тройку из req на PC153 и доходит до PC154,
-alt-field-channel для wmrectIO.write через Sys.FileIO. Command остаётся
-accepted; FileIO channel fields и mixed payloads — следующий участок.
-Полный AWM/Android UI пока не запущен.
-
-Следующий этап: [Sys.FileIO и mixed ALT payloads](native64-fileio-alt.ru.md).
-Настоящий awm.init проходит оба FileIO guard’а и полную подготовку внешнего
-ALT с IGOTO. Следующий отказ — PC168 indirect-or-reserved-operand внутри
-обработки события: z.ctl <-= "exit" через Client.ctl. Command остаётся
-accepted; графический AWM ещё не запущен.
-
-Следующий этап: [поля и каналы Client](native64-client-channels.ru.md).
-Настоящий awm.init проходит z.ctl SEND и чтение z.znext (PC168/169).
-Следующий отказ — PC178 context-nil-roles: сравнение win.image/screen.image.
-Command остаётся accepted; графический AWM ещё не запущен.
-
-Следующий этап: [field reference identity](native64-field-reference.ru.md).
-Настоящий awm.init проходит win.image/screen.image на PC178. Следующий отказ —
-PC180 multi-callee: reshaped пока отказывается на PC716, IMOVM локального Rect
-из Image.r. Command остаётся accepted; графический AWM ещё не запущен.
-
-Следующий этап: [локальная Image geometry](native64-local-image-geometry.ru.md).
-Настоящий reshaped проходит PC716 и доходит до PC762 load-nil-roles для списка
-z.wins. Пока этот callee не принят целиком, awm.init остаётся на PC180
-multi-callee. Command остаётся accepted; графический AWM ещё не запущен.
-
-Следующий этап: [списки и поля Wmsrv.Window](native64-window-list.ru.md).
-Настоящий reshaped проходит PC762–764 (nil/hd/w.img=nil) и доходит до PC765:
-image-geometry-owner для передачи w.r в геометрический вызов. awm.init пока
-остаётся на PC180 multi-callee; Command accepted, графический AWM не запущен.
-
-Следующий этап: [аргументы геометрии Wmsrv.Window](native64-window-geometry-args.ru.md).
-Настоящий reshaped проходит подготовку w.r и oldr.min для Rect.subpt.
-На PC765 остаётся external-result-kind: нужен возврат Draw.Rect из импорта.
-awm.init остаётся на PC180 multi-callee. Command accepted;
-графический AWM и Android UI пока не запущены.
-
-Следующий этап: [возврат Point/Rect из импортов](native64-geometry-results.ru.md).
-Настоящий reshaped проходит PC765, четыре масштабирования координат и addpt.
-Следующий отказ — PC783 external-inherit: screen.newwindow возвращает Image
-прямо в w.img. awm.init остаётся на PC180 multi-callee;
-графический AWM и Android UI пока не запущены.
-
-Следующий этап: [Image прямо в Window.img](native64-window-image-result.ru.md).
-Компилятор проходит screen.newwindow и обновление w.r в настоящем reshaped.
-Следующий отказ — PC791 multi-argument: Rect для локальной r2s в сообщении
-reshape. awm.init остаётся на PC180 multi-callee; графический AWM пока не запущен.
-
-Следующий этап: [Point/Rect в локальном CALL](native64-local-geometry-args.ru.md).
-Компилятор проходит r2s(nr) на PC791–794 настоящего reshaped.
-Следующий отказ — PC795 indirect-or-reserved-operand: подготовка Sys.sprint
-с w.tag и результатом r2s. awm.init остаётся на PC180 multi-callee;
-графический AWM и Android UI пока не запущены.
-
-Следующий этап: [Window.tag и String temporaries в форматтере](native64-format-fields.ru.md).
-Настоящий reshaped теперь accepted целиком. awm.init проходит PC180;
-следующий отказ — PC187 unsupported-opcode, ICVTCW (String в int).
-Графический AWM и Android UI пока не запущены.
-
-Следующий этап: [String → int и глобальный kbdfocus](native64-string-word-focus.ru.md).
-awm.init проходит PC187 и PC189. Новый отказ — PC192
-external-geometry-argument: Draw.Pointer по значению в win.pointer(*p).
-Настоящий reshaped остаётся accepted целиком; графический AWM и Android UI
-пока не запущены.
-
-Следующий этап: [Draw.Pointer в импортируемом вызове](native64-pointer-args.ru.md).
-awm.init проходит win.pointer(*p) на PC192–196. Новый отказ — PC200
-context-nil-roles, проверка p.buttons. Это Word32-поле объекта Pointer;
-доступ к нему пока не открыт. reshaped остаётся accepted целиком;
-графический AWM и Android UI пока не запущены.
-
-Следующий этап: [Поля Pointer и аргумент Pointer.xy](native64-pointer-fields.ru.md).
-awm.init проходит p.buttons и wmsrv.find(p.xy). Новый отказ — PC210
-multi-callee на setfocus(win,c); сам setfocus пока отвергается на PC1189
-load-nil-roles. reshaped остаётся accepted целиком; графический AWM и
-Android UI пока не запущены.
-
-Следующий этап: [Client equality и cursor в setfocus](native64-client-focus.ru.md).
-setfocus проходит сравнение old/new, сравнение строк cursor и импортируемый
-аргумент new.cursor. Новый отказ — PC1210 indirect-or-reserved-operand:
-IANDW new.flags с маской Kbdstarted. awm.init остаётся на PC210 multi-callee
-до завершения setfocus. reshaped accepted целиком; графический AWM и
-Android UI пока не запущены.
-
-Следующий этап: [Client.flags и Screen.image в локальном CALL](native64-flags-screen-local.ru.md).
-setfocus теперь accepted целиком. awm.init проходит PC210, r2s(screen.image.r)
-на PC229–234 и c.flags |= Controller на PC240. Новый отказ — PC243 multi-call,
-подготовка строки newclient с c.id для controlevent. reshaped accepted
-целиком; графический AWM и Android UI пока не запущены.
-
-Следующий этап: [Client.id и локальный String-аргумент](native64-client-id.ru.md).
-awm.init проходит подготовку newclient с c.id и вызов controlevent
-на PC243–247. Новый отказ — PC257 load-nil-roles. setfocus, controlevent
-и reshaped принимаются целиком; графический AWM и Android UI пока не запущены.
-
-Следующий этап: [Nil-проверки каналов](native64-channel-nil.ru.md).
-awm.init проходит rc == nil и c.stop == nil, доходит до PC303 multi-callee
-на handlerequest. Сам handlerequest отвергается на PC427
-client-context-geometry: создание ref Draw.Pointer. setfocus, controlevent
-и reshaped accepted целиком; графический AWM и Android UI пока не запущены.
-
-Следующий этап: [Создание Draw.Pointer](native64-pointer-new.ru.md).
-handlerequest проходит PC427–437: выделение Pointer, buttons и обе
-координаты. Новый отказ — PC438 external-inherit, подготовка millisec
-с результатом в p.msec. awm.init остаётся на PC303, пока handlerequest
-не принят целиком. Графический AWM и Android UI ещё не запущены.
-
-Следующий этап: [millisec в Pointer.msec](native64-pointer-result.ru.md).
-handlerequest проходит PC438–441, включая импортированный результат и
-отправку Pointer в c.ptr. Новый отказ — PC506 multi-callee на fitrect;
-fitrect и newrect требуют aggregate-result для Draw.Rect. awm.init пока
-остаётся на PC303. Окно AWM и Android UI ещё не запущены.
-
-Следующий этап: [Локальный результат Point/Rect](native64-local-geometry-results.ru.md).
-fitrect принята целиком; handlerequest проходит PC506–520. Новый отказ —
-PC521 multi-callee на newrect, которая останавливается на PC1340 CONSM
-для list of Rect. awm.init пока остаётся на PC303. Окно AWM и Android UI
-ещё не запущены.
-
-Следующий этап: [list of Rect и MP-результат](native64-rect-list.ru.md).
-newrect принята целиком; handlerequest проходит PC521–543. Новый отказ —
-PC544 load-nil-roles на tl args == nil. awm.init пока остаётся на PC303.
-Окно AWM и Android UI ещё не запущены.
-
-Следующий этап: [String head в аргументе и Client.wins nil](native64-head-args.ru.md).
-Исправлена подпись PC544: это tl args, Client.wins проверяется на PC556.
-handlerequest проходит PC544–595. Новый отказ — PC596 external-call на
-int hd args / int hd tl args в аргументах Point.sub. awm.init остаётся
-на PC303. Окно AWM и Android UI ещё не запущены.
-
-Следующий этап: [Числовой head в аргументах Point](native64-int-head-args.ru.md).
-handlerequest проходит PC596–606, включая преобразование строковых координат
-и Point.sub. Новый отказ — PC607 multi-callee на dragwin; сама dragwin
-останавливается на PC859 context-field-roles, sizewin — PC901
-load-byte-array-class. awm.init пока на PC303. Окно AWM и Android UI
-ещё не запущены.
-
-Следующий этап: [Window.img и аргументы локальных вызовов](native64-window-image-args.ru.md).
-Причина отказа PC859 уточнена: Window.img в Image.origin, а не Context.
-dragwin принята целиком; Window.tag передаётся в reshape, Wmcontext.ptr —
-в dragwin. handlerequest проходит PC607 и останавливается на PC618
-multi-call при подготовке Point для sizewin. sizewin пока на PC901
-load-byte-array-class, awm.init — PC303. Окно AWM и Android UI не запущены.
-
-Следующий этап: [Числовой Point/Rect для локальных вызовов](native64-local-int-head-args.ru.md).
-Подготовка литеральных Point/Rect и int hd для обычного CALL поддержана.
-handlerequest пока на PC618, причина теперь multi-callee вместо multi-call:
-sizewin ещё не принята из-за array[4] of ref Image на PC901.
-showborders отдельно останавливается на PC1095 unsupported-opcode.
-dragwin принята целиком, awm.init пока на PC303. Окно AWM и Android UI
-ещё не запущены.
-
-Следующий этап: [Массивы ссылок Draw.Image](native64-image-arrays.ru.md).
-sizewin проходит выделение array[4] of ref Image на PC901; новый отказ —
-PC902 multi-callee на showborders. Чтение и запись через прямые FP/MP слоты
-проверены отдельно. showborders на PC1095 требует передачи элемента массива
-непосредственно в pending local call frame. handlerequest пока на PC618,
-awm.init на PC303, dragwin принята целиком. Окно AWM и Android UI не запущены.
-
-Следующий этап: [Весь кластер вызовов рамок AWM](native64-awm-call-cluster.ru.md).
-Приняты 19 из 20 неизменённых функций AWM, в том числе handlerequest, sizewin,
-sweep, showborders и showborder. В C/JIT исполняются исходные тела обеих функций
-рамок с четырьмя результатами в массив Image и проверкой владения. Закрыты
-арифметические аргументы, смешанные Point/Rect, поля Image/Pointer/Client,
-хвосты списков строк и byte→String после ссылочных аргументов. awm.init
-проходит PC303 и останавливается на PC316 alt-payload-class: смешанная пара
-(int,string) в ALT. Окно AWM и Android UI ещё не запущены.
-
-Следующий этап: [Ответы Rwrite/Rread и неблокирующий ALT](native64-alt-replies.ru.md).
-Все 20 неизменённых тел AWM, включая init, приняты проверенным native64 IR
-и независимо сверены с классическим Dis. Пройдены PC316–377: смешанные
-(int,string), default NBALT, String→byte array, срез байтового ответа и
-(array of byte,string). В отдельном модуле проверены обычные/ALT передачи,
-буферы и полное освобождение. Теперь граница проходит по сборке и подключению
-зависимостей и сервисов AWM: Wmsrv 3/34, Wmclient 5/21, String 7/21, Bufio 0/27
-тел в текущем preflight. Это не запуск окна AWM или Android UI.
-
-
-Полная библиотека [String](native64-string-library.ru.md): теперь checked IR
-принимает 21/21 исходных тел; все они исполнены в C/JIT. Снимок остальных
-зависимостей после этого изменения: Arg 8/8, Bufio 0/27, Wmsrv 3/34,
-Wmclient 5/21, Wmlib 8/25, Winplace 8/21, Titlebar 4/7.
-emuinit остаётся 4/4, AWM — 20/20. Это счётчики checked IR; они не
-означают запуск GUI или admission полного файлового графа.
-
-
-Полная [Bufio](native64-bufio-library.ru.md): 27/27 checked IR, все 27 тел
-исполнены в C/JIT. Текущий снимок: emuinit 4/4, AWM 20/20, Arg 8/8,
-String 21/21, Bufio 27/27, Wmsrv 11/34, Wmclient 5/21, Wmlib 11/25,
-Winplace 8/21, Titlebar 4/7. Рост Wmsrv связан с закрытыми раскладками
-очередей; его полный runtime и GUI этим счётчиком не подтверждаются.
-
-
-[Все 13 методов очередей Wmsrv](native64-wmsrv-queues.ru.md) проходят
-проверку в полном исходнике и исполняются в C/JIT. Теперь Wmsrv — 16/34
-checked IR тел; Wmclient остаётся 5/21. String 21/21, Bufio 27/27 и AWM
-20/20 сохраняются. Это завершение блока очередей, а не запуск всего сервера
-окон или Android GUI.
-
-
-[Поиск окон, изображения и z-order Wmsrv](native64-wmsrv-windows.ru.md):
-Wmsrv теперь 22/34 checked IR тел. Девять исходных функций поиска окна,
-сбора изображений и порядка клиентов проходят независимый source oracle и
-исполняются в C/JIT с controlled Draw (408 публичных вызовов). Полный Wmsrv
-и настоящее окно AWM ещё не запускаются; Wmclient остаётся 5/21.
-
-
-[Реестр клиентов и проверка попадания Wmsrv](native64-wmsrv-windows.ru.md):
-приняты 27/34 исходных тела вместо 22/34. findfid/addclient/delclient,
-Client.contains и find включены в исполняемый кластер 14 неизменённых тел;
-проверяются реестры Client с 8-байтными mapped элементами и настоящий C
-Rect_contains. Остаются семь тел, включая wm/childminder и обмен images.
-Это ещё не admission полного файлового графа или запуск окна AWM.
-
-
-[Контекст и обмен изображениями Wmsrv](native64-wmsrv-contexts.ru.md):
-31/34 тела вместо 27/34. newwmcontext/senderror/Client.setimage/setorigin
-исполняются в расширенном кластере 18 исходных тел (1212 C/JIT вызовов),
-с настоящими Limbo peers, каналами и C-геометрией. Остаются init, wm
-(reference-class PC94) и childminder (alt-field-channel PC249). Полный
-серверный цикл, файловый граф и настоящее окно AWM ещё не запущены.
-
-
-[Исполнение исходного Wmsrv.childminder](native64-wmsrv-childminder.ru.md):
-32/34 тела. Расширенный кластер выполняет childminder с настоящими Limbo
-процессами и каналами, включая ALT выдачи контекста, очереди событий,
-изображения и остановку (1236 C/JIT вызовов). `wm` дошёл до Sys.aprint
-(variadic-signature PC164); init зависит от wm. Полный серверный цикл и
-настоящее окно AWM ещё не запущены.
-
-
-[Checked Sys.aprint и Client.token](native64-aprint.ru.md):
-результат array of byte, FP/MP скалярный аргумент и передача результата
-вызывающему исполняются в C/JIT. В полном Wmsrv остаются 32/34 тела:
-wm прошёл Sys.aprint на PC164 и дошёл до подготовки его результата внутри
-ALT (alt-setup-shape PC173). Следующий шаг — проверяемый остров подготовки
-этого ALT; настоящее окно AWM ещё не запущено.
-
-
-[Полный Wmsrv и запуск init → wm](native64-wmsrv-server.ru.md):
-34/34 неизменённых тела, полный конструктор C/JIT (891 инструкция).
-Исходный init загружает контролируемые Sys/Draw и порождает исходный wm;
-54 прогона проверяют парные FileIO-чтения, новых/существующих клиентов,
-байты токена, default/nil запросы и полную отмену ALT/retirement.
-Подготовка aprint внутри ALT закрыта. Настоящее окно AWM и Android ещё
-не запущены; следующий этап — граф Wmclient/Draw и подключение AWM.
-
-
-[Геометрия Wmclient.Window](native64-wmclient-geometry.ru.md):
-7/21 тела вместо 5/21; исходные screenr/imager исполняются в C/JIT с
-реальной Rect-геометрией. Проверены все 20 скалярных полей Window,
-аргумент Rect.inset из поля и переданный результат Rect (1662 вызова).
-Полный Wmclient и настоящее окно AWM ещё не запущены; Wmsrv сохраняет 34/34.
-
-## Полный Wmclient: следующий рубеж
-
-[Полный модуль и создание окна](native64-wmclient-module.ru.md): Wmclient
-21/21, 792 инструкции, 168 C/JIT прогонов исходных init/window и семи
-wmctl команд, включая recvimage/putimage/drawborder, с контролируемыми
-сервисами, полным освобождением и сохранением
-classic bytes. Настоящие AWM/Android GUI ещё не запущены; следующая граница
-— Wmlib 11/25, Titlebar 4/7, Winplace 8/21 и настоящие Draw/Tk сервисы.
-
-## Полный Titlebar
-
-[Titlebar 7/7](native64-titlebar-module.ru.md): статический массив команд,
-локальные String-array аргументы/конкатенации, 2112 C/JIT процессов по всем
-64 флагам с оригинальными new/title/settitle/sendctl/minsize. Tk контролируемый;
-настоящие AWM/Android GUI ещё не запущены.
+Отчёт содержит SHA classic bytes, причины отказов, PC/opcode/операнды,
+прочитанные независимо из classic Dis, и контекст подготовки FRAME.
+Одинаковые имена методов разных ADT различаются по паре name/first.
+Sanitizer/crash не считается обычным отказом функции.
+
+Путь запуска остаётся `emuinit → /dis/wm/awm.dis → mod->init(nil,args)`.
+Shell не является обязательной промежуточной стадией запуска AWM.
+Проверка исходных тел сама по себе не устанавливает native-модули в этот
+LOAD-граф и не исполняет AWM.init. Исполняемые C/JIT-gates проверяют отдельные
+полные модули и связанные пути; [Wmlib](native64-wmlib-snarf.ru.md) теперь
+проверяет wmctl/cursor/input вместе с каналами и владением объектами.
+
+Для следующего этапа требуется связать реальные native-модули и builtin
+службы в исполняемый startup/GUI-граф с Display, Screen, Image, файловыми
+каналами и процессами ввода. Для панели и приложений остаются отказы atoolbar,
+tkclient и зависимостей файлов/оболочки. Полный sh не является условием
+проверки прямого запуска AWM. Android arm64 остаётся отдельным этапом
+интеграции и исполнения этого графа.

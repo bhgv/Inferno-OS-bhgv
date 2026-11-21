@@ -202,6 +202,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fd.log"
           python3 utils/tests/native64-emuinit-fstat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fstat.log"
+          python3 utils/tests/native64-emuinit-fstat.py --limbo "$RUNNER_TEMP/host-tools/limbo" --stat 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-stat.log"
           python3 utils/tests/native64-emuinit-bytes.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-bytes.log"
           python3 utils/tests/native64-emuinit-getenv.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -423,6 +425,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fd.log"
           python3 utils/tests/native64-emuinit-fstat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fstat.log"
+          python3 utils/tests/native64-emuinit-fstat.py --limbo "$RUNNER_TEMP/host-tools/limbo" --stat 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-stat.log"
           python3 utils/tests/native64-emuinit-bytes.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/emuinit-bytes.log"
           python3 utils/tests/native64-emuinit-getenv.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

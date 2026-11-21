@@ -46,9 +46,10 @@ native64localbind(void)
     if(windowaddress&&(!fieldaddress||altaddress||arrayaddress))error(exBounds);
     if(clientaddress&&(!fieldaddress||retbias||windowaddress||altaddress||arrayaddress))error(exBounds);
     if(arrayaddress && (fieldaddress || altaddress || contract!=24 || instruction.add!=(SRC(AFP)|DST(AFP|AIND))))error(exBounds);
+    if(contract==152&&!altaddress)error(exBounds);
     sourcewidth=(fieldaddress||arrayaddress||retbias)?8:width;sourceroot=(fieldaddress||arrayaddress)?1:reference;
     offset=(fieldaddress||retbias)?instruction.s.i.f:instruction.s.ind;
-    if(!native64model() || (altaddress?((instruction.add!= (SRC(AFP)|DST(AFP)) && instruction.add!=(SRC(AMP)|DST(AFP))) || (contract!=4 && contract!=8 && contract!=24 && contract!=48 && contract!=72 && contract!=104 && contract!=120 && contract!=136)):
+    if(!native64model() || (altaddress?((instruction.add!= (SRC(AFP)|DST(AFP)) && instruction.add!=(SRC(AMP)|DST(AFP))) || (contract!=4 && contract!=8 && contract!=24 && contract!=48 && contract!=72 && contract!=104 && contract!=120 && contract!=136 && contract!=152)):
         ((instruction.add!=(SRC(AFP)|DST(AFP|AIND)) && !((contract==24 || native64geometryresultwidth(contract)) && instruction.add==(SRC(AMP)|DST(AFP|AIND))) && !fieldaddress && !retbias) || instruction.d.i.f!=40 || instruction.d.i.s!=32)) ||
        (!native64wmtuplewidth(contract) && !native64geometryresultwidth(contract) && !native64fileiowidth(contract) && contract!=48 && contract!=72 && contract!=88 && ((contract&~31) || (width!=1 && width!=4 && width!=8) || (reference && width!=8))) || R.FP==nil || R.FP==H)error(exBounds);
     base=(uintptr)R.FP;
