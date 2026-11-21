@@ -530,36 +530,41 @@ consoleproc(ctxt: ref Draw->Context, sync: chan of string)
 		cmd(top, con_cfg[i]);
 
 	r := tk->rect(top, ".", Tk->Border|Tk->Required);
-	cmd(top, ". configure -x " + string ((top.screenr.dx() - r.dx()) / 2 + top.screenr.min.x) +
-				" -y " + string (r.dy() / 3 + top.screenr.min.y));
+	screenr := top.screenr;
+	cmd(top, ". configure -x " + string ((screenr.dx() - r.dx()) / 2 + screenr.min.x) +
+				" -y " + string (r.dy() / 3 + screenr.min.y));
 
 	tkclient->startinput(top, "ptr"::"kbd"::nil);
 	tkclient->onscreen(top, "onscreen");
 	tkclient->wmctl(top, "task");
 
-	for(;;) alt {
-	c := <-titlectl or
-	c = <-top.wreq or
-	c = <-top.ctxt.ctl =>
-		if(c == "exit")
-			c = "task";
-		tkclient->wmctl(top, c);
-	c := <-top.ctxt.kbd =>
-		tk->keyboard(top, c);
-	p := <-top.ctxt.ptr =>
-		tk->pointer(top, *p);
-	(nil, nil, nil, rc) := <-iostdout.read =>
-		if(rc != nil)
-			rc <-= (nil, "inappropriate use of file");
-	(nil, nil, nil, rc) := <-iostderr.read =>
-		if(rc != nil)
-			rc <-= (nil, "inappropriate use of file");
-	(nil, data, nil, wc) := <-iostdout.write =>
-		conout(top, data, wc);
-	(nil, data, nil, wc) := <-iostderr.write =>
-		conout(top, data, wc);
-		if(wc != nil)
-			tkclient->wmctl(top, "untask");
+	for(;;){
+		wreq := top.wreq;
+		wm := top.ctxt;
+		alt {
+		c := <-titlectl or
+		c = <-wreq or
+		c = <-wm.ctl =>
+			if(c == "exit")
+				c = "task";
+			tkclient->wmctl(top, c);
+		c := <-wm.kbd =>
+			tk->keyboard(top, c);
+		p := <-wm.ptr =>
+			tk->pointer(top, *p);
+		(nil, nil, nil, rc) := <-iostdout.read =>
+			if(rc != nil)
+				rc <-= (nil, "inappropriate use of file");
+		(nil, nil, nil, rc) := <-iostderr.read =>
+			if(rc != nil)
+				rc <-= (nil, "inappropriate use of file");
+		(nil, data, nil, wc) := <-iostdout.write =>
+			conout(top, data, wc);
+		(nil, data, nil, wc) := <-iostderr.write =>
+			conout(top, data, wc);
+			if(wc != nil)
+				tkclient->wmctl(top, "untask");
+		}
 	}
 }
 
@@ -570,8 +575,9 @@ conout(top: ref Tk->Toplevel, data: array of byte, wc: Sys->Rwrite)
 
 	s := string data;
 	tk->cmd(top, ".cons.t insert end '"+ s);
+	reply: (int, string) = (len data, nil);
 	alt{
-	wc <-= (len data, nil) =>;
+	wc <-= reply =>;
 	* =>;
 	}
 
@@ -579,7 +585,8 @@ conout(top: ref Tk->Toplevel, data: array of byte, wc: Sys->Rwrite)
 		if(s[i] == '\n')
 			nlines++;
 	if(nlines > MAXCONSOLELINES){
-		cmd(top, ".cons.t delete 1.0 " + string (nlines/4) + ".0; update");
+		trimcmd := ".cons.t delete 1.0 " + string (nlines/4) + ".0; update";
+		cmd(top, trimcmd);
 		nlines -= nlines / 4;
 	}
 

@@ -49,7 +49,13 @@ def generate(limbo,w):
  toolbar=next(r for r in records if r['name']=='toolbar')
  assert toolbar['accepted'] and any(e['name']=='toplevel' and e['contract']==116 for e in toolbar['externals']),toolbar
  CMD['verify_nilbranches'](data,toolbar,imports,rows=records)
- print('PASS original atoolbar: checked Tk tuple import and destination map',flush=True)
+ assert {'consoleproc','conout'} <= {r['name'] for r in records if r['accepted']}
+ print('PASS original atoolbar: checked Tk tuple import, destination map and console call graph',flush=True)
+ data,records=E['compile_source'](limbo,w,(ROOT/'appl/lib/tkclient.b').read_text(),interface='',loads=True)
+ assert len(records)==16 and all(r['accepted'] for r in records),[(r['name'],r.get('reason')) for r in records]
+ top=next(r for r in records if r['name']=='toplevel')
+ assert top['result_aggregate']==116
+ print('PASS original Tkclient: all 16 bodies checked, including the Tk tuple provider',flush=True)
  for name in('Other','Lay'):
   source='implement Closed;'+name+':adt{d:int;};Closed:module{run:fn(x:'+name+');};run(x:'+name+'){take(x);}take(x:'+name+'){}'
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert not next(r for r in closed if r['name']=='run')['accepted'],closed
