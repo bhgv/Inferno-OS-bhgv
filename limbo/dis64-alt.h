@@ -65,17 +65,26 @@ typedfileiopayload(Type*t)
  done:dis64layoutfree(&l);return ok;
 }
 static int
+typedfileiorecord(Type*t)
+{
+ Decl*d;Dis64Layout l={0};unsigned int i;int ok=0;
+ if(!t||t->kind!=Tadt||!t->decl||!t->decl->sym||strcmp(t->decl->sym->name,"FileIO")||
+    !t->decl->dot||!t->decl->dot->sym||strcmp(t->decl->dot->sym->name,"Sys")||
+    !dis64layouttype(t,&l)||l.legacybytes!=8||l.bytes!=16||l.alignment!=8||l.count!=2)goto done;
+ for(i=0,d=t->ids;i<2;i++,d=d->next)if(!d || d->store!=Dfield || !d->sym || strcmp(d->sym->name,i?"write":"read") || d->offset!=4*i ||
+    !d->ty || d->ty->kind!=Tchan || typedfileiopayload(d->ty->tof)!=(i?2:1) || l.leaves[i].legacy!=4*i || l.leaves[i].native!=8*i || l.leaves[i].oldbytes!=4 || l.leaves[i].bytes!=8 || l.leaves[i].kind!=Tchan)goto done;
+ ok=d==nil;
+ done:dis64layoutfree(&l);return ok;
+}
+static int
 typedfileiochannel(Addr*a,int mode,Dis64TypedBody*p,long*base,unsigned int*wire,long*field)
 {
- Type*t=typedfieldowner(a);Decl*d;Addr owner;Dis64Layout l={0};unsigned int i;int actual,ok=0;
- if((mode!=Afpind && mode!=Ampind) || !typedwmref(t,"Sys","FileIO") || (a->offset!=0 && a->offset!=4) ||
-    !dis64layouttype(t->tof,&l) || l.legacybytes!=8 || l.bytes!=16 || l.alignment!=8 || l.count!=2)goto done;
- for(i=0,d=t->tof->ids;i<2;i++,d=d->next)if(!d || d->store!=Dfield || !d->sym || strcmp(d->sym->name,i?"write":"read") || d->offset!=4*i ||
-    !d->ty || d->ty->kind!=Tchan || typedfileiopayload(d->ty->tof)!=(i?2:1) || l.leaves[i].legacy!=4*i || l.leaves[i].native!=8*i || l.leaves[i].oldbytes!=4 || l.leaves[i].bytes!=8 || l.leaves[i].kind!=Tchan)goto done;
- if(d)goto done;owner=*a;owner.offset=0;owner.native64type=t;
- if(!typedoperand(mode==Afpind?Afp:Amp,&owner,TypedRoot,0,0,p,base,wire,&actual) || actual!=Tref)goto done;
- *wire|=AIND;*field=2*a->offset;ok=1;
- done:dis64layoutfree(&l);return ok;
+ Type*t=typedfieldowner(a);Addr owner;int actual;
+ if((mode!=Afpind&&mode!=Ampind)||!t||t->kind!=Tref||
+    (a->offset!=0&&a->offset!=4)||!typedfileiorecord(t->tof))return 0;
+ owner=*a;owner.offset=0;owner.native64type=t;
+ if(!typedoperand(mode==Afpind?Afp:Amp,&owner,TypedRoot,0,0,p,base,wire,&actual)||actual!=Tref)return 0;
+ *wire|=AIND;*field=2*a->offset;return 1;
 }
 static int
 typedfileiospan(Dis64Layout*l,unsigned int old,unsigned int kind,unsigned int*base)

@@ -17,7 +17,7 @@ static Module*firoot(int grow,int args)
 static void fidescriptors(Native64ModuleOwner*o)
 {
  uint i,j,pc=0,base=full_spec.nfunctions+1,seen=0;Type*w,*r;
- ficheck(o->module->ntype==(int)base+2,"separate read/write descriptor pools");
+ ficheck(o->module->ntype==(int)base+3,"separate read/write descriptor pools");
  w=o->module->type[base];r=o->module->type[base+1];
  ficheck(w!=r&&w->size==32&&w->np==1&&w->map[0]==0x50&&r->size==24&&r->np==1&&r->map[0]==0x20,"exact mixed descriptor sizes and maps");
  for(i=0;i<full_spec.nfunctions;i++)for(j=0;j<full_functions[i].count;j++,pc++)if(full_functions[i].code[j].returned==201||full_functions[i].code[j].returned==202){ficheck(o->module->prog[pc].reg==base+(full_functions[i].code[j].returned==202),"mixed projection descriptor relocation");seen|=full_functions[i].code[j].returned==201?1:2;}
@@ -87,23 +87,32 @@ static void ficonstruction(void)
  Native64ModuleOwner owner={0};REG saved=R;int jit,i,n,base;
  for(jit=0;jit<2;jit++){base=allocations;ficheck(native64typedmodule(&full_spec,jit,&owner),"constructor baseline");n=allocations-base;ficheck(native64typedmoduleclear(&owner),"constructor cleared");for(i=1;i<=n;i++){failat=allocations+i;ficheck(!native64typedmodule(&full_spec,jit,&owner),"constructor failure");failat=0;ficheck(!live&&!owner.module&&!memcmp(&R,&saved,sizeof(R)),"constructor rollback");}printf("PASS FileIO constructor: jit=%d %d allocation failures with complete rollback\n",jit,n);}
 }
-static void finil(int jit,int quantum)
+static void ficheckowner(int jit,int quantum,int create)
 {
  Native64ModuleOwner owner={0};Module*m;Modlink*ml;Import imports[2]={{0}};Prog*p;uchar*root;uint i,ticks=0;int done;
- ficheck(native64typedmodule(&full_spec,jit,&owner),"nil-owner module");for(i=0;i<full_spec.nfunctions&&strcmp(full_functions[i].name,"inspect");i++);require(i<full_spec.nfunctions);
+ ficheck(native64typedmodule(&full_spec,jit,&owner),"nil-owner module");for(i=0;i<full_spec.nfunctions&&strcmp(full_functions[i].name,create?"create":"inspect");i++);require(i<full_spec.nfunctions);
  imports[0].name=(char*)full_functions[i].name;memmove(&imports[0].sig,&full_functions[i].signature,4);owner.module->ref++;ml=linkmod(owner.module,imports,1);require(ml!=nil&&ml!=H);ptradd(D2H(ml));D2H(ml)->ref++;
- m=firoot(quantum==1,1);if(jit)require(compile(m,m->nprog,nil));m->ref++;starting=m;started=nil;require(kprotect(start,nil));p=started;rootenvironment(p);root=p->R.FP;memmove(root+96,&ml,8);
- while(currun()!=nil){ficheck(++ticks<1000,"bounded nil-owner scheduler");p->quanta=quantum;done=kprotect(executeprocess,p);if(done)continue;ficheck(!strcmp(worker.env->errstr,exNilref),"FileIO nil owner rejected before registration");observed=p;progexit();}
- emptyqueues();require(m->ref==1);unload(m);ptrdel(D2H(ml));destroy(ml);ficheck(native64typedmoduleclear(&owner)&&!live&&!modules&&!nlinkpins&&!worker.nerr,"nil-owner complete unwind");memset(nativeobservations,0,sizeof(nativeobservations));
+ m=firoot(quantum==1,!create);if(jit)require(compile(m,m->nprog,nil));m->ref++;starting=m;started=nil;require(kprotect(start,nil));p=started;rootenvironment(p);root=p->R.FP;memmove(root+96,&ml,8);
+ while(currun()!=nil){ficheck(++ticks<1000,"bounded nil-owner scheduler");p->quanta=quantum;done=kprotect(executeprocess,p);if(done)continue;ficheck(!strcmp(worker.env->errstr,create?"":exNilref),"FileIO nil owner rejected before registration");observed=p;progexit();}
+ emptyqueues();
+ if(create){
+  Sys_FileIO *file;Channel *read,*write;
+  memmove(&file,ml->MP+file_globals[0],8);
+  ficheck(file!=H,"allocated FileIO");
+  read=file->read;write=file->write;
+  ficheck(read!=H&&write!=H&&read!=write,"separate FileIO channels");
+  ficheck(read->mid.t->size==24&&read->mid.t->map[0]==0x20&&write->mid.t->size==32&&write->mid.t->map[0]==0x50,"allocated channel payload maps");
+ }
+ require(m->ref==1);unload(m);ptrdel(D2H(ml));destroy(ml);ficheck(native64typedmoduleclear(&owner)&&!live&&!modules&&!nlinkpins&&!worker.nerr,"nil-owner complete unwind");memset(nativeobservations,0,sizeof(nativeobservations));
 }
 int main(void)
 {
  uint fn,total=0;int jit,q,capacity,profile,roundrobin;int quanta[]={1,3,1000},sizes[]={0,1,3};
  rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;Tarray.free=freearray;require(dis64selectlaunch("dis64-calls"));
  FILE_HANDLERS
- optab[IMOVP]=actual_movp;optab[IMOVMP]=actual_movmp;optab[ISPAWN]=actual_spawn;optab[ISEND]=actual_isend;optab[IRECV]=actual_irecv;optab[IALT]=actual_alt;optab[INBALT]=actual_nbalt;optab[IGOTO]=actual_igoto;
+ optab[INEWZ]=actual_newz;optab[INEWCMP]=actual_newcmp;optab[IMOVP]=actual_movp;optab[IMOVMP]=actual_movmp;optab[ISPAWN]=actual_spawn;optab[ISEND]=actual_isend;optab[IRECV]=actual_irecv;optab[IALT]=actual_alt;optab[INBALT]=actual_nbalt;optab[IGOTO]=actual_igoto;
  fimetadata();ficonstruction();
  for(fn=0;fn<8;fn++)for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(capacity=0;capacity<3;capacity++)for(profile=0;profile<8;profile++)for(roundrobin=0;roundrobin<2;roundrobin++){ficase(fn,jit,quanta[q],sizes[capacity],profile,roundrobin);total++;}
- for(jit=0;jit<2;jit++){finil(jit,1);finil(jit,1000);}
+ for(jit=0;jit<2;jit++){ficheckowner(jit,1,0);ficheckowner(jit,1000,0);ficheckowner(jit,1,1);ficheckowner(jit,1000,1);}
  printf("PASS FileIO mixed ALT: %u C/JIT runs, signed Word fields, FP/MP read/write tuples, exact mixed GC maps, nil/empty/nonempty arrays and replies, duplicate guards, buffers, four nil-owner unwinds and complete retirement\n",total);return 0;
 }

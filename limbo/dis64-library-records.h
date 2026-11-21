@@ -25,6 +25,7 @@ typedlibraryrecord(Type*t)
  static char*names[][9]={{"fd","buffer","index","size","dirty","bufpos","filpos","lastop","mode"},{"h","t","n"},{"h","t","n"},{"last","h","t"},{"iobuf","fill","next"}};
  Dis64Layout l={0};Decl*d;unsigned int id=0,i=0,k,n;int ok=0;Type ref;
  if(t && t->kind==Tref)t=t->tof;if(!t || t->kind!=Tadt || !t->decl || !t->decl->sym)return 0;
+ if(!strcmp(t->decl->sym->name,"FileIO"))return typedfileiorecord(t)?14:0;
  if(!strcmp(t->decl->sym->name,"Listnode")){
   Decl *cmd=t->ids,*word=cmd?cmd->next:nil;
   if(!t->decl->dot||!t->decl->dot->sym||strcmp(t->decl->dot->sym->name,"Sh")||

@@ -8,7 +8,7 @@ G,CMD,E=BASE['G'],BASE['CMD'],BASE['E']
 PREFIX='include "sys.m";'
 ARGS='f:ref Sys->FileIO,a:array of byte,r:Sys->Rread,w:Sys->Rwrite'
 NAMES=('write','read','writemp','readmp','writereverse','readreverse','writedup','readdup')
-DECL='Filealt:module{'+''.join(n+':fn('+ARGS+');'for n in NAMES)+'clear:fn();inspect:fn(f:ref Sys->FileIO);};'
+DECL='Filealt:module{'+''.join(n+':fn('+ARGS+');'for n in NAMES)+'clear:fn();create:fn();inspect:fn(f:ref Sys->FileIO);};'
 SOURCE='implement Filealt;'+PREFIX+DECL+'stored:ref Sys->FileIO;data,aout:array of byte;rr,rout:Sys->Rread;wr,wout:Sys->Rwrite;off,count,fid,offsetout,countout,fidout,received,sent,choice:int;readtuple:(int,int,int,Sys->Rread);writetuple:(int,array of byte,int,Sys->Rwrite);'
 for i,name in enumerate(NAMES):
  write=i%2==0;kind='write'if write else'read';mp=i in(2,3);reverse=i in(4,5);dup=i in(6,7)
@@ -25,12 +25,13 @@ for kind in('write','read'):
   SOURCE+='}}'
  for mp in(0,1):
   SOURCE+='send'+kind+('mp'if mp else'')+'(){'+(''if mp else'v:='+('(off,data,fid,wr)'if kind=='write'else'(off,count,fid,rr)')+';')+'alt{stored.'+kind+' <-='+ (kind+'tuple'if mp else'v')+' => sent++;}}'
+SOURCE+='create(){stored=ref Sys->FileIO(chan of (int,int,int,Sys->Rread),chan of (int,array of byte,int,Sys->Rwrite));}'
 SOURCE+='inspect(f:ref Sys->FileIO){recvwrite(f);}'
 def generate(limbo,w):
  interface=w/'filealt.m';interface.write_text(PREFIX+DECL)
  h=subprocess.check_output([str(limbo),'-H','-M','Filealt','-I',str(ROOT/'module'),str(interface)],text=True)
  signatures={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Filealt_(\w+) (0x[0-9a-f]+)U',h,re.M)}
- rows=G['generate'](limbo,w,SOURCE,'Filealt',(21,0,0,'~0U'),export_signatures=signatures)
+ rows=G['generate'](limbo,w,SOURCE,'Filealt',(22,0,0,'~0U'),export_signatures=signatures)
  p=w/'full.h';p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n',''))
  globals={g[0]:g[1]for g in rows[0]['globals']}
  with p.open('a')as out:out.write('static const uint file_globals[]={'+','.join(str(globals[n])for n in('stored','data','rr','wr','aout','rout','wout','off','count','fid','offsetout','countout','fidout','received','sent','choice'))+'};\n')
@@ -63,7 +64,12 @@ def boundaries(limbo,w):
  print('PASS FileIO boundaries; real AWM init:',init.get('pc','complete'),init.get('reason','accepted'),flush=True)
 def unit():
  src=BASE['unit']().split('\n#line 1 "native64-alt-pairs.c"')[0]
- start=src.index(' optab[IMOVW]=countmovw;');end=src.index(' require(prepare64calls(',start)
+ handlers_start=src.index(' optab[IMOVW]=countmovw;')
+ extract=CMD['NS']['S']['FILES']['FILES']['function'];vm=(ROOT/'libinterp/xec.c').read_text()
+ src+='\n\n'+extract(vm,'static void\nnewrecord(')+'\n'+extract(vm,'OP(newz)')
+ start=handlers_start
+ # Retain the handlers installed by the shared scheduler fixture.
+ end=src.index(' require(prepare64calls(',start)
  return src+'\n#line 1 "native64-fileio-alt.c"\n'+(ROOT/'utils/tests/native64-fileio-alt.c').read_text().replace(' FILE_HANDLERS',src[start:end])
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',type=Path,required=True);a=p.parse_args()

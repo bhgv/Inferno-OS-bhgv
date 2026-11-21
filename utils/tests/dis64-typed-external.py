@@ -110,7 +110,7 @@ def array_argument(original,code,at,maps,pending,oldoffset,offset):
     return at+2
 
 # Independent closed layout table: legacy and native field offsets.
-LIBRARY_FIELDS={13:([0,4],[0,8]),12:(list(range(0,28,4)),[0,4,8,16,24,32,40]),10:(list(range(0,32,4)),[0,8,16,24,32,36,40,44]),11:(list(range(0,104,4)),[0,8,12,16,20,24,32,36,40,44,48,56,60,64,72,80,84,88,92,96,100,104,112,116,120,124]),8:(list(range(0,28,4)),list(range(0,56,8))),9:([0,4],[0,4]),1:([0,4,8,12,16,24,32,40,44],[0,8,16,20,24,32,40,48,52]),2:([0,4,8],[0,8,16]),3:([0,4,8],[0,8,16]),4:([0,4,8],[0,8,16]),5:([0,4,8],[0,8,16]),6:(list(range(0,52,4)),[0,8,16,24,32,40,48,56,64,72,76,80,88]),7:([0,4,8,12,16,20],[0,8,12,16,20,24])}
+LIBRARY_FIELDS={14:([0,4],[0,8]),13:([0,4],[0,8]),12:(list(range(0,28,4)),[0,4,8,16,24,32,40]),10:(list(range(0,32,4)),[0,8,16,24,32,36,40,44]),11:(list(range(0,104,4)),[0,8,12,16,20,24,32,36,40,44,48,56,60,64,72,80,84,88,92,96,100,104,112,116,120,124]),8:(list(range(0,28,4)),list(range(0,56,8))),9:([0,4],[0,4]),1:([0,4,8,12,16,24,32,40,44],[0,8,16,20,24,32,40,48,52]),2:([0,4,8],[0,8,16]),3:([0,4,8],[0,8,16]),4:([0,4,8],[0,8,16]),5:([0,4,8],[0,8,16]),6:(list(range(0,52,4)),[0,8,16,24,32,40,48,56,64,72,76,80,88]),7:([0,4,8,12,16,20],[0,8,12,16,20,24])}
 def library_operand(value,mode,record,maps,result=False):
     if mode in(4,5):
         if not record:assert result and mode==5 and value==[16,0];return 32
@@ -126,7 +126,7 @@ def library_step(o,c,maps,first,types):
     op,mode,source,middle,dest,tag=c;sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192
     if tag==154:
         assert source in LIBRARY_FIELDS and op==OPCODES['INEWZ']and o['op']in(OPCODES['INEW'],OPCODES['INEWZ'])and o['m']is None and not middle
-        size,mapping=types[o['s'][0]];assert size==({1:48,6:52,7:24,8:28,9:8,10:32,11:104,12:28}.get(source,12))and list(mapping)==([30]if source==12 else[132,38,4]if source==11 else[240]if source==10 else[254]if source==8 else[]if source==9 else[247,136]if source==6 else[132]if source==7 else[192 if source<=3 else 224])
+        size,mapping=types[o['s'][0]];assert size==({1:48,6:52,7:24,8:28,9:8,10:32,11:104,12:28,14:8}.get(source,12))and list(mapping)==([30]if source==12 else[132,38,4]if source==11 else[240]if source==10 else[254]if source==8 else[]if source==9 else[247,136]if source==6 else[132]if source==7 else[192 if source<=3 or source==14 else 224])
         assert mode==o['mode']and dest==library_operand(o['d'],dm,0,maps,True);return
     assert tag==153 and mode==o['mode'];sid=middle>>24;did=(middle>>16)&255;assert sid or did or(op==OPCODES['ILENA']and sm==1 and dm==1)
     expected=OPCODES['INEWAZ']if o['op']in(OPCODES['INEWA'],OPCODES['INEWAZ'])else OPCODES['IBEQL']if o['op']==OPCODES['IBEQW']and op==OPCODES['IBEQL']else OPCODES['IBNEL']if o['op']==OPCODES['IBNEW']and op==OPCODES['IBNEL']else o['op'];assert op==expected
@@ -910,7 +910,12 @@ def verify(data,r,imports,loads=False,rows=None):
             if returned==90:
                 assert op==OPCODES['IMOVMP']and sm in(4,5)and dm in(4,5)and o['s'][1]==o['d'][1]==0 and types[o['m']][0]==28 and list(types[o['m']][1])==[254]and m==8 and s==maps['frame'if sm==5 else'data'][o['s'][0]]and d==maps['frame'if dm==5 else'data'][o['d'][0]]
             elif returned==92:
-                assert op==OPCODES['INEWCMP']and sm==2 and dm in(4,5)and o['m']==0 and s in(2,3) and o['d'][1]==(12 if s==2 else 32) and types[o['s'][0]][0]==4*s and list(types[o['s'][0]][1])==([192]if s==2 else[224]) and m==0 and d==maps['frame'if dm==5 else'data'][o['d'][0]]
+                if s in(5,6):
+                    assert op==OPCODES['INEWCMP']and sm==2 and dm in(4,5)and o['m']==m==0
+                    assert o['d'][1]==4*(s-5) and types[o['s'][0]][0]==16 and list(types[o['s'][0]][1])==[16 if s==5 else 80]
+                    assert d==maps['frame'if dm==5 else'data'][o['d'][0]]
+                else:
+                    assert op==OPCODES['INEWCMP']and sm==2 and dm in(4,5)and o['m']==0 and s in(2,3) and o['d'][1]==(12 if s==2 else 32) and types[o['s'][0]][0]==4*s and list(types[o['s'][0]][1])==([192]if s==2 else[224]) and m==0 and d==maps['frame'if dm==5 else'data'][o['d'][0]]
             elif returned==108:
                 assert op in(OPCODES['INEWCW'],OPCODES['INEWCP'])and sm==3 and dm in(4,5)and o['m']==m==0 and o['s']is None and o['d'][1]in((52,)if s==576 else(0,4,8,12)if s>=256 else(0,4,8,16))
                 assert s==(576 if s==576 else(256 if s>=256 else 0)|2*o['d'][1])and d==maps['frame'if dm==5 else'data'][o['d'][0]]

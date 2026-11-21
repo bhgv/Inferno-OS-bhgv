@@ -332,11 +332,23 @@ typedroottransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
  done:dis64layoutfree(&l);return ok;}
 
 /* Descriptor deduplication may merge root classes with identical GC geometry. */
+static int typedfileiopayload(Type*);
+static int typedfileiochannel(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*);
 static int
 typedclientmappedchannel(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {
  Dis64Layout payload={0},descriptor={0};Decl*d=in->s.decl;Type*t;unsigned int n;int ok=0,mixed;
  if(in->sm!=Adesc || !d || !d->desc || d->desc->id!=in->s.offset || !d->desc->map || d->desc->nmap!=1)goto done;
+ if(typedlibraryrecord(typedfieldowner(&in->d))==14){
+  long base,field;unsigned int mode,kind;
+  t=in->d.native64type;
+  if(!t||t->kind!=Tchan||!(kind=typedfileiopayload(t->tof))||
+     !typedfileiochannel(&in->d,in->dm,p,&base,&mode,&field)||
+     field!=8*(kind-1)||d->desc->size!=16||d->desc->map[0]!=(kind==1?0x10:0x50)||
+     in->mm!=Aimm||in->m.offset||in->branch)goto done;
+  *out=(Dis64Instruction){INEWCMP,SRC(AIMM)|AXIMM|DST(mode),0,4+kind,base};
+  *returned=92;ok=1;goto done;
+ }
  if((in->dm==Afpind||in->dm==Ampind)&&typedlibraryrecord(typedfieldowner(&in->d))==12&&in->d.offset==12){Addr a=in->d;Type*owner=typedfieldowner(&a);long base;unsigned int dm;int actual;
   t=in->d.native64type;if(!t||t->kind!=Tchan||!typedmappedpayload(t->tof,&payload)||payload.count!=2||!typedmappedpayload(d->ty,&descriptor)||descriptor.count!=2||d->desc->size!=8||d->desc->map[0]!=0xc0||in->mm!=Aimm||in->m.offset||in->branch)goto done;
   a.offset=0;a.native64type=owner;if(!typedoperand(in->dm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&base,&dm,&actual)||actual!=Tref)goto done;

@@ -132,52 +132,56 @@ init(ctxt: ref Draw->Context, argv: list of string)
 
 	snarf: array of byte;
 #	write("/prog/"+string sys->pctl(0, nil)+"/ctl", "restricted"); # for testing
-	for(;;) alt{
-	k := <-tbtop.ctxt.kbd =>
-		tk->keyboard(tbtop, k);
-	m := <-tbtop.ctxt.ptr =>
-		tk->pointer(tbtop, *m);
-	s := <-tbtop.ctxt.ctl or
-	s = <-tbtop.wreq =>
-		wmctl(tbtop, s);
-	s := <-exec =>
-		# guard against parallel access to the shctxt environment
-		if (donesetup){
-			{
- 				shctxt.run(ref Listnode(nil, s) :: nil, 0);
-			} exception {
-			"fail:*" =>	;
+	for(;;){
+		wreq := tbtop.wreq;
+		wm := tbtop.ctxt;
+		alt{
+		k := <-wm.kbd =>
+			tk->keyboard(tbtop, k);
+		m := <-wm.ptr =>
+			tk->pointer(tbtop, *m);
+		s := <-wm.ctl or
+		s = <-wreq =>
+			wmctl(tbtop, s);
+		s := <-exec =>
+			# guard against parallel access to the shctxt environment
+			if (donesetup){
+				{
+					shctxt.run(ref Listnode(nil, s) :: nil, 0);
+				} exception {
+				"fail:*" =>	;
+				}
 			}
-		}
-	detask := <-task =>
-		deiconify(detask);
-	(off, data, nil, wc) := <-snarfIO.write =>
-		if(wc == nil)
-			break;
-		if (off == 0)			# write at zero truncates
-			snarf = data;
-		else {
-			if (off + len data > len snarf) {
-				nsnarf := array[off + len data] of byte;
-				nsnarf[0:] = snarf;
-				snarf = nsnarf;
+		detask := <-task =>
+			deiconify(detask);
+		(off, data, nil, wc) := <-snarfIO.write =>
+			if(wc == nil)
+				break;
+			if (off == 0)			# write at zero truncates
+				snarf = data;
+			else {
+				if (off + len data > len snarf) {
+					nsnarf := array[off + len data] of byte;
+					nsnarf[0:] = snarf;
+					snarf = nsnarf;
+				}
+				snarf[off:] = data;
 			}
-			snarf[off:] = data;
+			wc <-= (len data, "");
+		(off, nbytes, nil, rc) := <-snarfIO.read =>
+			if(rc == nil)
+				break;
+			if (off >= len snarf) {
+				rc <-= (nil, "");		# XXX alt
+				break;
+			}
+			e := off + nbytes;
+			if (e > len snarf)
+				e = len snarf;
+			rc <-= (snarf[off:e], "");	# XXX alt
+		donesetup = <-setupfinished =>
+			;
 		}
-		wc <-= (len data, "");
-	(off, nbytes, nil, rc) := <-snarfIO.read =>
-		if(rc == nil)
-			break;
-		if (off >= len snarf) {
-			rc <-= (nil, "");		# XXX alt
-			break;
-		}
-		e := off + nbytes;
-		if (e > len snarf)
-			e = len snarf;
-		rc <-= (snarf[off:e], "");	# XXX alt
-	donesetup = <-setupfinished =>
-		;	
 	}
 }
 
