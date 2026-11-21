@@ -47,9 +47,11 @@ def generate(limbo,w):
  for result,extra in(('Other','Other:adt{a,b,c,d:int;};'),('Fake->Rect','Fake:module{Rect:adt{a,b,c,d:int;};};'),('Draw->Pointer','')):
   source='implement Closed;'+PREFIX+extra+'Closed:module{run:fn();};saved:'+result+';run(){v:=take();}take():'+result+'{return saved;}'
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert not next(r for r in closed if r['name']=='take')['accepted'],closed
- for body in('out=copy(r);','v:=relay(r);out=v;'):
+ for body in('out=copy(r);',):
   source='implement Closed;'+PREFIX+'Closed:module{run:fn(r:Draw->Rect);};out:Draw->Rect;run(r:Draw->Rect){'+body+'}copy(r:Draw->Rect):Draw->Rect{return r;}relay(r:Draw->Rect):Draw->Rect{return copy(r);}'
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert not next(r for r in closed if r['name']=='run')['accepted'],closed
+ source='implement Forward;'+PREFIX+'Forward:module{run:fn(r:Draw->Rect):Draw->Rect;};run(r:Draw->Rect):Draw->Rect{return relay(r);}relay(r:Draw->Rect):Draw->Rect{return r;}'
+ _,forward=E['compile_source'](limbo,w,source,interface='',loads=True);assert all(r['accepted']for r in forward),forward
  _,records=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True)
  for name in('init','handlerequest','fitrect','newrect'):
   row=next(r for r in records if r['name']==name);print('AWM',name,':',row['accepted'],row.get('pc'),row.get('reason'),flush=True)

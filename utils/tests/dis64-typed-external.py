@@ -165,6 +165,47 @@ def rootpath_argument(original,code,at,maps,pending,oldoffset,new,r):
     assert code[at]==[41,1,maps['data'][o['s'][0]],0,temp,66]
     return at+1
 
+def rawarray_index(original,code,pc,maps,row):
+    o=original[pc];op,mode,s,m,d,role=code[pc];sm=o['mode']>>3&7;dm=o['mode']&7
+    assert role==80 and op==OPCODES['IINDX']and o['op']in(OPCODES['IINDX'],OPCODES['IINDW'])and sm==1 and o['mode']==8|128|dm and mode==o['mode']and o['m']is not None
+    assert m>>8 in(1,2,3)and m&255 in(48,56)and(o['op']!=OPCODES['IINDW']or m>>8==1)
+    assert s==maps['frame'][o['s'][0]]and d==(o['d'][0]if dm==2 else maps['frame'if dm else'data'][o['d'][0]])
+    assert next(l for l in row['frame']['leaves']if l[0]==o['s'][0])[4]in(3,20)
+
+def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None):
+    o=original[pc];op,mode,s,m,d,role=code[pc];sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192;so=do=0
+    assert role==65 and op==o['op']and mode==o['mode']
+    assert sm==5 or(dm==5 and new is None)
+    n=o['m']if op in(OPCODES['IMOVM'],OPCODES['IHEADM'])else 4
+    assert n in(4,8,12,16)
+    def borrow(addr):
+        earlier=[j for j in range(pc)if code[j][5]==80 and original[j]['m']==addr[0]];assert earlier
+        at=earlier[-1];cl=code[at][3]>>8;assert addr[1]%4==0 and addr[1]+n<={1:4,2:12,3:16}[cl]
+        return code[at][3]&255
+    if sm==5:assert s==borrow(o['s']);so=o['s'][1]
+    else:assert sm in(0,1,2)and s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
+    if new is not None:
+        assert pending is not None and dm==5 and o['d']==[pending,oldoffset]and d==new
+    elif dm==5:assert d==borrow(o['d']);do=o['d'][1]
+    elif dm==2:assert op in BRANCHES and d==o['d'][0]-row['first']
+    else:assert dm in(0,1)and d==maps['frame'if dm else'data'][o['d'][0]]
+    middle=0 if arm==0 else o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']]
+    assert m==(so<<24)|(do<<16)|(middle&65535)
+    if op==OPCODES['IHEADM']:assert sm in(0,1)and n==16
+    for addr,space,wire in((o['s'],'frame'if sm else'data',sm),(o['d'],'frame'if dm else'data',dm)):
+        if wire not in(0,1)or(op==OPCODES['IHEADM']and addr is o['s']):continue
+        for k in range(0,n,4):assert next(l for l in row[space]['leaves']if l[0]==addr[0]+k)[2:]==[4,4,9]
+
+def rawarray_operation(o,c,maps,types,row):
+    op,mode,s,m,d,role=c;sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192
+    assert role==79 and dm==1 and mode==o['mode']and d==maps['frame'][o['d'][0]]
+    if o['op']in(OPCODES['INEWA'],OPCODES['INEWAZ']):
+        assert op==OPCODES['INEWAZ']and arm==64 and m in(1,2,3)and types[o['m']][0]=={1:4,2:12,3:16}[m]and not any(types[o['m']][1])
+    else:
+        assert op==o['op']and op in(OPCODES['ISLICEA'],OPCODES['ISLICELA'])and m>>24 in(1,2,3)
+        mid=o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']];assert m==((m>>24)<<24)|(mid&65535)
+    assert sm in(0,1,2)and s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
+
 def verify(data,r,imports,loads=False,rows=None):
     assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and (rows is not None or 'calls'not in r)
     if r.get('result')==[14,24]and not r.get('result_aggregate'):assert r.get('result_channels')==[6,6,6]
@@ -181,6 +222,20 @@ def verify(data,r,imports,loads=False,rows=None):
         assert r['code'][first]==[5,17,descriptor,0,40,0]
         for arg in callee['args']:
             prep=False;screenprep=None;idprep=None;o=original[at]
+            while loads and r['code'][at][5]==80:
+                rawarray_index(original,r['code'],at,maps,r);at+=1;o=original[at]
+            if loads and r['code'][at][5]==65:
+                assert arg[1]in(1,9)and arg[3]==(original[at]['m']if original[at]['op']==OPCODES['IMOVM']else 4)
+                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);rawarray_use(original,r['code'],at,maps,r,pending,oldoffset,arg[0]);at+=1;continue
+            if loads and arg[1:]==[1,12,12]and o['op']==45:
+                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0])
+                for k in range(3):
+                    a=original[at];sm=a['mode']>>3&7;assert a['op']==45 and a['mode']==(sm<<3)|5 and a['m']is None and a['d']==[pending,oldoffset+4*k]
+                    src=a['s'][0]if sm==2 else maps['frame'if sm else'data'][a['s'][0]];assert r['code'][at]==[45,a['mode'],src,0,arg[0]+4*k,64];at+=1
+                continue
+            if loads and arg[1:]==[1,16,16]and o['op']==OPCODES['IHEADM']:
+                sm=o['mode']>>3&7;oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);assert sm in(0,1)and o['mode']==(sm<<3)|64|5 and o['m']==16 and o['d']==[pending,oldoffset]
+                assert r['code'][at]==[o['op'],o['mode'],maps['frame'if sm else'data'][o['s'][0]],16,arg[0],64];at+=1;continue
             if loads and r['code'][at][5]==74:
                 assert arg[1:]==[13,4,8];oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);at=stringarray_argument(original,r['code'],at,maps,pending,oldoffset,arg[0],74);continue
             if loads and r['code'][at][5]==75:
@@ -193,7 +248,7 @@ def verify(data,r,imports,loads=False,rows=None):
             if loads and r['code'][at][5]==155:
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);library_argument(o,r['code'][at],maps,pending,oldoffset,arg[0]);at+=1;continue
             if loads and r['code'][at][5]==84:
-                assert arg[1]==1 and arg[2]==arg[3]and arg[3]in(8,16)
+                assert arg[1]==1 and arg[2]==arg[3]and arg[3]in(8,12,16)
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);window_geometry(original[at],r['code'][at],maps,r,pending,oldoffset,arg[0]);at+=1;continue
             if loads and r['code'][at][5]==152:
                 assert arg[1:]==[7,8,8]and o['op']==OPCODES['ICVTWF']and o['m']is None and o['d'][0]==pending
@@ -211,8 +266,8 @@ def verify(data,r,imports,loads=False,rows=None):
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);assert arg[2:]==[4,4]
                 assert not(callee['frame']['map'][arg[0]//64]&(128>>(arg[0]//8%8)))
                 at=inthead_argument(original,r['code'],at,maps,pending,oldoffset,arg[0],r);continue
-            if loads and arg[1]==1 and (o['op']!=OPCODES['IMOVM']or o['m']!=arg[3])and r['code'][at][5]!=235:
-                assert arg[2]==arg[3]and arg[3]in(8,16)
+            if loads and arg[1]==1 and arg[3]!=4 and (o['op']!=OPCODES['IMOVM']or o['m']!=arg[3])and r['code'][at][5]!=235:
+                assert arg[2]==arg[3]and arg[3]in(8,12,16)
                 k=0
                 while k<arg[3]//4:
                     oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]+4*k)
@@ -263,7 +318,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 if sm!=2:assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0])[2:]==[4,4,9]
                 assert r['code'][at]==[45,(sm<<3)|5,source,0,arg[0],64]
             elif arg[1]in(1,14):
-                assert loads and arg[2]==arg[3]and arg[3]in(8,16)
+                assert loads and arg[2]==arg[3]and arg[3]in(8,12,16)
                 assert o['op']==OPCODES['IMOVM']and o['mode']==(sm<<3)|64|5 and o['m']==arg[3]
                 width=arg[3];role=r['code'][at][5]
                 oldtarget=o['d'][1]
@@ -680,7 +735,10 @@ def verify(data,r,imports,loads=False,rows=None):
         assert e.get('result_geometry',0)==({96:8,112:16}.get(contract,0))
         if contract:
             b=original[end-1];assert b['op']==39 and b['d']==[pending,16]
-            if r['code'][end-1][5]==81:
+            if r['code'][end-1][5]==81 and e['inherited']:
+                assert loads and contract==96 and r.get('result_aggregate')==112 and e['resultoffset']==32 and b['mode']==45 and b['s']==[16,8]
+                assert r['code'][end-1]==[39,45,32,8,32,81]
+            elif r['code'][end-1][5]==81:
                 assert loads and contract in(96,112)and not e['inherited'];window_geometry(b,r['code'][end-1],maps,dict(r,contract=contract),pending);assert e['resultoffset']==r['code'][end-1][2]
             elif contract in(96,112)and e['inherited']:
                 assert loads and r.get('result_geometry')=={96:8,112:16}[contract]and b['mode']==45 and b['s']==[16,0]
@@ -727,11 +785,14 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert b['mode']in(5,13)and (b['mode']!=5 or contract in(24,96,112))
                 assert r['code'][end-1]==[39,b['mode'],maps['frame'if b['mode']==13 else'data'][b['s'][0]],0,32,128|contract]
         assert original[end]=={'op':9,'mode':8|64|mode,'m':e['binding'],'s':[pending],'d':o['s']}
-        assert r['code'][end]==[9,8|64|mode,40,e['binding'],offset,32 if e['inherited']else 0]
+        assert r['code'][end]==[9,8|64|mode,40,e['binding'],offset,(78 if contract==96 and r.get('result_aggregate')==112 else 32)if e['inherited']else 0]
         covered.update(range(first,end+1));inside.update(range(first+1,end+1))
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned==80:rawarray_index(original,r['code'],pc,maps,r);continue
+        if returned==79:rawarray_operation(o,r['code'][pc],maps,types,r);continue
+        if returned==65:rawarray_use(original,r['code'],pc,maps,r);continue
         if returned==77:
             c=r['result_aggregate'];width={12:12,48:16,72:24,80:16,92:20,96:8,112:16,124:24}[c];count={12:3,48:2,72:3,80:2,92:5,96:2,112:4,124:3}[c]
             sm=o['mode']>>3&7;assert loads and op==o['op']and o['d'][0]==16 and o['d'][1]%4==0

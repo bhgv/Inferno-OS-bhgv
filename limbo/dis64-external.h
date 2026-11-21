@@ -397,7 +397,8 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         if(at+1!=end || (binding=c->instructions[at])==nil || binding->op!=ILEA || binding->mm!=Anone ||
            binding->dm!=Afpind || binding->d.reg!=frame->d.reg || binding->d.offset!=16 || binding->branch!=nil)return typedfail(p,"external-result");
         if(c->loads && kind==Tadt){
-            if(binding->sm==Afpind&&binding->s.reg!=16){if(!typedwindowgeometrybinding(binding,fn->ty->tof,p,at-p->first,&local,&contract))return typedfail(p,"window-geometry-result");}
+            if(binding->sm==Afpind&&binding->s.reg==16&&binding->s.offset==8&&p->resultaggregate==112){Dis64Layout l={0};if(!typedwordgeometry(fn->ty->tof,&l)||l.bytes!=8){dis64layoutfree(&l);return typedfail(p,"geometry-result-subobject");}dis64layoutfree(&l);contract=96;inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),8,32,32};p->returns[at-p->first]=81;}
+            else if(binding->sm==Afpind&&binding->s.reg!=16){if(!typedwindowgeometrybinding(binding,fn->ty->tof,p,at-p->first,&local,&contract))return typedfail(p,"window-geometry-result");}
             else if(binding->sm==Afpind&&binding->s.reg==16&&!binding->s.offset&&p->resultgeometry){Dis64Layout l={0};if(!typedwordgeometry(fn->ty->tof,&l)||l.bytes!=p->resultgeometry){dis64layoutfree(&l);return typedfail(p,"geometry-result-inherit");}contract=l.bytes==8?96:112;dis64layoutfree(&l);inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;}
             else{if(!typedgeometrybinding(binding,fn->ty->tof,p,&local,&contract))return typedfail(p,"external-geometry-result");p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(binding->sm==Afp?AFP:AMP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;}
         }else if(c->loads && kind==Ttuple && typedwordtriple(fn->ty->tof)){
@@ -441,7 +442,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         at++;
     }
     if(at!=end)return typedfail(p,"external-setup-length");
-    p->code[end-p->first]=(Dis64Instruction){IMCALL,SRC(AFP)|AXIMM|DST(ms),fn->iface->offset,40,mo};p->returns[end-p->first]=inherit?32:0;
+    p->code[end-p->first]=(Dis64Instruction){IMCALL,SRC(AFP)|AXIMM|DST(ms),fn->iface->offset,40,mo};p->returns[end-p->first]=inherit?(contract==96&&p->resultaggregate==112?78:32):0;
     p->external[p->nexternal++]=(Dis64TypedExternal){pc-p->first,end-p->first,fn->iface->offset,ms,mo,local,contract,inherit,fn};
     *next=end+1;return 1;
 }

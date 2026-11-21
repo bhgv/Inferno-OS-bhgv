@@ -351,6 +351,7 @@ typedcontextcopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
 static int typedwordargop(int);
 #include "dis64-draw-fields.h"
 #include "dis64-rect-list.h"
+#include "dis64-raw-array.h"
 
 /* Immutable byte constants are immediate operands, never mutable MP storage. */
 static int
@@ -906,6 +907,7 @@ typedlocalgeometryliteral(TypedMulti*c,Dis64TypedBody*p,Dis64TypedBody*child,Ins
  for(i=0;i<l.bytes;i+=4){if(!dis64layoutaddress(&child->frame,arg->offset+i,4,0,&part) || part<64 || part>65535 || (i && part!=base+i))goto done;if(!i)base=part;}
  for(i=0;i<l.bytes;){
   if(*at>=end || !(in=c->instructions[*at]))goto done;
+  if(in->op==IHEADM && i==0 && l.bytes==16){unsigned int mode;long src;int actual;if(in->mm!=Aimm||in->m.offset!=16||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||!typedrectlisttype(&in->s)||!typedoperand(in->sm,&in->s,Tlist,0,0,p,&src,&mode,&actual))goto done;p->code[*at-p->first]=(Dis64Instruction){IHEADM,SRC(mode)|AXIMM|DST(AFP|AIND),16,src,base};p->returns[(*at)++-p->first]=64;i=16;continue;}
   if(in->op==IHEADP || in->op==ITAIL){if(!typedexternalinthead(c,p,frame,end,at,arg->offset+i,base+i))goto done;i+=4;continue;}
   if(typedwordargop(in->op)){if(!typedwordargument(in,frame,p,*at-p->first,arg->offset+i,base+i))goto done;(*at)++;i+=4;continue;}
   if(in->op==IMOVM){
@@ -930,7 +932,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     if(frame->sm!=Adesc || frame->mm!=Anone || frame->dm!=Afp || frame->branch!=nil || frame->d.reg<32 ||
        frame->d.reg>(int)p->frame.legacybytes-4)return typedfail(p,"multi-frame");
     while(end<stop && c->instructions[end]!=nil && (c->instructions[end]->dm==Afpind ||
-      (c->loads && (((c->instructions[end]->op==IMOVP || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL) && c->instructions[end]->dm==Afp) || c->instructions[end]->op==IINDW || c->instructions[end]->op==ISLICEA || (c->instructions[end]->op==ICVTWC && c->instructions[end]->dm==Afp)))))end++;
+      (c->loads && (((c->instructions[end]->op==IMOVP || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL) && c->instructions[end]->dm==Afp) || c->instructions[end]->op==IINDW || c->instructions[end]->op==IINDX || c->instructions[end]->op==ISLICEA || (c->instructions[end]->op==ICVTWC && c->instructions[end]->dm==Afp)))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || (call->op!=ICALL && !(c->loads && call->op==ISPAWN)) || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Anone || call->dm!=Apc || call->d.offset<0 || (unsigned long)call->d.offset>=c->count ||
        (target=c->entries[call->d.offset])<0)return typedfail(p,"multi-call");
@@ -950,9 +952,22 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     p->code[pc-p->first]=(Dis64Instruction){IFRAME,SRC(AIMM)|DST(AFP),0,frame->s.offset,40};at=pc+1;
     for(arg=c->functions[target]->ty->ids;arg!=nil;arg=arg->next){
         if(at>=end || (in=c->instructions[at])==nil)return typedfail(p,"multi-argument");
+        if(c->loads&&(in->op==IINDX||in->op==IINDW)&&typedrawclass(&in->s)){if(!typedrawindex(c,p,in,at,end)||++at>=end||!(in=c->instructions[at]))return typedfail(p,"local-raw-index");}
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
+        if(c->loads && !spawning && (in->sm==Afpind) && typedrawborrow(p,&in->s,in->sm,at)>=0){
+            unsigned int bytes=kind==Tadt?arg->ty->size:4;
+            if((kind!=Tadt&&kind!=Tint)||(in->op==IMOVM?(unsigned int)in->m.offset:4)!=bytes||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset)||!typedrawuse(p,in,at,end,offset))return typedfail(p,"local-raw-array-argument");at++;continue;
+        }
+        if(c->loads && !spawning && kind==Tadt && typedrawdelta(arg->ty)){
+            unsigned int k,part;long src;unsigned int wire;
+            if(in->op!=IMOVM){
+                for(k=0;k<3;k++){if(at>=end||!(in=c->instructions[at])||in->op!=IMOVW||in->mm!=Anone||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset+4*k||!typedoperand(in->sm,&in->s,Tint,1,0,p,&src,&wire,&actual)||!dis64layoutaddress(&child->frame,arg->offset+4*k,4,0,&part))return typedfail(p,"local-delta-literal");p->code[at-p->first]=(Dis64Instruction){IMOVW,SRC(wire)|DST(AFP|AIND),0,src,part};p->returns[at++-p->first]=64;}continue;
+            }
+            if(in->op!=IMOVM||in->mm!=Aimm||in->m.offset!=12||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||!typedrawspan(p,&in->s,in->sm,12,&src,&wire)||!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset))return typedfail(p,"local-delta-argument");
+            for(k=4;k<12;k+=4)if(!dis64layoutaddress(&child->frame,arg->offset+k,4,0,&part)||part!=offset+k)return typedfail(p,"local-delta-argument");p->code[at-p->first]=(Dis64Instruction){IMOVM,SRC(wire)|AXIMM|DST(AFP|AIND),12,src,offset};p->returns[at++-p->first]=64;continue;
+        }
         if(c->loads && !spawning && kind==Tadt && typedwordlay(arg->ty)){
             if(!((in->op==IMOVW&&in->mm==Anone)||(in->op==IMOVM&&in->mm==Aimm&&in->m.offset==4)) || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) || actual!=Tint)return typedfail(p,"local-lay-argument");
             p->code[at-p->first]=(Dis64Instruction){IMOVW,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=64;continue;
@@ -1098,7 +1113,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             if(!binding->s.decl || binding->s.decl->store!=Dglobal || !typedoperand(Amp,&binding->s,TypedRoot,0,0,p,&source,&sm,&actual) || actual!=kind)return typedfail(p,"multi-global-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AMP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;
         }else{
-            if(child->resultgeometry || binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || !((kind==Tstring && (p->resultaggregate==80 || p->resultaggregate==124)) || (kind==p->resultkind && child->resultpair==p->resultpair && child->resulttriple==p->resulttriple && child->resultaggregate==p->resultaggregate)))return typedfail(p,"multi-inherit");
+            if((child->resultgeometry&&child->resultgeometry!=p->resultgeometry) || binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || !((child->resultgeometry&&child->resultgeometry==p->resultgeometry)||(kind==Tstring && (p->resultaggregate==80 || p->resultaggregate==124)) || (kind==p->resultkind && child->resultpair==p->resultpair && child->resulttriple==p->resulttriple && child->resultaggregate==p->resultaggregate)))return typedfail(p,"multi-inherit");
             inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;
         }
         at++;
@@ -1145,7 +1160,11 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     for(pc=p->first;pc<stop;){
         in=c->instructions[pc];p->badpc=pc;
         if(in==nil){typedfail(p,"multi-instruction-order");goto fail;}
-        if(c->loads&&p->resultaggregate&&in->dm==Afpind&&in->d.reg==16&&(in->op==IMOVP||in->op==IMOVW||in->op==IMOVM||in->op==IMOVMP)){if(!typedaggregatereturn(in,p,pc-p->first))goto fail;pc++;}
+        if(c->loads && (in->op==ISLICEA||in->op==ISLICELA) && typedrawclass(&in->d)){if(!typedrawslice(in,p,pc-p->first))goto fail;pc++;}
+        else if(c->loads && (in->op==INEWA||in->op==INEWAZ) && typedrawclass(&in->d)){if(!typedrawnew(in,p,pc-p->first))goto fail;pc++;}
+        else if(c->loads && (in->op==IINDX||in->op==IINDW) && typedrawclass(&in->s)){if(!typedrawindex(c,p,in,pc,stop))goto fail;pc++;}
+        else if(c->loads && (typedrawborrow(p,&in->s,in->sm,pc)>=0 || typedrawborrow(p,&in->d,in->dm,pc)>=0)){if(!typedrawuse(p,in,pc,stop,-1))goto fail;pc++;}
+        else if(c->loads&&p->resultaggregate&&in->dm==Afpind&&in->d.reg==16&&(in->op==IMOVP||in->op==IMOVW||in->op==IMOVM||in->op==IMOVMP)){if(!typedaggregatereturn(in,p,pc-p->first))goto fail;pc++;}
         else if(c->loads && in->op==IINDB){
             if(pc+1>=stop || !typedlibrarybyteindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
         }else if(c->loads&&in->op==IMOVP&&(in->sm==Afpind||in->sm==Ampind)&&(in->dm==Afpind||in->dm==Ampind)&&typedrootfieldcopy(in,p,pc-p->first)){pc++;

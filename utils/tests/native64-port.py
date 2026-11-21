@@ -444,6 +444,7 @@ def main():
     run([sys.executable,str(tests/'native64-wmclient-module.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmclient-module.log')
     run([sys.executable,str(tests/'native64-titlebar-module.py'),'--limbo',str(tools/'limbo')],build,env,logs/'titlebar-module.log')
     run([sys.executable,str(tests/'native64-aggregate-result.py'),'--limbo',str(tools/'limbo')],build,env,logs/'aggregate-result.log')
+    run([sys.executable,str(tests/'native64-winplace-module.py'),'--limbo',str(tools/'limbo')],build,env,logs/'winplace-module.log')
     run([sys.executable,str(tests/'native64-string-word.py'),'--limbo',str(tools/'limbo')],build,env,logs/'string-word.log')
     run([sys.executable,str(tests/'native64-string-library.py'),'--limbo',str(tools/'limbo')],build,env,logs/'string-library.log')
     run([sys.executable,str(tests/'native64-bufio-library.py'),'--limbo',str(tools/'limbo')],build,env,logs/'bufio-library.log')

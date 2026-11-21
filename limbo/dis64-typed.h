@@ -37,6 +37,7 @@ struct Dis64TypedBody {
 	unsigned int first, count, badpc;
 	int resultkind, tail, resultpair, resulttriple, resultgeometry, sourceroles, resultaggregate;
     Type *resulttype;
+    long rawreg[2];unsigned int rawclass[2],rawuntil[2];
 	unsigned int target, targetdesc, callend, resultoffset, resultcontract;
 	unsigned int resultbytes;
 	char *reason;

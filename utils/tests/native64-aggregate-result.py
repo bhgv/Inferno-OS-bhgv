@@ -43,7 +43,7 @@ def generate(limbo,w):
  print('PASS Lay argument boundary: foreign single Word ADT refused',flush=True)
 
 
- for name,expected in(('wmlib',14),('winplace',12)):
+ for name,expected in(('wmlib',14),('winplace',21)):
   source=(ROOT/('appl/lib/'+name+'.b')).read_text();data,records=E['compile_source'](limbo,w,source,interface='',loads=True);imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]
   assert sum(r['accepted']for r in records)==expected,[(r['name'],r.get('reason'))for r in records]
   for row in records:
