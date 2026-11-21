@@ -378,7 +378,7 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
 {
  unsigned int i,k,j,found,bit;const Native64TypedStep*step;const Native64ModuleSite*site;const Native64ModuleImport*request;const uchar*map;
  for(i=0;i<f->count;i++){
-  step=f->code+i;if((step->returned>=208 && step->returned<=212)||step->returned==215 || step->returned==62 || step->returned==82 || step->returned==83 || step->returned==246 || step->returned==247 || step->returned==77 || step->returned==65 || step->returned==139||step->returned==110)continue;if(step->op!=IMOVM && !(step->returned==64 && (step->mode&ARM)==AXIMM && UDST(step->mode)==(AFP|AIND)) && step->returned!=84 && native64imagegeometryoffset(step->returned)==~0U)continue;
+  step=f->code+i;if((step->returned>=208 && step->returned<=212)||(step->returned==215 || (step->returned==216 && step->op==IMOVM)) || step->returned==62 || step->returned==82 || step->returned==83 || step->returned==246 || step->returned==247 || step->returned==77 || step->returned==65 || step->returned==139||step->returned==110)continue;if(step->op!=IMOVM && !(step->returned==64 && (step->mode&ARM)==AXIMM && UDST(step->mode)==(AFP|AIND)) && step->returned!=84 && native64imagegeometryoffset(step->returned)==~0U)continue;
   found=0;
   for(k=0;k<f->nsites;k++){
    site=f->sites+k;if(i<=site->first || i>=site->end)continue;
@@ -548,7 +548,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
         for(j=0;j<f->count;j++)if(f->code[j].returned==213)for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
-        for(j=0;j<f->count;j++)if((f->code[j].returned>=208 && f->code[j].returned<=212)||f->code[j].returned==215){
+        for(j=0;j<f->count;j++)if((f->code[j].returned>=208 && f->code[j].returned<=212)||f->code[j].returned==215||(f->code[j].returned==216&&f->code[j].op==IMOVM)){
             unsigned int k,modes[2],offsets[2],width;step=f->code+j;if(!native64typedlocalgeometry(step,f->bytes,s->databytes))return 0;width=step->m&255;
             modes[0]=USRC(step->mode);modes[1]=UDST(step->mode);offsets[0]=step->s;offsets[1]=step->d;
             for(k=0;k<2;k++){map=(modes[k]&~AIND)==AFP?f->map:s->datamap;if(modes[k]&AIND){bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}else for(at=0;at<width;at++){bit=(offsets[k]+at)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}}
@@ -940,7 +940,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         for(j=0;j<f->count;j++)if(f->code[j].returned==(128|72)){
             unsigned int k,found=0;for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].contract==72 && !f->sites[k].inherited)found++;if(found!=1)return 0;
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned==(128|88)){
+        for(j=0;j<f->count;j++)if(f->code[j].returned==(128|88) && f->code[j].op!=IMOVM){
             unsigned int k,found=0;
             for(k=0;k<f->nsites;k++)if(f->sites[k].end==j+1 && f->sites[k].contract==88)found++;
             if(found!=1)return 0;

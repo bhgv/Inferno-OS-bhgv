@@ -113,10 +113,27 @@ typedlocalgeometryreturn(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*ret
  done:dis64layoutfree(&l);return ok?1:typedfail(p,"local-geometry-return");
 }
 
+/* Tk's public Toplevel contains four roots followed by its writable Rect. */
+static int
+typedtopscreen(Addr *address, Type *owner, Dis64Layout *layout)
+{
+ unsigned int i;
+ if(address->offset!=16 || !dis64layouttype(owner->tof,layout) ||
+    layout->legacybytes!=32 || layout->bytes!=48 || layout->alignment!=8 || layout->count!=8)return 0;
+ for(i=0;i<8;i++){
+  Dis64LayoutLeaf *leaf=layout->leaves+i;
+  int root=i<4;
+  if(leaf->legacy!=4*i || leaf->native!=(root?8*i:16+4*i) ||
+     leaf->oldbytes!=4 || leaf->bytes!=(root?8:4) ||
+     leaf->kind!=(root?(i==1?Tchan:Tref):Tint))return 0;
+ }
+ return 1;
+}
+
 static int
 typedlocalgeometry(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {
- Dis64Layout l={0},other={0};Addr a,*image=nil,*direct;Inst probe=*in;Type*t;long base=0,value=0,part,field=0;unsigned int mode,wire,i,bytes=0,read,indirect,window=0,pointer=0;int actual,ok=0;
+ Dis64Layout l={0},other={0};Addr a,*image=nil,*direct;Inst probe=*in;Type*t;long base=0,value=0,part,field=0;unsigned int mode,wire,i,bytes=0,read,indirect,window=0,pointer=0,toplevel=0;int actual,ok=0;
  read=in->sm==Afpind || in->sm==Ampind;indirect=read || in->dm==Afpind || in->dm==Ampind;
  if(in->op==IMOVM&&in->mm==Aimm&&!in->branch&&in->m.offset==16&&read&&(in->dm==Afpind||in->dm==Ampind)&&typeddrawowner(&in->s)==1&&!in->s.offset&&in->d.offset==4&&typedwmsrvwindow(typedfieldowner(&in->d))){long dst;unsigned int dw;Addr src=in->s;Type*owner=typedfieldowner(&src);
   src.offset=0;src.native64type=owner;if(!typedoperand(in->sm==Afpind?Afp:Amp,&src,TypedRoot,0,0,p,&base,&wire,&actual)||actual!=Tref||!typedwmsrvwindowbase(&in->d,in->dm,p,&dst,&dw))goto done;
@@ -135,13 +152,27 @@ typedlocalgeometry(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
   t=image->native64type?image->native64type:image->decl?image->decl->ty:nil;
   window=typedwmsrvwindow(typedfieldowner(image));pointer=typedwmref(typedfieldowner(image),"Draw","Pointer");
   {Type*owner=typedfieldowner(image);if(typedwmref(owner,"Draw","Point")){Addr copy=*image;copy.offset=0;copy.native64type=owner;if(!typedwordgeometry(owner->tof,&l)||l.bytes!=8||field||in->m.offset!=8||!typedoperand(read?in->sm==Afpind?Afp:Amp:in->dm==Afpind?Afp:Amp,&copy,TypedRoot,0,0,p,&base,&wire,&actual)||actual!=Tref)goto done;bytes=8;pointer=2;}}
-  if(window&&field==4&&in->m.offset==16)bytes=16;
+  toplevel=typedwmref(typedfieldowner(image),"Tk","Toplevel");
+  if(toplevel){
+   Dis64Layout rect={0};
+   ok=typedwordgeometry(t,&rect)&&rect.bytes==16;
+   dis64layoutfree(&rect);
+   if(!ok)goto done;
+   ok=0;
+   if(!typedtopscreen(image,typedfieldowner(image),&l)||in->m.offset!=16)goto done;
+   bytes=16;field=32;
+  }else if(window&&field==4&&in->m.offset==16)bytes=16;
   else{if((typeddrawowner(image)!=1 && !window && !pointer) || (pointer!=2&&!typedwordgeometry(t,&l)))goto done;bytes=l.bytes;}
   if(window)field+=4;
-  if(in->m.offset!=bytes || (pointer?(bytes!=8 || field!=(pointer==2?0:4)):window?(bytes==16?field!=8:(field!=8 && field!=16)):(bytes==16?(field!=0 && field!=16):(field<0 || field>24 || field%8))))goto done;
+  if(in->m.offset!=bytes || (!toplevel && (pointer?(bytes!=8 || field!=(pointer==2?0:4)):window?(bytes==16?field!=8:(field!=8 && field!=16)):(bytes==16?(field!=0 && field!=16):(field<0 || field>24 || field%8)))))goto done;
   probe.op=IMOVP;probe.s=*image;probe.sm=read?in->sm:in->dm;probe.s.offset=44;probe.mm=Anone;probe.dm=Afp;probe.branch=nil;
   if(pointer==2){}
   else if(pointer){if(!typedpointeraddress(image,read?in->sm:in->dm,p,&base,&wire))goto done;}
+  else if(toplevel){
+   Addr owner=*image;
+   owner.offset=0;owner.native64type=typedfieldowner(image);
+   if(!typedoperand((read?in->sm:in->dm)==Afpind?Afp:Amp,&owner,TypedRoot,0,0,p,&base,&wire,&actual) || actual!=Tref)goto done;
+  }
   else if(window){if(!typedwmsrvwindowbase(image,read?in->sm:in->dm,p,&base,&wire))goto done;}
   else{if(!typeddrawfield(&probe,p,in->pc-p->first,1,nil))goto done;base=p->code[in->pc-p->first].source;}
   t=direct->native64type?direct->native64type:direct->decl?direct->decl->ty:nil;
@@ -150,7 +181,7 @@ typedlocalgeometry(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
   if(other.bytes!=bytes || (mode!=Afp && mode!=Amp))goto done;
   for(i=0;i<bytes;i+=4){a=*direct;a.reg+=i;a.offset=0;if(!typedoperand(mode,&a,Tint,0,0,p,&part,&wire,&actual) || actual!=Tint || (i && part!=value+i))goto done;if(!i)value=part;}
   *out=(Dis64Instruction){IMOVM,read?SRC((in->sm==Afpind?AFP:AMP)|AIND)|AXIMM|DST(mode==Afp?AFP:AMP):SRC(mode==Afp?AFP:AMP)|AXIMM|DST((in->dm==Afpind?AFP:AMP)|AIND),(field<<8)|bytes,read?base:value,read?value:base};
-  *returned=(window||pointer)?215:read?(bytes==16?208:209):(bytes==16?210:211);
+  *returned=toplevel?216:(window||pointer)?215:read?(bytes==16?208:209):(bytes==16?210:211);
  }else{
   if((in->sm!=Afp && in->sm!=Amp) || (in->dm!=Afp && in->dm!=Amp))goto done;
   t=in->s.native64type?in->s.native64type:in->s.decl?in->s.decl->ty:nil;if(!typedwordgeometry(t,&l)){dis64layoutfree(&l);if(!typedrawpairgeometry(t,&l))goto done;}bytes=l.bytes;

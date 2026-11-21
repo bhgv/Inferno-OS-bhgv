@@ -1025,7 +1025,7 @@ def verify(data,r,imports,loads=False,rows=None):
             leaf=next(l for l in r['frame'if vm else'data']['leaves']if l[0]==va[0]);assert leaf[1]==(d if read else s)and leaf[2:4]==[4,8]and leaf[4]in((12,20)if ca[1]else(13,20))
             assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]in ROOTS
             continue
-        if returned in(208,209,210,211,212,215):
+        if returned in(208,209,210,211,212,215) or returned==216 and op==OPCODES["IMOVM"]:
             assert loads and op==o['op']==OPCODES['IMOVM']and mode==o['mode']and mode&192==64
             width=16 if returned in(208,210)else 8 if returned in(209,211)else m&255
             assert width in(8,16)and o['m']==width
@@ -1036,8 +1036,11 @@ def verify(data,r,imports,loads=False,rows=None):
                     leaves=r['frame'if address else'data']['leaves']
                     for i in range(0,width,4):assert next(l for l in leaves if l[0]==old+i)==[old+i,new+i,4,4,9]
             else:
-                read=returned in(208,209)or returned==215 and sm in(4,5);cm=sm if read else dm;vm=dm if read else sm;ca=o['s']if read else o['d'];va=o['d']if read else o['s']
-                assert cm in(4,5)and vm in(0,1)and ca[1]in(((4,)if width==16 else(0,4,12))if returned==215 else((0,16)if width==16 else(0,8,16,24)))and m==((ca[1]+(4 if returned==215 and not(width==8 and ((ca[1]==4 and m>>8==4)or(ca[1]==0 and m>>8==0)))else 0))<<8)|width
+                read=returned in(208,209)or returned in(215,216) and sm in(4,5);cm=sm if read else dm;vm=dm if read else sm;ca=o['s']if read else o['d'];va=o['d']if read else o['s']
+                if returned==216:
+                    assert cm in(4,5) and vm in(0,1) and ca[1]==16 and width==16 and m==(32<<8)|16
+                else:
+                    assert cm in(4,5)and vm in(0,1)and ca[1]in(((4,)if width==16 else(0,4,12))if returned==215 else((0,16)if width==16 else(0,8,16,24)))and m==((ca[1]+(4 if returned==215 and not(width==8 and ((ca[1]==4 and m>>8==4)or(ca[1]==0 and m>>8==0)))else 0))<<8)|width
                 assert next(l for l in r['frame'if cm==5 else'data']['leaves']if l[0]==ca[0])[4]in ROOTS
                 assert(s if read else d)==maps['frame'if cm==5 else'data'][ca[0]]
                 leaves=r['frame'if vm else'data']['leaves'];value=d if read else s

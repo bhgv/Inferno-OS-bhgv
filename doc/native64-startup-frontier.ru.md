@@ -1,6 +1,6 @@
 # Проверенная граница startup-модулей
 
-Текущий checked LOAD preflight принимает **238 из 380 функций** в 16 исходных
+Текущий checked LOAD preflight принимает **241 из 380 функций** в 16 исходных
 startup-модулях. Для каждой ordinary-компиляции с `-i` classic Dis побайтно
 совпадает с результатом компиляции при включённых native64 diagnostics.
 
@@ -8,7 +8,7 @@ startup-модулях. Для каждой ordinary-компиляции с `-i
 |---|---:|
 | appl/cmd/emuinit.b | 4/4 |
 | appl/wm/awm.b | 20/20 |
-| appl/wm/atoolbar.b | 14/26 |
+| appl/wm/atoolbar.b | 16/26 |
 | appl/lib/arg.b | 8/8 |
 | appl/lib/bufio.b | 27/27 |
 | appl/lib/env.b | 6/7 |
@@ -20,7 +20,7 @@ startup-модулях. Для каждой ordinary-компиляции с `-i
 | appl/lib/winplace.b | 21/21 |
 | appl/lib/wmlib.b | 25/25 |
 | appl/lib/titlebar.b | 7/7 |
-| appl/lib/tkclient.b | 7/16 |
+| appl/lib/tkclient.b | 8/16 |
 | appl/cmd/sh/sh.b | 22/129 |
 
 Команда для воспроизведения:
@@ -49,3 +49,14 @@ tkclient и зависимостей файлов и оболочки.
 до передачи аргументов, второму нужен `hd tl args` в локальном вызове.
 Компилятор и конструктор модуля используют одну проверку последовательности
 tail/head/clear для локального и импортированного вызова.
+
+Чтение и запись `Tk->Toplevel.screenr` проходят через проверенный
+16-байтовый `Rect` по native64-смещению 32. Это открыло `layout`
+и `wmctl` в atoolbar и `readscreenrect` в Tkclient.
+Остался составной результат `Tkclient->toplevel`.
+
+Правка касается внутренней геометрии Frame64. Отдельное сообщение FlashVM
+о хвосте Dis с типами для Styx опубликовано в
+[issue #4](https://github.com/bhgv/Inferno-OS-bhgv/issues/4).
+Актуальная документация FlashVM дополнительно описывает `STYXCS2!`,
+который добавляет типы импортов. Эта правка не меняет форматы Dis и Styx.
