@@ -109,13 +109,18 @@ native64sysframecell(void *argument)
     if(!foundcallee || !foundcaller)return nil;
     if(request->inherited){
         uintptr owner=0,ancestor,next,scan;unsigned int depth;Frame parent;
-        if(request->result_offset!=32)return nil;
-        memmove(&address,(void*)(caller+32),sizeof(address));result=(uintptr)address;
+        unsigned int span=request->result_contract==124?24:request->result_contract?16:bytes,bias=request->result_offset-32,k;
+        uintptr base;
+        if(!native64sysresultshape(request->result_contract,request->result_offset,call->operation,1))return nil;
+        memmove(&address,(void*)(caller+32),sizeof(address));base=(uintptr)address;
+        if(base>(uintptr)-1-bias)return nil;result=base+bias;
+        address=(void*)result;
         if(call->borrowed && address!=call->borrowed)return nil;
         /* Find one complete older frame containing the correctly mapped cell. */
         for(cursor=first;cursor<caller;cursor=end){
             memmove(&parent,(void*)cursor,sizeof(parent));type=parent.t==nil?extent->reg.TR:parent.t;end=cursor+type->size;
-            if(result>=cursor+64 && result<=end && bytes<=end-result && result%bytes==0){
+            if(base>=cursor+64 && base<=end && span<=end-base && base%bytes==0){
+                if(request->result_contract)for(k=0;k<span;k+=8){slot=(base+k-cursor)/8;if(!!(type->map[slot/8]&(128>>(slot%8)))!=(request->result_contract!=80||!k))return nil;}
                 slot=(result-cursor)/8;
                 if(!!(type->map[slot/8]&(128>>(slot%8)))!=(call->operation<2))return nil;
                 owner=cursor;break;
@@ -153,7 +158,7 @@ native64sysframeprepare(Native64SysFrameCall *call, const Native64SysFrameReques
 {
     const LimboNative64Prefix *prefix;void *result;
     if(!native64model() || request == nil || request->prog == nil || request->prog == H || request->prog != currun() ||
-       (request->inherited!=0 && request->inherited!=1) || request->initial <= UTFmax+2 || request->limit < request->initial ||
+       (request->inherited!=0 && request->inherited!=1) || !native64sysresultshape(request->result_contract,request->result_offset,operation,request->inherited) || request->initial <= UTFmax+2 || request->limit < request->initial ||
        request->frame == nil || request->frame == H || (uintptr)request->frame%8 != 0 ||
        R.M == nil || R.M == H || (entered && R.M->prog != nil) || operation < Native64SysSprint || operation > Native64SysFprint)
         return 0;

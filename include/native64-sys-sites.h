@@ -49,7 +49,8 @@ native64sysspec(Module *module, const Native64SysFrameSpec *spec)
        !native64sysframemap(spec->type, &prefix->fixed, spec->slots, &plan)) return 0;
     bytes = spec->operation >= Native64SysPrint ? sizeof(WORD) : sizeof(void*);
     if(spec->inherited!=0 && spec->inherited!=1)return 0;
-    if(spec->inherited)return spec->result_offset==32;
+    if(!native64sysresultshape(spec->result_contract,spec->result_offset,spec->operation,spec->inherited))return 0;
+    if(spec->inherited)return 1;
     if(spec->result_offset < 64 || spec->result_offset%bytes != 0 ||
        spec->result_offset > (unsigned int)spec->caller_type->size ||
        bytes > (unsigned int)spec->caller_type->size-spec->result_offset) return 0;
@@ -197,7 +198,7 @@ native64syssitesrun(Module *module, unsigned int index, Prog *prog, void *frame,
     run.request.prog = prog; run.request.frame = frame;
     run.request.type = site->spec.type; run.request.caller_type = site->spec.caller_type;
     run.request.result_offset = site->spec.result_offset; run.request.slots = site->slots;
-    run.request.inherited=site->spec.inherited;
+    run.request.inherited=site->spec.inherited;run.request.result_contract=site->spec.result_contract;
     run.request.count = site->spec.count; run.request.initial = site->spec.initial; run.request.limit = site->spec.limit;
     run.operation = site->spec.operation; run.entered = entered;
     if(!native64sysframeprepare(&call, &run.request, run.operation, entered)) return 0;

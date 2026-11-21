@@ -225,6 +225,7 @@ typedaltinst(Inst*in,Decl*fn,Dis64TypedBody*p,unsigned int pc)
    for(i=1;i<n;i++)if(!dis64layoutaddress(l,in->s.reg+4*i,4,1,&next) || next!=first+8*i)return typedfail(p,"alt-pair-span");
    source=first;sm=in->sm==Afp?AFP:AMP;width=n==2?48:72;
    }
+  }else if(typedpointpayload(use)){unsigned int base;if(!typedpointspan(&in->s,in->sm,p,&base))return typedfail(p,"alt-point-span");source=base;sm=in->sm==Afp?AFP:AMP;width=8;
   }else{
    if(!use || (use->kind!=Tint && use->kind!=Tstring && use->kind!=Tref))return typedfail(p,"alt-payload-class");
    width=use->kind==Tint?4:24;

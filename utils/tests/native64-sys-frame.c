@@ -8,6 +8,7 @@ char exCompile[] = "compile";
 char exOp[] = "bad opcode";
 char exModule[] = "module";
 REG R;
+void (*optab[256])(void); // The shared raw-array preflight references the VM dispatch table.
 Prog *currun(void) { return &process; }
 void extend(void) { abort(); } // Growth across extents is deliberately refused by this first bridge.
 void unextend(Frame *frame) { USED(frame); abort(); }

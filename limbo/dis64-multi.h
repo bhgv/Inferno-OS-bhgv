@@ -197,6 +197,14 @@ typedreplytransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 static int typedroottransfer(Inst*,Dis64TypedBody*,Dis64Instruction*,uchar*);
 static unsigned int typedlibraryrecord(Type*);
 
+static int
+typedpointpayload(Type*t)
+{Dis64Layout l={0};int ok=typedwordgeometry(t,&l)&&l.bytes==8;dis64layoutfree(&l);return ok;}
+static int
+typedpointspan(Addr*a,int mode,Dis64TypedBody*p,unsigned int*base)
+{Dis64Layout*l=mode==Afp?&p->frame:&p->data;unsigned int next;
+ return (mode==Afp||mode==Amp)&&!a->offset&&dis64layoutaddress(l,a->reg,4,0,base)&&dis64layoutaddress(l,a->reg+4,4,0,&next)&&next==*base+4;}
+
 /* Primitive channel transfer; aggregate payloads and borrowed outputs stay closed. */
 static int
 typedclienttransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
@@ -207,6 +215,7 @@ typedclienttransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned
  if(in->mm!=Anone || in->branch)return typedfail(p,"channel-transfer-owner");
  if(indirect){if(typedwmref(typedfieldowner(ca),"Draw","Wmcontext")){if(!typedwmcontextchannel(ca,cm,p,&channel,&cw,&field))return typedfail(p,"wmcontext-channel-transfer");kind=field==0?Tint:(field==8||field==32)?Tref:Tstring;}else if(!typedclientchanneladdress(ca,cm,p,&channel,&cw,&field,&kind))return typedfail(p,"client-channel-field");}
  else{if(!t || t->kind!=Tchan || !t->tof || !typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&cw,&actual) || actual!=Tchan)return typedfail(p,"channel-transfer-owner");kind=t->tof->kind;}
+ if(!indirect&&typedpointpayload(t->tof)){unsigned int base;if(!typedpointspan(va,vm,p,&base))return typedfail(p,"point-channel-span");*out=(Dis64Instruction){in->op,in->op==ISEND?SRC(vm==Afp?AFP:AMP)|DST(cw):SRC(cw)|DST(vm==Afp?AFP:AMP),8,in->op==ISEND?base:channel,in->op==ISEND?channel:base};*returned=54;return 1;}
  root=kind==Tstring || kind==Tref || kind==Tchan || kind==Tarray || kind==Tlist || kind==Tmodule;
  if(kind==Ttuple && !indirect && typedreplytransfer(in,p,out,returned))return 1;
  if(!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal)return typedfail(p,"channel-transfer-payload");
@@ -1297,6 +1306,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!(c->loads?typedloadcompare(in,p,pc-p->first,stop):typedclientcompare(in,p,pc-p->first,stop)))goto fail;pc++;
         }else if(c->loads && (in->op==ISEND || in->op==IRECV)){
             if(!typedclienttransfer(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+        }else if(c->loads && in->op==INEWCM){
+            Type*t=in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;Inst copy=*in;
+            if(!t||t->kind!=Tchan||!typedpointpayload(t->tof)||in->sm!=Aimm||in->s.offset!=8||(in->dm!=Afp&&in->dm!=Amp)) {typedfail(p,"point-channel-type");goto fail;}
+            copy.op=INEWCL;copy.sm=Anone;if(!typedchanneloutput(&copy,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;p->returns[pc-p->first]=55;pc++;
         }else if(c->loads && in->op==INEWCMP){
             if(!typedclientmappedchannel(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==INEWCB || in->op==INEWCW || in->op==INEWCL || in->op==INEWCF || in->op==INEWCP)){

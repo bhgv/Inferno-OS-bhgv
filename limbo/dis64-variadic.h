@@ -86,6 +86,11 @@ typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int sto
  at=pc+1;
  for(arg=actual->ids,i=0;arg;arg=arg->next,i++){
     if(at>=end || !(in=c->instructions[at]))return typedfail(p,"variadic-setup");
+    if(op==3&&i==0&&(in->sm==Afpind||in->sm==Ampind)&&in->dm==Afpind){
+     unsigned int id=typedlibraryrecord(typedfieldowner(&in->s));
+     if(!((id==8&&in->s.offset==20)||(id==12&&(in->s.offset==20||in->s.offset==24)))||!typedwmref(in->s.native64type,"Sys","FD")||!typedlibraryargument(in,frame,p,at-p->first,arg->offset,64,Tref))return typedfail(p,"variadic-direct-fd");
+     p->returns[at++-p->first]=53;continue;
+    }
     if(op==3&&i==0&&in->dm==Afp){if(!typedvariadicfd(c,p,frame,&at,end,arg->offset))return 0;continue;}
     if(arg->ty->kind==Tstring&&i>=(op==3?2:1)&&in->op==IHEADP){
      if(in->mm!=Anone||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||!typedloadlisttype(&in->s)||!typedoperand(in->sm,&in->s,Tlist,0,0,p,&source,&sm,&kind)||kind!=Tlist)return typedfail(p,"variadic-string-head");
@@ -126,12 +131,15 @@ typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int sto
     if(op==1 && (kind!=Tarray && !typedroottemporary(&bind->s,Tarray)))return typedfail(p,"variadic-array-result");
     p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,source,32};
  }else{
-    if(bind->sm!=Afpind || bind->s.reg!=16 || bind->s.offset || p->resultkind!=(op==0?Tstring:op==1?Tarray:Tint))return typedfail(p,"variadic-inherited-result");
-    v->inherited=1;source=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};
+    unsigned int bias=0;
+    if(bind->sm!=Afpind || bind->s.reg!=16)return typedfail(p,"variadic-inherited-result");
+    if(op==0&&((p->resultaggregate==48&&bind->s.offset==4)||(p->resultaggregate==80&&!bind->s.offset)||(p->resultaggregate==124&&(bind->s.offset==0||bind->s.offset==8))))bias=2*bind->s.offset;
+    else if(bind->s.offset || p->resultkind!=(op==0?Tstring:op==1?Tarray:Tint))return typedfail(p,"variadic-inherited-result");
+    v->inherited=1;source=32+bias;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),bias,32,32};
  }
  p->returns[at-p->first]=128|contract;
  p->code[end-p->first]=(Dis64Instruction){IMCALL,SRC(AFP)|AXIMM|DST(mm),fn->iface->offset,40,module};
- p->returns[end-p->first]=v->inherited?32:0;
+ p->returns[end-p->first]=v->inherited?(op==0&&(p->resultaggregate==48||p->resultaggregate==80||p->resultaggregate==124)?78:32):0;
  v->first=pc-p->first;v->end=end-p->first;v->binding=fn->iface->offset;v->modulemode=mm;v->moduleoffset=module;
  v->resultoffset=source;v->contract=contract;v->operation=op;v->count=n-(op==3?2:1);v->callee=fn;
  *next=end+1;return 1;

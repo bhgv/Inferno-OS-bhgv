@@ -57,6 +57,14 @@ native64typedlibraryarg(const Native64TypedStep*s,unsigned int fp,unsigned int m
  if(s->returned!=155 || (s->op!=IMOVP && s->op!=IMOVW && s->op!=IMOVL && s->op!=IMOVF) || s->mode!=(SRC(sm)|DST(AFP|AIND)) || (sid?(sm!=(AFP|AIND)&&sm!=(AMP|AIND)):(s->op!=IMOVP||sm!=AFP)) || sid>Native64LibraryRecords || s->m!=((long)sid<<24) || !native64libraryshape(s,w,r) || !native64libraryoperand(sm,s->s,sid,w[0],r[0],fp,mp,0) || !native64libraryoperand(AFP,s->d,0,w[1],r[1],bytes,0,0) || np!=(bytes+63)/64 || map==nil || map==H)return 0;
  for(i=0;i<w[1];i++){bit=(s->d+i)/8;if(!!(map[bit/8]&(128>>(bit%8)))!=r[1])return 0;}return 1;
 }
+/* Private Sys.fprint FD preparation: exact Wmcontext/Client nominal fields. */
+static int
+native64sysfdarg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const unsigned char*map,unsigned int np)
+{
+ Native64TypedStep copy=*s;unsigned int id=(unsigned long)s->m>>24,field=(unsigned long)s->s>>16;
+ if(s->returned!=53||s->op!=IMOVP||s->d!=64||!((id==8&&field==40)||(id==12&&(field==32||field==40))))return 0;
+ copy.returned=155;return native64typedlibraryarg(&copy,fp,mp,bytes,map,np);
+}
 /* Only the complete Filler layout's BufioFill field may supply a module. */
 static int
 native64librarymoduleoperand(unsigned int mode,unsigned int offset,unsigned int fp,unsigned int mp)

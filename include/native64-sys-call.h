@@ -39,11 +39,12 @@ struct Native64SysFrameRequest
     Prog *prog;
     void *frame; // Exact pending FRAME/MFRAME target or current entered native callee.
     Type *type, *caller_type; // Borrowed live complete descriptors owned by the call site.
-    unsigned int result_offset; // Declared caller field, or 32 only with explicit inherited mode.
+    unsigned int result_offset; // Caller field, or FP[32] plus the checked aggregate String field bias.
     const Native64TailSlot *slots; // Immutable explicit ordered kinds and reference Type identities.
     unsigned int count;
     int initial, limit;
     int inherited; // Explicit FP[32] forwarding to an active ancestor result cell.
+    unsigned int result_contract; // Zero for whole results; closed aggregate for a String field.
 };
 /* Private trusted-C operations; these numeric values are never serialized. */
 typedef enum Native64SysFrameOperation {
@@ -61,7 +62,15 @@ struct Native64SysFrameSpec {
     unsigned int count;
     int initial, limit;
     int inherited; // Explicit FP[32] forwarding to an active ancestor result cell.
+    unsigned int result_contract; // Zero for whole results; closed aggregate for a String field.
 };
+static int
+native64sysresultshape(unsigned int contract,unsigned int offset,int operation,int inherited)
+{
+ if(!contract)return !inherited||offset==32;
+ if(!inherited||operation!=Native64SysSprint)return 0;
+ return (contract==48&&offset==40)||(contract==80&&offset==32)||(contract==124&&(offset==32||offset==48));
+}
 int Sys_setframes64(Module*, const Native64SysFrameSpec*, unsigned int);
 /* Trusted original-Inst program PCs. Installation owns copies and never patches CODE. */
 typedef struct Native64SysProgramSpec Native64SysProgramSpec;
