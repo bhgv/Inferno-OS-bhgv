@@ -41,6 +41,80 @@ static void agbytemetadata(void){Native64ModuleSpec spec;Native64ModuleFunction 
  }printf("PASS Wmlib byte borrow: %u invalid gaps, owner overwrites and interior branches refused before allocation\n",total);
 }
 static void agconstruction(void){Native64ModuleOwner owner={0};REG saved=R;int jit,base,n,i;for(jit=0;jit<2;jit++){base=allocations;agcheck(native64typedmodule(&full_spec,jit,&owner),"constructor baseline");n=allocations-base;agcheck(native64typedmoduleclear(&owner),"constructor clear");for(i=1;i<=n;i++){failat=allocations+i;agcheck(!native64typedmodule(&full_spec,jit,&owner),"constructor failure");failat=0;agcheck(!live&&!owner.module&&!memcmp(&R,&saved,sizeof(R)),"constructor rollback");}printf("PASS aggregate constructor jit=%d: %d allocation failures with rollback\n",jit,n);}}
+static void
+agcatch(void)
+{
+ static const uchar frame[]={0,0xc0},cleanup[]={0,0x40},badcleanup[]={0,0x20},data[]={0xc0};
+ static const Native64TypedStep code[]={
+  {IMOVP,SRC(AMP)|DST(AFP),0,0,72,0},
+  {IRAISE,SRC(AMP)|DST(AXXX),0,0,0,0},
+  {IEXIT,SRC(AXXX)|DST(AXXX),0,0,0,0},
+  {IMOVP,SRC(AFP)|DST(AMP),64,0,8,0},
+  {IEXIT,SRC(AXXX)|DST(AXXX),0,0,0,0},
+ };
+ static const Native64ModuleFunction run={
+  .name="run",.code=code,.count=nelem(code),.bytes=80,.map=frame,.mapbytes=2,
+ };
+ static const Native64ModuleString message={0,10,(const uchar*)"fail:probe"};
+ Native64ModuleCatch entry={0,1,2,3,64,"fail:*",cleanup,2};
+ Native64ModuleSpec spec={
+  .name="catch-fixture",.path="trusted/catch-fixture",.functions=&run,.nfunctions=1,
+  .entry=0,.databytes=16,.datamap=data,.mapbytes=1,.string=c2string,
+  .strings=&message,.nstrings=1,.catches=&entry,.ncatches=1,
+ };
+ Native64ModuleOwner owner={0};
+ Prog *p;
+ String *caught;
+ int i,before,done,ticks=0,delivered=0;
+ REG saved=R;
+ entry.slot=56;
+ before=allocations;
+ agcheck(!native64typedmodule(&spec,0,&owner)&&allocations==before,"catch slot outside mapped roots");
+ entry.slot=64;
+ entry.target=0;
+ agcheck(!native64typedmodule(&spec,0,&owner)&&allocations==before,"catch target in protected range");
+ entry.target=3;
+ entry.cleanup=badcleanup;
+ agcheck(!native64typedmodule(&spec,0,&owner)&&allocations==before,"catch cleanup outside mapped roots");
+ entry.cleanup=cleanup;
+ agcheck(native64typedmodule(&spec,0,&owner),"string catch constructor");
+ i=allocations-before;
+ agcheck(native64typedmoduleclear(&owner),"string catch constructor clear");
+ for(;i>0;i--){
+  failat=allocations+i;
+  agcheck(!native64typedmodule(&spec,0,&owner),"catch construction failure");
+  failat=0;
+  agcheck(!live&&!owner.module&&!memcmp(&R,&saved,sizeof(R)),"catch construction rollback");
+ }
+ agcheck(native64typedmodule(&spec,0,&owner),"string catch fixture module");
+ owner.module->ref++;starting=owner.module;started=nil;
+ require(kprotect(start,nil));rootenvironment(started);
+ while((p=currun())!=nil){
+  agcheck(++ticks<1000,"bounded catch scheduler");
+  p->quanta=1;
+  done=kprotect(executeprocess,p);
+  if(done){
+   memmove(&caught,p->R.M->MP+8,8);
+   if(caught!=H){
+    agcheck(!strcmp(string2c(caught),"fail:probe"),"mapped exception value");
+    delivered=1;
+   }
+   continue;
+  }
+  if(worker.env->errstr[0]){
+   agcheck(handler(worker.env->errstr),"caught fail prefix");
+   memmove(&caught,R.FP+72,8);
+   agcheck(caught==H,"catch clears the selected temporary");
+   worker.env->errstr[0]=0;
+   continue;
+  }
+  observed=p;progexit();
+ }
+ emptyqueues();
+ agcheck(delivered,"catch branch executed");
+ agcheck(native64typedmoduleclear(&owner)&&!live&&!modules&&!nlinkpins,"catch ownership retired");
+ puts("PASS native64 string catch: dispatch, exception root, metadata refusal and rollback");
+}
 int main(void){uint jit,q,n,total=0;int quanta[]={1,3,1000};WORD words[]={(-2147483647-1),-1,0,2147483647};rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;Tarray.free=freearray;Tarray.size=sizeof(Array);require(dis64selectlaunch("dis64-calls"));
  AGGREGATE_HANDLERS
- optab[INEWAZ]=actual_newaz;optab[IINDB]=actual_indb;optab[ICVTWB]=actual_cvtwb;optab[ISHRW]=actual_shrw;optab[ICONSM]=actual_consm;optab[IHEADM]=actual_headm;optab[IHEADP]=actual_headp;optab[ICONSP]=actual_consp;optab[INEWZ]=actual_newz;optab[ITAIL]=actual_tail;optab[ILENC]=actual_lenc;optab[IINDC]=actual_indc;optab[IINSC]=actual_insc;optab[ISLICEC]=actual_slicec;optab[ICVTCW]=actual_cvtcw;optab[IMOVP]=actual_movp;optab[IMOVM]=actual_movm;optab[IMOVMP]=actual_movmp;agmetadata();agbytemetadata();agconstruction();for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(n=0;n<nelem(words);n++){agcase(jit,quanta[q],words[n]);total++;}printf("PASS aggregate results: %u C/JIT processes, mixed/nested/mapped results, extreme Words, caller guards and complete retirement\n",total);return 0;}
+ optab[INEWAZ]=actual_newaz;optab[IINDB]=actual_indb;optab[ICVTWB]=actual_cvtwb;optab[ISHRW]=actual_shrw;optab[ICONSM]=actual_consm;optab[IHEADM]=actual_headm;optab[IHEADP]=actual_headp;optab[ICONSP]=actual_consp;optab[INEWZ]=actual_newz;optab[ITAIL]=actual_tail;optab[ILENC]=actual_lenc;optab[IINDC]=actual_indc;optab[IINSC]=actual_insc;optab[ISLICEC]=actual_slicec;optab[ICVTCW]=actual_cvtcw;optab[IMOVP]=actual_movp;optab[IMOVM]=actual_movm;optab[IMOVMP]=actual_movmp;optab[IRAISE]=actual_iraise;agcatch();agmetadata();agbytemetadata();agconstruction();for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(n=0;n<nelem(words);n++){agcase(jit,quanta[q],words[n]);total++;}printf("PASS aggregate results: %u C/JIT processes, mixed/nested/mapped results, extreme Words, caller guards and complete retirement\n",total);return 0;}

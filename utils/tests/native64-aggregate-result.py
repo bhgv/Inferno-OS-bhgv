@@ -82,13 +82,17 @@ def generate(limbo,w):
 
 def unit():
  src=B['BASE']['unit']().split('\n#line 1 "native64-alt-pairs.c"')[0]
+ src=src.replace('WORD modstatus(REG*r,char*s,int n){USED(r);USED(s);USED(n);require(0);return 0;}',
+                 'WORD modstatus(REG*r,char*s,int n){USED(r);if(n)s[0]=0;return 0;}')
+ src=src.replace('static void*commandexresize(void*p,size_t n){USED(p);USED(n);require(0);return nil;}',
+                 'static void*commandexresize(void*p,size_t n){USED(p);USED(n);return nil;}')
  start=src.index(' optab[IMOVW]=countmovw;');end=src.index(' require(prepare64calls(',start);handlers=src[start:end]
  extract=CMD['NS']['S']['FILES']['FILES']['function'];src=src.replace(extract(src,'int\nsnprint('),'',1);src+='\nvoid rerrstr(char*p,uint n){if(n)snprintf(p,n,"fixture");}\n'
  src=src.replace(extract(src,'void\ncvtup('),'void cvtup(Rune*,String*);',1);strings=(ROOT/'libinterp/string.c').read_text()
  for sig in('void\ncvtup(','String*\nslicer(','OP(indc)','OP(insc)','OP(slicec)','OP(cvtcw)'):src+='\n'+extract(strings,sig)+'\n'
  vm=(ROOT/'libinterp/xec.c').read_text()
  for sig in ('static void\nnewrecord(', 'OP(newz)'):src+='\n'+extract(vm,sig)+'\n'
- for sig in('static uchar*\narrayaddress(','static void\narrayindex(','static void\nnewarray(','OP(newaz)','OP(indb)','OP(cvtwb)','OP(shrw)','OP(consm)','OP(headm)','OP(consp)','OP(headp)'):
+ for sig in('static uchar*\narrayaddress(','static void\narrayindex(','static void\nnewarray(','OP(newaz)','OP(indb)','OP(cvtwb)','OP(shrw)','OP(consm)','OP(headm)','OP(consp)','OP(headp)','OP(iraise)'):
   if sig not in src:src+='\n'+extract(vm,sig)+'\n'
  return src+'\n#line 1 "native64-aggregate-result.c"\n'+(ROOT/'utils/tests/native64-aggregate-result.c').read_text().replace(' AGGREGATE_HANDLERS',handlers)
 def main():

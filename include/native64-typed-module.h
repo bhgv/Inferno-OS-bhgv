@@ -46,6 +46,13 @@ typedef struct Native64ModuleString Native64ModuleString;
 struct Native64ModuleString {unsigned int offset,bytes;const uchar *text;};
 typedef struct Native64ModuleStringArray Native64ModuleStringArray;
 struct Native64ModuleStringArray {unsigned int offset,count;const Native64ModuleString *values;};
+typedef struct Native64ModuleCatch Native64ModuleCatch;
+struct Native64ModuleCatch {
+    unsigned int function,first,end,target,slot; /* Function-local PCs and a native FP root. */
+    const char *pattern; /* String exception only. */
+    const uchar *cleanup; /* Optional subset of the enclosing frame map. */
+    unsigned int cleanupbytes;
+};
 struct Native64ModuleSpec {
     const char *name,*path;
     const Native64ModuleFunction *functions;
@@ -60,6 +67,7 @@ struct Native64ModuleSpec {
     Modlink *(*load)(Module*,WORD,char*); /* Trusted service; returns a pinned owned instance or nil/H. */
     const Native64ModuleStringArray *arrays;unsigned int narrays; /* Dense immutable String-array initializers only. */
     Array *(*array)(unsigned int); /* Trusted fresh mapped pointer-array constructor. */
+    const Native64ModuleCatch *catches;unsigned int ncatches;
 };
 #include "native64-typed-tables.h"
 #include "native64-raw-array-module.h"
@@ -404,6 +412,37 @@ native64modulegeometry(const Native64ModuleSpec*s,const Native64ModuleFunction*f
 
 /* Immutable readable checked-compiler metadata, not untrusted file inputs. */
 #include "native64-typed-alt.h"
+
+/* Flat, single-label string catches. Unwinding can only clear mapped roots. */
+static int
+native64modulecatches(const Native64ModuleSpec *s)
+{
+    const Native64ModuleCatch *h,*previous=nil;
+    const Native64ModuleFunction *f;
+    unsigned int i,j,bit;
+    if(s->ncatches>1024 || (s->ncatches && (s->catches==nil || s->catches==H)))return 0;
+    for(i=0;i<s->ncatches;i++){
+        h=s->catches+i;
+        if(h->function>=s->nfunctions || !native64modulename(h->pattern))return 0;
+        f=s->functions+h->function;
+        if(h->first>=h->end || h->end>f->count || h->target<h->end || h->target>=f->count ||
+           h->slot<64 || !native64typedrootoperand(AFP,h->slot,f->bytes,0) ||
+           native64typedprotectedentry(f->code,f->count,h->target))return 0;
+        bit=h->slot/8;
+        if(!(f->map[bit/8]&(128>>(bit%8))))return 0;
+        if(h->cleanupbytes){
+            if(h->cleanup==nil || h->cleanup==H || h->cleanupbytes!=f->mapbytes)return 0;
+            for(j=0;j<h->cleanupbytes;j++)
+                if(h->cleanup[j]&~f->map[j])return 0;
+        }
+        if(previous && (previous->function>h->function ||
+           (previous->function==h->function && previous->end>h->first)))return 0;
+        for(j=0;j<f->nsites;j++)
+            if(f->sites[j].first<h->target && h->target<=f->sites[j].end)return 0;
+        previous=h;
+    }
+    return 1;
+}
 
 static int
 native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsigned int *exports,unsigned int *scratch,unsigned int *imports)
@@ -1142,7 +1181,8 @@ native64modulemake(void *arg)
     for(i=1;i<=Native64LibraryRecords;i++)records+=recordids[i];
     m=b->module=mallocz(sizeof(*m),1);if(m==nil)error(exNomem);m->ref=1;m->origmp=H;m->rt=DONTCOMPILE;
     m->name=native64modulecopy(s->name);m->path=native64modulecopy(s->path);
-    m->type=mallocz((s->nfunctions+1+b->imports+bytes+triples+mapped2+mapped3+filewrite+fileread+pointers+contexts+refarrays+mixedreply+records+rawcount+cursor)*sizeof(Type*),1);if(m->type==nil)error(exNomem);m->ntype=s->nfunctions+1+b->imports+bytes+triples+mapped2+mapped3+filewrite+fileread+pointers+contexts+refarrays+mixedreply+records+rawcount+cursor;
+    ordinal=s->nfunctions+1+b->imports+bytes+triples+mapped2+mapped3+filewrite+fileread+pointers+contexts+refarrays+mixedreply+records+rawcount+cursor;
+    m->type=mallocz((ordinal+s->ncatches)*sizeof(Type*),1);if(m->type==nil)error(exNomem);m->ntype=ordinal+s->ncatches;
     m->type[0]=dtype(freeheap,s->databytes,(uchar*)s->datamap,s->mapbytes);if(m->type[0]==nil)error(exNomem);
     for(i=0;i<s->nfunctions;i++){f=s->functions+i;m->type[i+1]=dtype(freeheap,f->bytes,(uchar*)f->map,f->mapbytes);if(m->type[i+1]==nil)error(exNomem);}
     ordinal=s->nfunctions+1;
@@ -1201,6 +1241,29 @@ native64modulemake(void *arg)
             if(f->code[j].returned==172 || f->code[j].returned==174)m->prog[b->offsets[i]+j].s.imm=contexttype;
         }
     }
+    if(s->ncatches){
+        m->htab=mallocz((s->ncatches+1)*sizeof(Handler),1);
+        if(m->htab==nil)error(exNomem);
+        for(i=0;i<s->ncatches;i++){
+            const Native64ModuleCatch *source=s->catches+i;
+            Handler *h=m->htab+i;
+            unsigned int base=b->offsets[source->function];
+            h->pc1=base+source->first;
+            h->pc2=base+source->end;
+            h->eoff=source->slot;
+            if(source->cleanupbytes){
+                Type *cleanup=dtype(freeheap,s->functions[source->function].bytes,
+                    (uchar*)source->cleanup,source->cleanupbytes);
+                if(cleanup==nil)error(exNomem);
+                m->type[m->ntype-s->ncatches+i]=h->t=cleanup;
+            }
+            h->etab=mallocz(2*sizeof(Except),1);
+            if(h->etab==nil)error(exNomem);
+            h->etab[0].s=native64modulecopy(source->pattern);
+            h->etab[0].pc=base+source->target;
+            h->etab[1].pc=(ulong)-1;
+        }
+    }
     m->ext=mallocz((b->exports+1)*sizeof(Link),1);if(m->ext==nil)error(exNomem);
     for(i=0;i<s->nfunctions;i++)if(s->functions[i].exported){
         f=s->functions+i;m->ext[link].name=native64modulecopy(f->name);
@@ -1243,6 +1306,12 @@ native64typedmodule(const Native64ModuleSpec *spec,int jit,Native64ModuleOwner *
 {
     Native64ModuleBuild b={0};REG saved;int ok;
     if(result==nil || result->module!=nil || result->rooted || result->self!=nil || (jit!=0 && jit!=1) || !native64modulecheck(spec,&b.code,&b.exports,&b.scratch,&b.imports))return 0;
+    if(spec->ncatches && jit){
+#if !defined(__aarch64__) && !defined(__riscv) && !defined(DIS64_TEST_ARM64) && !defined(DIS64_TEST_RISCV64)
+        return 0;
+#endif
+    }
+    if(!native64modulecatches(spec))return 0;
     b.spec=spec;b.jit=jit;memmove(&saved,&R,sizeof(saved));ok=kprotect(native64modulemake,&b);
     memmove(&R,&saved,sizeof(R));free(b.calls);free(b.offsets);
     if(!ok){if(b.rooted)ptrdel(D2H(b.module->origmp));if(b.module!=nil)unload(b.module);memmove(&R,&saved,sizeof(R));return 0;}
