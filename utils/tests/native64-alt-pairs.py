@@ -29,14 +29,20 @@ def generate(limbo,w):
     else:raise AssertionError(('pair oracle missed',row['name'],pc,k))
  print('PASS ALT pair source:',controls,'corruptions detected; classic tuple descriptor/operands/tables/maps and unchanged bytes',flush=True)
 def boundaries(limbo,w):
- for ty in('(ref Draw->Pointer,int)','(ref Draw->Pointer,chan of int)','(ref Draw->Pointer,ref Draw->Pointer)','(ref Draw->Pointer,chan of string,chan of string)'):
+ # The complete Wmsrv profile already admits any closed two/three-root group.
+ # Keep mixed raw/root and four-root payloads outside that contract.
+ for ty in('(ref Draw->Pointer,int)','(ref Draw->Pointer,ref Draw->Pointer,int)','(ref Draw->Pointer,chan of string,chan of string,chan of string)'):
   names=','.join('x'+str(i)for i in range(ty.count(',')+1));source='implement Closed;'+PREFIX+'Closed:module{run:fn(c:chan of '+ty+');};run(c:chan of '+ty+'){alt{('+names+'):= <-c => ;}}'
   _,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert not rows[0]['accepted'],rows
+ for ty in('(ref Draw->Pointer,chan of int)','(ref Draw->Pointer,ref Draw->Pointer)','(ref Draw->Pointer,chan of string,chan of string)'):
+  names=','.join('x'+str(i)for i in range(ty.count(',')+1));source='implement Closed;'+PREFIX+'Closed:module{run:fn(c:chan of '+ty+');};run(c:chan of '+ty+'){alt{('+names+'):= <-c => ;}}'
+  data,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert rows[0]['accepted'],rows;CMD['verify_nilbranches'](data,rows[0],[],rows=rows)
+  old,_=E['compile_source'](limbo,w,source,interface='',loads=False);assert old==data
  prefix=PREFIX+'include "wmsrv.m";';decl='Probe:module{run:fn(c:chan of (ref Wmsrv->Client,chan of string));};';source='implement Probe;'+prefix+decl+'client:ref Wmsrv->Client;reply:chan of string;run(c:chan of (ref Wmsrv->Client,chan of string)){alt{(p,r):= <-c => client=p;reply=r;}}'
  data,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert rows[0]['accepted'],rows;CMD['verify_nilbranches'](data,rows[0],[],rows=rows)
  interface=w/'join.m';interface.write_text(prefix+decl);h=subprocess.check_output([str(limbo),'-H','-M','Probe','-I',str(ROOT/'module'),str(interface)],text=True);signature=int(re.search(r'^#define LIMBO_NATIVE64_SIGNATURE_Probe_run (0x[0-9a-f]+)U',h,re.M)[1],16);assert E['BASE']['READ']['legacy_instructions'](data,with_exports=True)[-1][0]['signature']==signature
  _,rows=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True);init=next(r for r in rows if r['name']=='init');assert init['accepted']or init['pc']>151,init;assert next(r for r in rows if r['name']=='command')['accepted']
- print('PASS real Wmsrv.Client join pair and canonical hash; wider/different tuples closed; AWM init:',init.get('pc','complete'),init.get('reason','accepted'),flush=True)
+ print('PASS real Wmsrv.Client join pair and canonical hash; two/three-root groups checked, mixed/four-root tuples closed; AWM init:',init.get('pc','complete'),init.get('reason','accepted'),flush=True)
 def unit():
  src=ALT['unit']().split('\n#line 1 "native64-alt.c"')[0].replace('#include "tests/leaf-cons-stub.h"','#define cnewcmapped unused_mapped_allocator\n#include "tests/leaf-cons-stub.h"\n#undef cnewcmapped');extract=CMD['NS']['S']['FILES']['FILES']['function'];vm=(ROOT/'libinterp/xec.c').read_text();stub='void movtmp(void){require(0);}';assert src.count(stub)==1;src=src.replace(stub,extract(vm,'void\nmovtmp('))
  for signature in('static WORD\nchannelargs(','Channel*\nnewc(','OP(newcmp)','Channel*\ncnewcmapped('):src+='\n'+extract(vm,signature)+'\n'

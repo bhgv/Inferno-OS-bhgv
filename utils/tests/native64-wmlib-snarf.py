@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 B=runpy.run_path(str(ROOT/'utils/tests/native64-bufio-library.py'));G,CMD,E=B['G'],B['CMD'],B['E']
 CLIENT=re.search(r'(?m)^Client: adt\{.*?\n\};',(ROOT/'appl/lib/wmlib.b').read_text(),re.S)[0]
-SOURCE='''implement Wmlib;include "sys.m";Wmlib:module{run:fn(n:int);};sys:Sys;snarfbuf,out:string;zclient:Client;client,allocated:ref Client;run(n:int){sys=load Sys Sys->PATH;clienttest(n);snarfbuf="fallback";out=snarfget();}'''+CLIENT+'''clienttest(n:int){c:=ref zclient;c.ptrpid=n;c.kbdpid=-1;c.ctlpid=2147483647;c.dir="private";fd:=sys->open(c.dir+"/pointer",Sys->OREAD);if(fd!=nil)c.ctlfd=fd;client=c;d:=ref Client;d.dir="allocated-client";allocated=d;}'''+re.search(r'(?m)^snarfget\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/wmlib.b').read_text(),re.S)[0]
+SOURCE='''implement Wmlib;include "sys.m";Wmlib:module{run:fn(n:int);};sys:Sys;snarfbuf,out,clienterr:string;clientbytes:array of byte;clientcount:int;zclient:Client;client,allocated:ref Client;run(n:int){sys=load Sys Sys->PATH;clienttest(n);snarfbuf="fallback";out=snarfget();}'''+CLIENT+'''clienttest(n:int){c:=ref zclient;c.req=chan of (array of byte,Sys->Rwrite);c.ptrpid=n;c.kbdpid=-1;c.ctlpid=2147483647;c.dir="private";fd:=sys->open(c.dir+"/pointer",Sys->OREAD);if(fd!=nil)c.ctlfd=fd;buf:=array[3] of byte;buf[0]=byte 65;buf[1]=byte 66;buf[2]=byte 67;rc:=chan of (int,string);spawn requestworker(c,buf,rc);(data,reply):=<-c.req;(count,err):=<-reply;clientcount=count;clientbytes=data;clienterr=err;client=c;d:=ref Client;d.dir="allocated-client";allocated=d;}requestworker(c:ref Client,data:array of byte,reply:Sys->Rwrite){c.req<-=(data,reply);reply<-=(len data,nil);}'''+re.search(r'(?m)^snarfget\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/wmlib.b').read_text(),re.S)[0]
 def generate(limbo,w):
  m=w/'interfaces.m';m.write_text('include "sys.m";Wmlib:module{run:fn(n:int);};');frames={};sigs={}
  for name in('Sys','Wmlib'):
@@ -14,20 +14,22 @@ def generate(limbo,w):
    size=re.search(r'^#define F_'+name+'_'+fn+r'_size (\d+)',h,re.M);mp=re.search(r'^#define F_'+name+'_'+fn+r'_map \{([^}]*)\}',h,re.M)
    if size and mp:frames[(fn,int(sig,16))]=(int(size[1]),[int(x,0)for x in mp[1].split(',')if x])
    if name=='Wmlib':sigs[fn]=int(sig,16)
- rows=G['generate'](limbo,w,SOURCE,'Wmlib',(3,1,0,'~0U'),import_frames=frames,export_signatures=sigs,source_label='original Wmlib snarfget fixture')
- p=w/'full.h';s=p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','');gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(s+'\nstatic const uint snarf_out='+str(gl['out'])+';\nstatic const uint client_out='+str(gl['client'])+', allocated_out='+str(gl['allocated'])+';\n')
- B['unit'].__globals__['OP_NAMES']={n[1:].lower()for n,op in E['OPCODES'].items()if any(c[0]==op for r in rows for c in r['code'])}
+ rows=G['generate'](limbo,w,SOURCE,'Wmlib',(4,1,0,'~0U'),import_frames=frames,export_signatures=sigs,source_label='original Wmlib snarfget fixture')
+ p=w/'full.h';s=p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','');gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(s+'\nstatic const uint snarf_out='+str(gl['out'])+';\nstatic const uint client_out='+str(gl['client'])+', allocated_out='+str(gl['allocated'])+';\nstatic const uint message_out[]={'+','.join(str(gl[n])for n in('clientbytes','clienterr','clientcount'))+'};\n')
+ B['unit'].__globals__['OP_NAMES']={{'send':'isend','recv':'irecv','exit':'iexit','raise':'iraise','case':'icase'}.get(n[1:].lower(),n[1:].lower())for n,op in E['OPCODES'].items()if any(c[0]==op for r in rows for c in r['code'])}
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);tables=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];count=0
  for row in records:
   for pc,c in enumerate(row['code']):
-   if c[5]not in(153,154,155,156,159,130,68):continue
+   if c[5]not in(153,154,155,156,159,130,68,92,107):continue
    for k in range(6):
     bad=copy.deepcopy(row);bad['code'][pc][k]+=1
     try:CMD['verify_nilbranches'](data,bad,tables,rows=records)
     except(AssertionError,KeyError,IndexError,ValueError,StopIteration):count+=1
     else:raise AssertionError(('unchecked byte call setup',row['name'],pc,k))
  print('PASS Wmlib snarf source oracle:',count,'instruction corruptions detected',flush=True)
- for badsource in(SOURCE.replace('Client','Other'),SOURCE.replace('Wmlib','Foreign'),SOURCE.replace('ptrpid','otherpid'),SOURCE.replace('Sys->Rwrite','chan of (int,int)')):
+ probe='implement Wmlib;include \"sys.m\";Wmlib:module{clienttest:fn(n:int);};'+CLIENT+'clienttest(n:int){c:=ref Client;c.ptrpid=n;}'
+ _,good=E['compile_source'](limbo,w,probe,interface='',loads=True);assert good[0]['accepted'],good
+ for badsource in(probe.replace('Client','Other'),probe.replace('Wmlib','Foreign'),probe.replace('ptrpid','otherpid'),probe.replace('Sys->Rwrite','chan of (int,int)')):
   _,badrows=E['compile_source'](limbo,w,badsource,interface='',loads=True);assert not next(r for r in badrows if r['name']=='clienttest')['accepted'],badrows
  print('PASS private Client boundary: foreign names/modules, fields and request payload refused',flush=True)
 def unit():
@@ -43,7 +45,8 @@ def main():
   headers=('native64-typed-module.h','native64-typed-multi.h','native64-typed-code.h','native64-library-code.h','native64-library-layout.h')
   for name,before,after,predicate in(
    ('native64-typed-multi.h','else p->s.imm=s->s;p->reg=native64librarymiddle(s);','else p->s.imm=0;p->reg=native64librarymiddle(s);','original snarf completion'),
-   ('native64-library-layout.h','id==12?0x3c','id==12?0x38','constructor baseline')):
+   ('native64-library-layout.h','id==12?0x3c','id==12?0x38','constructor baseline'),
+   ('native64-typed-code.h','p->d.i.s=s->s==2?16:64;','p->d.i.s=s->s==2?48:64;','original snarf completion')):
    for h in headers:(w/h).write_text((ROOT/'include'/h).read_text())
    header=w/name;text=header.read_text();assert text.count(before)==1;header.write_text(text.replace(before,after));subprocess.run(command,check=True);r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],capture_output=True,text=True,timeout=240)
    assert r.returncode==10 and predicate in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr[-1500:])

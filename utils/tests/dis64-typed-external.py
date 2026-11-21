@@ -850,7 +850,7 @@ def verify(data,r,imports,loads=False,rows=None):
             if returned==90:
                 assert op==OPCODES['IMOVMP']and sm in(4,5)and dm in(4,5)and o['s'][1]==o['d'][1]==0 and types[o['m']][0]==28 and list(types[o['m']][1])==[254]and m==8 and s==maps['frame'if sm==5 else'data'][o['s'][0]]and d==maps['frame'if dm==5 else'data'][o['d'][0]]
             elif returned==92:
-                assert op==OPCODES['INEWCMP']and sm==2 and dm in(4,5)and o['m']==0 and o['d'][1]==32 and types[o['s'][0]][0]==12 and list(types[o['s'][0]][1])==[224]and s==3 and m==0 and d==maps['frame'if dm==5 else'data'][o['d'][0]]
+                assert op==OPCODES['INEWCMP']and sm==2 and dm in(4,5)and o['m']==0 and s in(2,3) and o['d'][1]==(12 if s==2 else 32) and types[o['s'][0]][0]==4*s and list(types[o['s'][0]][1])==([192]if s==2 else[224]) and m==0 and d==maps['frame'if dm==5 else'data'][o['d'][0]]
             elif returned==108:
                 assert op in(OPCODES['INEWCW'],OPCODES['INEWCP'])and sm==3 and dm in(4,5)and o['m']==m==0 and o['s']is None and o['d'][1]in((52,)if s==576 else(0,4,8,12)if s>=256 else(0,4,8,16))
                 assert s==(576 if s==576 else(256 if s>=256 else 0)|2*o['d'][1])and d==maps['frame'if dm==5 else'data'][o['d'][0]]
@@ -859,8 +859,8 @@ def verify(data,r,imports,loads=False,rows=None):
             else:
                 assert op in(OPCODES['ISEND'],OPCODES['IRECV'])and o['m']is None
                 send=op==OPCODES['ISEND'];cm=dm if send else sm;vm=sm if send else dm;ca=o['d']if send else o['s'];va=o['s']if send else o['d'];channel=d if send else s;value=s if send else d;width=m&255
-                assert width in(16,24)and vm in(0,1)and channel==maps['frame'if cm in(1,5)else'data'][ca[0]]and m==(((64<<8)if cm in(4,5)else 0)|width)
-                if cm in(4,5):assert ca[1]==32 and width==24
+                assert width in(16,24)and vm in(0,1)and channel==maps['frame'if cm in(1,5)else'data'][ca[0]]and m==((((16 if width==16 else 64)<<8)if cm in(4,5)else 0)|width)
+                if cm in(4,5):assert (ca[1],width)in((12,16),(32,24))
                 else:assert cm in(0,1)
                 for i in range(width//8):assert next(l for l in r['frame'if vm else'data']['leaves']if l[0]==va[0]+4*i)[1:4]==[value+8*i,4,8]
             continue

@@ -272,7 +272,7 @@ static int
 typedroottransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {int send=in->op==ISEND,cm=send?in->dm:in->sm,vm=send?in->sm:in->dm,actual,payload;Addr*ca=send?&in->d:&in->s,*va=send?&in->s:&in->d;Type*t=ca->native64type?ca->native64type:ca->decl?ca->decl->ty:nil;Dis64Layout l={0},*storage;long channel,field=0;unsigned int cw,base,next,i,n;int ok=0;
  if(in->mm!=Anone||in->branch||!t||t->kind!=Tchan||!typedmappedpayload(t->tof,&l))goto done;n=l.count;
- if(cm==Afpind||cm==Ampind){if(ca->offset!=32||n!=3||!typedclientaddress(ca,cm,p,&channel,&cw,&field,&payload)||payload!=Tchan||field!=64)goto done;}
+ if(cm==Afpind||cm==Ampind){if(typedlibraryrecord(typedfieldowner(ca))==12&&ca->offset==12&&n==2){Addr a=*ca;a.offset=0;a.native64type=typedfieldowner(ca);if(!typedoperand(cm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&channel,&cw,&actual)||actual!=Tref)goto done;cw|=AIND;field=16;}else if(ca->offset!=32||n!=3||!typedclientaddress(ca,cm,p,&channel,&cw,&field,&payload)||payload!=Tchan||field!=64)goto done;}
  else if(!typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&cw,&actual)||actual!=Tchan)goto done;
  if(vm!=Afp&&vm!=Amp)goto done;storage=vm==Afp?&p->frame:&p->data;
  for(i=0;i<n;i++){if(!dis64layoutaddress(storage,va->reg+4*i,4,1,&next)||(i&&next!=base+8*i))goto done;if(!i)base=next;}
@@ -285,6 +285,11 @@ typedclientmappedchannel(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,u
 {
  Dis64Layout payload={0},descriptor={0};Decl*d=in->s.decl;Type*t;unsigned int n;int ok=0,mixed;
  if(in->sm!=Adesc || !d || !d->desc || d->desc->id!=in->s.offset || !d->desc->map || d->desc->nmap!=1)goto done;
+ if((in->dm==Afpind||in->dm==Ampind)&&typedlibraryrecord(typedfieldowner(&in->d))==12&&in->d.offset==12){Addr a=in->d;Type*owner=typedfieldowner(&a);long base;unsigned int dm;int actual;
+  t=in->d.native64type;if(!t||t->kind!=Tchan||!typedmappedpayload(t->tof,&payload)||payload.count!=2||!typedmappedpayload(d->ty,&descriptor)||descriptor.count!=2||d->desc->size!=8||d->desc->map[0]!=0xc0||in->mm!=Aimm||in->m.offset||in->branch)goto done;
+  a.offset=0;a.native64type=owner;if(!typedoperand(in->dm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&base,&dm,&actual)||actual!=Tref)goto done;
+  *out=(Dis64Instruction){INEWCMP,SRC(AIMM)|AXIMM|DST(dm|AIND),0,2,base};*returned=92;ok=1;goto done;
+ }
  if((in->dm==Afpind||in->dm==Ampind)&&typedlibraryrecord(typedfieldowner(&in->d))==6&&in->d.offset==32){Addr a=in->d;Type*owner=typedfieldowner(&a);long base;unsigned int dm;int actual;
   t=in->d.native64type;if(!t||t->kind!=Tchan||!typedmappedpayload(t->tof,&payload)||payload.count!=3||!typedmappedpayload(d->ty,&descriptor)||descriptor.count!=3||d->desc->size!=12||d->desc->map[0]!=0xe0||in->mm!=Aimm||in->m.offset||in->branch)goto done;
   a.offset=0;a.native64type=owner;if(!typedoperand(in->dm==Afpind?Afp:Amp,&a,TypedRoot,0,0,p,&base,&dm,&actual)||actual!=Tref)goto done;
