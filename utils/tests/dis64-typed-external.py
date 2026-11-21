@@ -126,7 +126,7 @@ def library_step(o,c,maps,first,types):
     op,mode,source,middle,dest,tag=c;sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192
     if tag==154:
         assert source in LIBRARY_FIELDS and op==OPCODES['INEWZ']and o['op']in(OPCODES['INEW'],OPCODES['INEWZ'])and o['m']is None and not middle
-        size,mapping=types[o['s'][0]];assert size==({1:48,6:52,7:24,8:28,9:8,10:32,11:104,12:28,14:8}.get(source,12))and list(mapping)==([30]if source==12 else[132,38,4]if source==11 else[240]if source==10 else[254]if source==8 else[]if source==9 else[247,136]if source==6 else[132]if source==7 else[192 if source<=3 or source==14 else 224])
+        size,mapping=types[o['s'][0]];assert size==({1:48,6:52,7:24,8:28,9:8,10:32,11:104,12:28,13:8,14:8}.get(source,12))and list(mapping)==([30]if source==12 else[132,38,4]if source==11 else[240]if source==10 else[254]if source==8 else[]if source==9 else[247,136]if source==6 else[132]if source==7 else[192 if source<=3 or source in(13,14) else 224])
         assert mode==o['mode']and dest==library_operand(o['d'],dm,0,maps,True);return
     assert tag==153 and mode==o['mode'];sid=middle>>24;did=(middle>>16)&255;assert sid or did or(op==OPCODES['ILENA']and sm==1 and dm==1)
     expected=OPCODES['INEWAZ']if o['op']in(OPCODES['INEWA'],OPCODES['INEWAZ'])else OPCODES['IBEQL']if o['op']==OPCODES['IBEQW']and op==OPCODES['IBEQL']else OPCODES['IBNEL']if o['op']==OPCODES['IBNEW']and op==OPCODES['IBNEL']else o['op'];assert op==expected

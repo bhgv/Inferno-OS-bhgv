@@ -7,7 +7,7 @@ B=runpy.run_path(str(ROOT/'utils/tests/native64-local-geometry-args.py'));G,CMD,
 DECL='Winplace:module{run:fn(n:int);};'
 SOURCE='''implement Winplace;include "sys.m";include "draw.m";include "tk.m";include "sh.m";Point,Rect:import Draw;'''+DECL+'''EW,NS:con iota;Lay:adt{d:int;mkr:fn(l:self Lay,r:Rect):Rect;};
 nodes:list of ref Sh->Listnode;menutext:string;topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
-run(n:int){rest:=tl nodes;entry:=hd rest;menutext=entry.word;buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;(top,event):=tkpair(n);topout=top;eventout=event;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
+run(n:int){rest:=tl nodes;entry:=hd rest;added:=ref Sh->Listnode(nil,entry.word);nodes=added::nodes;front:=hd nodes;menutext=front.word;buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;(top,event):=tkpair(n);topout=top;eventout=event;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
 swappt(p:Point,n:int):Point{if(n<0)return p;return(p.y,p.x);}
 mixed(n:int):(string,int){if(n<0)return (text(n),n);return ("positive",n);}
 text(n:int):string{if(n<0)return "negative";return "positive";}firstword(r:(int,int)):int{return r.t0;}
@@ -54,6 +54,13 @@ def generate(limbo,w):
   if row['name'] in ('initbuiltin','builtin_delmenu','delmenu','word','runbuiltin','builtin_menu'):
    CMD['verify_nilbranches'](data,row,imports,rows=records)
  print('PASS original atoolbar: checked Tk tuple import, destination map, console and menu removal',flush=True)
+ # Isolate the catch table from the constructor and imported call in the original startup body.
+ startup,count=re.subn(r'\{\s*(node := ref Listnode.*?shctxt.run\(args, 0\);)\s*\} exception \{\s*"fail:\*" =>\s*;\s*\}',r'\1',source,flags=re.S)
+ assert count==1
+ _,startup_rows=E['compile_source'](limbo,w,startup,interface='',loads=True)
+ init=next(r for r in startup_rows if r['name']=='init')
+ assert init['accepted'] and any(e['name']=='Context.run' and e['contract']==24 for e in init['externals']),init
+ print('PASS atoolbar startup probe: Context.run and all other operations lower with the catch omitted',flush=True)
  data,records=E['compile_source'](limbo,w,(ROOT/'appl/lib/tkclient.b').read_text(),interface='',loads=True)
  assert len(records)==16 and all(r['accepted'] for r in records),[(r['name'],r.get('reason')) for r in records]
  top=next(r for r in records if r['name']=='toplevel')
@@ -80,6 +87,7 @@ def unit():
  src=src.replace(extract(src,'void\ncvtup('),'void cvtup(Rune*,String*);',1);strings=(ROOT/'libinterp/string.c').read_text()
  for sig in('void\ncvtup(','String*\nslicer(','OP(indc)','OP(insc)','OP(slicec)','OP(cvtcw)'):src+='\n'+extract(strings,sig)+'\n'
  vm=(ROOT/'libinterp/xec.c').read_text()
+ for sig in ('static void\nnewrecord(', 'OP(newz)'):src+='\n'+extract(vm,sig)+'\n'
  for sig in('static uchar*\narrayaddress(','static void\narrayindex(','static void\nnewarray(','OP(newaz)','OP(indb)','OP(cvtwb)','OP(shrw)','OP(consm)','OP(headm)','OP(consp)','OP(headp)'):
   if sig not in src:src+='\n'+extract(vm,sig)+'\n'
  return src+'\n#line 1 "native64-aggregate-result.c"\n'+(ROOT/'utils/tests/native64-aggregate-result.c').read_text().replace(' AGGREGATE_HANDLERS',handlers)

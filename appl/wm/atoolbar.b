@@ -147,7 +147,9 @@ init(ctxt: ref Draw->Context, argv: list of string)
 			# guard against parallel access to the shctxt environment
 			if (donesetup){
 				{
-					shctxt.run(ref Listnode(nil, s) :: nil, 0);
+					node := ref Listnode(nil, s);
+					args := node :: nil;
+					shctxt.run(args, 0);
 				} exception {
 				"fail:*" =>	;
 				}
