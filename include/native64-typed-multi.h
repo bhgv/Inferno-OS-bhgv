@@ -216,7 +216,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 continue;
             }
             if(s->returned==252){
-                if(!c->external)return 0;
+                if(!c->external && steps[c->end].op!=ICALL)return 0;
                 if(s->op==IHEADP || s->op==ITAIL && UDST(s->mode)==(AFP|AIND)){
                     if(s->mode!=(SRC(AFP)|DST(AFP|AIND)) || s->m || !native64typedrootoperand(AFP,s->s,fpbytes,mpbytes) || s->d<64 || s->d%8 || (unsigned long)s->d>(unsigned int)c->callee->size || 8>(unsigned int)c->callee->size-s->d || c->callee->np<0 || (unsigned long)(s->d/64)>=(unsigned int)c->callee->np || !(c->callee->map[s->d/64]&(128>>((s->d/8)%8))) || j==c->first+1 || j+1>=stop || steps[j-1].returned!=252 || steps[j-1].op!=ITAIL || steps[j-1].d!=s->s || steps[j+1].returned!=252 || steps[j+1].op!=IMOVP || steps[j+1].d!=s->s)return 0;
                 }else{

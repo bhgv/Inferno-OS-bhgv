@@ -1064,6 +1064,12 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             if(!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || offset<64 || offset>65535 || !typedexternalinthead(c,p,frame,end,&at,arg->offset,offset))return typedfail(p,"local-int-head-argument");
             continue;
         }
+        if(c->loads && !spawning && kind==Tstring && in->op==ITAIL && in->dm==Afp){
+            if(arg->next || !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) ||
+               offset>65535-8 || !typedexternalheadarg(c,p,frame,arg,end,&at,offset))
+                return typedfail(p,"local-string-head-argument");
+            continue;
+        }
         if(c->loads&&!spawning&&kind==Tstring&&in->op==IHEADP){if(arg->next||!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||!typedexternalstringexpr(c,p,frame,arg,end,&at,offset))return typedfail(p,"local-head-string-argument");continue;}
         if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&typedlibraryrecord(typedfieldowner(&in->s))==12&&in->s.offset==16){unsigned int z;
             if((!spawning&&arg->next)||!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||!typedexternalstringexpr(c,p,frame,arg,end,&at,offset))return typedfail(p,"local-client-string-expression");

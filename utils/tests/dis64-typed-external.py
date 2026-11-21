@@ -206,6 +206,23 @@ def rawarray_operation(o,c,maps,types,row):
         mid=o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']];assert m==((m>>24)<<24)|(mid&65535)
     assert sm in(0,1,2)and s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
 
+def string_head_argument(original, code, at, end, maps, pending, oldoffset, new, kind, r):
+    temp=None;tails=0
+    while at<end and original[at]['op']==OPCODES['ITAIL']and original[at]['mode']&7==1:
+        a=original[at];sm=a['mode']>>3&7;assert a['mode']==(sm<<3)|1 and sm in(0,1)and a['m']is None
+        dst=maps['frame'][a['d'][0]];src=maps['frame'if sm else'data'][a['s'][0]]
+        if temp is not None:assert src==temp==dst and sm==1
+        temp=dst;assert code[at]==[a['op'],a['mode'],src,0,dst,252];tails+=1;at+=1
+    assert 1<=tails<=32
+    a=original[at]
+    assert a['op']==OPCODES['IHEADP'if kind==13 else'ITAIL']and a['mode']==13 and a['m']is None and maps['frame'][a['s'][0]]==temp
+    assert a['d']==[pending,oldoffset]
+    assert code[at]==[a['op'],a['mode'],temp,0,new,252];at+=1
+    a=original[at];assert a['op']==41 and a['mode']==1 and a['m']is None and next(l for l in r['data']['leaves']if l[0]==a['s'][0])[4]==20 and maps['frame'][a['d'][0]]==temp
+    assert code[at]==[41,1,maps['data'][a['s'][0]],0,temp,252];at+=1
+    return at
+
+
 def verify(data,r,imports,loads=False,rows=None):
     assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and (rows is not None or 'calls'not in r)
     if r.get('result')==[14,24]and not r.get('result_aggregate'):assert r.get('result_channels')==[6,6,6]
@@ -272,6 +289,10 @@ def verify(data,r,imports,loads=False,rows=None):
                 sm=o['mode']>>3&7;assert sm in(0,1,2)
                 source=o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]]
                 assert r['code'][at]==[o['op'],o['mode'],source,0,arg[0],152];at+=1;continue
+            if loads and arg[1]==13 and r['code'][at][5]==252:
+                old=next(x[0]for x in callee['frame']['leaves']if x[1]==arg[0])
+                at=string_head_argument(original,r['code'],at,end,maps,pending,old,arg[0],13,r)
+                continue
             if loads and arg[1]==9 and r['code'][at][5]==46:
                 a=original[at];assert a['op']==OPCODES['IADDW']and a['mode']==145 and a['s']==[1]
                 source=maps['frame'][a['m']];dest=maps['frame'][a['d'][0]]
@@ -558,23 +579,12 @@ def verify(data,r,imports,loads=False,rows=None):
                 continue
             if at<end and r['code'][at][5]==252:
                 assert loads and kind in(10,13)and oldbytes==4 and width==8
-                temp=None;tails=0
-                while at<end and original[at]['op']==OPCODES['ITAIL']and original[at]['mode']&7==1:
-                    a=original[at];sm=a['mode']>>3&7;assert a['mode']==(sm<<3)|1 and sm in(0,1)and a['m']is None
-                    dst=maps['frame'][a['d'][0]];src=maps['frame'if sm else'data'][a['s'][0]]
-                    if temp is not None:assert src==temp==dst and sm==1
-                    temp=dst;assert r['code'][at]==[a['op'],a['mode'],src,0,dst,252];tails+=1;at+=1
-                assert 1<=tails<=32
-                a=original[at]
-                assert a['op']==OPCODES['IHEADP'if kind==13 else'ITAIL']and a['mode']==13 and a['m']is None and maps['frame'][a['s'][0]]==temp
                 oldtarget=32
                 for _,pk,poldbytes,_ in e['args'][:j]:
                     align=8 if pk in(4,7)else 1 if pk==5 else 4;oldtarget=(oldtarget+align-1)//align*align+poldbytes
                 oldtarget=(oldtarget+3)//4*4
-                assert a['d']==[pending,oldtarget]
-                assert r['code'][at]==[a['op'],a['mode'],temp,0,new,252];at+=1
-                a=original[at];assert a['op']==41 and a['mode']==1 and a['m']is None and next(l for l in r['data']['leaves']if l[0]==a['s'][0])[4]==20 and maps['frame'][a['d'][0]]==temp
-                assert r['code'][at]==[41,1,maps['data'][a['s'][0]],0,temp,252];at+=1;oldoffset=oldtarget+oldbytes
+                at=string_head_argument(original,r['code'],at,end,maps,pending,oldtarget,new,kind,r)
+                oldoffset=oldtarget+oldbytes
                 continue
             listclear=None
             if at<end and r['code'][at][5]==112:

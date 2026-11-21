@@ -236,13 +236,19 @@ iconify(id, label: string)
 	label = condenselabel(label);
 	
 	padf := ".toolbar.sp"+id;
-	tk->cmd(tbtop, "frame " + padf + " -width 2");
-	cmd(tbtop, "pack " + padf + " -side left -fill y");
+	request := "frame " + padf + " -width 2";
+	tk->cmd(tbtop, request);
+	request = "pack " + padf + " -side left -fill y";
+	cmd(tbtop, request);
 
-	e := tk->cmd(tbtop, "button .toolbar." +id+" -command {send task "+id+"} -takefocus 0");
-	cmd(tbtop, ".toolbar." +id+" configure -text '" + label);
-	if(e[0] != '!')
-		cmd(tbtop, "pack .toolbar."+id+" -side left -fill y");
+	request = "button .toolbar." +id+" -command {send task "+id+"} -takefocus 0";
+	e := tk->cmd(tbtop, request);
+	request = ".toolbar." +id+" configure -text '" + label;
+	cmd(tbtop, request);
+	if(e[0] != '!'){
+		request = "pack .toolbar."+id+" -side left -fill y";
+		cmd(tbtop, request);
+	}
 	cmd(tbtop, "update");
 }
 

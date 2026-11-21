@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Execute a computed String-list head directly in imported call arguments."""
+"""Execute a computed String-list head in local and imported call arguments."""
 import argparse,copy,os,re,runpy,shlex,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 BASE=runpy.run_path(str(ROOT/'utils/tests/native64-alt-pairs.py'));G,CMD,E=BASE['G'],BASE['CMD'],BASE['E']
 PREFIX='include "sys.m";include "draw.m";'
 PROVIDER='Sink:module{take:fn(s:string):int;pair:fn(a:string,n:int,b:string):int;};'
-NAMES=('one','two','global','repeat','reuse','pair')
+NAMES=('one','two','global','repeat','reuse','pair','local')
 DECL='Headarg:module{'+''.join(n+':fn(xs:list of string);'for n in NAMES)+'open:fn(path:string);};'
 SOURCE='implement Headarg;'+PREFIX+PROVIDER+DECL+'sink:Sink;hold:list of string;holdp:ref Draw->Pointer;out:int;'
 SOURCE+='one(xs:list of string){v:=sink->take(hd tl xs);out=v;}two(xs:list of string){v:=sink->take(hd tl tl xs);out=v;}global(xs:list of string){hold=xs;v:=sink->take(hd tl hold);out=v;}repeat(xs:list of string){a:=sink->take(hd tl xs);b:=sink->take(hd tl tl xs);out=a+b;}'
-SOURCE+='reuse(xs:list of string){p:=ref Draw->Pointer(0,(1,2),3);holdp=p;if(tl xs==nil)out=1;else out=2;}pair(xs:list of string){v:=sink->pair(hd tl xs,17,hd tl tl xs);out=v;}open(path:string){sink=load Sink path;}'
+SOURCE+='reuse(xs:list of string){p:=ref Draw->Pointer(0,(1,2),3);holdp=p;if(tl xs==nil)out=1;else out=2;}pair(xs:list of string){v:=sink->pair(hd tl xs,17,hd tl tl xs);out=v;}open(path:string){sink=load Sink path;}local(xs:list of string){v:=forward(hd tl xs);out=v;}forward(s:string):int{return sink->take(s);}'
 def generate(limbo,w):
  m=w/'headarg.m';m.write_text(PREFIX+PROVIDER+DECL)
  h=subprocess.check_output([str(limbo),'-H','-M','Headarg','-I',str(ROOT/'module'),str(m)],text=True)
@@ -18,7 +18,7 @@ def generate(limbo,w):
  header=subprocess.check_output([str(limbo),'-H','-M','Sink','-I',str(ROOT/'module'),str(m)],text=True);(w/'sink-native.h').write_text(header);frames={}
  for n in('take','pair'):
   size=int(re.search(r'^#define F_Sink_'+n+r'_size (\d+)',header,re.M)[1]);mapping=[int(v,0)for v in re.search(r'^#define F_Sink_'+n+r'_map \{([^}]*)\}',header,re.M)[1].split(',')if v];sig=int(re.search(r'^#define LIMBO_NATIVE64_SIGNATURE_Sink_'+n+r' (0x[0-9a-f]+)U',header,re.M)[1],16);frames[(n,sig)]=(size,mapping)
- rows=G['generate'](limbo,w,SOURCE,'Headarg',(7,1,0,'~0U'),import_frames=frames,export_signatures=signatures)
+ rows=G['generate'](limbo,w,SOURCE,'Headarg',(9,1,0,'~0U'),import_frames=frames,export_signatures=signatures)
  p=w/'full.h';s=p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','');gl={g[0]:g[1]for g in rows[0]['globals']};p.write_text(s+'\nstatic const uint head_globals[]={'+','.join(str(gl[n])for n in('sink','hold','holdp','out'))+'};\n')
  reuse=next(r for r in rows if r['name']=='reuse');tail=next(c for c in reuse['code']if c[0]==E['OPCODES']['ITAIL']);leaf=next(l for l in reuse['frame']['leaves']if l[1]==tail[4]);assert leaf[4]!=10,leaf
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];controls=0
@@ -35,6 +35,11 @@ def generate(limbo,w):
   source='implement Closed;'+PROVIDER+'Closed:module{run:fn(xs:list of string);};sink:Sink;out:int;run(xs:list of string){v:=sink->take(hd '+'tl '*n+'xs);out=v;}'
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert closed[0]['accepted']==(n==32),closed
  print('PASS head argument boundary: 32 tails accepted; 33 refused',flush=True)
+ _,toolbar=E['compile_source'](limbo,w,(ROOT/'appl/wm/atoolbar.b').read_text(),interface='',loads=True)
+ for name in ('iconify','handlerequest'):
+  row=next(r for r in toolbar if r['name']==name)
+  assert row['accepted'],row
+ print('PASS atoolbar iconify and handlerequest checked lowering',flush=True)
  _,records=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True)
  for name in('init','handlerequest'):
   row=next(r for r in records if r['name']==name);print('AWM',name,':',row['accepted'],row.get('pc'),row.get('reason'),flush=True)
