@@ -5,9 +5,9 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 B=runpy.run_path(str(ROOT/'utils/tests/native64-local-geometry-args.py'));G,CMD,E=B['G'],B['CMD'],B['E']
 DECL='Winplace:module{run:fn(n:int);};'
-SOURCE='''implement Winplace;include "sys.m";include "draw.m";include "tk.m";Point,Rect:import Draw;'''+DECL+'''EW,NS:con iota;Lay:adt{d:int;mkr:fn(l:self Lay,r:Rect):Rect;};
-topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
-run(n:int){buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;(top,event):=tkpair(n);topout=top;eventout=event;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
+SOURCE='''implement Winplace;include "sys.m";include "draw.m";include "tk.m";include "sh.m";Point,Rect:import Draw;'''+DECL+'''EW,NS:con iota;Lay:adt{d:int;mkr:fn(l:self Lay,r:Rect):Rect;};
+nodes:list of ref Sh->Listnode;menutext:string;topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
+run(n:int){rest:=tl nodes;entry:=hd rest;menutext=entry.word;buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;(top,event):=tkpair(n);topout=top;eventout=event;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
 swappt(p:Point,n:int):Point{if(n<0)return p;return(p.y,p.x);}
 mixed(n:int):(string,int){if(n<0)return (text(n),n);return ("positive",n);}
 text(n:int):string{if(n<0)return "negative";return "positive";}firstword(r:(int,int)):int{return r.t0;}
@@ -23,7 +23,7 @@ SOURCE+=re.search(r'(?m)^Lay\.mkr\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/winplace.b
 def generate(limbo,w):
  m=w/'aggregate.m';m.write_text(DECL);h=subprocess.check_output([str(limbo),'-H','-M','Winplace',str(m)],text=True);sigs={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Winplace_(\w+) (0x[0-9a-f]+)U',h,re.M)}
  rows=G['generate'](limbo,w,SOURCE,'Winplace',(18,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
- p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout'))+'};\n')
+ p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout','nodes','menutext'))+'};\n')
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);count=0
  for row in records:
   for pc,c in enumerate(row['code']):
@@ -49,9 +49,9 @@ def generate(limbo,w):
  toolbar=next(r for r in records if r['name']=='toolbar')
  assert toolbar['accepted'] and any(e['name']=='toplevel' and e['contract']==116 for e in toolbar['externals']),toolbar
  CMD['verify_nilbranches'](data,toolbar,imports,rows=records)
- assert {'consoleproc','conout','initbuiltin','builtin_delmenu','delmenu'} <= {r['name'] for r in records if r['accepted']}
+ assert {'consoleproc','conout','initbuiltin','builtin_delmenu','delmenu','word','runbuiltin','builtin_menu'} <= {r['name'] for r in records if r['accepted']}
  for row in records:
-  if row['name'] in ('initbuiltin','builtin_delmenu','delmenu'):
+  if row['name'] in ('initbuiltin','builtin_delmenu','delmenu','word','runbuiltin','builtin_menu'):
    CMD['verify_nilbranches'](data,row,imports,rows=records)
  print('PASS original atoolbar: checked Tk tuple import, destination map, console and menu removal',flush=True)
  data,records=E['compile_source'](limbo,w,(ROOT/'appl/lib/tkclient.b').read_text(),interface='',loads=True)
@@ -80,7 +80,7 @@ def unit():
  src=src.replace(extract(src,'void\ncvtup('),'void cvtup(Rune*,String*);',1);strings=(ROOT/'libinterp/string.c').read_text()
  for sig in('void\ncvtup(','String*\nslicer(','OP(indc)','OP(insc)','OP(slicec)','OP(cvtcw)'):src+='\n'+extract(strings,sig)+'\n'
  vm=(ROOT/'libinterp/xec.c').read_text()
- for sig in('static uchar*\narrayaddress(','static void\narrayindex(','static void\nnewarray(','OP(newaz)','OP(indb)','OP(cvtwb)','OP(shrw)','OP(consm)','OP(headm)'):
+ for sig in('static uchar*\narrayaddress(','static void\narrayindex(','static void\nnewarray(','OP(newaz)','OP(indb)','OP(cvtwb)','OP(shrw)','OP(consm)','OP(headm)','OP(consp)','OP(headp)'):
   if sig not in src:src+='\n'+extract(vm,sig)+'\n'
  return src+'\n#line 1 "native64-aggregate-result.c"\n'+(ROOT/'utils/tests/native64-aggregate-result.c').read_text().replace(' AGGREGATE_HANDLERS',handlers)
 def main():

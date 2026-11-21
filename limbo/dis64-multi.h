@@ -65,6 +65,28 @@ typedloadlisttype(Addr *a)
  if(a->native64type && a->decl->store==Dlocal && a->decl->sym && a->decl->sym->name[0]=='.' && a->decl->sym->name[1]=='t')t=a->native64type;
  return t && t->kind==Tlist && t->tof && t->tof->kind==Tstring && a->reg==a->decl->offset && !a->offset;
 }
+/* Only read a list whose element is the canonical Sh.Listnode reference. */
+static int
+typedlistnodetype(Addr *a)
+{
+ Type *t=a->decl?a->decl->ty:nil;
+ if(a->native64type && a->decl && a->decl->store==Dlocal && a->decl->sym &&
+    a->decl->sym->name[0]=='.' && a->decl->sym->name[1]=='t')t=a->native64type;
+ return a->decl&&t&&t->kind==Tlist&&t->tof&&t->tof->kind==Tref&&
+        typedlibraryrecord(t->tof)==13&&a->reg==a->decl->offset&&!a->offset;
+}
+static int
+typedlistnoderead(Inst *in,Dis64TypedBody *p,Dis64Instruction *out,uchar *returned)
+{
+ unsigned int sm,dm;long source,dest;int actual,head=in->op==IHEADP;
+ Type *t=in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;
+ if(in->branch||in->mm!=Anone||
+    (head?(!t||t->kind!=Tref||typedlibraryrecord(t)!=13):!typedlistnodetype(&in->d))||
+    !typedoperand(in->sm,&in->s,Tlist,0,0,p,&source,&sm,&actual)||actual!=Tlist||
+    !typedoperand(in->dm,&in->d,head?TypedRoot:Tlist,0,0,p,&dest,&dm,&actual)||
+    actual!=(head?Tref:Tlist))return typedfail(p,"listnode-read");
+ *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,dest};*returned=213;return 1;
+}
 static int
 typedloadlist(Inst *in,Decl *fn,Dis64TypedBody *p,Dis64Instruction *out)
 {
@@ -1365,6 +1387,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(c->loads){p->code[pc-p->first].source=0;p->returns[pc-p->first]=UDST(p->code[pc-p->first].mode)==(AFP|AIND)?174:172;}pc++;
         }else if(c->loads && (in->op==ICONSM || in->op==IHEADM || (in->op==ITAIL && typedrectlisttype(&in->s)))){
             if(!typedrectlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+        }else if(c->loads && (in->op==IHEADP || in->op==ITAIL) && typedlistnodetype(&in->s)){
+            if(!typedlistnoderead(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) && ((in->op!=ICONSP && typedpointerlisttype(&in->s)) || (in->op!=IHEADP && typedpointerlisttype(&in->d)))){
             if(!typedpointerlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSW || in->op==IHEADW || (in->op==ITAIL && typedintlisttype(&in->s)))){

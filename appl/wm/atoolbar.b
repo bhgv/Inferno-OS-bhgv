@@ -355,7 +355,9 @@ whatis(nil: ref Sh->Context, nil: Sh, nil: string, nil: int): string
 runbuiltin(c: ref Context, sh: Sh,
 			cmd: list of ref Listnode, nil: int): string
 {
-	case (hd cmd).word {
+	node := hd cmd;
+	name := node.word;
+	case name {
 	"menu" =>	return builtin_menu(c, sh, cmd);
 	"delmenu" =>	return builtin_delmenu(c, sh, cmd);
 	}
@@ -375,10 +377,12 @@ stderr(): ref Sys->FD
 
 word(ln: ref Listnode): string
 {
-	if (ln.word != nil)
-		return ln.word;
-	if (ln.cmd != nil)
-		return shell->cmd2string(ln.cmd);
+	text := ln.word;
+	if (text != nil)
+		return text;
+	command := ln.cmd;
+	if (command != nil)
+		return shell->cmd2string(command);
 	return nil;
 }
 
@@ -398,34 +402,49 @@ builtin_menu(nil: ref Context, nil: Sh, argv: list of ref Listnode): string
 		sys->fprint(stderr(), "usage: menu topmenu [ secondmenu ] command\n");
 		raise "fail:usage";
 	}
-	primary := (hd tl argv).word;
-	argv = tl tl argv;
+	argv = tl argv;
+	first := hd argv;
+	primary := first.word;
+	argv = tl argv;
 
 	h_mnu_itm := string int (screenr.dy() / 30);
 
 	if (n == 3) {
-		w := word(hd argv);
+		node := hd argv;
+		w := word(node);
 		if (len w == 0)
 			cmd(tbtop, ".m insert 0 separator");
-		else
-			cmd(tbtop, ".m insert 0 command -height " + h_mnu_itm + " -label " + tk->quote(primary) +
-				" -command {send exec " + w + "}");
+		else {
+			label := tk->quote(primary);
+			request := ".m insert 0 command -height " + h_mnu_itm + " -label " + label +
+				" -command {send exec " + w + "}";
+			cmd(tbtop, request);
+		}
 	} else {
-		secondary := (hd argv).word;
+		second := hd argv;
+		secondary := second.word;
 		argv = tl argv;
 
 		mpath := menupath(primary);
-		e := tk->cmd(tbtop, mpath+" cget -width");
+		request := mpath + " cget -width";
+		e := tk->cmd(tbtop, request);
 		if(e[0] == '!') {
-			cmd(tbtop, "menu "+mpath);
-			cmd(tbtop, ".m insert 0 cascade -height " + h_mnu_itm + " -label "+tk->quote(primary)+" -menu "+mpath);
+			request = "menu " + mpath;
+			cmd(tbtop, request);
+			label := tk->quote(primary);
+			request = ".m insert 0 cascade -height " + h_mnu_itm + " -label " + label + " -menu " + mpath;
+			cmd(tbtop, request);
 		}
-		w := word(hd argv);
+		node := hd argv;
+		w := word(node);
 		if (len w == 0)
-			cmd(tbtop, mpath + " insert 0 separator");
-		else
-			cmd(tbtop, mpath+" insert 0 command -height " + h_mnu_itm + " -label "+tk->quote(secondary)+
-				" -command {send exec "+w+"}");
+			request = mpath + " insert 0 separator";
+		else {
+			label := tk->quote(secondary);
+			request = mpath + " insert 0 command -height " + h_mnu_itm + " -label " + label +
+				" -command {send exec " + w + "}";
+		}
+		cmd(tbtop, request);
 	}
 	return nil;
 }

@@ -25,6 +25,18 @@ typedlibraryrecord(Type*t)
  static char*names[][9]={{"fd","buffer","index","size","dirty","bufpos","filpos","lastop","mode"},{"h","t","n"},{"h","t","n"},{"last","h","t"},{"iobuf","fill","next"}};
  Dis64Layout l={0};Decl*d;unsigned int id=0,i=0,k,n;int ok=0;Type ref;
  if(t && t->kind==Tref)t=t->tof;if(!t || t->kind!=Tadt || !t->decl || !t->decl->sym)return 0;
+ if(!strcmp(t->decl->sym->name,"Listnode")){
+  Decl *cmd=t->ids,*word=cmd?cmd->next:nil;
+  if(!t->decl->dot||!t->decl->dot->sym||strcmp(t->decl->dot->sym->name,"Sh")||
+     !cmd||cmd->store!=Dfield||!cmd->sym||strcmp(cmd->sym->name,"cmd")||cmd->offset||
+     !typedwmref(cmd->ty,"Sh","Node")||!word||word->next||word->store!=Dfield||
+     !word->sym||strcmp(word->sym->name,"word")||word->offset!=4||
+     !word->ty||word->ty->kind!=Tstring||!dis64layouttype(t,&l))goto done;
+  ok=l.legacybytes==8&&l.bytes==16&&l.count==2&&l.alignment==8&&
+     l.leaves[0].native==0&&l.leaves[0].kind==Tref&&
+     l.leaves[1].native==8&&l.leaves[1].kind==Tstring;
+  id=13;goto done;
+ }
  if(!strcmp(t->decl->sym->name,"Toplevel")){unsigned int j;int kinds[]={Tref,Tchan,Tref,Tref,Tint,Tint,Tint,Tint};if(!t->decl->dot||!t->decl->dot->sym||strcmp(t->decl->dot->sym->name,"Tk")||!dis64layouttype(t,&l)||l.legacybytes!=32||l.bytes!=48||l.count!=8||l.alignment!=8){dis64layoutfree(&l);return 0;}for(j=0;j<8;j++)if(l.leaves[j].legacy!=4*j||l.leaves[j].native!=native64libraryoffset(10,j)||l.leaves[j].bytes!=native64librarywidth(10,j)||l.leaves[j].oldbytes!=4||l.leaves[j].kind!=kinds[j])break;dis64layoutfree(&l);return j==8?10:0;}
  if(!strcmp(t->decl->sym->name,"Wmcontext"))return typedwmcontextrecord(t)?8:0;
  if(!strcmp(t->decl->sym->name,"Point")){ok=typedwordgeometry(t,&l)&&l.bytes==8;dis64layoutfree(&l);return ok?9:0;}
