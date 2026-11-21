@@ -427,6 +427,8 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
             local=base;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),12,base,32};p->returns[at-p->first]=245;
         }else if(c->loads && typedimagearraybinding(c,p,frame,binding,fn->ty->tof,pc,at)){
             local=p->code[at-p->first].source;
+        }else if(c->loads&&kind==Tref&&binding->sm==Afpind&&typedlibraryrecord(typedfieldowner(&binding->s))==12&&(binding->s.offset==20||binding->s.offset==24)){
+            Addr a=binding->s;unsigned int wire;long base;if(!typedwmref(fn->ty->tof,"Sys","FD")||!typedwmref(a.native64type,"Sys","FD"))return typedfail(p,"client-fd-result-type");a.native64type=typedfieldowner(&a);a.offset=0;if(!typedoperand(Afp,&a,TypedRoot,0,0,p,&base,&wire,&actual)||actual!=Tref||wire!=AFP)return typedfail(p,"client-fd-result-owner");local=base;contract=24;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),256+(binding->s.offset==20?32:40),base,32};p->returns[at-p->first]=60;
         }else if(c->loads&&root&&binding->sm==Afpind&&typedwindowrootbinding(binding,fn->ty->tof,p,at-p->first,&local)){
             contract=24;
         }else if(c->loads && root && binding->sm==Afpind && binding->s.reg!=16){

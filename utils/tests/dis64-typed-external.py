@@ -763,7 +763,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert r['code'][end-1]==[39,13,base,0,32,85]
             elif r['code'][end-1][5]==81:pass
             elif r['code'][end-1][5]==60:
-                fields={0:0,20:24,40:48,52:64,56:72,84:104}
+                fields=({20:288,24:296}if r['code'][end-1][3]in(288,296)else{0:0,20:24,40:48,52:64,56:72,84:104})
                 assert loads and contract==24 and not e['inherited']and b['mode']==45 and b['m']is None and b['s'][1]in fields
                 base=maps['frame'][b['s'][0]];assert e['resultoffset']==base and r['code'][end-1]==[39,45,base,fields[b['s'][1]],32,60]
                 assert next(l for l in r['frame']['leaves']if l[0]==b['s'][0])[3:]==[8,12]
@@ -854,7 +854,10 @@ def verify(data,r,imports,loads=False,rows=None):
             elif returned==108:
                 assert op in(OPCODES['INEWCW'],OPCODES['INEWCP'])and sm==3 and dm in(4,5)and o['m']==m==0 and o['s']is None and o['d'][1]in((52,)if s==576 else(0,4,8,12)if s>=256 else(0,4,8,16))
                 assert s==(576 if s==576 else(256 if s>=256 else 0)|2*o['d'][1])and d==maps['frame'if dm==5 else'data'][o['d'][0]]
-            elif returned==109:assert op==OPCODES['IRECV']and sm in(0,1)and dm==5 and o['m']is None and m==4 and o['d']==[16,0]and d==32 and s==maps['frame'if sm else'data'][o['s'][0]]
+            elif returned==109:
+                assert op==OPCODES['IRECV']and sm in(0,1)and dm==5 and o['m']is None and s==maps['frame'if sm else'data'][o['s'][0]]
+                if m==4:assert o['d']==[16,0]and d==32
+                else:assert o['d'][1]in(0,4,8)and m==(65536|(o['d'][1]<<8)|4)and d==maps['frame'][o['d'][0]]
             elif returned==110:assert op==OPCODES['IMOVM']and sm in(4,5)and dm in(4,5)and o['s'][1]==0 and o['d'][1]==4 and o['m']==m==16 and s==maps['frame'if sm==5 else'data'][o['s'][0]]and d==maps['frame'if dm==5 else'data'][o['d'][0]]
             else:
                 assert op in(OPCODES['ISEND'],OPCODES['IRECV'])and o['m']is None

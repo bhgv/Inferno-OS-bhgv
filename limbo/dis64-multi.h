@@ -212,6 +212,7 @@ typedclienttransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned
  if(!root && kind!=Tbyte && kind!=Tint && kind!=Tfix && kind!=Tbig && kind!=Treal)return typedfail(p,"channel-transfer-payload");
  width=root || kind==Tbig || kind==Treal?8:kind==Tbyte?1:4;
  if(in->op==IRECV&&vm==Afpind&&va->reg==16&&!va->offset&&!indirect&&kind==Tint){*out=(Dis64Instruction){IRECV,SRC(cw)|DST(AFP|AIND),4,channel,32};*returned=109;return 1;}
+ if(in->op==IRECV&&vm==Afpind&&typedlibraryrecord(typedfieldowner(va))==12&&(va->offset==0||va->offset==4||va->offset==8)&&!indirect&&kind==Tint){Addr a=*va;a.offset=0;a.native64type=typedfieldowner(va);if(!typedoperand(Afp,&a,TypedRoot,0,0,p,&value,&vw,&actual)||actual!=Tref||vw!=AFP)return typedfail(p,"client-pid-receive-owner");*out=(Dis64Instruction){IRECV,SRC(cw)|DST(AFP|AIND),65536|(va->offset<<8)|4,channel,value};*returned=109;return 1;}
  if(!typedoperand(vm,va,root?TypedRoot:kind==Tfix?Tint:kind,in->op==ISEND&&!root&&width<8,0,p,&value,&vw,&actual) || (root && actual!=kind && actual!=Tany))return typedfail(p,"channel-transfer-value");
  *out=(Dis64Instruction){in->op,in->op==ISEND?SRC(vw)|DST(cw):SRC(cw)|DST(vw),(field<<8)|width|(root?16:0),in->op==ISEND?value:channel,in->op==ISEND?channel:value};*returned=indirect?(typedwmref(typedfieldowner(ca),"Draw","Wmcontext")?94:204):188;return 1;
 }
@@ -791,11 +792,14 @@ typedloadcontextcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int st
 
 /* Comparing a direct ref ADT with nil only observes the root pointer.
  * It neither admits the ADT's fields nor assumes a C payload geometry. */
+static Type*
+typedloadvaluetype(Addr*a)
+{if(a->native64type&&a->decl&&a->decl->store==Dlocal&&a->decl->sym&&a->decl->sym->name[0]=='.'&&a->decl->sym->name[1]=='t'&&a->reg==a->decl->offset&&!a->offset)return a->native64type;return a->decl?a->decl->ty:nil;}
 static int
 typedloadreftype(Addr *a)
 {
  Type *t;
- return a->decl && (t=a->decl->ty) && t->kind==Tref && t->tof && t->tof->kind==Tadt &&
+ return a->decl && (t=typedloadvaluetype(a)) && t->kind==Tref && t->tof && t->tof->kind==Tadt &&
   a->reg==a->decl->offset && a->offset==0;
 }
 
@@ -813,7 +817,7 @@ static int
 typedloadclientcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
 {
  Addr*a=&in->s,*b=&in->m;long source,middle,field;unsigned int sm,mm,wire;int kind;
- if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) || !typedloadreftype(a) || !typedloadreftype(b) || a->decl->ty->tof!=b->decl->ty->tof ||
+ if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) || !typedloadreftype(a) || !typedloadreftype(b) || typedloadvaluetype(a)->tof!=typedloadvaluetype(b)->tof ||
     !typedwmref(a->decl->ty,"Wmsrv","Client") || (in->sm!=Afp && in->sm!=Amp) || (in->mm!=Afp && in->mm!=Amp) ||
     !typedclientaddress(a,in->sm==Afp?Afpind:Ampind,p,&source,&wire,&field,&kind) || field || kind!=Tchan ||
     !typedclientaddress(b,in->mm==Afp?Afpind:Ampind,p,&middle,&wire,&field,&kind) || field || kind!=Tchan ||
@@ -831,7 +835,7 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  Addr *value=&in->s,*empty=&in->m;int vm=in->sm,nm=in->mm,kind,actual;Type*valuetype;
  unsigned int sm,mm;long source,middle;
  if(typedloadreftype(value) && typedloadreftype(empty))return typedloadclientcompare(in,p,pc,stop);
- if(value->decl && value->decl->ty && value->decl->ty->kind==Tany){
+ if(typedloadvaluetype(value) && typedloadvaluetype(value)->kind==Tany){
   value=&in->m;empty=&in->s;vm=in->mm;nm=in->sm;
  }
  valuetype=value->decl?value->decl->ty:nil;
@@ -1007,9 +1011,9 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(c->loads && !spawning && kind==Tref && typedwmref(arg->ty,"Draw","Image") && in->op==IINDW){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || !typedimagearrayarg(c,p,frame,end,&at,arg->offset,offset))return 0;continue;
         }
-        if(c->loads && !spawning && (in->sm==Afpind || in->sm==Ampind)){
+        if(c->loads && (!spawning||typedclientreferencekind(kind)) && (in->sm==Afpind || in->sm==Ampind)){
             unsigned int view;int k=typedclientreferencekind(kind);
-            if(dis64layoutaddress(&child->frame,arg->offset,k||kind==Tbig||kind==Treal?8:4,k,&view) && typedlibraryargument(in,frame,p,at-p->first,arg->offset,view,kind)){at++;continue;}
+            if(dis64layoutaddress(&child->frame,arg->offset,kind==Tbig||kind==Treal?8:4,k,&view) && typedlibraryargument(in,frame,p,at-p->first,arg->offset,view,kind)){at++;continue;}
         }
         if(c->loads && kind==Treal && in->op==ICVTWF){
             if(spawning || in->branch || in->mm!=Anone || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !dis64layoutaddress(&child->frame,arg->offset,8,0,&offset) || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual))return typedfail(p,"local-real-argument");

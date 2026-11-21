@@ -269,7 +269,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         }
         if(c->contract){
             s=steps+c->end-1;width=native64wmtuplewidth(c->contract)?native64wmtuplewidth(c->contract):native64geometryresultwidth(c->contract)?native64geometryresultwidth(c->contract):c->contract==16?16:c->contract==72?24:c->contract==88?88:c->contract==48?16:c->contract&15;
-            if(s->returned==60){if(c->contract!=24||!c->external||c->inherited||s->op!=ILEA||s->mode!=(SRC(AFP|AIND)|DST(AFP|AIND))||s->d!=32||!native64windowrootfield(s->m)||!native64typedrootoperand(AFP,s->s,fpbytes,mpbytes))return 0;
+            if(s->returned==60){if(c->contract!=24||!c->external||c->inherited||s->op!=ILEA||s->mode!=(SRC(AFP|AIND)|DST(AFP|AIND))||s->d!=32||!native64typedrootbindingfield(s->m)||!native64typedrootoperand(AFP,s->s,fpbytes,mpbytes))return 0;
             }else if(s->returned==85){if(!native64wmtuplewidth(c->contract)||c->inherited||s->op!=ILEA||s->mode!=(SRC(AFP)|DST(AFP|AIND))||s->m||s->d!=32||s->s<64||s->s%8||(unsigned long)s->s>fpbytes||width>fpbytes-s->s)return 0;
             }else if(s->returned==131){
                 if(c->contract!=24 || c->inherited || s->op!=ILEA || s->mode!=(SRC(AFP)|DST(AFP|AIND)) || s->m || s->d!=32 || !native64typedrootoperand(AFP,s->s,fpbytes,mpbytes) || !c->first || steps[c->first-1].returned!=131 || steps[c->first-1].op!=IINDL || steps[c->first-1].s!=s->s)return 0;
@@ -325,7 +325,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 else if(s->returned==80){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
                 else if(s->returned==65){native64rawusecode(p,s);}
                 else if(s->returned==84){p->s.i.f=s->s;p->s.i.s=s->m>>8;p->reg=s->m&255;p->d.i.f=40;p->d.i.s=s->d;}
-                else if(s->returned==60){p->reg=2048|512|24;p->s.i.f=s->s;p->s.i.s=s->m;p->d.i.f=40;p->d.i.s=32;}
+                else if(s->returned==60){p->reg=(s->m>=256?8192:2048)|512|24;p->s.i.f=s->s;p->s.i.s=s->m>=256?s->m-256:s->m;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==85){p->reg=c->contract;p->s.ind=s->s;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==81){p->reg=(c->inherited?4096:512)|c->contract;p->s.i.f=s->s;p->s.i.s=s->m;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==86){p->reg=s->m;p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;p->d.i.f=40;p->d.i.s=s->d;}

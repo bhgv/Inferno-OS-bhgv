@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 B=runpy.run_path(str(ROOT/'utils/tests/native64-bufio-library.py'));G,CMD,E=B['G'],B['CMD'],B['E']
 CLIENT=re.search(r'(?m)^Client: adt\{.*?\n\};',(ROOT/'appl/lib/wmlib.b').read_text(),re.S)[0]
-SOURCE='''implement Wmlib;include "sys.m";Wmlib:module{run:fn(n:int);};sys:Sys;snarfbuf,out,clienterr:string;clientbytes:array of byte;clientcount:int;zclient:Client;client,allocated:ref Client;run(n:int){sys=load Sys Sys->PATH;clienttest(n);snarfbuf="fallback";out=snarfget();}'''+CLIENT+'''clienttest(n:int){c:=ref zclient;c.req=chan of (array of byte,Sys->Rwrite);c.ptrpid=n;c.kbdpid=-1;c.ctlpid=2147483647;c.dir="private";fd:=sys->open(c.dir+"/pointer",Sys->OREAD);if(fd!=nil)c.ctlfd=fd;buf:=array[3] of byte;buf[0]=byte 65;buf[1]=byte 66;buf[2]=byte 67;rc:=chan of (int,string);spawn requestworker(c,buf,rc);(data,reply):=<-c.req;(count,err):=<-reply;clientcount=count;clientbytes=data;clienterr=err;client=c;d:=ref Client;d.dir="allocated-client";allocated=d;}requestworker(c:ref Client,data:array of byte,reply:Sys->Rwrite){c.req<-=(data,reply);reply<-=(len data,nil);}'''+re.search(r'(?m)^snarfget\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/wmlib.b').read_text(),re.S)[0]
+SOURCE='''implement Wmlib;include "sys.m";Wmlib:module{run:fn(n:int);};sys:Sys;snarfbuf,out,clienterr:string;clientbytes:array of byte;clientcount:int;zclient:Client;client,allocated:ref Client;run(n:int){sys=load Sys Sys->PATH;clienttest(n);snarfbuf="fallback";out=snarfget();}'''+CLIENT+'''clienttest(n:int){c:=ref zclient;c.req=chan of (array of byte,Sys->Rwrite);c.ptrpid=n;c.kbdpid=-1;c.ctlpid=2147483647;c.dir="private";if((c.ctlfd=sys->open(c.dir+"/pointer",Sys->OREAD))==nil)c.ptrpid=-99;c.winfd=sys->open(c.dir+"/pointer",Sys->OREAD);buf:=array[3] of byte;buf[0]=byte 65;buf[1]=byte 66;buf[2]=byte 67;rc:=chan of (int,string);pidc:=chan of int;spawn requestworker(c,buf,rc,c.ctlfd,pidc);c.ctlpid=<-pidc;(data,reply):=<-c.req;(count,err):=<-reply;clientcount=count;clientbytes=data;clienterr=err;client=c;d:=ref Client;d.dir="allocated-client";allocated=d;}requestworker(c:ref Client,data:array of byte,reply:Sys->Rwrite,fd:ref Sys->FD,pidc:chan of int){pidc<-=(len data+124);if(fd!=nil)sys->read(fd,data,0);c.req<-=(data,reply);reply<-=(len data,nil);}'''+re.search(r'(?m)^snarfget\([^\n]*\n\{.*?\n\}',(ROOT/'appl/lib/wmlib.b').read_text(),re.S)[0]
 def generate(limbo,w):
  m=w/'interfaces.m';m.write_text('include "sys.m";Wmlib:module{run:fn(n:int);};');frames={};sigs={}
  for name in('Sys','Wmlib'):
@@ -20,7 +20,7 @@ def generate(limbo,w):
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);tables=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];count=0
  for row in records:
   for pc,c in enumerate(row['code']):
-   if c[5]not in(153,154,155,156,159,130,68,92,107):continue
+   if c[5]not in(153,154,155,156,159,130,68,92,107,60,109):continue
    for k in range(6):
     bad=copy.deepcopy(row);bad['code'][pc][k]+=1
     try:CMD['verify_nilbranches'](data,bad,tables,rows=records)
@@ -35,7 +35,7 @@ def generate(limbo,w):
 def unit():
  src=B['unit']().split('\n#line 1 "native64-bufio-library.c"')[0]
  handlers=''.join('optab['+name+']=actual_'+({'load':'iload','goto':'igoto','send':'isend','recv':'irecv','exit':'iexit','raise':'iraise','case':'icase','casec':'casec'}.get(name[1:].lower(),name[1:].lower()))+';'for name in E['OPCODES']if 'OP('+({'load':'iload','goto':'igoto','send':'isend','recv':'irecv','exit':'iexit','raise':'iraise','case':'icase','casec':'casec'}.get(name[1:].lower(),name[1:].lower()))+')'in src)
- return src+'\n#line 1 "native64-wmlib-snarf.c"\n'+(ROOT/'utils/tests/native64-wmlib-snarf.c').read_text().replace(' SNARF_HANDLERS',handlers)
+ return src.replace('OP(newcw)','\n#define movw actual_movw\nOP(newcw)')+'\n#line 1 "native64-wmlib-snarf.c"\n'+(ROOT/'utils/tests/native64-wmlib-snarf.c').read_text().replace(' SNARF_HANDLERS',handlers)
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',type=Path,required=True);a=p.parse_args()
  with tempfile.TemporaryDirectory(prefix='wmlib-snarf-',dir=ROOT)as td:
@@ -46,7 +46,9 @@ def main():
   for name,before,after,predicate in(
    ('native64-typed-multi.h','else p->s.imm=s->s;p->reg=native64librarymiddle(s);','else p->s.imm=0;p->reg=native64librarymiddle(s);','original snarf completion'),
    ('native64-library-layout.h','id==12?0x3c','id==12?0x38','constructor baseline'),
-   ('native64-typed-code.h','p->d.i.s=s->s==2?16:64;','p->d.i.s=s->s==2?48:64;','original snarf completion')):
+   ('native64-typed-code.h','p->d.i.s=s->s==2?16:64;','p->d.i.s=s->s==2?48:64;','original snarf completion'),
+   ('native64-typed-multi.h','p->s.i.s=s->m>=256?s->m-256:s->m;','p->s.i.s=s->m==288?40:s->m>=256?s->m-256:s->m;','private Client FD field'),
+   ('native64-typed-code.h','p->d.i.s=s->m==4?0:(s->m>>8)&255;','p->d.i.s=s->m==4?0:4;','private Client raw PID fields')):
    for h in headers:(w/h).write_text((ROOT/'include'/h).read_text())
    header=w/name;text=header.read_text();assert text.count(before)==1;header.write_text(text.replace(before,after));subprocess.run(command,check=True);r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],capture_output=True,text=True,timeout=240)
    assert r.returncode==10 and predicate in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(name,r.returncode,r.stderr[-1500:])
