@@ -522,6 +522,49 @@ typedrootarrayindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc)
  if(in->op!=IINDW||in->sm!=Afp||(!typedstringarray(&in->s)&&kind!=Tlist)||in->mm!=Afp||!in->m.decl||in->m.offset||in->branch||!use||use->op!=IMOVP||use->mm!=Anone||use->branch||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual)||!typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual))return typedfail(p,"root-array-index");
  a=use->sm==Afpind?&use->s:&use->d;if(a->decl!=in->m.decl||a->reg!=in->m.reg||a->offset||!typedoperand(use->sm==Afpind?use->dm:use->sm,use->sm==Afpind?&use->d:&use->s,TypedRoot,0,0,p,&value,&vm,&actual)||(actual!=kind&&actual!=Tany))return typedfail(p,"root-array-element");
  p->code[pc]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};p->returns[pc]=255;p->code[pc+1]=(Dis64Instruction){IMOVP,use->sm==Afpind?SRC(AFP|AIND)|DST(vm):SRC(vm)|DST(AFP|AIND),0,use->sm==Afpind?48:value,use->sm==Afpind?value:48};p->returns[pc+1]=255;return 1;}
+/* Borrow one element of the shell's builtin table for the adjacent mapped copy. */
+static int
+typedbuiltinarray(Addr *a)
+{
+ Type *t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;
+ Decl *fields;
+ if(!a->decl||a->offset||a->reg!=a->decl->offset||!t||t->kind!=Tarray||
+    !(t=t->tof)||t->kind!=Ttuple)return 0;
+ fields=t->ids;
+ return fields&&fields->ty==tstring&&fields->next&&!fields->next->next&&
+        fields->next->ty->kind==Tlist&&typedshellbuiltin(fields->next->ty->tof);
+}
+
+static int
+typedbuiltinarrayindex(Inst *in,Inst *use,Dis64TypedBody *p,unsigned int pc)
+{
+ Addr *borrow,*value;
+ Decl *d=use->m.decl;
+ unsigned int sm,dm,vm,base,next;
+ long array,index;
+ int actual,read=use->sm==Afpind;
+ if(in->sm!=Afp||in->mm!=Afp||in->m.offset||!in->m.decl||in->branch||
+    use->op!=IMOVMP||use->mm!=Adesc||use->branch||!d||!d->desc||
+    d->desc->id!=use->m.offset||d->desc->size!=8||d->desc->nmap!=1||
+    !d->desc->map||d->desc->map[0]!=0xc0||
+    !typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual)||
+    !typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual))goto bad;
+ borrow=read?&use->s:&use->d;
+ value=read?&use->d:&use->s;
+ vm=read?use->dm:use->sm;
+ if((!read&&use->dm!=Afpind)||borrow->decl!=in->m.decl||
+    borrow->reg!=in->m.reg||borrow->offset||vm!=Afp||value->offset||
+    !dis64layoutaddress(&p->frame,value->reg,4,1,&base)||
+    !dis64layoutaddress(&p->frame,value->reg+4,4,1,&next)||next!=base+8)goto bad;
+ p->code[pc]=(Dis64Instruction){IINDX,SRC(sm)|AXINF|DST(dm),48,array,index};
+ p->code[pc+1]=(Dis64Instruction){IMOVMP,
+  (read?SRC(AFP|AIND)|DST(AFP):SRC(AFP)|DST(AFP|AIND))|AXIMM,0,
+  read?48:base,read?base:48};
+ p->returns[pc]=p->returns[pc+1]=255;
+ return 1;
+ bad:return typedfail(p,"builtin-array-layout");
+}
+
 static int
 typedexternalstringarray(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,unsigned int*at,unsigned int old,unsigned int native)
 {Inst*in=c->instructions[*at],*use;long array,index,middle;unsigned int sm,dm,mm;int actual;
@@ -1400,6 +1443,9 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->external>=2 && in->op==IMOVP && in->dm==Afpind && in->d.reg==16 && in->d.offset==0){
             if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
 
+        }else if(c->loads && (in->op==IINDL || in->op==IINDX) && in->sm==Afp && typedbuiltinarray(&in->s)){
+            if(pc+1>=stop||!typedbuiltinarrayindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;
+            inside[pc+1-p->first]=1;pc+=2;
         }else if(c->loads && in->op==IINDW && (typedstringarray(&in->s)||typedshellvararray(&in->s))){
             if(pc+1>=stop||!typedrootarrayindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
         }else if(c->loads && in->op==IINDW && typedregistryarray(&in->s)){

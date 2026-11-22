@@ -878,6 +878,23 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         for(j=0;j<f->count;j++)if(f->code[j].returned==254 || f->code[j].returned==255){
             unsigned int k,mode;step=f->code+j;if(!native64typedrefarray(step,f->bytes,s->databytes))return 0;
             for(k=0;k<f->nsites;k++)if(f->sites[k].first<=j && j<=f->sites[k].end)return 0;
+            if(step->op==IINDX || step->op==IMOVMP){
+                unsigned int offset;
+                if(step->op==IINDX){
+                    if(j+1>=f->count || f->code[j+1].returned!=255 || f->code[j+1].op!=IMOVMP)return 0;
+                    offset=step->s;
+                }else{
+                    if(!j || f->code[j-1].returned!=255 || f->code[j-1].op!=IINDX)return 0;
+                    offset=USRC(step->mode)==AFP?step->s:step->d;
+                    bit=(offset+8)/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;
+                }
+                bit=offset/8;if(!(f->map[bit/8]&(128>>(bit%8))))return 0;
+                if(step->op==IINDX && (mode=UDST(step->mode))!=AIMM){
+                    map=mode==AFP?f->map:s->datamap;
+                    bit=step->d/8;if(map[bit/8]&(128>>(bit%8)))return 0;
+                }
+                continue;
+            }
             if(step->op==IINDL){if(j+1>=f->count)return 0;if(f->code[j+1].returned==213){if(j+2>=f->count||f->code[j+1].op!=IHEADP||f->code[j+2].returned!=142)return 0;}else if(f->code[j+1].returned==111){if(f->code[j+1].op!=IMOVP&&!native64typedbranch(f->code[j+1].op))return 0;}else if(f->code[j+1].returned!=255 || f->code[j+1].op!=IMOVP || !native64typedrefarray(f->code+j+1,f->bytes,s->databytes))return 0;}
             else if(step->op==IMOVP){if(!j || (f->code[j-1].returned!=255&&f->code[j-1].returned!=111) || f->code[j-1].op!=IINDL)return 0;}
             mode=USRC(step->mode);if(step->op==IINDL || step->op==IMOVP && mode!=(AFP|AIND)){map=mode==AFP?f->map:s->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
@@ -1164,6 +1181,13 @@ native64modulecopy(const char *s)
 }
 
 static int
+native64checkedarraystep(const Native64TypedStep *step)
+{
+    return step->returned==80 || (step->returned==79 && step->op!=INEWAZ) ||
+        (step->returned==255 && step->op==IINDX);
+}
+
+static int
 native64modulemake(void *arg)
 {
     Native64ModuleBuild *b=arg;const Native64ModuleSpec *s=b->spec;const Native64ModuleFunction *f;
@@ -1176,7 +1200,7 @@ native64modulemake(void *arg)
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==171)triples=1;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==172 || s->functions[i].code[j].returned==174)contexts=1;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==183 || s->functions[i].code[j].returned==185 || s->functions[i].code[j].returned==92){if(s->functions[i].code[j].s==2)mapped2=1;else if(s->functions[i].code[j].s==3)mapped3=1;}
-    for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==194||s->functions[i].code[j].op==ICONSMP||s->functions[i].code[j].op==IHEADMP)mapped2=1;else if(s->functions[i].code[j].returned==196)mapped3=1;
+    for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==194||(s->functions[i].code[j].returned==255&&s->functions[i].code[j].op==IMOVMP)||s->functions[i].code[j].op==ICONSMP||s->functions[i].code[j].op==IHEADMP)mapped2=1;else if(s->functions[i].code[j].returned==196)mapped3=1;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++){if(s->functions[i].code[j].returned==201||(s->functions[i].code[j].returned==92&&s->functions[i].code[j].s==6))filewrite=1;if(s->functions[i].code[j].returned==202||(s->functions[i].code[j].returned==92&&s->functions[i].code[j].s==5))fileread=1;}
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==134 || s->functions[i].code[j].returned==135 || (s->functions[i].code[j].returned==136 && s->functions[i].code[j].op!=ILEA) || ((s->functions[i].code[j].returned==183 || s->functions[i].code[j].returned==185) && s->functions[i].code[j].s==1))mixedreply=1;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==68)recordids[s->functions[i].code[j].m]=1;else if(s->functions[i].code[j].returned==154)recordids[s->functions[i].code[j].s]=1;else if(s->functions[i].code[j].returned==90)recordids[8]=1;
@@ -1234,7 +1258,7 @@ native64modulemake(void *arg)
             if(f->code[j].returned==90)m->prog[b->offsets[i]+j].reg=recordids[8];
             if(f->code[j].returned==50)m->prog[b->offsets[i]+j].reg=cursortype;
             if(f->code[j].returned==135)m->prog[b->offsets[i]+j].reg=replytype;
-            if(f->code[j].returned==194||f->code[j].op==ICONSMP||f->code[j].op==IHEADMP)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples;
+            if(f->code[j].returned==194||(f->code[j].returned==255&&f->code[j].op==IMOVMP)||f->code[j].op==ICONSMP||f->code[j].op==IHEADMP)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples;
             if(f->code[j].returned==201 || f->code[j].returned==202)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples+mapped2+mapped3+(f->code[j].returned==202?filewrite:0);
             if(f->code[j].returned==196)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples+mapped2;
             if(f->code[j].returned==171)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes;
@@ -1294,9 +1318,32 @@ native64modulemake(void *arg)
     m->native64importload=s->load;
     if(s->entry!=~0U){m->entry=m->prog+b->offsets[s->entry];m->entryt=m->type[s->entry+1];}
     m->cstep=native64typedlea8step;
-    {unsigned int n=0,pc=0,z=0;Native64RawArrays*p;for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==80||(s->functions[i].code[j].returned==79&&s->functions[i].code[j].op!=INEWAZ))n++;
-     if(n){p=mallocz(sizeof(*p)+(n-1)*sizeof(p->index[0]),1);if(p==nil)error(exNomem);m->native64rawarrays=p;m->native64rawarraysfree=native64rawarrayfree;p->self=p;p->owner=m;p->count=n;
-      for(i=0;i<s->nfunctions;i++){for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==80||(s->functions[i].code[j].returned==79&&s->functions[i].code[j].op!=INEWAZ)){p->index[z].pc=pc+j;p->index[z].width=native64rawarraywidth((unsigned long)s->functions[i].code[j].m>>(s->functions[i].code[j].returned==80?8:24));p->index[z].frame=m->type[i+1];p->index[z++].instruction=m->prog[pc+j];}pc+=s->functions[i].count;}}
+    {
+        unsigned int n=0,pc=0,z=0;
+        Native64RawArrays *p;
+        const Native64TypedStep *step;
+        for(i=0;i<s->nfunctions;i++)
+            for(j=0;j<s->functions[i].count;j++)
+                if(native64checkedarraystep(s->functions[i].code+j))n++;
+        if(n){
+            p=mallocz(sizeof(*p)+(n-1)*sizeof(p->index[0]),1);
+            if(p==nil)error(exNomem);
+            m->native64rawarrays=p;m->native64rawarraysfree=native64rawarrayfree;
+            p->self=p;p->owner=m;p->count=n;
+            for(i=0;i<s->nfunctions;i++){
+                for(j=0;j<s->functions[i].count;j++){
+                    step=s->functions[i].code+j;
+                    if(!native64checkedarraystep(step))continue;
+                    p->index[z].pc=pc+j;
+                    p->index[z].mapped=step->returned==255;
+                    p->index[z].width=p->index[z].mapped?16:
+                        native64rawarraywidth((unsigned long)step->m>>(step->returned==80?8:24));
+                    p->index[z].frame=m->type[i+1];
+                    p->index[z++].instruction=m->prog[pc+j];
+                }
+                pc+=s->functions[i].count;
+            }
+        }
     }
     if(b->jit && !compile(m,m->nprog,nil))error(exCompile);
     return 1;

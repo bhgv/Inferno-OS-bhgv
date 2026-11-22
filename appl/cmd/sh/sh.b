@@ -1450,17 +1450,18 @@ addbuiltin(b: ref Builtins, name: string, mod: Shellbuiltin)
 
 removebuiltinmod(b: ref Builtins, mod: Shellbuiltin)
 {
+	table := b.ba;
 	j := 0;
 	for (i := 0; i < b.n; i++) {
-		(name, bmods) := b.ba[i];
+		(name, bmods) := table[i];
 		if (hd bmods == mod)
 			bmods = tl bmods;
 		if (bmods != nil)
-			b.ba[j++] = (name, bmods);
+			table[j++] = (name, bmods);
 	}
 	b.n = j;
 	for (; j < i; j++)
-		b.ba[j] = (nil, nil);
+		table[j] = (nil, nil);
 }
 
 export(e: ref Localenv)

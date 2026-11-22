@@ -1002,6 +1002,25 @@ def verify(data,r,imports,loads=False,rows=None):
             continue
         if returned==255:
             assert loads
+            if op==OPCODES['IINDX']:
+                dm=mode&7;assert o['op'] in (OPCODES['IINDX'],OPCODES['IINDL'])
+                assert mode==o['mode']==(8|128|dm) and dm in (0,1,2)
+                index=o['d'][0] if dm==2 else maps['frame' if dm else 'data'][o['d'][0]]
+                assert (s,m,d)==(maps['frame'][o['s'][0]],48,index)
+                assert r['code'][pc+1][0]==OPCODES['IMOVMP'] and r['code'][pc+1][5]==255
+                inside.add(pc+1)
+                continue
+            if op==OPCODES['IMOVMP']:
+                before=original[pc-1];assert pc in inside and o['op']==op and mode==o['mode']
+                assert types[o['m']][0]==8 and types[o['m']][1]==b'\xc0'
+                read=mode>>3&7==5
+                borrowed=o['s'] if read else o['d'];direct=o['d'] if read else o['s']
+                assert borrowed==[before['m'],0] and len(direct)==1
+                base=maps['frame'][direct[0]];assert maps['frame'][direct[0]+4]==base+8
+                for at in (base,base+8):
+                    assert r['frame']['map'][at//64]&(128>>(at//8%8))
+                assert (s,m,d)==((48,0,base) if read else (base,0,48))
+                continue
             if op==OPCODES['IINDL']:
                 sm=o['mode']>>3&7;dm=o['mode']&7;assert o['op']==OPCODES['IINDW']and o['mode']==(sm<<3)|128|dm and sm in(0,1)and dm in(0,1,2)
                 source=maps['frame'if sm else'data'][o['s'][0]];index=o['d'][0]if dm==2 else maps['frame'if dm else'data'][o['d'][0]]
