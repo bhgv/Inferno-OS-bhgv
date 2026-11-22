@@ -1020,7 +1020,7 @@ def verify(data,r,imports,loads=False,rows=None):
             sm=mode>>3&7;dm=mode&7;assert sm in(0,1)and dm in(0,1)
             for address,old,new,kind in((sm,o['s'][0],s,12 if op==OPCODES['ICONSP']else 10),(dm,o['d'][0],d,12 if op==OPCODES['IHEADP']else 10)):
                 leaf=next(l for l in r['frame'if address else'data']['leaves']if l[0]==old)
-                assert leaf[1]==new and leaf[2:4]==[4,8]and (leaf[4]==kind or (op==OPCODES['ICONSP']and address==sm and old==o['s'][0]and leaf[4]==20))
+                assert leaf[1]==new and leaf[2:4]==[4,8]and (leaf[4]==kind or (op==OPCODES['ICONSP']and address==sm and old==o['s'][0]and leaf[4]==20) or (op==OPCODES['ICONSP']and address==dm and old==o['d'][0]and leaf[4]==12))
             continue
         if returned==214:
             assert loads and op==o['op']==OPCODES['IMOVP']and mode==o['mode']and o['m']is None

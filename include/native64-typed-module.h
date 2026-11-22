@@ -460,7 +460,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         nimports+=table->count;
         for(j=0;j<table->count;j++){
             request=table->imports+j;
-            if((request->resultcontract && request->resultcontract!=72 && !native64wmtuplewidth(request->resultcontract) && !native64geometryresultwidth(request->resultcontract)) || !native64modulename(request->name) || !native64modulemap(request->bytes,request->map,request->mapbytes,1) ||
+            if((request->resultcontract && request->resultcontract!=12 && request->resultcontract!=72 && !native64wmtuplewidth(request->resultcontract) && !native64geometryresultwidth(request->resultcontract)) || !native64modulename(request->name) || !native64modulemap(request->bytes,request->map,request->mapbytes,1) ||
                request->bytes>65536 || request->bytes>32*1024*1024-total)return 0;
             total+=request->bytes;
         }
@@ -1082,8 +1082,11 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             if(site->external && site->table<s->ntables && site->target<s->tables[site->table].count && (site->contract==72)!=(s->tables[site->table].imports[site->target].resultcontract==72))return 0;
             if(!site->external && site->target<s->nfunctions && (site->contract==72)!=(s->functions[site->target].resultcontract==72))return 0;
             if(!site->external && site->target<s->nfunctions && (native64geometryresultwidth(site->contract) || native64geometryresultwidth(s->functions[site->target].resultcontract)) && site->contract!=s->functions[site->target].resultcontract)return 0;
-            if(site->contract==12 && !site->external){
-                if(site->target>=s->nfunctions || s->functions[site->target].resultcontract!=12 || site->inherited || site->end<2 || site->end>=f->count)return 0;
+            if(site->external && site->table<s->ntables && site->target<s->tables[site->table].count &&
+               (site->contract==12)!=(s->tables[site->table].imports[site->target].resultcontract==12))return 0;
+            if(site->contract==12){
+                if((!site->external && (site->target>=s->nfunctions || s->functions[site->target].resultcontract!=12)) ||
+                   site->inherited || site->end<2 || site->end>=f->count)return 0;
                 step=f->code+site->end-1;if(step->op!=ILEA || step->mode!=(SRC(AFP)|DST(AFP|AIND)) || step->m || step->d!=32 || step->returned!=(128|12) || step->s<64 || step->s%4 || (unsigned long)step->s>f->bytes || 12>f->bytes-step->s)return 0;
                 for(at=step->s;at<(unsigned long)step->s+12;at++){bit=at/8;if(f->map[bit/8]&(128>>(bit%8)))return 0;}
             }

@@ -5,10 +5,16 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 ALT=runpy.run_path(str(ROOT/'utils/tests/native64-aprint-alt.py'));G,CMD=ALT['G'],ALT['CMD'];E=G['E']
 MODULES=(('boot','Emuinit','appl/cmd/emuinit.b',4),('arg','Arg','appl/lib/arg.b',8),('awm','Wm','appl/wm/awm.b',20),('string','String','appl/lib/string.b',21),('wmsrv','Wmsrv','appl/lib/wmsrv.b',34),('wmclient','Wmclient','appl/lib/wmclient.b',21),('winplace','Winplace','appl/lib/winplace.b',21),('wmlib','Wmlib','appl/lib/wmlib.b',25),('titlebar','Titlebar','appl/lib/titlebar.b',7))
-def generate(limbo,w,metadata=None):
- interface=w/'graph.m';interface.write_text(''.join('include "'+n+'.m";'for n in('sys','draw','tk','string','wmsrv','wmlib','titlebar','wmclient','winplace','arg','sh'))+'Wm:module{init:fn(ctxt:ref Draw->Context,argv:list of string);};Emuinit:module{init:fn();};')
+PANEL_MODULES=(('tkclient','Tkclient','appl/lib/tkclient.b',16),('atoolbar','Toolbar','appl/wm/atoolbar.b',26))
+def generate(limbo,w,metadata=None,panel=False):
+ selected=MODULES+PANEL_MODULES if panel else MODULES
+ interface=w/'graph.m';interface.write_text(''.join('include "'+n+'.m";'for n in(('sys','draw','tk','string','wmsrv','wmlib','titlebar','wmclient','winplace','arg','sh')+('tkclient',)*panel))+'Wm:module{init:fn(ctxt:ref Draw->Context,argv:list of string);};Emuinit:module{init:fn();};')
+ if panel:
+  source=(ROOT/'appl/wm/atoolbar.b').read_text()
+  declaration=re.search(r'(?ms)^Toolbar: module\s*\n\{.*?^\};',source)[0]
+  interface.write_text(interface.read_text()+'shell: Sh;Listnode, Context: import shell;'+declaration)
  frames={};signatures={};headers={}
- for name in('Sys','Draw','Tk','String','Wmsrv','Wmlib','Titlebar','Wmclient','Winplace','Arg','Sh','Wm','Emuinit'):
+ for name in('Sys','Draw','Tk','String','Wmsrv','Wmlib','Titlebar','Wmclient','Winplace','Arg','Sh','Wm','Emuinit')+(('Tkclient','Toolbar') if panel else ()):
   h=headers[name]=subprocess.check_output([str(limbo),'-H','-M',name,'-I',str(ROOT/'module'),str(interface)],text=True);signatures[name]={}
   for fn,sig in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_'+name+r'_(\w+) (0x[0-9a-f]+)U',h,re.M):
    public=fn.replace('_','.',1)if '_'in fn else fn;signatures[name][public]=int(sig,16)
@@ -16,7 +22,7 @@ def generate(limbo,w,metadata=None):
    if size and mp:
     key=(public,int(sig,16));value=(int(size[1]),[int(x,0)for x in mp[1].split(',')if x]);assert key not in frames or frames[key]==value;frames[key]=value
  modules=[];ops=set();alltables={};summaries=[];awmglobals=None
- for prefix,name,path,count in MODULES:
+ for prefix,name,path,count in selected:
   source=(ROOT/path).read_text();data,rows=E['compile_source'](limbo,w,source,interface='',loads=True);imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];nv=sum(len(r.get('variadics',[]))for r in rows)
   assert len(rows)==count and all(r['accepted']for r in rows),(path,[(r['name'],r.get('reason'))for r in rows])
   rows=G['generate'](limbo,w,source,name,(count,len(imports),nv,'0'if prefix=='boot'else'~0U'),import_frames=frames,export_signatures=signatures[name],source_label='startup graph '+path)
@@ -29,15 +35,17 @@ def generate(limbo,w,metadata=None):
     except(AssertionError,IndexError,KeyError,ValueError):controls+=1
     else:raise AssertionError(('unchecked LOAD namespace',path,row['name'],pc))
   print('PASS startup LOAD namespace oracle:',path,controls,'wrong table ordinals refused',flush=True)
-  text=(w/'full.h').read_text().replace('fullload','graphload').replace('full_',prefix+'_');(w/('graph-'+prefix+'.h')).write_text(text)
+  text=(w/'full.h').read_text().replace('fullload','graphload').replace('full_',prefix+'_').replace('fullarray',prefix+'_array');(w/('graph-'+prefix+'.h')).write_text(text)
   modules.append('{&'+prefix+'_spec,'+prefix+'_variadics,'+str(nv)+'}')
-  summaries.append((prefix,count,len(imports),nv));ops.update(c[0]for r in rows for c in r['code'])
-  alltables[prefix]=imports
+  summaries.append((prefix,count,len(imports),nv))
+  if prefix not in ('tkclient','atoolbar'):
+   ops.update(c[0]for r in rows for c in r['code'])
+   alltables[prefix]=imports
   if prefix=='awm':awmglobals={x[0]:x[1]for x in rows[0]['globals']}
  (w/'full.h').unlink()
- body='static const GraphSpec graph_specs[]={'+','.join(modules)+'};\n'
+ body='static const GraphSpec graph_specs[]={'+','.join(modules[:len(MODULES)])+'};\n'
  if metadata is not None:
-  headers=[(w/('graph-'+prefix+'.h')).read_text() for prefix,_,_,_ in MODULES]
+  headers=[(w/('graph-'+prefix+'.h')).read_text() for prefix,_,_,_ in selected]
   metadata.write_text('/* Generated from the checked native64 AWM sources. */\n'+'\n'.join(headers)+body)
   return
  body+='static const uint awm_screen_offset='+str(awmglobals['screen'])+';\n'
@@ -58,7 +66,7 @@ def generate(limbo,w,metadata=None):
  for fn in re.findall(r'^struct F_Draw_((?:Point|Rect)_\w+) \{',h,re.M):
   methods.append(fn);geometry+='typedef struct F_Draw_'+fn+' F_Draw_'+fn+';\n'+re.search(r'struct F_Draw_'+fn+r' \{.*?\n};',h,re.S)[0]+'\n'
  (w/'geometry-layout.h').write_text(geometry)
- print('PASS startup graph: 9 source modules,',sum(x[1]for x in summaries),'bodies, independent source/call/map proofs and identical classic bytes',summaries,flush=True)
+ print('PASS startup graph:',len(selected),'source modules,',sum(x[1]for x in summaries),'bodies, independent source/call/map proofs and identical classic bytes',summaries,flush=True)
  return ops,methods
 
 def unit(w,ops,methods):
@@ -88,13 +96,14 @@ def main():
  p=argparse.ArgumentParser(description=__doc__)
  p.add_argument('--limbo',required=True,type=Path)
  p.add_argument('--android-ndk',type=Path,help='build the ARM64/Bionic fixture with NDK clang')
+ p.add_argument('--panel',action='store_true',help='include checked Tkclient and Toolbar metadata')
  p.add_argument('--metadata',type=Path,help='generate trusted startup metadata instead of running the fixture')
  a=p.parse_args()
  if not __debug__:p.error('source oracles require assertions')
  limbo=Path(shutil.which(str(a.limbo)) or a.limbo).resolve()
  if a.metadata:
   with tempfile.TemporaryDirectory(prefix='awm-metadata-') as directory:
-   generate(limbo,Path(directory),a.metadata)
+   generate(limbo,Path(directory),a.metadata,a.panel)
   return
  runner=shlex.split(os.environ.get('NATIVE64_RUNNER',''))
  arch=os.environ.get('NATIVE64_ARCH','amd64')
@@ -109,9 +118,10 @@ def main():
   platform_includes=('Android/arm64/include','Android/arm/include')
   default_flags='-O2 -g -DNDEBUG -fno-strict-aliasing -static'
  cc=compiler+shlex.split(os.environ.get('NATIVE64_CFLAGS',default_flags))
+ if a.panel:cc+=['-DTEST_AWM_PANEL_METADATA=1']
  if arch in('arm64','riscv64'):cc+=['-DDIS64_TEST_'+arch.upper()+'=1','-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
  with tempfile.TemporaryDirectory(prefix='awm-startup-',dir=ROOT)as td:
-  w=Path(td);CMD['generate'](limbo,w,'Command',False,argv=True,local=True,pair=True,raises=True);ops,methods=generate(limbo,w);(w/'unit.c').write_text(unit(w,ops,methods))
+  w=Path(td);CMD['generate'](limbo,w,'Command',False,argv=True,local=True,pair=True,raises=True);ops,methods=generate(limbo,w,panel=a.panel);(w/'unit.c').write_text(unit(w,ops,methods))
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in platform_includes+('emu/port','include','libinterp')]
   command=cc+[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+[str(ROOT/('lib9/'+n+'.c'))for n in('sprint','snprint','vsnprint','dofmt','fmt','fmtlock','fmtquote','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+CMD['FILES']['releaseflags'](cc)+['-pthread','-lm','-o',str(w/'unit')]
   subprocess.run(command,check=True);subprocess.run(runner+[str(w/'unit')],check=True,timeout=240)

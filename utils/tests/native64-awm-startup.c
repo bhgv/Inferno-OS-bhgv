@@ -11,6 +11,11 @@ struct GraphSpec {const Native64ModuleSpec*spec;const Native64ModuleVariadic*var
 #include "graph-wmlib.h"
 #include "graph-titlebar.h"
 #include "graph-specs.h"
+#ifdef TEST_AWM_PANEL_METADATA
+#include "graph-tkclient.h"
+#include "graph-atoolbar.h"
+#endif
+
 static void ck(int ok,const char*why){if(!ok){fprintf(stderr,"AWM startup predicate: %s\n",why);exit(10);}}
 int Sys_sprint64(const Native64SysFormatRequest*r){return productionSys_sprint64(r);}
 int Sys_aprint64(const Native64SysFormatRequest*r){return productionSys_aprint64(r);}
@@ -73,7 +78,59 @@ static void run(int jit,int q){uint i,ticks=0;int ok;Prog*p;const Native64Module
  * Both instructions remain one protected borrow; corruptions fail before allocation. */
 static void metadata(void){Native64ModuleSpec spec=wmlib_spec;Native64ModuleFunction fn[nelem(wmlib_functions)];Native64ModuleOwner out={0};REG saved=R;uint i,j,k,n=0;int before,baseline;for(i=0;i<nelem(fn);i++){const Native64ModuleFunction*f=wmlib_functions+i;Native64TypedStep*code=mallocz(f->count*sizeof(*code),0);require(code!=nil);memmove(fn,wmlib_functions,sizeof fn);spec.functions=fn;fn[i].code=code;for(j=0;j+1<f->count;j++)if(f->code[j].returned==111&&f->code[j].op==IINDL){uint pc;for(pc=j;pc<=j+1;pc++)for(k=0;k<6;k++){memmove(code,f->code,f->count*sizeof(*code));switch(k){case 0:code[pc].op=255;break;case 1:code[pc].mode=255;break;case 2:code[pc].s=536870912L;break;case 3:code[pc].m=65536;break;case 4:code[pc].d=536870912L;break;case 5:code[pc].returned=999;break;}before=allocations;baseline=live;ck(!native64sysmodule(&spec,wmlib_variadics,nelem(wmlib_variadics),0,&out),"malformed Client registry pair refused");ck(allocations==before&&live==baseline&&!out.module&&!memcmp(&R,&saved,sizeof R),"registry refusal before allocation");n++;}}free(code);}ck(n==36,"all original Client registry pairs checked");printf("PASS full Wmlib registry: %u corruptions refused before allocation\n",n);}
 static void construction(void){Native64ModuleOwner o={0};REG saved=R;int jit,base,n,i;for(jit=0;jit<2;jit++){base=allocations;ck(native64sysmodule(&wmlib_spec,wmlib_variadics,nelem(wmlib_variadics),jit,&o),"full Wmlib constructor");n=allocations-base;ck(native64typedmoduleclear(&o),"full Wmlib clear");for(i=1;i<=n;i++){failat=allocations+i;ck(!native64sysmodule(&wmlib_spec,wmlib_variadics,nelem(wmlib_variadics),jit,&o),"full Wmlib allocation failure");failat=0;ck(!live&&!modules&&!nlinkpins&&!o.module&&!memcmp(&R,&saved,sizeof R),"full Wmlib atomic rollback");}printf("PASS full Wmlib constructor jit=%d: %d allocation rollbacks\n",jit,n);}}
+#ifdef TEST_AWM_PANEL_METADATA
+static void
+panellink(Module *caller,const Native64ModuleSpec *spec,Module *target,const char *entry)
+{
+ const Native64ModuleTable *table;
+ unsigned int i,j,slot;
+ const Native64ModuleImport *request;
+ const Link *provider;
+ Modlink *link;
+ for(i=0;i<spec->ntables;i++){
+  table=spec->tables+i;
+  for(j=0;j<table->count;j++)
+   if(!strcmp(table->imports[j].name,entry))break;
+  if(j<table->count)break;
+ }
+ ck(i<spec->ntables,"panel import table located");
+ for(j=0;j<table->count;j++){
+  request=table->imports+j;
+  for(provider=target->ext;provider->name;provider++)
+   if(!strcmp(provider->name,request->name)&&(UWORD)provider->sig==request->signature)break;
+  ck(provider->name&&provider->frame&&provider->frame->size>=request->bytes&&
+     provider->frame->np>=request->mapbytes,"real panel provider frame covers imported arguments");
+  for(slot=0;slot<request->bytes/8;slot++){
+   unsigned int mask=128>>(slot%8);
+   ck((provider->frame->map[slot/8]&mask)==(request->map[slot/8]&mask),
+      "real panel provider argument roots agree with import");
+  }
+ }
+ target->ref++;
+ link=linkmod(target,caller->ldt[i],1);
+ ck(link!=nil&&link!=H,"real panel import links");
+ destroy(link);
+}
+static void
+panelconstruction(void)
+{
+ Native64ModuleOwner tkclient={0},toolbar={0},wmlib={0};
+ ck(native64sysmodule(&wmlib_spec,wmlib_variadics,nelem(wmlib_variadics),0,&wmlib),"Wmlib module construction for panel");
+ ck(native64sysmodule(&tkclient_spec,tkclient_variadics,nelem(tkclient_variadics),0,&tkclient),"Tkclient module construction");
+ ck(native64sysmodule(&atoolbar_spec,atoolbar_variadics,nelem(atoolbar_variadics),0,&toolbar),"Toolbar module construction");
+ ck(toolbar.module->htab && toolbar.module->htab[0].etab &&
+    !strcmp(toolbar.module->htab[0].etab[0].s,"fail:*"),"Toolbar catch installed");
+ panellink(toolbar.module,&atoolbar_spec,tkclient.module,"toplevel");
+ panellink(tkclient.module,&tkclient_spec,wmlib.module,"splitqword");
+ ck(native64typedmoduleclear(&toolbar)&&native64typedmoduleclear(&tkclient)&&
+    native64typedmoduleclear(&wmlib)&&!live,"panel module retirement");
+ puts("PASS original Toolbar -> Tkclient -> Wmlib construction, imports and retirement");
+}
+#endif
 int main(void){int jit,q;int quanta[]={1,3,1000};rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freestring;Tarray.free=freearray;Tarray.size=sizeof(Array);require(dis64selectlaunch("dis64-calls"));quotefmtinstall();
  GRAPH_HANDLERS
+#ifdef TEST_AWM_PANEL_METADATA
+ panelconstruction();
+#endif
  metadata();construction();
  for(jit=0;jit<2;jit++)for(q=0;q<3;q++)run(jit,quanta[q]);return 0;}
