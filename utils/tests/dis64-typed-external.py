@@ -167,10 +167,10 @@ def rootpath_argument(original,code,at,maps,pending,oldoffset,new,r):
 
 def rawarray_index(original,code,pc,maps,row):
     o=original[pc];op,mode,s,m,d,role=code[pc];sm=o['mode']>>3&7;dm=o['mode']&7
-    assert role==80 and op==OPCODES['IINDX']and o['op']in(OPCODES['IINDX'],OPCODES['IINDW'])and sm==1 and o['mode']==8|128|dm and mode==o['mode']and o['m']is not None
+    assert role==80 and op==OPCODES['IINDX']and o['op']in(OPCODES['IINDX'],OPCODES['IINDW'])and sm in(0,1) and o['mode']==(sm<<3)|128|dm and mode==o['mode']and o['m']is not None
     assert m>>8 in(1,2,3)and m&255 in(48,56)and(o['op']!=OPCODES['IINDW']or m>>8==1)
-    assert s==maps['frame'][o['s'][0]]and d==(o['d'][0]if dm==2 else maps['frame'if dm else'data'][o['d'][0]])
-    assert next(l for l in row['frame']['leaves']if l[0]==o['s'][0])[4]in(3,20)
+    assert s==maps['frame'if sm else'data'][o['s'][0]]and d==(o['d'][0]if dm==2 else maps['frame'if dm else'data'][o['d'][0]])
+    assert next(l for l in row['frame'if sm else'data']['leaves']if l[0]==o['s'][0])[4]in(3,20)
 
 def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None):
     o=original[pc];op,mode,s,m,d,role=code[pc];sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192;so=do=0
@@ -186,6 +186,7 @@ def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None)
     else:assert sm in(0,1,2)and s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
     if new is not None:
         assert pending is not None and dm==5 and o['d']==[pending,oldoffset]and d==new
+    elif dm==5 and o['d']==[16,0] and op==OPCODES['IMOVW'] and row['result']==[9,4]:assert d==32 and n==4
     elif dm==5:assert d==borrow(o['d']);do=o['d'][1]
     elif dm==2:assert op in BRANCHES and d==o['d'][0]-row['first']
     else:assert dm in(0,1)and d==maps['frame'if dm else'data'][o['d'][0]]
@@ -198,7 +199,7 @@ def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None)
 
 def rawarray_operation(o,c,maps,types,row):
     op,mode,s,m,d,role=c;sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192
-    assert role==79 and dm==1 and mode==o['mode']and d==maps['frame'][o['d'][0]]
+    assert role==79 and dm in(0,1) and mode==o['mode']and d==maps['frame'if dm else'data'][o['d'][0]]
     if o['op']in(OPCODES['INEWA'],OPCODES['INEWAZ']):
         assert op==OPCODES['INEWAZ']and arm==64 and m in(1,2,3)and types[o['m']][0]=={1:4,2:12,3:16}[m]and not any(types[o['m']][1])
     else:

@@ -52,7 +52,7 @@ def main():
   headers=('native64-local-bind.h','native64-typed-module.h','native64-typed-multi.h','native64-typed-code.h','native64-raw-array-runtime.h','native64-raw-array-module.h','native64-raw-array-code.h')
   controls=(
    ('native64-raw-array-runtime.h','t->size!=(int)width','0','raw element type boundary'),
-   ('native64-raw-array-module.h','if(flow[k]&&v->d>=64&&(unsigned long)v->d/8==(flow[k]>>2)/8)flow[k]=0;','if(0)flow[k]=0;','borrow owner overwrite refused'),
+   ('native64-raw-array-module.h','if(flow[k]&&((flow[k]>>31)==(UDST(v->mode)==AMP))&&v->d>=(UDST(v->mode)==AFP?64:0)&&(unsigned long)v->d/8==((flow[k]&0x7fffffffU)>>2)/8)flow[k]=0;','if(0)flow[k]=0;','borrow owner overwrite refused'),
    ('native64-raw-array-code.h','p->s.i.s=(s->m>>24)&255;','p->s.i.s=0;','Winplace predicate:'))
   for header,before,after,predicate in controls:
    for name in headers:(w/name).write_text((ROOT/'include'/name).read_text())

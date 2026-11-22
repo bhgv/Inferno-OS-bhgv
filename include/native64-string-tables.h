@@ -48,6 +48,16 @@ native64modulestringscheck(const Native64ModuleSpec *s)
       for(k=0;k<a->count;k++){v=a->values+k;if(v->offset!=8*k||!native64moduletext(v->text,v->bytes)||v->bytes>1024*1024-total)return 0;total+=v->bytes;}
      }
     }
+    {unsigned int j,entries=0;const Native64ModuleWordArray *a;
+     if(s->nwordarrays>256||(s->nwordarrays&&(s->wordarrays==nil||s->wordarrays==H)))return 0;end=0;
+     for(i=0;i<s->nwordarrays;i++){
+      a=s->wordarrays+i;
+      if(a->offset<end||a->offset%8||a->offset>s->databytes||8>s->databytes-a->offset||!(s->datamap[a->offset/64]&(128>>((a->offset/8)%8)))||a->count>65536-entries||(a->count&&(a->values==nil||a->values==H)))return 0;
+      entries+=a->count;end=a->offset+8;
+      for(j=0;j<s->nstrings;j++)if(s->strings[j].offset==a->offset)return 0;
+      for(j=0;j<s->narrays;j++)if(s->arrays[j].offset==a->offset)return 0;
+     }
+    }
     return 1;
 }
 

@@ -82,10 +82,10 @@ def main():
         try: read(image(payload),with_types=True,with_data=True,with_arrays=True)
         except RuntimeError: pass
         else: raise RuntimeError('initializer refusal lost: '+label)
-    try: read(image(numeric),with_types=True,with_data=True)
+    try: read(image(numeric),with_types=True,with_data=True,with_arrays=False)
     except RuntimeError as error: assert str(error)=='Non-flat classic initializer in this bounded source gate'
     else: raise RuntimeError('flat-only reader admission changed')
-    print(f'PASS classic array oracle: 4 positive graphs, {len(bad)} malformed refusals; flat-only policy preserved')
+    print(f'PASS classic array oracle: 4 positive graphs, {len(bad)} malformed refusals; explicit flat-only policy preserved')
 
 
 if __name__=='__main__': main()

@@ -837,7 +837,8 @@ comparison, and remove the unproved-copy precheck; each must fail its predicate.
 Image regressions retain 3168 scenarios and their three active controls. Their
 checked IR is identical after routing ordinary accesses through the common path.
 The old nominal allocation boundary now accepts arbitrary reference elements;
-scalar and inline mixed-record array allocation remains outside this change.
+Word arrays are covered below; big/real and inline mixed-record array allocation
+remains outside this change.
 The Image stride control and Wmsrv trailing-root control target the current
 shared code after earlier refactors. CI runs the managed-array test in its
 existing CPU jobs and triggers for changes to its fixtures.
@@ -847,3 +848,52 @@ from 70/134 to 72/134 bodies; the 16-module startup frontier is 309/385. All
 ordinary/classic bytes remain identical, and no system Limbo source was edited.
 Local runtime evidence is Linux amd64 with UBSan; full shell and Android device
 startup, and the other OS/32-bit/CPU combinations, are not established here.
+
+## Global Word32 arrays and raw owner identity
+
+The existing raw Word/Winplace.Delta/Draw.Rect array protocols now support MP
+owners as well as FP owners: allocation, indexing, slice copies and slices.
+An integer element or record field can return directly through the caller's
+Word32 result cell. Native addresses remain 64-bit; Limbo `int` values and raw
+Word array elements remain 32-bit.
+
+The owned module spec has trailing private C metadata for Word-array initializers.
+The constructor validates sorted, mapped, nonoverlapping MP root slots, at most
+256 arrays and 65536 total elements, and collisions with String/array/table and
+ordinary initializers before allocating. It uses its owned unmapped 4-byte Type
+and publishes each allocated array into the rooted MP before copying values.
+Dense, sparse and zero-length arrays use the same path; sparse omitted cells are
+zero. Existing C source initializers can omit the new trailing fields.
+No serialized Dis or Styx layout changed.
+
+Raw address proofs retain the owner's FP/MP identity, so equal offsets in the
+two spaces cannot be confused. Replacing a proved owner invalidates its address;
+CALL/MCALL/SPAWN conservatively invalidate MP borrows. The runtime resolves the
+proved MP root, checks its bounds and map, and checks the actual array element
+Type before opcode dispatch. Local owner proofs retain their previous call
+behavior. The existing recursive `arraycpy`/`newmp` path provides independent
+raw array payloads in module instances, including rollback of partial clones.
+
+`python3 utils/tests/native64-word-arrays.py --limbo /path/to/limbo` checks 13
+source bodies with canonical signatures and identical classic bytes, detecting
+204 independent instruction-proof mutations. Its 4920 C/JIT cases cover dense,
+sparse and empty data, signed extremes/bounds, FP/MP operations, returned Words,
+MP rebinding and independent payloads, and global 12/16-byte record fields.
+Wrong width or mapped element Types fail before the index opcode runs. Fourteen
+malformed initializer cases fail before allocation. All 43/44 constructor and
+five MP-clone allocation failures roll back. Three active controls damage
+initializer bits, owner-space identity and global-call invalidation separately.
+
+The source-data regression additionally constructs all 11 unchanged Sh arrays
+and verifies their 546 numeric elements, two independent clones and retirement;
+it does not execute Sh. Its classic-reader negative test explicitly selects
+`with_arrays=False`, preserving that option while the decoder default supports
+arrays. Managed-array and full Winplace regressions retain 6912 scenarios and
+60 processes with active controls. CI includes the new fixture in both existing
+CPU jobs. The former managed-array boundary now admits global Word allocation;
+big/real and inline mixed-record arrays remain outside this change.
+
+Local evidence is Linux amd64 with UBSan. The checked startup frontier remains
+309/385, with Sh at 72/134: the mixed parser stack and other shell dependencies
+are still pending. System Limbo files are untouched. This is not a full shell,
+Android device/APK, or other OS/32-bit/CPU acceptance result.

@@ -42,10 +42,8 @@ def generate(limbo,w):
  for ty,extra in(('int',''),('ref Draw->Pointer',''),('ref Other','Other:adt{r:Draw->Rect;};')):
   source='implement Closed;'+PREFIX+extra+'Closed:module{run:fn(n:int);};saved:array of '+ty+';run(n:int){saved=array[n] of '+ty+';}'
   raw,closed=E['compile_source'](limbo,w,source,interface='',loads=True)
-  if ty=='int':assert not closed[0]['accepted'],closed
-  else:
-   assert closed[0]['accepted'],closed
-   E['verify'](raw,closed[0],[],loads=True,rows=closed)
+  assert closed[0]['accepted'],closed
+  E['verify'](raw,closed[0],[],loads=True,rows=closed)
  _,records=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True)
  for name in('init','handlerequest','sizewin','showborders'):
   row=next(r for r in records if r['name']==name);print('AWM',name,':',row['accepted'],row.get('pc'),row.get('reason'),flush=True)

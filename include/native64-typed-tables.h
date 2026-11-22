@@ -78,6 +78,7 @@ native64moduletablescheck(const Native64ModuleSpec *s)
             for(k=0;k<s->ninitial;k++)if(s->initial[k].offset<t->offset+bytes && t->offset<s->initial[k].offset+s->initial[k].width)return 0;
             for(k=0;k<s->nstrings;k++)if(s->strings[k].offset<t->offset+bytes && t->offset<s->strings[k].offset+8)return 0;
             for(k=0;k<s->narrays;k++)if(s->arrays[k].offset<t->offset+bytes && t->offset<s->arrays[k].offset+8)return 0;
+            for(k=0;k<s->nwordarrays;k++)if(s->wordarrays[k].offset<t->offset+bytes && t->offset<s->wordarrays[k].offset+8)return 0;
             for(k=0;k<=i;k++){
                 g=s->functions+k;
                 for(l=0;l<(k==i?j:g->ncases);l++){

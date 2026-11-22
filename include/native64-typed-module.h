@@ -46,6 +46,8 @@ typedef struct Native64ModuleString Native64ModuleString;
 struct Native64ModuleString {unsigned int offset,bytes;const uchar *text;};
 typedef struct Native64ModuleStringArray Native64ModuleStringArray;
 struct Native64ModuleStringArray {unsigned int offset,count;const Native64ModuleString *values;};
+typedef struct Native64ModuleWordArray Native64ModuleWordArray;
+struct Native64ModuleWordArray {unsigned int offset,count;const UWORD *values;};
 typedef struct Native64ModuleCatch Native64ModuleCatch;
 struct Native64ModuleCatch {
     unsigned int function,first,end,target,slot; /* Function-local PCs and a native FP root. */
@@ -68,6 +70,7 @@ struct Native64ModuleSpec {
     const Native64ModuleStringArray *arrays;unsigned int narrays; /* Dense immutable String-array initializers only. */
     Array *(*array)(unsigned int); /* Trusted fresh mapped pointer-array constructor. */
     const Native64ModuleCatch *catches;unsigned int ncatches;
+    const Native64ModuleWordArray *wordarrays;unsigned int nwordarrays;
 };
 #include "native64-typed-tables.h"
 #include "native64-raw-array-module.h"
@@ -193,6 +196,8 @@ native64modulereadonlynil(const Native64ModuleSpec*s,long offset)
  unsigned int i,j,n=0;
  if(s->narrays>256 || (s->narrays && (s->arrays==nil||s->arrays==H)))return 0;
  for(i=0;i<s->narrays;i++)if(s->arrays[i].offset==(unsigned long)offset)return 0;
+ if(s->nwordarrays>256 || (s->nwordarrays && (s->wordarrays==nil||s->wordarrays==H)))return 0;
+ for(i=0;i<s->nwordarrays;i++)if(s->wordarrays[i].offset==(unsigned long)offset)return 0;
  if(s->nstrings>65536 || (s->nstrings && (s->strings==nil || s->strings==H)))return 0;
  for(i=0;i<s->nfunctions;i++){if(!s->functions[i].count || s->functions[i].count>65536-n || s->functions[i].code==nil || s->functions[i].code==H)return 0;n+=s->functions[i].count;}
  for(i=0;i<s->nstrings;i++)if(s->strings[i].offset==(unsigned long)offset)return 0;
@@ -1209,6 +1214,7 @@ native64modulemake(void *arg)
     Native64ModuleBuild *b=arg;const Native64ModuleSpec *s=b->spec;const Native64ModuleFunction *f;
     Module *m;unsigned int i,j,k,pc=0,link=0,ordinal,refarrays=0,refarraytype=0,bytes=0,triples=0,contexts=0,contexttype=0,pointers=0,pointertype=0,mapped2=0,mapped3=0,filewrite=0,fileread=0,mixedreply=0,replytype=0,records=0,rawcount=0,cursor=0,cursortype=0,rawtypes[4]={0},recordids[Native64LibraryRecords+1]={0};Import *imports;const Native64ModuleImport *request;const Native64ModuleTable *table;const Native64ModuleSite *site;const Native64ModuleInit *v;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==79&&s->functions[i].code[j].op==INEWAZ)rawtypes[s->functions[i].code[j].m]=1;
+    if(s->nwordarrays)rawtypes[1]=1;
     for(i=1;i<4;i++)rawcount+=rawtypes[i];
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==77&&s->functions[i].code[j].op==IMOVMP){if(((unsigned long)s->functions[i].code[j].m>>16)==16)mixedreply=1;else if(native64aggregatewidth((unsigned long)s->functions[i].code[j].m>>16)==16)mapped2=1;else mapped3=1;}
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].op==INEWAZ){if(s->functions[i].code[j].returned==254)refarrays=1;else if(s->functions[i].code[j].returned!=79)bytes=1;}
@@ -1328,6 +1334,12 @@ native64modulemake(void *arg)
         const Native64ModuleStringArray*v=s->arrays+i;Array*a=s->array(v->count);if(a==nil||a==H)error(exInval);
         memmove(m->origmp+v->offset,&a,sizeof(a));
         for(j=0;j<v->count;j++){String*text=s->string((char*)v->values[j].text,v->values[j].bytes);if(text==nil||text==H)error(exInval);memmove(a->data+8*j,&text,8);}
+    }
+    for(i=0;i<s->nwordarrays;i++){
+        const Native64ModuleWordArray *v=s->wordarrays+i;
+        Array *a=H2D(Array*,heaparray(m->type[rawtypes[1]],v->count));
+        memmove(m->origmp+v->offset,&a,sizeof(a));
+        for(j=0;j<v->count;j++)memmove(a->data+4*j,v->values+j,4);
     }
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].ncases;j++)
         if(s->functions[i].cases[j].op==ICASEC)m->native64casec=native64modulecasecstep;

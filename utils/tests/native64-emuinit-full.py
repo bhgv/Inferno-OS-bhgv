@@ -115,12 +115,18 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
   n=r.get('export_name',r['name']).replace('.','_');e=exports.get(r.get('export_name',n));nsites=len(r.get('externals',[]))+len(r.get('calls',[]));nt=len(r.get('tables',[]))
   lines+=['{'+json.dumps(r.get('export_name',r['name']))+f',{e["signature"]if e else 0}U,{int(e is not None)},full_code_{n},{len(r["code"])},{r["frame"]["bytes"]},full_map_{n},{len(r["frame"]["map"])},'+('full_sites_'+n if nsites else'nil')+f',{nsites},'+('full_cases_'+n if nt else'nil')+f',{nt},{r['result_aggregate']if r.get('result_aggregate')else 12 if r.get("result_words")else 16 if r.get("result_mixed")else 72 if r.get("result_channels")else 48 if r.get("result_pair")else 96 if r.get("result_geometry")==8 else 112 if r.get("result_geometry")==16 else 0}'+'},']
  lines+=['};'];array('full_data_map',rows[0]['data']['map']);initial=E['BASE']['READ']['legacy_instructions'](data,with_types=True,with_data=True)[3]
- strings=[];values=[];stringarrays=[];layout=rows[0]['data'];ranges=[(t['offset'],t['offset']+(4+4*len(t['rows'])if t['op']==3 else 12+24*len(t['rows'])if t['op']==144 and t['rows']else 8+12*len(t['rows'])))for r in rows for t in r.get('tables',[])]
+ strings=[];values=[];stringarrays=[];wordarrays=[];layout=rows[0]['data'];ranges=[(t['offset'],t['offset']+(4+4*len(t['rows'])if t['op']==3 else 12+24*len(t['rows'])if t['op']==144 and t['rows']else 8+12*len(t['rows'])))for r in rows for t in r.get('tables',[])]
  for old,cell in sorted(initial.items()):
   leaf=next(l for l in layout['leaves']if l[0]<=old<l[0]+l[2]);offset=leaf[1]+old-leaf[0]
   if any(a<=offset<b for a,b in ranges):continue
   if cell['kind']=='array':
-   descriptor=E['BASE']['READ']['legacy_instructions'](data,with_types=True)[2][cell['descriptor']];assert descriptor==(4,bytes([128]))or descriptor==(4,[128]),descriptor
+   descriptor=E['BASE']['READ']['legacy_instructions'](data,with_types=True)[2][cell['descriptor']]
+   if descriptor[0]==4 and not any(descriptor[1]):
+    assert 0<=cell['length']<=65536 and all(k%4==0 and 0<=k<4*cell['length'] and v['kind']=='word'for k,v in cell['initial'].items())
+    name=f'full_word_values_{old}';words=[cell['initial'].get(4*k,{}).get('low',0)&0xffffffff for k in range(cell['length'])]
+    lines.append('static const UWORD '+name+'[]={'+','.join(str(v)+'U'for v in words or [0])+'};')
+    wordarrays.append('{'+f'{offset},{cell["length"]},{name}'+'}');continue
+   assert descriptor==(4,bytes([128]))or descriptor==(4,[128]),descriptor
    assert set(cell['initial'])==set(range(0,cell['length']*4,4))
    elements=[]
    for k,item in sorted(cell['initial'].items()):
@@ -132,6 +138,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
    width={'byte':1,'word':4,'long':8,'real':8}[cell['kind']];bits=cell.get('high',0)<<32|cell['low'];values.append('{'+f'{offset},{width},{bits}ULL'+'}')
  lines+=['static const Native64ModuleString full_strings[]={'+','.join(strings)+'};','static const Native64ModuleInit full_initial[]={'+','.join(values or ['{0,0,0}'])+'};']
  lines+=['static const Native64ModuleStringArray full_arrays[]={'+','.join(stringarrays or ['{0,0,nil}'])+'};']
+ lines+=['static const Native64ModuleWordArray full_wordarrays[]={'+','.join(wordarrays or ['{0,0,nil}'])+'};']
  if stringarrays:lines+=['static Array*fullarray(unsigned int count){return H2D(Array*,heaparray(&Tptr,count));}']
  catches=[]
  for i,h in checked_catches(data,rows):
@@ -140,7 +147,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
    cleanup=f'full_catch_cleanup_{i}';array(cleanup,h['cleanup'])
   catches.append('{'+f'{i},{h["first"]},{h["end"]},{h["target"]},{h["slot"]},'+json.dumps(h['pattern'])+f',{cleanup},{len(h["cleanup"])}'+'}')
  if catches:lines+=['static const Native64ModuleCatch full_catches[]={'+','.join(catches)+'};']
- lines+=['static const Native64ModuleSpec full_spec={'+json.dumps(module)+','+json.dumps('trusted/'+module)+',full_functions,'+str(len(rows))+','+entry+','+f'{layout["bytes"]},full_data_map,{len(layout["map"])},full_initial,{len(values)},full_tables,{len(imports)},c2string,full_strings,{len(strings)},fullload,full_arrays,{len(stringarrays)},'+('fullarray'if stringarrays else'nil')+(','+f'full_catches,{len(catches)}'if catches else'')+'};']
+ lines+=['static const Native64ModuleSpec full_spec={'+json.dumps(module)+','+json.dumps('trusted/'+module)+',full_functions,'+str(len(rows))+','+entry+','+f'{layout["bytes"]},full_data_map,{len(layout["map"])},full_initial,{len(values)},full_tables,{len(imports)},c2string,full_strings,{len(strings)},fullload,full_arrays,{len(stringarrays)},'+('fullarray'if stringarrays else'nil')+(','+f'full_catches,{len(catches)}'if catches else',nil,0')+',full_wordarrays,'+str(len(wordarrays))+'};']
  variables=[]
  for i,r in enumerate(rows):
   for j,v in enumerate(r.get('variadics',[])):
