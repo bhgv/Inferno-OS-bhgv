@@ -1263,7 +1263,12 @@ Context.run(ctxt: self ref Context, args: list of ref Listnode, last: int): stri
 Context.addmodule(ctxt: self ref Context, name: string, mod: Shellbuiltin)
 {
 	mod->initbuiltin(ctxt, myself);
-	ctxt.env.bmods = (name, mod->getself()) :: ctxt.env.bmods;
+	identity := mod->getself();
+	environment := ctxt.env;
+	modules := environment.bmods;
+	entry := (name, identity);
+	modules = entry :: modules;
+	environment.bmods = modules;
 }
 
 Context.addbuiltin(c: self ref Context, name: string, mod: Shellbuiltin)
@@ -2089,7 +2094,12 @@ loadmodule(ctxt: ref Context, name: string): string
 		return "bad module";
 	}
 	s := mod->initbuiltin(ctxt, myself);
-	ctxt.env.bmods = (name, mod->getself()) :: ctxt.env.bmods;
+	identity := mod->getself();
+	environment := ctxt.env;
+	modules := environment.bmods;
+	entry := (name, identity);
+	modules = entry :: modules;
+	environment.bmods = modules;
 	if (s != nil) {
 		unloadmodule(ctxt, name);
 		diagnostic(ctxt, "load: module init failed: " + s);

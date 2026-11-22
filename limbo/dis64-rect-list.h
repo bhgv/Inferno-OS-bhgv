@@ -31,23 +31,26 @@ typedrectlist(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 }
 
 static int
-typedstringpair(Type *t)
+typedshellmappedpair(Type *t)
 {
  Decl *d;
  return t&&t->kind==Ttuple&&(d=t->ids)&&d->ty==tstring&&
-        d->next&&d->next->ty==tstring&&!d->next->next;
+        d->next&&!d->next->next&&d->next->ty&&
+        (d->next->ty==tstring||
+         (d->next->ty->kind==Tmodule&&d->next->ty->decl&&d->next->ty->decl->sym&&
+          !strcmp(d->next->ty->decl->sym->name,"Shellbuiltin")));
 }
 
 static int
-typedstringpairlist(Addr *a)
+typedshellmappedpairlist(Addr *a)
 {
  Type *t=typedloadvaluetype(a);
  return a->decl&&a->reg==a->decl->offset&&!a->offset&&
-        t&&t->kind==Tlist&&typedstringpair(t->tof);
+        t&&t->kind==Tlist&&typedshellmappedpair(t->tof);
 }
 
 static int
-typedstringpairlistop(Inst *in,Dis64TypedBody *p,Dis64Instruction *out,uchar *returned)
+typedshellmappedpairlistop(Inst *in,Dis64TypedBody *p,Dis64Instruction *out,uchar *returned)
 {
  int cons=in->op==ICONSMP,tail=in->op==ITAIL,actual,vm;
  unsigned int sm,dm,base,next;
@@ -55,8 +58,8 @@ typedstringpairlistop(Inst *in,Dis64TypedBody *p,Dis64Instruction *out,uchar *re
  Addr *value=cons?&in->s:&in->d;
  Decl *d=in->m.decl;
  Dis64Layout *layout;
- if(in->branch||(!cons&&!typedstringpairlist(&in->s))||
-    ((cons||tail)&&!typedstringpairlist(&in->d)))goto bad;
+ if(in->branch||(!cons&&!typedshellmappedpairlist(&in->s))||
+    ((cons||tail)&&!typedshellmappedpairlist(&in->d)))goto bad;
  if(tail){
   if(in->mm!=Anone||
      !typedoperand(in->sm,&in->s,Tlist,0,0,p,&list,&sm,&actual)||
@@ -76,5 +79,5 @@ typedstringpairlistop(Inst *in,Dis64TypedBody *p,Dis64Instruction *out,uchar *re
  *out=(Dis64Instruction){in->op,(cons?SRC(dm)|DST(sm):SRC(sm)|DST(dm))|AXIMM,16,
                         cons?base:list,cons?list:base};
  *returned=cons?248:249;return 1;
- bad:return typedfail(p,"string-pair-list-layout");
+ bad:return typedfail(p,"shell-pair-list-layout");
 }

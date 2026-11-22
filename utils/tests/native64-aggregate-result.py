@@ -6,8 +6,22 @@ ROOT=Path(__file__).resolve().parents[2]
 B=runpy.run_path(str(ROOT/'utils/tests/native64-local-geometry-args.py'));G,CMD,E=B['G'],B['CMD'],B['E']
 DECL='Winplace:module{run:fn(n:int);};'
 SOURCE='''implement Winplace;include "sys.m";include "draw.m";include "tk.m";include "sh.m";Point,Rect:import Draw;Listnode,Var,Localenv:import Sh;'''+DECL+'''EW,NS:con iota;Lay:adt{d:int;mkr:fn(l:self Lay,r:Rect):Rect;};
-envtext,envvalue,envfirst,envfirstvalue:string;lookupchild,lookupparent,lookuppos,lookupmiss:list of ref Sh->Listnode;envvar,hashfirst,hashmiss:ref Sh->Var;envcount:int;shellctx:ref Sh->Context;shellflags:int;catchvalue:int;nodes,converted,empty_nodes:list of ref Sh->Listnode;menutext:string;topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
-run(n:int){rest:=tl nodes;entry:=hd rest;added:=ref Sh->Listnode(nil,entry.word);nodes=added::nodes;front:=hd nodes;menutext=front.word;inputwords:="first"::"second"::nil;converted=stringlist2list(inputwords);no_words:list of string;empty_nodes=stringlist2list(no_words);shellrecords(n);shelllookup();envpairs(n);buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;catchprobe(n);(top,event):=tkpair(n);topout=top;eventout=event;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
+envtext,envvalue,envfirst,envfirstvalue:string;builtinmarker,builtinmatch,builtinmissing:Shellbuiltin;lookupchild,lookupparent,lookuppos,lookupmiss:list of ref Sh->Listnode;envvar,hashfirst,hashmiss:ref Sh->Var;envcount:int;shellctx:ref Sh->Context;shellflags:int;catchvalue:int;nodes,converted,empty_nodes:list of ref Sh->Listnode;menutext:string;topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
+run(n:int){rest:=tl nodes;entry:=hd rest;added:=ref Sh->Listnode(nil,entry.word);nodes=added::nodes;front:=hd nodes;menutext=front.word;inputwords:="first"::"second"::nil;converted=stringlist2list(inputwords);no_words:list of string;empty_nodes=stringlist2list(no_words);shellrecords(n);shelllookup();builtinlookup(n);envpairs(n);buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;catchprobe(n);(top,event):=tkpair(n);topout=top;eventout=event;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
+builtinlookup(n:int){
+ modules:list of (string, Shellbuiltin);
+ if(n>=0){
+  entry:=("available",builtinmarker);
+  modules=entry::modules;
+  entry=("missing",nil);
+  modules=entry::modules;
+ }
+ for(;modules!=nil;modules=tl modules){
+  (name,builtin):=hd modules;
+  if(name=="available")builtinmatch=builtin;
+  else builtinmissing=builtin;
+ }
+}
 shelllookup(){
  outer:=array[7] of list of ref Var;
  inner:=array[7] of list of ref Var;
@@ -56,8 +70,8 @@ SOURCE+=re.search(r'(?ms)^Context\.get\([^\n]*\n\{.*?^\}',(ROOT/'appl/cmd/sh/sh.
 
 def generate(limbo,w):
  m=w/'aggregate.m';m.write_text(DECL);h=subprocess.check_output([str(limbo),'-H','-M','Winplace',str(m)],text=True);sigs={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Winplace_(\w+) (0x[0-9a-f]+)U',h,re.M)}
- rows=G['generate'](limbo,w,SOURCE,'Winplace',(30,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
- p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout','nodes','menutext','catchvalue','converted','empty_nodes','shellctx','shellflags','envtext','envcount','envvalue','envfirst','envfirstvalue','envvar','hashfirst','hashmiss','lookupchild','lookupparent','lookuppos','lookupmiss'))+'};\n')
+ rows=G['generate'](limbo,w,SOURCE,'Winplace',(31,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
+ p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout','nodes','menutext','catchvalue','converted','empty_nodes','shellctx','shellflags','envtext','envcount','envvalue','envfirst','envfirstvalue','envvar','hashfirst','hashmiss','lookupchild','lookupparent','lookuppos','lookupmiss','builtinmarker','builtinmatch','builtinmissing'))+'};\n')
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);count=0
  for row in records:
   for pc,c in enumerate(row['code']):
@@ -101,11 +115,11 @@ def generate(limbo,w):
  shell=(ROOT/'appl/cmd/sh/sh.b').read_text()
  data,records=E['compile_source'](limbo,w,shell,interface='',loads=True)
  imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]
- for name in ('stringlist2list','revlist','hashadd','hashfind','newlocalenv','varfind','get'):
+ for name in ('stringlist2list','revlist','hashadd','hashfind','newlocalenv','varfind','get','addmodule','getself'):
   row=next(r for r in records if r['name']==name and (name!='get' or r['export_name']=='Context.get'))
   assert row['accepted'],row
   CMD['verify_nilbranches'](data,row,imports,rows=records)
- print('PASS original Sh: checked shell argument conversion and environment hash operations',flush=True)
+ print('PASS original Sh: checked shell arguments, environment and builtin registration',flush=True)
  for name in('Other','Lay'):
   source='implement Closed;'+name+':adt{d:int;};Closed:module{run:fn(x:'+name+');};run(x:'+name+'){take(x);}take(x:'+name+'){}'
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert not next(r for r in closed if r['name']=='run')['accepted'],closed
