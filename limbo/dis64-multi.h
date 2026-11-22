@@ -1094,6 +1094,29 @@ typedlocalgeometryliteral(TypedMulti*c,Dis64TypedBody*p,Dis64TypedBody*child,Ins
  done:dis64layoutfree(&l);return ok?1:typedfail(p,"local-geometry-literal");
 }
 
+/* A string-labelled handler refines only its own exception slot. The
+ * front end records the per-use String type before restoring rtexception. */
+static int
+typedcaughtstring(Inst *in, Dis64TypedBody *p)
+{
+ Except *e;
+ Label *label;
+ int i;
+ Addr *a=&in->s;
+ if(in->op!=IMOVP||in->sm!=Afp||!a->decl||a->decl->ty!=rtexception||
+    a->native64type!=tstring||a->offset||a->reg!=a->decl->offset)return 0;
+ for(e=typedreportcatches;e;e=e->next){
+  if(e->d!=a->decl||e->ne||!e->c||getpc(e->p1)<p->first||
+     getpc(e->p2)>in->pc)continue;
+  for(i=0;i<e->c->nlab;i++){
+   label=e->c->labs+i;
+   if(label->start&&label->start==label->stop&&label->start->ty==tstring&&
+      label->inst&&label->inst->pc>=getpc(e->p2)&&label->inst->pc<=in->pc)return 1;
+  }
+ }
+ return 0;
+}
+
 static int
 typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int depth,unsigned int *next,unsigned int *height)
 {
@@ -1270,7 +1293,8 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
            !dis64layoutaddress(&child->frame,arg->offset,width,root,&offset) || offset>65535 ||
            !(kind==Tbyte && c->external>=2?typedclientbyteoperand(in->sm,&in->s,kind,p,&source,&sm):
              typedoperand(in->sm,&in->s,root?TypedRoot:kind,!root && width<8,0,p,&source,&sm,&actual)) ||
-           (root && actual!=kind && actual!=Tany))return typedfail(p,"multi-argument");
+           (root && actual!=kind && actual!=Tany &&
+            !(c->loads && kind==Tstring && typedcaughtstring(in,p))))return typedfail(p,"multi-argument");
         p->code[at-p->first]=(Dis64Instruction){op,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=64;
         if(c->loads && root){unsigned int before=at;if(!typedrootargclear(c,p,in,end,&at))return 0;if(at!=before)p->returns[at-1-p->first]=182;}
     }

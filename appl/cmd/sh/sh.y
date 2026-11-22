@@ -386,8 +386,9 @@ nonexistent(e: string): int
 {
 	errs := array[] of {"does not exist", "directory entry not found"};
 	for (i := 0; i < len errs; i++){
-		j := len errs[i];
-		if (j <= len e && e[len e-j:] == errs[i])
+		suffix := errs[i];
+		j := len suffix;
+		if (j <= len e && e[len e-j:] == suffix)
 			return 1;
 	}
 	return 0;
@@ -891,10 +892,13 @@ runexternal(ctxt: ref Context, args: list of ref Listnode, last: int): string
 				}
 			}
 			extstart := chan of int;
-			spawn externalexec(mod, ctxt.drawcontext, argv, extstart, ctxt.keepfds);
+			drawcontext := ctxt.drawcontext;
+			keepfds := ctxt.keepfds;
+			spawn externalexec(mod, drawcontext, argv, extstart, keepfds);
 			pid := <-extstart;
 			if (DEBUG) debug("started external externalexec; pid is "+string pid);
-			return waitfor(ctxt, pid :: nil);
+			pids := pid :: nil;
+			return waitfor(ctxt, pids);
 		}
 		err = sys->sprint("%r");
 		if (nonexistent(err)) {
@@ -1131,19 +1135,25 @@ waitfor(ctxt: ref Context, pids: list of int): string
 		n := sys->read(ctxt.waitfd, buf, len buf);
 		if(n < 0)
 			panic(sys->sprint("error on wait read: %r"));
-		(who, line, s) := parsewaitstatus(ctxt, string buf[0:n]);
+		line := string buf[0:n];
+		s := parsewaitstatus(ctxt, line);
+		who := int line;
 		if (s != nil) {
 			if (len s >= 5 && s[0:5] == "fail:")
 				s = failurestatus(s);
 			else
 				diagnostic(ctxt, line);
 		}
-		for ((i, pl) := (0, pids); pl != nil; (i, pl) = (i+1, tl pl))
+		i := 0;
+		for (pl := pids; pl != nil; pl = tl pl) {
 			if (who == hd pl)
 				break;
+			i++;
+		}
 		if (i < len status) {
 			# wait returns two records for a killed process...
-			if (status[i] == nil || s != "killed") {
+			prior := status[i];
+			if (prior == nil || s != "killed") {
 				onebad += s != nil;
 				status[i] = s;
 				if (wcount-- <= 1)
@@ -1154,12 +1164,14 @@ waitfor(ctxt: ref Context, pids: list of int): string
 	if (!onebad)
 		return nil;
 	r := status[len status - 1];
-	for (i := len status - 2; i >= 0; i--)
-		r += "|" + status[i];
+	for (i := len status - 2; i >= 0; i--) {
+		part := status[i];
+		r += "|" + part;
+	}
 	return r;
 }
 
-parsewaitstatus(ctxt: ref Context, status: string): (int, string, string)
+parsewaitstatus(ctxt: ref Context, status: string): string
 {
 	for (i := 0; i < len status; i++)
 		if (status[i] == ' ')
@@ -1175,7 +1187,7 @@ parsewaitstatus(ctxt: ref Context, status: string): (int, string, string)
 		ctxt.fail("bad wait read",
 			sys->sprint("sh: bad exit status '%s'", status));
 
-	return (int status, status, status[i+2:]);
+	return status[i+2:];
 }
 
 panic(s: string)
