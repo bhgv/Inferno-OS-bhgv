@@ -1249,7 +1249,8 @@ Context.run(ctxt: self ref Context, args: list of ref Listnode, last: int): stri
 	if (args == nil || ((hd args).cmd == nil && (hd args).word == nil))
 		return nil;
 	cmd := hd args;
-	if (cmd.cmd != nil || cmd.word[0] == '{')	# }
+	commandword := cmd.word;
+	if (cmd.cmd != nil || commandword[0] == '{')	# }
 		return runblock(ctxt, args, last);
 
 	if (ctxt.options() & ctxt.EXECPRINT)
