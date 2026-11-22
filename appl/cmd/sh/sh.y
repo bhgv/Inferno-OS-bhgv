@@ -1269,11 +1269,14 @@ Context.get(ctxt: self ref Context, name: string): list of ref Listnode
 		}
 	}
 
-	v := varfind(ctxt.env.localenv, name);
+	environment := ctxt.env;
+	localenv := environment.localenv;
+	v := varfind(localenv, name);
 	if (v != nil) {
+		value := v.val;
 		if (idx != -1)
-			return index(v.val, idx);
-		return v.val;
+			return index(value, idx);
+		return value;
 	}
 	return nil;
 }
@@ -1389,11 +1392,14 @@ Context.removesbuiltin(c: self ref Context, name: string, mod: Shellbuiltin)
 
 varfind(e: ref Localenv, name: string): ref Var
 {
-	idx := hashfn(name, len e.vars);
-	for (; e != nil; e = e.pushed)
-		for (vl := e.vars[idx]; vl != nil; vl = tl vl)
-			if ((hd vl).name == name)
-				return hd vl;
+	bucketcount := len e.vars;
+	idx := hashfn(name, bucketcount);
+	for (; e != nil; e = e.pushed) {
+		buckets := e.vars;
+		entry := hashfind(buckets, idx, name);
+		if (entry != nil)
+			return entry;
+	}
 	return nil;
 }
 
