@@ -43,9 +43,9 @@ agseedbuiltins(Modlink *ml, Modlink *marker)
  uchar *record=H2D(uchar*,heapz(builtins));
  void **slots=(void**)table->data;
  WORD used=3;
- const char *names[]={"a","b","c"};
+ const char *names[]={"a","beta","c"};
  int i;
- for(i=0;i<3;i++)slots[2*i]=c2string((char*)names[i],1);
+ for(i=0;i<3;i++)slots[2*i]=c2string((char*)names[i],strlen(names[i]));
  slots[1]=agprovider(marker,H);
  slots[3]=agprovider(marker,agprovider(other,H));
  slots[5]=agprovider(other,H);
@@ -64,14 +64,28 @@ agcheckbuiltins(Modlink *ml, WORD n)
  Array *table;
  void **slots;
  List *providers;
- WORD used;
+ Modlink *marker;
+ WORD used,offset;
+ const WORD expected[]={-1,-3,-4,-1};
+ unsigned int i;
+ memmove(&marker,ml->MP+aggregate_globals[40],8);
+ memmove(&providers,ml->MP+aggregate_globals[44],8);
+ agcheck(providers!=H&&providers->tail!=H&&providers->tail->tail==H&&
+         *(void**)providers->data==marker&&*(void**)providers->tail->data!=marker,
+         "binary search returns the provider chain");
+ memmove(&providers,ml->MP+aggregate_globals[45],8);
+ agcheck(providers==H,"missing builtin returns nil");
+ for(i=0;i<nelem(expected);i++){
+  memmove(&offset,ml->MP+aggregate_globals[46+i],4);
+  agcheck(offset==expected[i],"binary search preserves insertion positions");
+ }
  memmove(&record,ml->MP+aggregate_globals[43],8);
  memmove(&table,record,8);
  memmove(&used,record+8,4);
  slots=(void**)table->data;
  agcheck(used==(n<0?3:2)&&table->len==3,"builtin table count");
  if(n<0)return;
- agcheck(!strcmp(string2c(slots[0]),"b")&&!strcmp(string2c(slots[2]),"c"),
+ agcheck(!strcmp(string2c(slots[0]),"beta")&&!strcmp(string2c(slots[2]),"c"),
          "builtin compaction preserves sorted order");
  providers=slots[1];
  agcheck(providers!=H&&providers->tail==H&&*(void**)providers->data!=H&&
@@ -235,7 +249,7 @@ agpairmetadata(void)
    }
   }
  }
- agcheck(total==12&&!live,"all three builtin table accesses checked");
+ agcheck(total==20&&!live,"all five builtin table accesses checked");
  printf("PASS builtin table: %u invalid index/copy pairs refused, exact runtime element map\n",total);
 }
 
@@ -316,4 +330,4 @@ agcatch(void)
 }
 int main(void){uint jit,q,n,total=0;int quanta[]={1,3,1000};WORD words[]={(-2147483647-1),-1,0,2147483647};rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;Tarray.free=freearray;Tarray.size=sizeof(Array);require(dis64selectlaunch("dis64-calls"));
  AGGREGATE_HANDLERS
- optab[INEWAZ]=actual_newaz;optab[IINDB]=actual_indb;optab[IINDL]=actual_indl;optab[IINDX]=actual_indx;optab[ILENA]=actual_lena;optab[IBNEC]=actual_bnec;optab[ICVTWB]=actual_cvtwb;optab[ISHRW]=actual_shrw;optab[ICONSM]=actual_consm;optab[IHEADM]=actual_headm;optab[IHEADP]=actual_headp;optab[ICONSP]=actual_consp;optab[ICONSMP]=actual_consmp;optab[IHEADMP]=actual_headmp;optab[INEWZ]=actual_newz;optab[ITAIL]=actual_tail;optab[ILENC]=actual_lenc;optab[IINDC]=actual_indc;optab[IINSC]=actual_insc;optab[ISLICEC]=actual_slicec;optab[ICVTCW]=actual_cvtcw;optab[IMOVP]=actual_movp;optab[IMOVM]=actual_movm;optab[IMOVMP]=actual_movmp;optab[IRAISE]=actual_iraise;agcatch();agmetadata();agbytemetadata();agpairmetadata();agconstruction();for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(n=0;n<nelem(words);n++){if(jit&&!CatchJit&&words[n]<0)continue;agcase(jit,quanta[q],words[n]);total++;}printf("PASS aggregate results: %u C/JIT processes, mixed/nested/mapped results, extreme Words, caller guards and complete retirement\n",total);return 0;}
+ optab[INEWAZ]=actual_newaz;optab[IINDB]=actual_indb;optab[IINDL]=actual_indl;optab[IINDX]=actual_indx;optab[ILENA]=actual_lena;optab[IBNEC]=actual_bnec;optab[IBLEC]=actual_blec;optab[IBGEC]=actual_bgec;optab[ICVTWB]=actual_cvtwb;optab[ISHRW]=actual_shrw;optab[ICONSM]=actual_consm;optab[IHEADM]=actual_headm;optab[IHEADP]=actual_headp;optab[ICONSP]=actual_consp;optab[ICONSMP]=actual_consmp;optab[IHEADMP]=actual_headmp;optab[INEWZ]=actual_newz;optab[ITAIL]=actual_tail;optab[ILENC]=actual_lenc;optab[IINDC]=actual_indc;optab[IINSC]=actual_insc;optab[ISLICEC]=actual_slicec;optab[ICVTCW]=actual_cvtcw;optab[IMOVP]=actual_movp;optab[IMOVM]=actual_movm;optab[IMOVMP]=actual_movmp;optab[IRAISE]=actual_iraise;agcatch();agmetadata();agbytemetadata();agpairmetadata();agconstruction();for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(n=0;n<nelem(words);n++){if(jit&&!CatchJit&&words[n]<0)continue;agcase(jit,quanta[q],words[n]);total++;}printf("PASS aggregate results: %u C/JIT processes, mixed/nested/mapped results, extreme Words, caller guards and complete retirement\n",total);return 0;}

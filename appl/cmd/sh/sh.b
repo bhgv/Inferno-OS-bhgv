@@ -587,7 +587,9 @@ subsbuiltin(ctxt: ref Context, n: ref Node): list of ref Listnode
 	if (cmd == nil || (hd cmd).word == nil || (hd cmd).cmd != nil)
 		ctxt.fail("bad $ arg", "sh: bad builtin name");
 
-	(nil, bmods) := findbuiltin(ctxt.env.sbuiltins, (hd cmd).word);
+	sbuiltins := ctxt.env.sbuiltins;
+	commandname := (hd cmd).word;
+	bmods := builtinproviders(sbuiltins, commandname);
 	if (bmods == nil)
 		ctxt.fail("builtin not found",
 			sys->sprint("sh: builtin %s not found", (hd cmd).word));
@@ -891,7 +893,9 @@ runblock(ctxt: ref Context, args: list of ref Listnode, last: int): string
 trybuiltin(ctxt: ref Context, args: list of ref Listnode, lseq: int)
 		: (int, string)
 {
-	(nil, bmods) := findbuiltin(ctxt.env.builtins, (hd args).word);
+	builtins := ctxt.env.builtins;
+	commandname := (hd args).word;
+	bmods := builtinproviders(builtins, commandname);
 	if (bmods == nil)
 		return (0, nil);
 	return (1, (hd bmods)->runbuiltin(ctxt, myself, args, lseq));
@@ -1396,21 +1400,44 @@ copybuiltins(b: ref Builtins): ref Builtins
 	return nb;
 }
 
-findbuiltin(b: ref Builtins, name: string): (int, list of Shellbuiltin)
+# Return the matching index, or -1 minus the insertion index.
+builtinindex(table: array of (string, list of Shellbuiltin), count: int, name: string): int
 {
 	lo := 0;
-	hi := b.n - 1;
+	hi := count - 1;
 	while (lo <= hi) {
 		mid := (lo + hi) / 2;
-		(bname, bmod) := b.ba[mid];
+		(bname, nil) := table[mid];
 		if (name < bname)
 			hi = mid - 1;
 		else if (name > bname)
 			lo = mid + 1;
 		else
-			return (mid, bmod);
+			return mid;
 	}
-	return (lo, nil);
+	return -1 - lo;
+}
+
+findbuiltin(b: ref Builtins, name: string): (int, list of Shellbuiltin)
+{
+	table := b.ba;
+	count := b.n;
+	index := builtinindex(table, count, name);
+	if (index < 0)
+		return (-1 - index, nil);
+	(nil, providers) := table[index];
+	return (index, providers);
+}
+
+builtinproviders(b: ref Builtins, name: string): list of Shellbuiltin
+{
+	table := b.ba;
+	count := b.n;
+	index := builtinindex(table, count, name);
+	if (index < 0)
+		return nil;
+	(nil, providers) := table[index];
+	return providers;
 }
 
 removebuiltin(b: ref Builtins, name: string, mod: Shellbuiltin)
@@ -1836,10 +1863,16 @@ sbuiltin_builtin(ctxt: ref Context, args: list of ref Listnode): list of ref Lis
 	if (args == nil || tl args == nil)
 		builtinusage(ctxt, "builtin command [args ...]");
 	name := (hd tl args).word;
-	(nil, mods) := findbuiltin(ctxt.env.sbuiltins, name);
-	for (; mods != nil; mods = tl mods)
-		if (hd mods == myselfbuiltin)
-			return (hd mods)->runsbuiltin(ctxt, myself, tl args);
+	sbuiltins := ctxt.env.sbuiltins;
+	mods := builtinproviders(sbuiltins, name);
+	for (; mods != nil; mods = tl mods) {
+		mod := hd mods;
+		if (mod == myselfbuiltin) {
+			argv := tl args;
+			result := mod->runsbuiltin(ctxt, myself, argv);
+			return result;
+		}
+	}
 	ctxt.fail("builtin not found", sys->sprint("sh: builtin %s not found", name));
 	return nil;
 }
@@ -1984,7 +2017,8 @@ whatisit(ctxt: ref Context, el: ref Listnode): string
 		found++;
 		w += sys->sprint("%s=%s\n", quote(name, 0), quoted(val, 0));
 	}
-	(nil, mods) := findbuiltin(ctxt.env.sbuiltins, name);
+	sbuiltins := ctxt.env.sbuiltins;
+	mods := builtinproviders(sbuiltins, name);
 	if (mods != nil) {
 		mod := hd mods;
 		if (mod == myselfbuiltin)
@@ -1997,7 +2031,8 @@ whatisit(ctxt: ref Context, el: ref Listnode): string
 		}
 		found++;
 	}
-	(nil, mods) = findbuiltin(ctxt.env.builtins, name);
+	builtins := ctxt.env.builtins;
+	mods = builtinproviders(builtins, name);
 	if (mods != nil) {
 		mod := hd mods;
 		if (mod == myselfbuiltin)
@@ -2067,10 +2102,16 @@ builtin_builtin(ctxt: ref Context, args: list of ref Listnode, last: int): strin
 		diagnostic(ctxt, name + " not found");
 		return "not found";
 	}
-	(nil, mods) := findbuiltin(ctxt.env.builtins, name);
-	for (; mods != nil; mods = tl mods)
-		if (hd mods == myselfbuiltin)
-			return (hd mods)->runbuiltin(ctxt, myself, tl args, last);
+	builtins := ctxt.env.builtins;
+	mods := builtinproviders(builtins, name);
+	for (; mods != nil; mods = tl mods) {
+		mod := hd mods;
+		if (mod == myselfbuiltin) {
+			argv := tl args;
+			result := mod->runbuiltin(ctxt, myself, argv, last);
+			return result;
+		}
+	}
 	if (ctxt.options() & ctxt.EXECPRINT)
 		sys->fprint(stderr(), "%s\n", quoted(tl args, 0));
 	return runexternal(ctxt, tl args, last);
