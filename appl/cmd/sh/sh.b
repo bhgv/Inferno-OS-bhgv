@@ -1091,17 +1091,12 @@ Context.new(drawcontext: ref Draw->Context): ref Context
 	initialise();
 	if (env != nil)
 		env->clone();
-	ctxt := ref Context(
-		ref Environment(
-			ref Builtins(nil, 0),
-			ref Builtins(nil, 0),
-			nil,
-			newlocalenv(nil)
-		),
-		waitfd(),
-		drawcontext,
-		0 :: 1 :: 2 :: nil
-	);
+	sbuiltins := ref Builtins(nil, 0);
+	builtins := ref Builtins(nil, 0);
+	localenv := newlocalenv(nil);
+	contextenv := ref Environment(sbuiltins, builtins, nil, localenv);
+	fd := waitfd();
+	ctxt := ref Context(contextenv, fd, drawcontext, 0 :: 1 :: 2 :: nil);
 	myselfbuiltin->initbuiltin(ctxt, myself);
 	ctxt.env.localenv.flags = ctxt.VERBOSE;
 	for (vl := ctxt.get("autoload"); vl != nil; vl = tl vl)
@@ -1332,15 +1327,20 @@ hashfn(s: string, n: int): int
 
 hashfind(ht: array of list of ref Var, idx: int, n: string): ref Var
 {
-	for (ent := ht[idx]; ent != nil; ent = tl ent)
-		if ((hd ent).name == n)
-			return hd ent;
+	for (ent := ht[idx]; ent != nil; ent = tl ent) {
+		entry := hd ent;
+		name := entry.name;
+		if (name == n)
+			return entry;
+	}
 	return nil;
 }
 
 hashadd(ht: array of list of ref Var, idx: int, v: ref Var)
 {
-	ht[idx] = v :: ht[idx];
+	bucket := ht[idx];
+	bucket = v :: bucket;
+	ht[idx] = bucket;
 }
 
 copylocalenv(e: ref Localenv): ref Localenv

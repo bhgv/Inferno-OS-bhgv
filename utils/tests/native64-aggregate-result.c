@@ -53,6 +53,8 @@ agshcontext(Modlink *ml, WORD n)
  void **context,**environment,**builtins,**local;
  Array *vars;
  void *cell;
+ List *entries;
+ void **entry,**old;
  unsigned int i;
  WORD value;
  memmove(&context,ml->MP+aggregate_globals[26],8);
@@ -70,8 +72,18 @@ agshcontext(Modlink *ml, WORD n)
  agcheck(vars->len==7&&vars->t->size==8&&vars->t->map[0]==0x80,"shell hash bucket array descriptor");
  for(i=0;i<7;i++){
   memmove(&cell,vars->data+8*i,8);
-  agcheck(cell==H,"shell hash bucket starts nil");
+  if(i!=3)agcheck(cell==H,"unused shell hash bucket stays nil");
  }
+ memmove(&entries,vars->data+24,8);
+ agcheck(entries!=H&&entries->tail!=H&&entries->tail->tail==H,"two entries share one bucket");
+ memmove(&entry,entries->data,8);
+ memmove(&old,entries->tail->data,8);
+ agcheck(entry!=H&&old!=H&&!strcmp(string2c(entry[0]),"new")&&
+  !strcmp(string2c(old[0]),"old"),"hashadd prepends and preserves the tail");
+ memmove(&entry,ml->MP+aggregate_globals[34],8);
+ agcheck(entry==old,"hashfind traverses the bucket");
+ memmove(&entry,ml->MP+aggregate_globals[35],8);
+ agcheck(entry==H,"hashfind on an empty bucket returns nil");
  memmove(&cell,ml->MP+aggregate_globals[21],8);
  agcheck(cell!=H,"fixture supplies a live list for array retirement");
  D2H(cell)->ref++;
@@ -176,4 +188,4 @@ agcatch(void)
 }
 int main(void){uint jit,q,n,total=0;int quanta[]={1,3,1000};WORD words[]={(-2147483647-1),-1,0,2147483647};rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;Tarray.free=freearray;Tarray.size=sizeof(Array);require(dis64selectlaunch("dis64-calls"));
  AGGREGATE_HANDLERS
- optab[INEWAZ]=actual_newaz;optab[IINDB]=actual_indb;optab[ICVTWB]=actual_cvtwb;optab[ISHRW]=actual_shrw;optab[ICONSM]=actual_consm;optab[IHEADM]=actual_headm;optab[IHEADP]=actual_headp;optab[ICONSP]=actual_consp;optab[ICONSMP]=actual_consmp;optab[IHEADMP]=actual_headmp;optab[INEWZ]=actual_newz;optab[ITAIL]=actual_tail;optab[ILENC]=actual_lenc;optab[IINDC]=actual_indc;optab[IINSC]=actual_insc;optab[ISLICEC]=actual_slicec;optab[ICVTCW]=actual_cvtcw;optab[IMOVP]=actual_movp;optab[IMOVM]=actual_movm;optab[IMOVMP]=actual_movmp;optab[IRAISE]=actual_iraise;agcatch();agmetadata();agbytemetadata();agconstruction();for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(n=0;n<nelem(words);n++){if(jit&&!CatchJit&&words[n]<0)continue;agcase(jit,quanta[q],words[n]);total++;}printf("PASS aggregate results: %u C/JIT processes, mixed/nested/mapped results, extreme Words, caller guards and complete retirement\n",total);return 0;}
+ optab[INEWAZ]=actual_newaz;optab[IINDB]=actual_indb;optab[IINDL]=actual_indl;optab[IBNEC]=actual_bnec;optab[ICVTWB]=actual_cvtwb;optab[ISHRW]=actual_shrw;optab[ICONSM]=actual_consm;optab[IHEADM]=actual_headm;optab[IHEADP]=actual_headp;optab[ICONSP]=actual_consp;optab[ICONSMP]=actual_consmp;optab[IHEADMP]=actual_headmp;optab[INEWZ]=actual_newz;optab[ITAIL]=actual_tail;optab[ILENC]=actual_lenc;optab[IINDC]=actual_indc;optab[IINSC]=actual_insc;optab[ISLICEC]=actual_slicec;optab[ICVTCW]=actual_cvtcw;optab[IMOVP]=actual_movp;optab[IMOVM]=actual_movm;optab[IMOVMP]=actual_movmp;optab[IRAISE]=actual_iraise;agcatch();agmetadata();agbytemetadata();agconstruction();for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(n=0;n<nelem(words);n++){if(jit&&!CatchJit&&words[n]<0)continue;agcase(jit,quanta[q],words[n]);total++;}printf("PASS aggregate results: %u C/JIT processes, mixed/nested/mapped results, extreme Words, caller guards and complete retirement\n",total);return 0;}

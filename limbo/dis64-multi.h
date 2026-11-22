@@ -76,17 +76,25 @@ typedlistnodetype(Addr *a)
         typedlibraryrecord(t->tof)==13&&a->reg==a->decl->offset&&!a->offset;
 }
 static int
-typedlistnodeop(Inst *in,Dis64TypedBody *p,Dis64Instruction *out,uchar *returned)
+typedvarlist(Addr *a)
+{
+ Type *t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;
+ return a->decl&&a->reg==a->decl->offset&&!a->offset&&t&&t->kind==Tlist&&
+        typedwmref(t->tof,"Sh","Var");
+}
+static int
+typedshelllistop(Inst *in,Dis64TypedBody *p,Dis64Instruction *out,uchar *returned)
 {
  unsigned int sm,dm;long source,dest;int actual,head=in->op==IHEADP,cons=in->op==ICONSP;
  Addr *entry=cons?&in->s:&in->d;
+ int vars=typedvarlist(cons?&in->d:&in->s);
  Type *t=entry->native64type?entry->native64type:entry->decl?entry->decl->ty:nil;
  if(in->branch||in->mm!=Anone||
-    ((head||cons)&&(!t||t->kind!=Tref||typedlibraryrecord(t)!=13))||
-    (!head&&!typedlistnodetype(&in->d))||
+    ((head||cons)&&(!t||t->kind!=Tref||typedlibraryrecord(t)!=(vars?19:13)))||
+    (!head&&!(vars?typedvarlist(&in->d):typedlistnodetype(&in->d)))||
     !typedoperand(in->sm,&in->s,cons?TypedRoot:Tlist,0,0,p,&source,&sm,&actual)||actual!=(cons?Tref:Tlist)||
     !typedoperand(in->dm,&in->d,head?TypedRoot:Tlist,0,0,p,&dest,&dm,&actual)||
-    actual!=(head?Tref:Tlist))return typedfail(p,"listnode-operation");
+    actual!=(head?Tref:Tlist))return typedfail(p,"shell-list-operation");
  *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,dest};*returned=213;return 1;
 }
 static int
@@ -489,10 +497,10 @@ static int
 typedstringarraystable(TypedMulti*c,Inst*in)
 {unsigned int i;Inst*v;if(in->sm==Afp)return 1;if(in->sm!=Amp||!in->s.decl||in->s.decl->store!=Dglobal)return 0;for(i=0;i<c->count;i++){v=c->instructions[i];if(v&&((v->dm==Amp&&v->d.decl==in->s.decl)||(v->op==ILEA&&v->sm==Amp&&v->s.decl==in->s.decl)))return 0;}return 1;}
 static int
-typedstringarrayindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc)
-{long array,index,value;unsigned int sm,dm,vm;int actual;Addr*a;
- if(in->op!=IINDW||in->sm!=Afp||!typedstringarray(&in->s)||in->mm!=Afp||!in->m.decl||in->m.offset||in->branch||!use||use->op!=IMOVP||use->mm!=Anone||use->branch||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual)||!typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual))return typedfail(p,"string-array-index");
- a=use->sm==Afpind?&use->s:&use->d;if(a->decl!=in->m.decl||a->reg!=in->m.reg||a->offset||!typedoperand(use->sm==Afpind?use->dm:use->sm,use->sm==Afpind?&use->d:&use->s,TypedRoot,0,0,p,&value,&vm,&actual)||(actual!=Tstring&&actual!=Tany))return typedfail(p,"string-array-element");
+typedrootarrayindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc)
+{long array,index,value;unsigned int sm,dm,vm;int actual,kind=typedshellvararray(&in->s)?Tlist:Tstring;Addr*a;
+ if(in->op!=IINDW||in->sm!=Afp||(!typedstringarray(&in->s)&&kind!=Tlist)||in->mm!=Afp||!in->m.decl||in->m.offset||in->branch||!use||use->op!=IMOVP||use->mm!=Anone||use->branch||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual)||!typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual))return typedfail(p,"root-array-index");
+ a=use->sm==Afpind?&use->s:&use->d;if(a->decl!=in->m.decl||a->reg!=in->m.reg||a->offset||!typedoperand(use->sm==Afpind?use->dm:use->sm,use->sm==Afpind?&use->d:&use->s,TypedRoot,0,0,p,&value,&vm,&actual)||(actual!=kind&&actual!=Tany))return typedfail(p,"root-array-element");
  p->code[pc]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};p->returns[pc]=255;p->code[pc+1]=(Dis64Instruction){IMOVP,use->sm==Afpind?SRC(AFP|AIND)|DST(vm):SRC(vm)|DST(AFP|AIND),0,use->sm==Afpind?48:value,use->sm==Afpind?value:48};p->returns[pc+1]=255;return 1;}
 static int
 typedexternalstringarray(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,unsigned int*at,unsigned int old,unsigned int native)
@@ -919,7 +927,7 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  if(value->native64type && value->decl && value->decl->store==Dlocal && value->decl->sym && value->decl->sym->name[0]=='.' && value->decl->sym->name[1]=='t' && value->reg==value->decl->offset && !value->offset)valuetype=value->native64type;
  if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
     !value->decl || !value->decl->ty ||
-    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedlistnodetype(value) && !typedintlisttype(value) && !typedpointerlisttype(value) && !typedwindowlisttype(value) && !typedrectlisttype(value) && !typedstringpairlist(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
+    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedlistnodetype(value) && !typedvarlist(value) && !typedintlisttype(value) && !typedpointerlisttype(value) && !typedwindowlisttype(value) && !typedrectlisttype(value) && !typedstringpairlist(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
     !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
     !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || (!valuetype || kind!=valuetype->kind) || (typedloadreftype(value) && sm!=AFP && !(sm==AMP && typedloadglobalclient(value,p))) ||
     !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || (kind==Tchan && middle>65535) ||
@@ -1358,8 +1366,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->external>=2 && in->op==IMOVP && in->dm==Afpind && in->d.reg==16 && in->d.offset==0){
             if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
 
-        }else if(c->loads && in->op==IINDW && typedstringarray(&in->s)){
-            if(pc+1>=stop||!typedstringarrayindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
+        }else if(c->loads && in->op==IINDW && (typedstringarray(&in->s)||typedshellvararray(&in->s))){
+            if(pc+1>=stop||!typedrootarrayindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
         }else if(c->loads && in->op==IINDW && typedregistryarray(&in->s)){
             if(pc+1>=stop||!typedregistryindex(in,c->instructions[pc+1],p,pc-p->first,stop,fn->ty->tof))goto fail;inside[pc+1-p->first]=1;pc+=2;
         }else if(c->loads && in->op==IINDW && typedimagearrayaddr(&in->s) && pc+2<stop && c->instructions[pc+1]->op==IHEADP){
@@ -1454,8 +1462,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedstringpairlistop(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSM || in->op==IHEADM || (in->op==ITAIL && typedrectlisttype(&in->s)))){
             if(!typedrectlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
-        }else if(c->loads && ((in->op==ICONSP && typedlistnodetype(&in->d)) || ((in->op==IHEADP || in->op==ITAIL) && typedlistnodetype(&in->s)))){
-            if(!typedlistnodeop(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+        }else if(c->loads && ((in->op==ICONSP && (typedlistnodetype(&in->d)||typedvarlist(&in->d))) || ((in->op==IHEADP || in->op==ITAIL) && (typedlistnodetype(&in->s)||typedvarlist(&in->s))))){
+            if(!typedshelllistop(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) && ((in->op!=ICONSP && typedpointerlisttype(&in->s)) || (in->op!=IHEADP && typedpointerlisttype(&in->d)))){
             if(!typedpointerlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSW || in->op==IHEADW || (in->op==ITAIL && typedintlisttype(&in->s)))){
