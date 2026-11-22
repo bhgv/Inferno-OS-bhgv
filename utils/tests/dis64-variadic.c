@@ -3,6 +3,8 @@ static void varircheck(int ok,char*why){if(!ok){fprintf(stderr,"variadic IR: %s\
 /* These raw scalar/String IR cases have no implementation module or nominal
  * ADTs. Real source gates link the full compiler's impdecl and tequal instead. */
 Decl *impdecl;
+Type *tstring, *rtexception;
+long getpc(Inst *in){USED(in);varircheck(0,"unexpected exception label");return 0;}
 int tequal(Type*a,Type*b){USED(a);USED(b);varircheck(0,"unexpected nominal type comparison");return 0;}
 static void stringflowcheck(void){
  Type text={0},word={0},fn={0};Decl arg={0},global={0},caller={0},*functions[]={&caller};Desc frame={0},data={0};uchar fm[]={0,128},dm[]={128};Inst code[6]={{0}};Dis64TypedBody p={0};int i,j,branches[]={IBEQC,IBNEC,IBLTC,IBLEC,IBGTC,IBGEC};

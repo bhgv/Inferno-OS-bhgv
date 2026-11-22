@@ -1,7 +1,10 @@
 #include "full.h"
 #include "arg.h"
+#include "printprobe.h"
 static Module *fullbuiltins[3],*fullcurrent;
 static Type *fullfd;
+static Module *printservice;
+static int printcalls;
 static int fullmode,fullloads[4],fullbinds,fullopens,fullfildes,fullprints,fullsprints,fullcommands,fullarginits,fullopts,fullargs,fullargvs;
 static void fullcheck(int ok,const char*text){if(!ok){fprintf(stderr,"full emuinit predicate: %s\n",text);exit(10);}}
 static int fullprovided(void){return fullmode>=5;}
@@ -35,18 +38,33 @@ int Sys_fprint64(const Native64SysWriteRequest*r){String*s;WORD n=71;void*p;Sys_
  if(!fullprints && fullmode<3){fulltext(r->format.pattern,"emuinit: cannot load %s: %r\n");fullcheck(r->format.count==1,"Arg diagnostic tail");memmove(&s,r->format.values,8);fulltext(s,"/dis/lib/arg.dis");}
  else{fullcheck(fullterminal(),"terminal diagnostic branch");fulltext(r->format.pattern,"emuinit: unable to load %s: %s\n");fullcheck(r->format.count==2,"terminal diagnostic tail");memmove(&s,r->format.values,8);fulltext(s,fullprovided()?"myprog":"/dis/sh.dis");memmove(&s,r->format.values+1,8);fulltext(s,"typed error");}
  p=r->format.resolve(r->format.argument);fullcheck(p!=nil&&p!=H,"fprint result owner");memmove(p,&n,4);fullprints++;return 1;}
-int Sys_print64(const Native64SysWriteRequest*r){USED(r);fullcheck(0,"unexpected print");return 0;}
+int
+Sys_print64(const Native64SysWriteRequest *r)
+{
+ String *text;
+ WORD count=13;
+ void *result;
+ fullcheck(printservice!=nil&&r->format.count==2,"print gateway dispatch");
+ fulltext(r->format.pattern,"%s\t%s\n");
+ memmove(&text,r->format.values,8);fulltext(text,"load");
+ memmove(&text,r->format.values+1,8);fulltext(text,"builtin");
+ result=r->format.resolve(r->format.argument);
+ fullcheck(result!=nil&&result!=H,"print Word result cell");
+ memmove(result,&count,4);
+ printcalls++;
+ return 1;
+}
 int Sys_aprint64(const Native64SysFormatRequest*r){USED(r);fullcheck(0,"unexpected aprint");return 0;}
 static void(*fullfunction(unsigned space,const char*name))(void*){
  if(space==2)return fullcommand;
  if(space==1){if(!strcmp(name,"init"))return fullarginit;if(!strcmp(name,"opt"))return fullopt;if(!strcmp(name,"arg"))return fullarg;if(!strcmp(name,"argv"))return fullargv;}
- else{if(!strcmp(name,"bind"))return fullbind;if(!strcmp(name,"open"))return fullopen;if(!strcmp(name,"fildes"))return fullfildesentry;if(!strcmp(name,"sprint")||!strcmp(name,"fprint"))return Sys_programcall64;if(!strcmp(name,"read")||!strcmp(name,"fstat"))return fullnever;}
+ else{if(!strcmp(name,"bind"))return fullbind;if(!strcmp(name,"open"))return fullopen;if(!strcmp(name,"fildes"))return fullfildesentry;if(!strcmp(name,"sprint")||!strcmp(name,"fprint")||!strcmp(name,"print"))return Sys_programcall64;if(!strcmp(name,"read")||!strcmp(name,"fstat"))return fullnever;}
  fullcheck(0,"known imported method");return nil;
 }
-static Module*fullbuiltin(unsigned table){Module*m;unsigned i;const Native64ModuleTable*t=full_tables+table;
+static Module*fullbuiltin(const Native64ModuleTable*t,unsigned space){Module*m;unsigned i;
  m=mallocz(sizeof(*m),1);require(m!=nil);m->ref=1;m->origmp=H;m->ntype=t->count;m->name=strdup("controlled-service");m->path=strdup("controlled-service");require(m->name&&m->path);
  m->type=mallocz(t->count*sizeof(Type*),1);m->ext=mallocz((t->count+1)*sizeof(Link),1);require(m->type&&m->ext);
- for(i=0;i<t->count;i++){const Native64ModuleImport*r=t->imports+i;m->type[i]=dtype(freeheap,r->bytes,(uchar*)r->map,r->mapbytes);require(m->type[i]!=nil);m->ext[i].name=strdup(r->name);require(m->ext[i].name!=nil);memmove(&m->ext[i].sig,&r->signature,4);m->ext[i].frame=m->type[i];m->ext[i].u.runt=fullfunction(full_namespaces[table],r->name);}return m;
+ for(i=0;i<t->count;i++){const Native64ModuleImport*r=t->imports+i;m->type[i]=dtype(freeheap,r->bytes,(uchar*)r->map,r->mapbytes);require(m->type[i]!=nil);m->ext[i].name=strdup(r->name);require(m->ext[i].name!=nil);memmove(&m->ext[i].sig,&r->signature,4);m->ext[i].frame=m->type[i];m->ext[i].u.runt=fullfunction(space,r->name);}return m;
 }
 static Modlink*fullload(Module*caller,WORD table,char*path){Module*target;Modlink*ml;unsigned space;
  fullcheck(caller==fullcurrent && table>=0 && table<3,"LOAD caller/table");space=full_namespaces[table];target=fullbuiltins[space];
@@ -58,7 +76,7 @@ static Modlink*fullload(Module*caller,WORD table,char*path){Module*target;Modlin
 }
 static void fullrun(int jit,int quantum,int mode){Native64ModuleOwner owner={0};Prog*p;unsigned i,steps,done;int wantedprints;
  fullmode=mode;fullbinds=fullopens=fullfildes=fullprints=fullsprints=fullcommands=fullarginits=fullopts=fullargs=fullargvs=0;memset(fullloads,0,sizeof(fullloads));
- for(i=0;i<3;i++)fullbuiltins[full_namespaces[i]]=fullbuiltin(i);fullfd=dtype(freeheap,sizeof(Sys_FD),nil,0);require(fullfd!=nil);
+ for(i=0;i<3;i++)fullbuiltins[full_namespaces[i]]=fullbuiltin(full_tables+i,full_namespaces[i]);fullfd=dtype(freeheap,sizeof(Sys_FD),nil,0);require(fullfd!=nil);
  fullcheck(native64sysmodule(&full_spec,full_variadics,3,jit,&owner),"owning complete module constructor");fullcurrent=owner.module;fullcurrent->ref++;starting=fullcurrent;started=nil;require(kprotect(start,nil));p=started;rootenvironment(p);p->quanta=quantum;
  for(steps=0;steps<10000;steps++){done=kprotect(executeprocess,p);if(!done)break;}
  if(steps>=10000 || strcmp(worker.env->errstr,fullterminal()?"fail:error":""))fprintf(stderr,"full emuinit jit=%d q=%d mode=%d error=%s pc=%ld bind=%d open=%d fd=%d print=%d cmd=%d\n",jit,quantum,mode,worker.env->errstr,(long)(((uintptr)R.PC-(uintptr)fullcurrent->prog)/sizeof(Inst)),fullbinds,fullopens,fullfildes,fullprints,fullcommands);
@@ -71,6 +89,43 @@ static void fullrun(int jit,int quantum,int mode){Native64ModuleOwner owner={0};
  for(i=0;i<3;i++){fullcheck(fullbuiltins[i]->ref==1,"service instance retirement");unload(fullbuiltins[i]);fullbuiltins[i]=nil;}freetype(fullfd);fullfd=nil;
  fullcheck(!live&&!nlinkpins&&!modules&&!worker.nerr&&Tstring.ref==1&&Tmodlink.ref==1&&Tlist.ref==1,"complete startup ownership retirement");memset(nativeobservations,0,sizeof(nativeobservations));
 }
+static Modlink*
+printload(Module *caller, WORD table, char *path)
+{
+ Modlink *link;
+ fullcheck(caller==fullcurrent&&table==0&&!strcmp(path,"$Sys"),"print Sys load");
+ printservice->ref++;
+ link=linkmod(printservice,caller->ldt[table],1);
+ fullcheck(link!=nil&&link!=H,"print service link");
+ ptradd(D2H(link));
+ return link;
+}
+
+static void
+printprobe(int jit)
+{
+ Native64ModuleOwner owner={0};
+ Prog *p;
+ unsigned int steps;
+ printcalls=0;
+ printservice=fullbuiltin(print_source_tables,0);
+ fullcheck(native64sysmodule(&print_source_spec,print_source_variadics,1,jit,&owner),"print module constructor");
+ fullcurrent=owner.module;
+ fullcurrent->ref++;starting=fullcurrent;started=nil;
+ require(kprotect(start,nil));p=started;rootenvironment(p);p->quanta=1;
+ for(steps=0;steps<10000&&kprotect(executeprocess,p);steps++){}
+ if(steps>=10000||worker.env->errstr[0]||printcalls!=1)
+  fprintf(stderr,"print probe jit=%d steps=%u calls=%d error=%s\n",jit,steps,printcalls,worker.env->errstr);
+ fullcheck(steps<10000&&!worker.env->errstr[0]&&printcalls==1,"print completion");
+ observed=p;progexit();emptyqueues();
+ fullcheck(fullcurrent->ref==1&&native64typedmoduleclear(&owner),"print module retirement");
+ fullcurrent=nil;
+ fullcheck(printservice->ref==1,"print service retirement");
+ unload(printservice);printservice=nil;
+ fullcheck(!live&&!nlinkpins&&!modules&&!worker.nerr,"print probe ownership");
+ memset(nativeobservations,0,sizeof(nativeobservations));
+}
+
 /* Malformed metadata is rejected before allocating or changing the output. */
 static void fullrefusals(void){
  Native64ModuleVariadic v[3];Native64ModuleSpec spec;Native64ModuleFunction functions[4];Native64TypedStep code[1024];uchar map[128];Native64ModuleOwner owner={0};REG saved=R;
@@ -132,5 +187,6 @@ int main(void){int jit,q,m,total=0;int quanta[]={1,3,1000};
  rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;require(dis64selectlaunch("dis64-calls"));
  FULL_HANDLERS
  optab[ILOAD]=actual_iload;optab[IMOVP]=actual_movp;optab[ICONSP]=actual_consp;optab[IHEADP]=actual_headp;optab[ITAIL]=actual_tail;optab[ILENL]=actual_lenl;optab[ILENC]=actual_lenc;optab[ICASE]=actual_icase;optab[IRAISE]=actual_iraise;optab[IADDC]=actual_addc;
- fullrefusals();argrefusals();fullconstruction();for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(m=0;m<8;m++){fullrun(jit,quanta[q],m);total++;}
+ fullrefusals();argrefusals();fullconstruction();printprobe(0);printprobe(1);
+ puts("PASS Sys.print source gateway: mapped frame, stdout request and Word result in C/JIT");for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(m=0;m<8;m++){fullrun(jit,quanta[q],m);total++;}
  printf("PASS complete unchanged emuinit init/loadmod: %d C/JIT launches, Arg missing/available/options/argv, exact AWM-first LOAD, shell fallback, terminal raise, Limbo nil/argv init and full retirement; services controlled, no AWM window\n",total);return 0;}

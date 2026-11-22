@@ -125,6 +125,9 @@ def generate(limbo,w):
   row=next(r for r in records if r['name']==name and (name!='get' or r['export_name']=='Context.get'))
   assert row['accepted'],row
   CMD['verify_nilbranches'](data,row,imports,rows=records)
+ loaded=next(r for r in records if r['name']=='builtin_loaded')
+ assert loaded['accepted'] and [v['operation'] for v in loaded['variadics']]==[2,2],loaded
+ CMD['verify_nilbranches'](data,loaded,imports,rows=records)
  chain=('loadmodule','unloadmodule','builtin_load','builtin_unload')
  for name in chain:
   row=next(r for r in records if r['name']==name)

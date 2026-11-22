@@ -74,7 +74,7 @@ def generate(limbo,w,source=None,module='Emuinit',shape=None,import_frames=None,
  assert len(imports)==expected_tables
  namespaces=[]
  for ti,table in enumerate(imports):
-  namespace='Sys'if any(e['name']in('fprint','sprint','aprint')for e in table)else'Arg'if any(e['name']=='opt'for e in table)else'Command'
+  namespace='Sys'if any(e['name']in('fprint','sprint','aprint','print')for e in table)else'Arg'if any(e['name']=='opt'for e in table)else'Command'
   namespaces.append({'Sys':0,'Arg':1,'Command':2}[namespace])
   for j,e in enumerate(table):
    size,mapping=import_frames[(e['name'],e['signature'])]if import_frames is not None else(80,[0,192])if namespace=='Command'else frames[(namespace,e['name'])]
@@ -165,6 +165,10 @@ def main():
   if a.generate_only:return
   original=(w/'full.h').read_text();argrows=generate(a.limbo.resolve(),w,(ROOT/'appl/lib/arg.b').read_text(),'Arg');(w/'arg.h').write_text((w/'full.h').read_text().replace('full_','arg_source_'));(w/'full.h').write_text(original)
   with (w/'arg.h').open('a')as stream:stream.write('static const uint arg_source_scalar='+str(next(g[1]for g in argrows[0]['globals']if g[0]=='printusage'))+';\n')
+  probe='implement Printprobe;include "sys.m";Printprobe:module{init:fn();};init(){sys:=load Sys Sys->PATH;sys->print("%s\\t%s\\n","load","builtin");}'
+  generate(a.limbo.resolve(),w,probe,'Printprobe',(1,1,1,'0'),source_label='Sys.print source probe')
+  (w/'printprobe.h').write_text((w/'full.h').read_text().replace('full_','print_source_').replace('fullload','printload'))
+  (w/'full.h').write_text(original)
   src=CMD['unit']().replace('int main(int argc,char **argv)','int previous_command_main(int argc,char **argv)')
   src+='\n#define LIMBO_NATIVE64_PREFIXES\n#include "sys-native64.h"\n#include "native64-sys-frame.h"\n#include "native64-sys-sites.h"\n#include "native64-sys-program.h"\n#include "native64-sys-module.h"\n'
   extract=CMD['NS']['S']['FILES']['FILES']['function'];runt=(ROOT/'libinterp/runt.c').read_text()

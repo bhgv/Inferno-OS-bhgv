@@ -51,6 +51,7 @@ typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int sto
     return typedfail(p,"variadic-call");
  if(!strcmp(fn->sym->name,"sprint") && (unsigned int)sign(fn)==0x4c0624b6U && fn->ty->tof->kind==Tstring){op=0;contract=24;}
  else if(!strcmp(fn->sym->name,"aprint") && (unsigned int)sign(fn)==0x77442d46U && fn->ty->tof->kind==Tarray && fn->ty->tof->tof && fn->ty->tof->tof->kind==Tbyte){op=1;contract=24;}
+ else if(!strcmp(fn->sym->name,"print") && (unsigned int)sign(fn)==0xac849033U && fn->ty->tof->kind==Tint){op=2;contract=4;}
  else if(!strcmp(fn->sym->name,"fprint") && (unsigned int)sign(fn)==0xf46486c8U && fn->ty->tof->kind==Tint){op=3;contract=4;}
  else return typedfail(p,"variadic-signature");
  if(!actual->tof || actual->tof->kind!=fn->ty->tof->kind || !typedoperand(call->dm,&call->d,TypedRoot,0,0,p,&module,&mm,&kind) || kind!=Tmodule)

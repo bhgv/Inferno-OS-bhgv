@@ -24,8 +24,8 @@ native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v
     if(!n || n>256 || v==nil || v==H || !native64modulecheck(s,&code,&links,&scratch,&imports))return 0;
     for(i=0;i<n;i++){
         const Native64ModuleVariadic*p=v+i;
-        if(p->function>=s->nfunctions || (p->operation!=Native64SysSprint && p->operation!=Native64SysAprint && p->operation!=Native64SysFprint) ||
-           p->count>256 || p->count>4096-total || p->contract!=(p->operation!=Native64SysFprint?24:4) || p->binding>32767 ||
+        if(p->function>=s->nfunctions || (p->operation!=Native64SysSprint && p->operation!=Native64SysAprint && p->operation!=Native64SysPrint && p->operation!=Native64SysFprint) ||
+           p->count>256 || p->count>4096-total || p->contract!=(p->operation<Native64SysPrint?24:4) || p->binding>32767 ||
            (p->modulemode!=AFP && p->modulemode!=AMP))return 0;
         total+=p->count;fixed=p->operation!=Native64SysFprint?1:2;fields=p->count+fixed;f=s->functions+p->function;
         if(p->bytes!=64+8*fields || !native64modulemap(p->bytes,p->map,p->mapbytes,1) ||
@@ -174,8 +174,10 @@ native64sysmodulemake(void*argument)
     for(i=0;i<b->count;i++)if(pc<b->variadic[i].bytes)pc=b->variadic[i].bytes;
     for(i=0;i<b->spec->ntables;i++)for(j=0;j<b->spec->tables[i].count;j++)
         if(pc<b->spec->tables[i].imports[j].bytes)pc=b->spec->tables[i].imports[j].bytes;
-    if(total>Native64BindFrame || pc>Native64BindFrame-total || OA(Stkext,reg.tos.fu)>Native64BindFrame-total-pc)error(exBounds);
-    m->ss=OA(Stkext,reg.tos.fu)+total+pc;
+    /* FRAME grows the extent when its size exactly equals the free space. */
+    if(total>Native64BindFrame || pc>Native64BindFrame-total ||
+       OA(Stkext,reg.tos.fu)+8>Native64BindFrame-total-pc)error(exBounds);
+    m->ss=OA(Stkext,reg.tos.fu)+total+pc+8;
 
     types=mallocz((m->ntype+b->count)*sizeof(*types),1);if(types==nil)error(exNomem);
     memmove(types,m->type,m->ntype*sizeof(*types));free(m->type);m->type=types;m->ntype+=b->count;

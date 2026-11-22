@@ -2024,14 +2024,20 @@ builtin_subsh(ctxt: ref Context, args: list of ref Listnode, nil: int): string
 builtin_loaded(ctxt: ref Context, nil: list of ref Listnode, nil: int): string
 {
 	b := ctxt.env.builtins;
+	table := b.ba;
 	for (i := 0; i < b.n; i++) {
-		(name, bmods) := b.ba[i];
-		sys->print("%s\t%s\n", name, modname(ctxt, hd bmods));
+		(name, bmods) := table[i];
+		mod := hd bmods;
+		owner := modname(ctxt, mod);
+		sys->print("%s\t%s\n", name, owner);
 	}
 	b = ctxt.env.sbuiltins;
+	table = b.ba;
 	for (i = 0; i < b.n; i++) {
-		(name, bmods) := b.ba[i];
-		sys->print("${%s}\t%s\n", name, modname(ctxt, hd bmods));
+		(name, bmods) := table[i];
+		mod := hd bmods;
+		owner := modname(ctxt, mod);
+		sys->print("${%s}\t%s\n", name, owner);
 	}
 	return nil;
 }
