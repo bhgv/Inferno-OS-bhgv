@@ -111,7 +111,7 @@ def main():
   if arch in('arm64','riscv64'):cc+=['-DDIS64_TEST_'+arch.upper()+'=1','-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')];binary=w/'unit';command=cc+[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+CMD['FILES']['releaseflags'](cc)+['-lm','-o',str(binary)];subprocess.run(command,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],check=True,timeout=180)
   for parent in('native64-typed-module.h','native64-typed-multi.h','native64-typed-code.h','native64-typed-alt.h','native64-library-code.h'):(w/parent).write_text((ROOT/'include'/parent).read_text())
-  header=(ROOT/'include/native64-library-layout.h').read_text();before='return id==6?0x90:0;';assert header.count(before)==1;(w/'native64-library-layout.h').write_text(header.replace(before,'return id==6?0x00:0;'))
+  header=(ROOT/'include/native64-library-layout.h').read_text();before='id==6?0x90:0;';assert header.count(before)==1;(w/'native64-library-layout.h').write_text(header.replace(before,'id==6?0x00:0;'))
   subprocess.run(command,check=True);result=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],capture_output=True,text=True,timeout=180)
   assert result.returncode==10 and 'complete Client allocation/map'in result.stderr and 'Sanitizer'not in result.stderr and 'runtime error:'not in result.stderr,(result.returncode,result.stdout[-1000:],result.stderr[-1000:])
   print('PASS window active control: lost Client trailing GC roots detected',flush=True)

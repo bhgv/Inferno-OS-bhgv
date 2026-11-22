@@ -41,7 +41,11 @@ def generate(limbo,w):
  print('PASS Image array oracle:',controls,'corruptions; classic element descriptor and unchanged Dis',flush=True)
  for ty,extra in(('int',''),('ref Draw->Pointer',''),('ref Other','Other:adt{r:Draw->Rect;};')):
   source='implement Closed;'+PREFIX+extra+'Closed:module{run:fn(n:int);};saved:array of '+ty+';run(n:int){saved=array[n] of '+ty+';}'
-  _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert not closed[0]['accepted'],closed
+  raw,closed=E['compile_source'](limbo,w,source,interface='',loads=True)
+  if ty=='int':assert not closed[0]['accepted'],closed
+  else:
+   assert closed[0]['accepted'],closed
+   E['verify'](raw,closed[0],[],loads=True,rows=closed)
  _,records=E['compile_source'](limbo,w,(ROOT/'appl/wm/awm.b').read_text(),interface='',loads=True)
  for name in('init','handlerequest','sizewin','showborders'):
   row=next(r for r in records if r['name']==name);print('AWM',name,':',row['accepted'],row.get('pc'),row.get('reason'),flush=True)
@@ -63,7 +67,7 @@ def main():
   cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')];binary=w/'unit';command=cc+[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+CMD['FILES']['releaseflags'](cc)+['-lm','-o',str(binary)];subprocess.run(command,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)],check=True,timeout=180)
   controls=(
    ('missing mapped element Type','native64-typed-module.h','uchar refmap[]={0x80};refarraytype=ordinal;', 'uchar refmap[]={0};refarraytype=ordinal;','exact mapped 8-byte array Type'),
-   ('classic 4-byte index stride','native64-typed-code.h','if(s->returned==255){if(s->op==IINDL){p->s.ind=s->s;', 'if(s->returned==255){if(s->op==IINDL){p->op=IINDW;p->s.ind=s->s;','exact 8-byte element stride'),
+   ('classic 4-byte index stride','native64-typed-code.h','if(s->returned==255){if(s->op==IINDL || s->op==IINDX){p->s.ind=s->s;', 'if(s->returned==255){if(s->op==IINDL || s->op==IINDX){if(s->op==IINDL)p->op=IINDW;p->s.ind=s->s;','exact 8-byte element stride'),
    ('branch into borrowed mover','native64-typed-module.h','        for(j=0;j<f->count;j++)if(native64typedbranch(f->code[j].op) && f->code[j].d>=0 && (unsigned long)f->code[j].d<f->count && native64typedprotectedentry(f->code,f->count,f->code[j].d))return 0;', '', 'array refusal before allocation'))
   for name,header,before,after,predicate in controls:
    for parent in('native64-typed-code.h','native64-typed-module.h','native64-typed-multi.h','native64-typed-tables.h'):(w/parent).write_text((ROOT/'include'/parent).read_text())

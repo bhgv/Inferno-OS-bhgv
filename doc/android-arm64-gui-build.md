@@ -804,3 +804,46 @@ validation of the Windows/macOS/32-bit and other CPU targets.
 The existing local/imported call regressions keep their active refusal controls.
 Two stale mutation targets now follow the shared module-operand validator and the
 current source-root map predicate, retaining alignment and ownership checks.
+
+## Arrays of managed references
+
+Native64 array allocation, ordinary element reads/writes, nil comparisons,
+element results, returned slices and slice copies now use the element's declared
+managed type. String, List, Array, Ref, Channel and Module elements share one
+mapped 8-byte cell, retaining their complete types for bindings and copies.
+The ordinary path also covers nominal Draw.Image and Wmsrv.Client references;
+the existing longer window/registry protocols keep their specific owner checks.
+The previous shell-variable-only classifier and duplicate Image mover are gone.
+
+An indexed element address stays in the existing reserved FP48 cell until the
+adjacent mover, comparison or return. Branches cannot enter the consuming step.
+Global arrays and direct element results use the same proof. String nil tests
+retain String comparisons, preserving equality between nil and an allocated
+empty String. Dedicated array checks validate their borrowed owner and readonly
+nil operand. The constructor rejects slice-copy instructions without a known
+raw, mapped, library or byte proof before allocating anything.
+
+`python3 utils/tests/native64-root-arrays.py --limbo /path/to/limbo` executes
+6912 C/JIT cases using real objects of all six managed kinds. It checks mapped
+initialization, FP/MP indexing, replacement, nil/aliased ownership, array copies,
+backing-owner slices, direct returned elements, signed bounds, allocation errors,
+source exceptions and exact retirement. A separately allocated empty String
+checks the language's nil comparison semantics. The independent classic oracle
+detects 936 mutations, while 1248 metadata mutations fail before allocation.
+All 35/36 constructor allocation failures roll back in C/JIT modes. Active
+controls remove the mapped element bit, replace String comparison with pointer
+comparison, and remove the unproved-copy precheck; each must fail its predicate.
+
+Image regressions retain 3168 scenarios and their three active controls. Their
+checked IR is identical after routing ordinary accesses through the common path.
+The old nominal allocation boundary now accepts arbitrary reference elements;
+scalar and inline mixed-record array allocation remains outside this change.
+The Image stride control and Wmsrv trailing-root control target the current
+shared code after earlier refactors. CI runs the managed-array test in its
+existing CPU jobs and triggers for changes to its fixtures.
+
+The unchanged Sh.yytokname and Sh.yystatname now pass checked lowering. Sh moves
+from 70/134 to 72/134 bodies; the 16-module startup frontier is 309/385. All
+ordinary/classic bytes remain identical, and no system Limbo source was edited.
+Local runtime evidence is Linux amd64 with UBSan; full shell and Android device
+startup, and the other OS/32-bit/CPU combinations, are not established here.

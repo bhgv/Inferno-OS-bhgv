@@ -612,7 +612,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned==232 || ((f->code[j].op==IBEQC || f->code[j].op==IBNEC) && (USRC(f->code[j].mode)&AIND) && f->code[j].returned && f->code[j].returned!=153)){
+        for(j=0;j<f->count;j++)if(f->code[j].returned==232 || ((f->code[j].op==IBEQC || f->code[j].op==IBNEC) && (USRC(f->code[j].mode)&AIND) && f->code[j].returned && f->code[j].returned!=153 && f->code[j].returned!=111)){
             unsigned int k,modes[2],offsets[2];step=f->code+j;if(!native64typedcursorcompare(step,f->bytes,s->databytes) || step->d<0 || (unsigned long)step->d>=f->count)return 0;
             modes[0]=USRC(step->mode)&~AIND;modes[1]=(step->mode&ARM)==AXINF?AFP:AMP;offsets[0]=step->s;offsets[1]=step->m;
             for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
@@ -834,7 +834,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         }
         for(j=0;j<f->count;j++)if(f->code[j].returned!=153 && (f->code[j].op==IBEQC || f->code[j].op==IBNEC || f->code[j].op==IBLTC || f->code[j].op==IBLEC || f->code[j].op==IBGTC || f->code[j].op==IBGEC)){
             unsigned int k,modes[2],offsets[2];Inst probe;step=f->code+j;
-            if(step->returned==232)continue; /* Owner and String maps proved above. */
+            if(step->returned==232 || step->returned==111)continue; /* Dedicated field/array checks prove indirect String owners. */
             {Native64TypedStep local=*step;
              if(step->d<0 || (unsigned long)step->d>=f->count)return 0;
              local.d=0;if(!native64typedcode(&probe,1,&local,1,f->bytes,s->databytes))return 0;
@@ -863,6 +863,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             if(step->returned==92||step->returned==108||step->returned==109){mode=(step->returned==92||step->returned==108)?UDST(step->mode)&~AIND:USRC(step->mode);offset=(step->returned==92||step->returned==108)?step->d:step->s;map=mode==AFP?f->map:s->datamap;bit=offset/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
             else for(k=0;k<2;k++){mode=k?UDST(step->mode):USRC(step->mode);offset=k?step->d:step->s;width=step->returned==107&&(step->op==ISEND?!k:k)?step->m&255:8;map=(mode&~AIND)==AFP?f->map:s->datamap;for(n=0;n<width;n+=8){bit=(offset+n)/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}}
         }
+        for(j=0;j<f->count;j++)if(f->code[j].op==ISLICELA && f->code[j].returned!=79 && f->code[j].returned!=111 && f->code[j].returned!=153 && f->code[j].returned!=159)return 0;
         for(j=0;j<f->count;j++)if(f->code[j].returned==111){unsigned int k,mode,offset;step=f->code+j;if(!native64typedregistry(step,f->bytes,s->databytes)||(native64typedbranch(step->op)&&(unsigned long)step->d>=f->count))return 0;
             for(k=0;k<f->nsites;k++)if(f->sites[k].first<=j&&j<=f->sites[k].end)return 0;
             if(step->op==ISLICELA){for(k=0;k<3;k++){mode=k==0?USRC(step->mode):k==1?UDST(step->mode):(step->mode&ARM)==AXIMM?AIMM:(step->mode&ARM)==AXINF?AFP:AMP;offset=k==0?step->s:k==1?step->d:step->m;if(mode==AIMM)continue;map=mode==AFP?f->map:s->datamap;bit=offset/8;if(!!(map[bit/8]&(128>>(bit%8)))!=(k<2))return 0;}}

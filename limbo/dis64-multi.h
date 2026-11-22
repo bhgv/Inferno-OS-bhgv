@@ -505,23 +505,37 @@ typedimagearrayaddr(Addr*a)
 static int
 typedstringarray(Addr*a)
 {Type*t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;return a->decl&&t&&t->kind==Tarray&&t->tof&&t->tof->kind==Tstring&&a->reg==a->decl->offset&&!a->offset;}
-/* Shell variable buckets are one mapped list reference per element. */
-static int
-typedshellvararray(Addr *a)
-{
- Type *t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;
- return a->decl&&t&&t->kind==Tarray&&t->tof&&t->tof->kind==Tlist&&
-        typedwmref(t->tof->tof,"Sh","Var")&&a->reg==a->decl->offset&&!a->offset;
-}
 static int
 typedstringarraystable(TypedMulti*c,Inst*in)
 {unsigned int i;Inst*v;if(in->sm==Afp)return 1;if(in->sm!=Amp||!in->s.decl||in->s.decl->store!=Dglobal)return 0;for(i=0;i<c->count;i++){v=c->instructions[i];if(v&&((v->dm==Amp&&v->d.decl==in->s.decl)||(v->op==ILEA&&v->sm==Amp&&v->s.decl==in->s.decl)))return 0;}return 1;}
+/* Every closed managed element occupies one mapped native pointer cell. */
+static Type*
+typedrootarrayelement(Addr *a)
+{
+ Type *t=typedloadvaluetype(a);
+ return a->decl && t && t->kind==Tarray && t->tof && typedmanagedkind(t->tof->kind) && a->reg==a->decl->offset && !a->offset?t->tof:nil;
+}
 static int
 typedrootarrayindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc)
-{long array,index,value;unsigned int sm,dm,vm;int actual,kind=typedshellvararray(&in->s)?Tlist:Tstring;Addr*a;
- if(in->op!=IINDW||in->sm!=Afp||(!typedstringarray(&in->s)&&kind!=Tlist)||in->mm!=Afp||!in->m.decl||in->m.offset||in->branch||!use||use->op!=IMOVP||use->mm!=Anone||use->branch||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual)||!typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual))return typedfail(p,"root-array-index");
- a=use->sm==Afpind?&use->s:&use->d;if(a->decl!=in->m.decl||a->reg!=in->m.reg||a->offset||!typedoperand(use->sm==Afpind?use->dm:use->sm,use->sm==Afpind?&use->d:&use->s,TypedRoot,0,0,p,&value,&vm,&actual)||(actual!=kind&&actual!=Tany))return typedfail(p,"root-array-element");
- p->code[pc]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};p->returns[pc]=255;p->code[pc+1]=(Dis64Instruction){IMOVP,use->sm==Afpind?SRC(AFP|AIND)|DST(vm):SRC(vm)|DST(AFP|AIND),0,use->sm==Afpind?48:value,use->sm==Afpind?value:48};p->returns[pc+1]=255;return 1;}
+{long array,index,value;unsigned int sm,dm,vm;int actual,read;Addr*a;Type*element=typedrootarrayelement(&in->s),*other;
+ if(in->op!=IINDW || !element || (in->sm!=Afp && in->sm!=Amp) || in->mm!=Afp || !in->m.decl || in->m.offset || in->branch || !use || !typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual) || !typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual))return typedfail(p,"root-array-index");
+ if(use->op==IBEQW || use->op==IBNEW || use->op==IBEQC || use->op==IBNEC){
+  long mid;unsigned int mm;
+  if(((use->op==IBEQC || use->op==IBNEC) != (element->kind==Tstring)) || use->sm!=Afpind || use->s.decl!=in->m.decl || use->s.reg!=in->m.reg || use->s.offset || use->mm!=Amp || !use->m.decl || !use->m.decl->ty || use->m.decl->ty->kind!=Tany || !use->branch || use->dm!=Apc || use->branch->pc<(int)p->first || use->branch->pc>=(int)(p->first+p->count) || use->d.offset!=use->branch->pc || !typedoperand(Amp,&use->m,TypedRoot,0,1,p,&mid,&mm,&actual))return typedfail(p,"root-array-nil-compare");
+  p->code[pc]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};p->returns[pc]=255;
+  p->code[pc+1]=(Dis64Instruction){use->op==IBEQW?IBEQL:use->op==IBNEW?IBNEL:use->op,SRC(AFP|AIND)|AXINM|DST(AIMM),mid,48,use->branch->pc-p->first};p->returns[pc+1]=111;return 1;
+ }
+ if(use->op!=IMOVP || use->mm!=Anone || use->branch)return typedfail(p,"root-array-element-use");
+ read=use->sm==Afpind;a=read?&use->s:&use->d;
+ if((!read && use->dm!=Afpind) || a->decl!=in->m.decl || a->reg!=in->m.reg || a->offset)return typedfail(p,"root-array-borrow");
+ p->code[pc]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};p->returns[pc]=255;
+ if(read && use->dm==Afpind && use->d.reg==16 && !use->d.offset){
+  if(!tequal(p->resulttype,element))return typedfail(p,"root-array-result-type");
+  p->code[pc+1]=(Dis64Instruction){IMOVP,SRC(AFP|AIND)|DST(AFP|AIND),0,48,32};p->returns[pc+1]=111;return 1;
+ }
+ a=read?&use->d:&use->s;other=typedloadvaluetype(a);
+ if(!typedoperand(read?use->dm:use->sm,a,TypedRoot,0,0,p,&value,&vm,&actual) || (actual!=Tany && (!other || !tequal(other,element))))return typedfail(p,"root-array-element-type");
+ p->code[pc+1]=(Dis64Instruction){IMOVP,read?SRC(AFP|AIND)|DST(vm):SRC(vm)|DST(AFP|AIND),0,read?48:value,read?value:48};p->returns[pc+1]=255;return 1;}
 /* Borrow one element of the shell's builtin table for the adjacent mapped copy. */
 static int
 typedbuiltinarray(Addr *a)
@@ -575,9 +589,9 @@ static int
 typedregistryarray(Addr*a)
 {Type*t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;return a->decl&&t&&t->kind==Tarray&&(typedwmref(t->tof,"Wmsrv","Client")||typedlibraryrecord(t->tof)==12)&&a->reg==a->decl->offset&&!a->offset;}
 static int
-typedregistrycopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
+typedrootarraycopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
 {long source,dest,mid;unsigned int sm,dm,mm;int actual;
- if(in->op!=ISLICELA||in->branch||!typedregistryarray(&in->s)||!typedregistryarray(&in->d)||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual)||!typedoperand(in->dm,&in->d,Tarray,0,0,p,&dest,&dm,&actual)||!typedoperand(in->mm,&in->m,Tint,1,1,p,&mid,&mm,&actual))return typedfail(p,"registry-array-copy");
+ if(in->op!=ISLICELA||in->branch||!typedrootarrayelement(&in->s)||!typedrootarrayelement(&in->d)||!tequal(typedloadvaluetype(&in->s),typedloadvaluetype(&in->d))||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual)||!typedoperand(in->dm,&in->d,Tarray,0,0,p,&dest,&dm,&actual)||!typedoperand(in->mm,&in->m,Tint,1,1,p,&mid,&mm,&actual))return typedfail(p,"root-array-copy");
  p->code[pc]=(Dis64Instruction){ISLICELA,SRC(sm)|(mm==AIMM?AXIMM:mm==AFP?AXINF:AXINM)|DST(dm),mid,source,dest};p->returns[pc]=111;return 1;}
 /* Registry element addresses live only until the immediately following use. */
 static int
@@ -602,28 +616,13 @@ typedregistryindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc,unsigned in
  p->code[pc+1]=(Dis64Instruction){IMOVP,use->sm==Afpind?SRC(AFP|AIND)|DST(vm):SRC(vm)|DST(AFP|AIND),0,use->sm==Afpind?48:value,use->sm==Afpind?value:48};p->returns[pc+1]=255;return 1;
 }
 static int
-typedimagearraynew(Inst*in,Dis64TypedBody*p,unsigned int pc)
+typedrootarraynew(Inst*in,Dis64TypedBody*p,unsigned int pc)
 {
- Decl*d=in->m.decl;long source,dest;unsigned int sm,dm;int actual;
- if((in->op!=INEWA && in->op!=INEWAZ) || !(typedimagearrayaddr(&in->d)||typedregistryarray(&in->d)||typedstringarray(&in->d)||typedshellvararray(&in->d)) || in->mm!=Adesc || !d || !d->desc || d->desc->id!=in->m.offset || !(typedwmref(d->ty,"Draw","Image")||typedwmref(d->ty,"Wmsrv","Client")||typedlibraryrecord(d->ty)==12||d->ty&&d->ty->kind==Tstring||typedshellvararray(&in->d)) || d->desc->size!=4 || d->desc->nmap!=1 || d->desc->map[0]!=0x80 || in->branch ||
-    !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) || !typedoperand(in->dm,&in->d,Tarray,0,0,p,&dest,&dm,&actual) || (dm!=AFP && dm!=AMP))return typedfail(p,"image-array-allocation");
+ Decl*d=in->m.decl;Type*element=typedrootarrayelement(&in->d);long source,dest;unsigned int sm,dm;int actual;
+ if((in->op!=INEWA && in->op!=INEWAZ) || !element || in->mm!=Adesc || !d || !d->desc || d->desc->id!=in->m.offset || !tequal(d->ty,element) || d->desc->size!=4 || d->desc->nmap!=1 || !d->desc->map || d->desc->map[0]!=0x80 || in->branch ||
+    !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) || !typedoperand(in->dm,&in->d,Tarray,0,0,p,&dest,&dm,&actual) || (dm!=AFP && dm!=AMP))return typedfail(p,"root-array-allocation");
  p->code[pc]=(Dis64Instruction){INEWAZ,SRC(sm)|AXIMM|DST(dm),2,source,dest};p->returns[pc]=254;return 1;
 }
-/* An immediate pointer mover consumes the borrowed address in reserved FP48. */
-static int
-typedimagearrayindex(Inst*in,Inst*use,Dis64TypedBody*p,unsigned int pc)
-{
- long array,index,value;unsigned int sm,dm,vm;int actual,read;Addr*a;
- if(in->op!=IINDW || !typedimagearrayaddr(&in->s) || in->mm!=Afp || !in->m.decl || in->m.offset || in->branch ||
-    !typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual) || !typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual) ||
-    !use || use->op!=IMOVP || use->mm!=Anone || use->branch)return typedfail(p,"image-array-index");
- read=use->sm==Afpind;a=read?&use->s:&use->d;
- if((!read && use->dm!=Afpind) || a->decl!=in->m.decl || a->reg!=in->m.reg || a->offset ||
-    !typedoperand(read?use->dm:use->sm,read?&use->d:&use->s,TypedRoot,0,0,p,&value,&vm,&actual) || (actual!=Tref && actual!=Tany))return typedfail(p,"image-array-mover");
- p->code[pc]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};p->returns[pc]=255;
- p->code[pc+1]=(Dis64Instruction){IMOVP,read?SRC(AFP|AIND)|DST(vm):SRC(vm)|DST(AFP|AIND),0,read?48:value,read?value:48};p->returns[pc+1]=255;return 1;
-}
-
 /* A rooted Window list head may prepare the following borrowed array store. */
 static int
 typedimagearraywindowindex(Inst*in,Inst*head,Inst*store,Dis64TypedBody*p,unsigned int pc)
@@ -631,9 +630,9 @@ typedimagearraywindowindex(Inst*in,Inst*head,Inst*store,Dis64TypedBody*p,unsigne
  if(in->op!=IINDW||!typedimagearrayaddr(&in->s)||in->mm!=Afp||!in->m.decl||in->m.offset||in->branch||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual)||!typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual)||head->op!=IHEADP||head->dm!=Afp||store->sm!=Afpind||store->s.reg!=head->d.reg||store->s.decl!=head->d.decl||store->dm!=Afpind||a->decl!=in->m.decl||a->reg!=in->m.reg||a->offset||!typedwindowlist(head,p,p->code+pc+1,p->returns+pc+1,nil)||!typedlibraryarraystore(store,p,pc+2))return typedfail(p,"window-array-index");
  p->code[pc]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};p->returns[pc]=255;return 1;}
 static int
-typedimagearrayslice(Inst*in,Dis64TypedBody*p,unsigned int pc,Type*result)
+typedrootarrayslice(Inst*in,Dis64TypedBody*p,unsigned int pc,Type*result)
 {long source,middle;unsigned int sm,mm;int actual;
- if(in->op!=ISLICEA||in->dm!=Afpind||in->d.reg!=16||in->d.offset||!result||result->kind!=Tarray||!typedwmref(result->tof,"Draw","Image")||in->branch||!typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual)||!typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mm,&actual)||(mm!=AIMM&&mm!=AFP))return typedfail(p,"image-array-result-slice");
+ if(in->op!=ISLICEA||in->dm!=Afpind||in->d.reg!=16||in->d.offset||!result||result->kind!=Tarray||!result->tof||!typedmanagedkind(result->tof->kind)||in->branch||!typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual)||!typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mm,&actual)||(mm!=AIMM&&mm!=AFP))return typedfail(p,"root-array-result-slice");
  p->code[pc]=(Dis64Instruction){ISLICEA,SRC(sm)|(mm==AIMM?AXIMM:AXINF)|DST(AFP|AIND),middle,source,32};p->returns[pc]=1;return 1;}
 
 /* Array result owner remains a non-temporary FP root throughout the call. */
@@ -1428,7 +1427,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->loads&&in->op==IMOVP&&(in->sm==Afpind||in->sm==Ampind)&&(in->dm==Afpind||in->dm==Ampind)&&typedrootfieldcopy(in,p,pc-p->first)){pc++;
         }else if(c->loads && (in->op==INEW||in->op==INEWZ||in->op==IMOVMP)&&typedwindowconstruct(in,p,pc-p->first)){pc++;
         }else if(c->loads && typedlibraryinst(in,p,pc-p->first,stop)){pc++;
-        }else if(c->loads && in->op==ISLICELA){if(!(typedregistryarray(&in->s)?typedregistrycopy(in,p,pc-p->first):typedlibrarybytecopy(in,p,pc-p->first)))goto fail;pc++;
+        }else if(c->loads && in->op==ISLICELA){if(!(typedrootarrayelement(&in->s)?typedrootarraycopy(in,p,pc-p->first):typedlibrarybytecopy(in,p,pc-p->first)))goto fail;pc++;
         }else if(in->op==IFRAME || (c->external && in->op==IMFRAME)){
             if(in->op==IMFRAME){if(!typedexternalsite(c,p,pc,stop,&next))goto fail;}
             else if(c->loads && in->native64args){if(!typedvariadicsite(c,p,pc,stop,&next))goto fail;}
@@ -1465,20 +1464,20 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->loads && (in->op==IINDL || in->op==IINDX) && in->sm==Afp && typedbuiltinarray(&in->s)){
             if(pc+1>=stop||!typedbuiltinarrayindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;
             inside[pc+1-p->first]=1;pc+=2;
-        }else if(c->loads && in->op==IINDW && (typedstringarray(&in->s)||typedshellvararray(&in->s))){
+        }else if(c->loads && in->op==IINDW && (typedrootarrayelement(&in->s) && (in->dm==Afp || in->dm==Amp || in->dm==Aimm) && pc+1<stop && (c->instructions[pc+1]->op==IMOVP || c->instructions[pc+1]->op==IBEQW || c->instructions[pc+1]->op==IBNEW || c->instructions[pc+1]->op==IBEQC || c->instructions[pc+1]->op==IBNEC))){
             if(pc+1>=stop||!typedrootarrayindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
         }else if(c->loads && in->op==IINDW && typedregistryarray(&in->s)){
             if(pc+1>=stop||!typedregistryindex(in,c->instructions[pc+1],p,pc-p->first,stop,fn->ty->tof))goto fail;inside[pc+1-p->first]=1;pc+=2;
         }else if(c->loads && in->op==IINDW && typedimagearrayaddr(&in->s) && pc+2<stop && c->instructions[pc+1]->op==IHEADP){
             if(!typedimagearraywindowindex(in,c->instructions[pc+1],c->instructions[pc+2],p,pc-p->first))goto fail;inside[pc+1-p->first]=inside[pc+2-p->first]=1;pc+=3;
-        }else if(c->loads && in->op==ISLICEA && in->dm==Afpind && fn->ty->tof->kind==Tarray && typedwmref(fn->ty->tof->tof,"Draw","Image")){
-            if(!typedimagearrayslice(in,p,pc-p->first,fn->ty->tof))goto fail;pc++;
-        }else if(c->loads && (in->op==INEWA || in->op==INEWAZ) && (typedimagearrayaddr(&in->d)||typedregistryarray(&in->d)||typedstringarray(&in->d)||typedshellvararray(&in->d))){
-            if(!typedimagearraynew(in,p,pc-p->first))goto fail;pc++;
+        }else if(c->loads && in->op==ISLICEA && in->dm==Afpind && fn->ty->tof->kind==Tarray && fn->ty->tof->tof && typedmanagedkind(fn->ty->tof->tof->kind)){
+            if(!typedrootarrayslice(in,p,pc-p->first,fn->ty->tof))goto fail;pc++;
+        }else if(c->loads && (in->op==INEWA || in->op==INEWAZ) && typedrootarrayelement(&in->d)){
+            if(!typedrootarraynew(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==IINDW && typedimagearrayaddr(&in->s) && pc+1<stop && (c->instructions[pc+1]->op==IFRAME || c->instructions[pc+1]->op==IMFRAME)){
             if(!typedimagearrayresultindex(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==IINDW && typedimagearrayaddr(&in->s)){
-            if(pc+1>=stop || !typedimagearrayindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
+            if(pc+1>=stop || !typedrootarrayindex(in,c->instructions[pc+1],p,pc-p->first))goto fail;inside[pc+1-p->first]=1;pc+=2;
         }else if((c->external>=2 || c->loads) && (in->op==INEWA || in->op==INEWAZ || in->op==ISLICEA)){
             if((c->loads && !typedloadbytes(in,p,pc-p->first)) || !typedclientarray(in,p,pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && (in->op==IINDB || in->op==IINDW)){

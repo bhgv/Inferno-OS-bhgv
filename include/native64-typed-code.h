@@ -443,7 +443,7 @@ native64typedrefarray(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
   dm==(AFP|AIND) && s->d==48 && s->mode==(SRC(sm)|DST(dm)) && native64typedrootoperand(sm,s->s,fp,mp);
 }
 
-/* Closed registry array protocols, including its borrowed element result. */
+/* Mapped array protocols: borrowed element results and nil comparisons. */
 static int
 native64typedregistry(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {unsigned int sm=USRC(s->mode),dm=UDST(s->mode),mm=s->mode&ARM;
@@ -451,7 +451,7 @@ native64typedregistry(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
  if(s->op==ISLICELA)return s->mode==(SRC(sm)|mm|DST(dm))&&mm!=AXNON&&(mm!=AXIMM||(s->m>=-32768&&s->m<=32767))&&native64typedrootoperand(sm,s->s,fp,mp)&&native64typedrootoperand(dm,s->d,fp,mp)&&native64typedwordoperand(mm==AXIMM?AIMM:mm==AXINF?AFP:AMP,s->m,fp,mp);
  if(s->op==IINDL)return s->mode==(SRC(sm)|AXINF|DST(dm))&&s->m==48&&native64typedrootoperand(sm,s->s,fp,mp)&&(dm==(AFP|AIND)||dm==(AMP|AIND))&&s->d>=0&&((unsigned long)s->d>>16)==72&&native64typedrootoperand(dm&~AIND,s->d&65535,fp,mp);
  if(s->op==IMOVP)return s->mode==(SRC(AFP|AIND)|DST(AFP|AIND))&&s->s==48&&!s->m&&s->d==32;
- return (s->op==IBEQL||s->op==IBNEL)&&s->mode==(SRC(AFP|AIND)|AXINM|DST(AIMM))&&s->s==48&&native64typedrootoperand(AMP,s->m,fp,mp)&&s->d>=0;
+ return (s->op==IBEQL||s->op==IBNEL||s->op==IBEQC||s->op==IBNEC)&&s->mode==(SRC(AFP|AIND)|AXINM|DST(AIMM))&&s->s==48&&native64typedrootoperand(AMP,s->m,fp,mp)&&s->d>=0;
 }
 
 /* Context has exactly three pointer fields (Display, Screen, wm channel).

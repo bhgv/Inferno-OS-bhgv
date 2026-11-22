@@ -992,7 +992,7 @@ def verify(data,r,imports,loads=False,rows=None):
             else:
                 before=original[pc-1];assert before['op']==OPCODES['IINDW']and r['code'][pc-1][5]==255 and o['s']==[before['m'],0]and s==48
                 if op==41:assert o['op']==41 and mode==45 and m==0 and o['m']is None and o['d']==[16,0]and d==32
-                else:assert (o['op'],op)in((OPCODES['IBEQW'],OPCODES['IBEQL']),(OPCODES['IBNEW'],OPCODES['IBNEL']))and mode==234 and m==maps['data'][o['m']]and d==o['d'][0]-r['first']
+                else:assert (o['op'],op)in((OPCODES['IBEQW'],OPCODES['IBEQL']),(OPCODES['IBNEW'],OPCODES['IBNEL']),(OPCODES['IBEQC'],OPCODES['IBEQC']),(OPCODES['IBNEC'],OPCODES['IBNEC']))and mode==234 and m==maps['data'][o['m']]and d==o['d'][0]-r['first']
                 inside.add(pc)
             continue
         if returned==159:
