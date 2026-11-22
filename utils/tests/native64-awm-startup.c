@@ -129,8 +129,9 @@ panelconstruction(void)
 #endif
 int main(void){int jit,q;int quanta[]={1,3,1000};rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freestring;Tarray.free=freearray;Tarray.size=sizeof(Array);require(dis64selectlaunch("dis64-calls"));quotefmtinstall();
  GRAPH_HANDLERS
+ metadata();construction();
+ for(jit=0;jit<2;jit++)for(q=0;q<3;q++)run(jit,quanta[q]);
 #ifdef TEST_AWM_PANEL_METADATA
  panelconstruction();
 #endif
- metadata();construction();
- for(jit=0;jit<2;jit++)for(q=0;q<3;q++)run(jit,quanta[q]);return 0;}
+ return 0;}
