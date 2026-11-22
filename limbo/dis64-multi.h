@@ -744,8 +744,8 @@ static int
 typedclientstring(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 {
  unsigned int sm,mm,dm;long source,middle,destination;int actual,index=in->op==IINDC;
- if(in->op==ISLICEC && in->dm==Afpind && in->d.reg==16 && (p->resultkind==Tstring || (p->resultpair>=2 && p->resulttype->ids->next->ty->kind==Tstring))){
-  if(in->branch || (in->d.offset!=0 && !(p->resultpair>=2 && in->d.offset==(p->resultpair>=4?8:4))) || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) || !typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mm,&actual) || (mm!=AIMM && mm!=AFP))return typedfail(p,"string-result-slice");
+ if(in->op==ISLICEC && in->dm==Afpind && in->d.reg==16 && (p->resultkind==Tstring || (p->resultpair && (in->d.offset?p->resulttype->ids->next->ty:p->resulttype->ids->ty)->kind==Tstring))){
+  if(in->branch || (in->d.offset!=0 && !(p->resultpair && in->d.offset==(p->resultpair>=4?8:4))) || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) || !typedoperand(in->mm,&in->m,Tint,1,1,p,&middle,&mm,&actual) || (mm!=AIMM && mm!=AFP))return typedfail(p,"string-result-slice");
   p->code[pc]=(Dis64Instruction){ISLICEC,SRC(sm)|(mm==AIMM?AXIMM:AXINF)|DST(AFP|AIND),middle,source,in->d.offset?40:32};p->returns[pc]=p->resultpair?(in->d.offset?16:8):1;return 1;
  }
  if(in->op==IADDC || in->op==IINSC || in->op==ISLICEC){
@@ -1015,23 +1015,6 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 }
 
 static int typedmultibody(TypedMulti*,unsigned int,unsigned int);
-
-/* A destructured tuple may bind to two separate local declarations. Both
- * compiler declarations and both relocated root cells must agree. */
-static int
-typedpairslot(TypedMulti *c,Dis64TypedBody *p,Addr *a)
-{
- unsigned int i;Decl *fn,*d;int pass;
- if(!a->decl || !a->decl->ty || a->reg!=a->decl->offset)return 0;
- if(typedpairtype(a->decl->ty))return 1;
- if(a->decl->ty->kind!=Tmodule)return 0;
- for(i=0;i<(unsigned int)c->nf;i++)if(c->functions[i]->pc->pc==(int)p->first){
-  fn=c->functions[i];
-  for(pass=0;pass<2;pass++)for(d=pass?fn->locals:fn->ty->ids;d;d=d->next)
-   if(d->offset==a->reg+4 && d->ty && d->ty->kind==Tlist && d->ty->tof && d->ty->tof->kind==Tstring)return 1;
- }
- return 0;
-}
 
 static int
 typedchannelslot(TypedMulti*c,Dis64TypedBody*p,Addr*a)
@@ -1318,10 +1301,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             }
             else if(child->resulttriple){if(!typedchannelbinding(c,p,binding,&local))return 0;source=local;sm=AFP;}
             else if(child->resultpair){
-                unsigned int second;Addr *a=&binding->s;
-                if(!typedpairslot(c,p,a) ||
-                   !dis64layoutaddress(&p->frame,a->reg,4,1,&offset) ||
-                   !dis64layoutaddress(&p->frame,a->reg+4,4,1,&second) || second!=offset+8)return typedfail(p,"pair-call-result");
+                if(!typedrootpairbinding(c->functions[target],binding,p,&offset,0))return typedfail(p,"pair-call-result");
                 source=offset;sm=AFP;
             }else if(!typedoperand(Afp,&binding->s,root?TypedRoot:kind,0,0,p,&source,&sm,&actual) ||
                (root && actual!=kind && actual!=Tany))return typedfail(p,"multi-result");
@@ -1331,7 +1311,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AMP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;
         }else{
             if((child->resultgeometry&&child->resultgeometry!=p->resultgeometry) || binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || !((child->resultgeometry&&child->resultgeometry==p->resultgeometry)||(kind==Tstring && (p->resultaggregate==80 || p->resultaggregate==124)) || (kind==p->resultkind && child->resultpair==p->resultpair && child->resulttriple==p->resulttriple && child->resultaggregate==p->resultaggregate)))return typedfail(p,"multi-inherit");
-            if(child->resultpair>=3 && !tequal(p->resulttype,c->functions[target]->ty->tof))return typedfail(p,"mixed-inherit-type");
+            if(child->resultpair && !tequal(p->resulttype,c->functions[target]->ty->tof))return typedfail(p,"mixed-inherit-type");
             inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;
         }
         at++;
@@ -1466,11 +1446,11 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedpointercopy(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==IMOVM){
             if(!typedlocalgeometry(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
-        }else if(c->loads && p->resultpair>=3 && in->op==IMOVMP && in->dm==Afpind && in->d.reg==16){
+        }else if(c->loads && p->resultpair && in->op==IMOVMP && in->dm==Afpind && in->d.reg==16){
             Dis64Layout l={0};Decl*d=in->m.decl;unsigned int base=0;int valid;
-            valid=in->sm==Afp && in->mm==Adesc && !in->d.offset && !in->branch && d && d->desc && d->desc->id==in->m.offset && tequal(d->ty,p->resulttype) && typedmixedtuple(p->resulttype,&l) && d->desc->size==l.legacybytes && d->desc->nmap==1 && d->desc->map && d->desc->map[0]==(128>>(l.leaves[1].legacy/4)) && dis64layoutbindresult(&p->frame,&l,in->s.reg,8,0,&base);
+            valid=in->sm==Afp && in->mm==Adesc && !in->d.offset && !in->branch && d && d->desc && d->desc->id==in->m.offset && tequal(d->ty,p->resulttype) && dis64layouttype(p->resulttype,&l) && d->desc->size==l.legacybytes && d->desc->nmap==1 && d->desc->map && d->desc->map[0]==(p->resultpair<3?0xc0:(128>>(l.leaves[1].legacy/4))) && dis64layoutbindresult(&p->frame,&l,in->s.reg,8,0,&base);
             dis64layoutfree(&l);if(!valid){typedfail(p,"mixed-result-copy");goto fail;}
-            p->code[pc-p->first]=(Dis64Instruction){IMOVMP,SRC(AFP)|AXIMM|DST(AFP|AIND),(16<<16)|(16<<8),base,32};p->returns[pc++-p->first]=77;
+            p->code[pc-p->first]=(Dis64Instruction){IMOVMP,SRC(AFP)|AXIMM|DST(AFP|AIND),((p->resultpair<3?48:16)<<16)|(16<<8),base,32};p->returns[pc++-p->first]=77;
         }else if(c->loads && p->resulttriple && in->op==IMOVMP){
             Desc*d;unsigned int base=0;
             for(d=descriptors;d && d->id!=in->m.offset;d=d->next);

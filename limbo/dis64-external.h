@@ -59,10 +59,20 @@ typedwmtuplebinding(Decl*fn,Inst*b,Dis64TypedBody*p,unsigned int*base,int reloca
   ok=dis64layoutbindresult(&p->frame,&l,b->s.reg,(c==96||c==112)?4:8,relocate,base);
  dis64layoutfree(&l);return ok?c:0;}
 
+/* Local two-root tuples retain every declared field kind when destructured. */
+static int
+typedrootpairbinding(Decl *fn,Inst *b,Dis64TypedBody *p,unsigned int *base,int relocate)
+{
+ Dis64Layout l={0};int kind=typedpairtype(fn->ty->tof),ok=0;
+ if(kind && kind<3 && b->sm==Afp && b->s.reg>=32 && dis64layouttype(fn->ty->tof,&l))
+  ok=dis64layoutbindresult(&p->frame,&l,b->s.reg,8,relocate,base);
+ dis64layoutfree(&l);return ok;
+}
+
 static int
 typedwmtupleframe(TypedMulti*c,Decl*owner,Dis64TypedBody*p,unsigned int stop)
-{unsigned int pc,end,base;Inst*in,*call,*b;Decl*fn,*arg;Dis64Layout l={0};unsigned int contract,bytes;
- for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IFRAME)continue;end=pc+1;while(end<stop&&c->instructions[end]&&c->instructions[end]->op!=ICALL&&c->instructions[end]->op!=IFRAME&&!c->instructions[end]->branch)end++;if(end>=stop||!c->instructions[end]||c->instructions[end]->op!=ICALL||c->instructions[end]->d.offset<0||(unsigned int)c->instructions[end]->d.offset>=c->count||c->entries[c->instructions[end]->d.offset]<0)continue;fn=c->functions[c->entries[c->instructions[end]->d.offset]];contract=typedaggregatecontract(fn->ty->tof,&l);if(!contract){dis64layoutfree(&l);contract=typedmixedtuple(fn->ty->tof,&l);}dis64layoutfree(&l);if(!contract||!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;if(!typedwmtuplebinding(fn,b,p,&base,1))return typedfail(p,"local-aggregate-result-frame");}
+{unsigned int pc,end,base;Inst*in,*call,*b;Decl*fn,*arg;Dis64Layout l={0};unsigned int contract,bytes,pair;
+ for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IFRAME)continue;end=pc+1;while(end<stop&&c->instructions[end]&&c->instructions[end]->op!=ICALL&&c->instructions[end]->op!=IFRAME&&!c->instructions[end]->branch)end++;if(end>=stop||!c->instructions[end]||c->instructions[end]->op!=ICALL||c->instructions[end]->d.offset<0||(unsigned int)c->instructions[end]->d.offset>=c->count||c->entries[c->instructions[end]->d.offset]<0)continue;fn=c->functions[c->entries[c->instructions[end]->d.offset]];contract=typedaggregatecontract(fn->ty->tof,&l);if(!contract){dis64layoutfree(&l);contract=typedmixedtuple(fn->ty->tof,&l);}dis64layoutfree(&l);if(!contract && (pair=typedpairtype(fn->ty->tof))>0 && pair<3){if(!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;if(!typedrootpairbinding(fn,b,p,&base,1))return typedfail(p,"local-root-pair-frame");continue;}if(!contract||!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;if(!typedwmtuplebinding(fn,b,p,&base,1))return typedfail(p,"local-aggregate-result-frame");}
  for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IMFRAME||!(fn=in->m.decl)||!fn->ty||fn->ty->kind!=Tfn)continue;contract=typedwmtuple(fn->ty->tof,&l);if(!contract){dis64layoutfree(&l);contract=typedmixedtuple(fn->ty->tof,&l);}bytes=l.legacybytes;dis64layoutfree(&l);if(!contract)continue;
   end=pc+1;while(end<stop&&c->instructions[end]&&c->instructions[end]->op!=IMCALL&&c->instructions[end]->op!=IMFRAME&&!c->instructions[end]->branch)end++;if(end<=pc+1||end>=stop||!(call=c->instructions[end])||call->op!=IMCALL||call->m.decl!=fn||!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;
   for(arg=owner->ty->ids;arg;arg=arg->next)if(!arg->ty||(b->s.reg<arg->offset+arg->ty->size&&b->s.reg+bytes>arg->offset))return typedfail(p,"wm-tuple-result-formal-overlap");

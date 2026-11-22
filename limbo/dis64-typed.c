@@ -99,6 +99,11 @@ typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out)
     *out=(Dis64Instruction){in->op,SRC(sm)|DST(AMP),0,value,base+(in->op==IGOTO?4:0)};return 1;
 }
 
+/* Managed references share storage width, but keep their declared type identity. */
+static int
+typedmanagedkind(int kind)
+{return kind==Tstring || kind==Tlist || kind==Tarray || kind==Tref || kind==Tchan || kind==Tmodule;}
+
 /* A scalar followed by one managed root. Match the declaration and complete
  * layout; the contract describes storage, independently of the callee name. */
 static unsigned int
@@ -107,7 +112,7 @@ typedmixedtuple(Type *t, Dis64Layout *l)
  Decl *a,*b;int root;
  if(!t || t->kind!=Ttuple || !(a=t->ids) || !(b=a->next) || b->next || !a->ty || !b->ty)return 0;
  root=b->ty->kind;
- if(root!=Tstring && root!=Tlist && root!=Tref && root!=Tarray && root!=Tchan && root!=Tmodule)return 0;
+ if(!typedmanagedkind(root))return 0;
  if(a->ty->kind!=Tint && a->ty->kind!=Tbig && a->ty->kind!=Treal)return 0;
  if(!dis64layouttype(t,l) || l->count!=2 || l->bytes!=16 || l->alignment!=8 ||
     l->legacybytes!=(a->ty->kind==Tint?8:16) ||
@@ -126,8 +131,7 @@ typedpairtype(Type *t)
  if(!t || t->kind!=Ttuple || !(a=t->ids) || !a->ty || !a->next || a->next->next || !a->next->ty)return 0;
  if(typedmixedtuple(t,&l)){kind=a->ty->kind==Tint?3:a->ty->kind==Tbig?4:5;dis64layoutfree(&l);}
  else{dis64layoutfree(&l);
-  if(a->ty->kind==Tmodule && a->next->ty->kind==Tlist && a->next->ty->tof && a->next->ty->tof->kind==Tstring)kind=1;
-  else if(a->ty->kind==Tstring && a->next->ty->kind==Tstring)kind=2;
+  if(typedmanagedkind(a->ty->kind) && typedmanagedkind(a->next->ty->kind))kind=a->ty->kind==Tstring && a->next->ty->kind==Tstring?2:1;
  }
  if(!kind || !dis64layouttype(t,&l))goto done;
  ok=(l.legacybytes==(kind>=4?16:8)) && l.bytes==16 && l.count==2 && l.leaves[0].legacy==0 && l.leaves[0].native==0 && l.leaves[0].bytes==(kind==3?4:8) && l.leaves[1].legacy==(kind>=4?8:4) && l.leaves[1].native==8 && l.leaves[1].bytes==8;
@@ -237,7 +241,7 @@ typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out,
     }else if(in->dm==Afpind && p->resultpair){
         int second=in->d.offset!=0,firstkind=p->resultpair==3?Tint:p->resultpair==4?Tbig:Treal;
         if(in->d.reg!=16 || (in->d.offset && in->d.offset!=(p->resultpair>=4?8:4)) || (p->resultpair<3 || second ? in->op!=IMOVP || in->mm!=Anone : dk!=firstkind))return typedfail(p,"pair-result-destination");
-        out->destination=second?40:32;dm=AFP|AIND;destkind=p->resultpair>=3?(second?p->resulttype->ids->next->ty->kind:firstkind):p->resultpair==2?Tstring:second?Tlist:Tmodule;*result=second?16:8;
+        out->destination=second?40:32;dm=AFP|AIND;destkind=p->resultpair>=3?(second?p->resulttype->ids->next->ty->kind:firstkind):(second?p->resulttype->ids->next->ty->kind:p->resulttype->ids->ty->kind);*result=second?16:8;
 	}else if(in->dm==Afpind){
 		if(p->resultkind==Tnone || in->d.reg!=16 || in->d.offset!=0 ||
 		   (dk==TypedRoot ? !(p->resultkind==Tstring || p->resultkind==Tref || p->resultkind==Tarray || p->resultkind==Tlist || p->resultkind==Tchan || p->resultkind==Tmodule) :
@@ -712,7 +716,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
                 if(p.catchcleanup)for(i=0;i<(p.frame.bytes+63)/64;i++)fprint(2,"%s%ud",i?",":"",(unsigned int)p.catchcleanup[i]);
                 fprint(2,"]}]");
             }
-			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair && p.resultpair<3)fprint(2,",\"result_pair\":[%d,%d]",p.resultpair==2?Tstring:Tmodule,p.resultpair==2?Tstring:Tlist);if(p.resultpair>=3)fprint(2,",\"result_mixed\":[%d,%d]",p.resultpair==3?Tint:p.resultpair==4?Tbig:Treal,p.resulttype->ids->next->ty->kind);if(p.resulttriple==2)fprint(2,",\"result_words\":[%d,%d,%d]",Tint,Tint,Tint);if(p.resulttriple==1)fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);if(p.resultaggregate)fprint(2,",\"result_aggregate\":%d",p.resultaggregate);if(p.resultgeometry)fprint(2,",\"result_geometry\":%d",p.resultgeometry);
+			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair && p.resultpair<3)fprint(2,",\"result_pair\":[%d,%d]",p.resulttype->ids->ty->kind,p.resulttype->ids->next->ty->kind);if(p.resultpair>=3)fprint(2,",\"result_mixed\":[%d,%d]",p.resultpair==3?Tint:p.resultpair==4?Tbig:Treal,p.resulttype->ids->next->ty->kind);if(p.resulttriple==2)fprint(2,",\"result_words\":[%d,%d,%d]",Tint,Tint,Tint);if(p.resulttriple==1)fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);if(p.resultaggregate)fprint(2,",\"result_aggregate\":%d",p.resultaggregate);if(p.resultgeometry)fprint(2,",\"result_geometry\":%d",p.resultgeometry);
 			fprint(2,",\"descriptor\":%d,\"data_descriptor\":%d,\"frame\":",fn->desc->id,descriptors->id);
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);

@@ -869,6 +869,15 @@ def verify(data,r,imports,loads=False,rows=None):
         if returned==80:rawarray_index(original,r['code'],pc,maps,r);continue
         if returned==79:rawarray_operation(o,r['code'][pc],maps,types,r);continue
         if returned==65:rawarray_use(original,r['code'],pc,maps,r);continue
+        if returned==77 and r.get('result_pair'):
+            assert loads and op==o['op']==OPCODES['IMOVMP'] and mode==o['mode']==77
+            assert o['d']==[16,0] and d==32 and m==(48<<16)|(16<<8)
+            old=o['s'][0];assert s==maps['frame'][old] and s%8==0
+            for i,kind in enumerate(r['result_pair']):
+                assert kind in ROOTS
+                assert next(l for l in r['frame']['leaves']if l[0]==old+4*i)==[old+4*i,s+8*i,4,8,kind]
+            assert types[o['m']]==(8,bytes([0xc0]))
+            continue
         if returned==77 and r.get('result_mixed'):
             assert loads and op==OPCODES['IMOVMP'] and o['op']==op and o['mode']==mode==77
             assert o['d']==[16,0] and d==32 and m==(16<<16)|(16<<8)
@@ -1540,6 +1549,8 @@ def verify(data,r,imports,loads=False,rows=None):
             continue
         if (r.get('result_pair')or r.get('result_mixed')or r['result']==[13,8])and o['op']==OPCODES['ISLICEC']and o['mode']&7==5:
             assert op==o['op']and mode==o['mode']
+            if r.get('result_pair'):assert r['result_pair'][int(bool(o['d'][1]))]==13
+            if r.get('result_mixed'):assert o['d'][1] and r['result_mixed'][1]==13
             assert o['d'][0]==16 and o['d'][1]in(0,4,8)and d==(40 if o['d'][1]else 32)and returned==(56 if o['d'][1]else 40 if r.get('result_pair')else 24)
             sm=mode>>3&7;assert s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
             mm=mode&192;assert m==(o['m']if mm==64 else maps['frame'if mm==128 else'data'][o['m']])
@@ -1549,7 +1560,7 @@ def verify(data,r,imports,loads=False,rows=None):
             assert o['d']==[16,4 if r['result_mixed'][0]==9 else 8]and d==40 and returned==56
             assert s==maps['frame'if mode>>3&7 else'data'][o['s'][0]];continue
         if r.get('result_pair'):
-            assert r['result_pair']in([11,10],[13,13])and r['result']==[14,16]
+            assert len(r['result_pair'])==2 and all(k in ROOTS for k in r['result_pair']) and r['result']==[14,16]
             if o['op']==41 and o['mode']&7==5:
                 assert op==41 and mode==o['mode']and m==0 and o['m']is None
                 assert o['d']in([16,0],[16,4])and d==32+2*o['d'][1]and returned==(40 if o['d'][1]==0 else 56)

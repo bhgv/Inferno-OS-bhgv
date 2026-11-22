@@ -151,11 +151,18 @@ def generate(limbo,w):
   ty='list of '+payload;source='implement Closed;include "sys.m";include "draw.m";'+extra+'Closed:module{run:fn():('+ty+','+ty+','+ty+');};run():('+ty+','+ty+','+ty+'){return(nil,nil,nil);}'
   _,closed=E['compile_source'](limbo,w,source,interface='',loads=True);assert not closed[0]['accepted'],closed
  print('PASS aggregate boundary: Point and foreign record list triples refused',flush=True)
+ # Generic local root pairs are valid; they must retain a distinct signature
+ # and must never acquire the specialized Tk Toplevel/string-channel contract.
+ canonical='implement Closed;include "sys.m";include "draw.m";include "tk.m";Closed:module{run:fn():(ref Tk->Toplevel,chan of string);};run():(ref Tk->Toplevel,chan of string){return(nil,nil);}'
+ _,tkrows=E['compile_source'](limbo,w,canonical,interface='',loads=True)
+ assert tkrows[0]['accepted'] and tkrows[0]['result_aggregate']==116
  for result in ('ref Tk->Toplevel,chan of int','ref Draw->Context,chan of string'):
   source='implement Closed;include "sys.m";include "draw.m";include "tk.m";Closed:module{run:fn():('+result+');};run():('+result+'){return(nil,nil);}'
-  _,closed=E['compile_source'](limbo,w,source,interface='',loads=True)
-  assert not closed[0]['accepted'],closed
- print('PASS Tk tuple boundary: wrong channel payload and wrong record refused',flush=True)
+  raw,closed=E['compile_source'](limbo,w,source,interface='',loads=True)
+  assert closed[0]['accepted'] and closed[0]['result_pair']==[12,6] and not closed[0].get('result_aggregate')
+  assert closed[0]['signature']!=tkrows[0]['signature']
+  CMD['verify_nilbranches'](raw,closed[0],[],rows=closed)
+ print('PASS Tk tuple boundary: generic root pairs retain distinct signatures and cannot claim specialized Tk contract',flush=True)
  source=(ROOT/'appl/wm/atoolbar.b').read_text()
  data,records=E['compile_source'](limbo,w,source,interface='',loads=True)
  imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]

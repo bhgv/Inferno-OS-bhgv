@@ -1,7 +1,13 @@
 #include "full.h"
 static Modlink*fullload(Module*m,WORD i,char*p){USED(m);USED(i);USED(p);return H;}
 static void tokencheck(int ok,char*why){if(!ok){fprintf(stderr,"tokenize predicate: %s\n",why);exit(10);}}
-static int tokenword(String*s,const char*text){String*expected=c2string((char*)text,strlen(text));int ok=s!=H && s->len==expected->len && !memcmp(s->len<0?(void*)s->Srune:(void*)s->Sascii,expected->len<0?(void*)expected->Srune:(void*)expected->Sascii,s->len<0?-s->len*sizeof(Rune):s->len);destroy(expected);return ok;}
+static int tokenword(String*s,const char*text){
+ String*expected=c2string((char*)text,strlen(text));int ok;
+ if(s==H)ok=expected==H||expected->len==0;
+ else if(expected==H)ok=s->len==0;
+ else ok=s->len==expected->len && !memcmp(s->len<0?(void*)s->Srune:(void*)s->Sascii,expected->len<0?(void*)expected->Srune:(void*)expected->Sascii,s->len<0?-s->len*sizeof(Rune):s->len);
+ destroy(expected);return ok;
+}
 static Module*tokenbuiltin(void){
  Module*m=mallocz(sizeof(*m),1);const Native64ModuleImport*r=full_import_0;
  require(m!=nil);m->ref=1;m->rt=DONTCOMPILE;m->origmp=H;m->name=strdup("$Sys");m->path=strdup("$Sys");
@@ -32,6 +38,7 @@ static void tokencase(int jit,int quantum,int which,int grow){
  tokencheck(steps<10000&&!worker.env->errstr[0],"source call completion");
  memmove(&n,ml->MP+token_offsets[3],4);memmove(&l,ml->MP+token_offsets[4],8);
  for(i=0;i<3&&expected[which][i];i++){tokencheck(l!=H,"list length");memmove(&word,l->data,8);tokencheck(tokenword(word,expected[which][i]),"list values and order");l=l->tail;}
+ if(TOKEN_ROOT_PAIR){memmove(&s,ml->MP+token_offsets[5],8);if(!tokenword(s,input[which])){fprintf(stderr,"root pair case jit=%d q=%d input=%d grow=%d actual=%s\n",jit,quantum,which,grow,s==H?"<nil>":string2c(s));tokencheck(0,"forwarded second root");}}
  tokencheck(l==H&&n==(WORD)i,"tuple count and complete list");observed=p;progexit();emptyqueues();destroy(ml);
  require(native64typedmoduleclear(&owner));require(b->ref==1);unload(b);
  if(live||nlinkpins||modules||worker.nerr)fprintf(stderr,"token retirement live=%d pins=%d modules=%p errors=%d strings=%d list=%d ptr=%d\n",live,nlinkpins,(void*)modules,worker.nerr,Tstring.ref,Tlist.ref,Tptr.ref);
@@ -64,7 +71,7 @@ static void tokenmetadata(void){
    if(i==9)resultcode[pc].m^=8<<8;
    if(i==10){memmove(map,f[2].map,f[2].mapbytes);f[2].map=map;bit=(resultcode[pc].s+8)/8;map[bit/8]^=128>>(bit%8);}
    if(i==13)resultcode[pc]=(Native64TypedStep){INOP,SRC(AXXX)|DST(AXXX),0,0,0,0};
-   if(i==14)resultcode[pc].m=(48<<16)|(16<<8);
+   if(i==14)resultcode[pc].m=((TOKEN_ROOT_PAIR?16:48)<<16)|(16<<8);
    if(i==11)f[3].resultcontract=0;
    if(i==12){site=f[3].sites[0];site.contract=24;f[3].sites=&site;}
   }
@@ -117,7 +124,7 @@ int main(void){int j,q,c,g;int quantum[]={1,3,1000};
  worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;
  require(dis64selectlaunch("dis64-calls"));
  TOKEN_OPTAB
- optab[IMOVMP]=actual_movmp;
+ optab[IMOVMP]=actual_movmp;optab[ISLICEC]=actual_slicec;
  tokenmetadata();
  tokenforwardmetadata();
  if(full_spec.nfunctions>2)tokenconstruction();

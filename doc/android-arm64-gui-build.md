@@ -731,3 +731,35 @@ execution modes. Direct import and local-copy modes remain separate regressions.
 These checks use Linux amd64/Word32-ref64 with UBSan; the existing CPU CI matrices
 include this mode. They do not establish arbitrary nested aggregate calls, full
 shell startup or Android device execution. System Limbo sources are unchanged.
+
+
+## Local pairs of managed references
+
+Local tuple results now accept any two declared managed-reference kinds:
+String, List, Array, Ref, Channel and Module. Their exact field kinds remain in
+the compiler proof; forwarding requires equal complete return types. The local
+caller binding checks both fields using the shared typed layout planner instead
+of requiring a Module followed by a String list. Imported two-root calls remain
+outside this change.
+
+Both individual pointer results and whole mapped tuple copies use contract 48.
+The mapped copy uses the existing two-root descriptor. Runtime result-flow checks
+now require both roots on every returning path, including local forwarding.
+String slicing into either String field retains the declared destination kind.
+No system Limbo source or classic Dis encoding was changed.
+
+`native64-tokenize.py --root-pair` checks 36 type combinations plus nil returns.
+Its executing chain creates a real token list, returns the same list through two
+aliased owners, copies a List/String tuple, slices the String field and forwards
+the pair. Seventy-two C/JIT cases include repeated calls, Unicode, empty strings,
+quanta 1/3/1000 and both initial stack configurations. Fifteen malformed metadata
+cases are refused before allocation; constructor allocation failures must fully
+roll back in both modes. Tests use actual mapped-copy and String-slice handlers.
+The existing mixed-result modes remain regressions, and CI runs this additional
+mode in its current CPU matrices. Local execution evidence is Linux amd64 with
+UBSan, not full shell, Android device or cross-platform acceptance.
+
+The former Tk boundary fixture now distinguishes valid generic local root pairs
+from the specialized Tk result contract: changing the channel payload or first
+ADT keeps a generic pair with its own signature, never contract 116. This updates
+the old refusal expectation without permitting it to impersonate Tk.toplevel.

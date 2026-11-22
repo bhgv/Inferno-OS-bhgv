@@ -12,7 +12,9 @@ run(){(n,l):=sys->tokenize(text,seps);count=n;words=l;}
 open(){sys=load Sys Sys->PATH;}
 '''
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--local',action='store_true',help='return and forward tokenize results through local Limbo helpers');p.add_argument('--forward-import',action='store_true',help='forward the imported tuple directly into the original result');a=p.parse_args()
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--local',action='store_true',help='return and forward tokenize results through local Limbo helpers');p.add_argument('--forward-import',action='store_true',help='forward the imported tuple directly into the original result');p.add_argument('--root-pair',action='store_true',help='return two managed references through local Limbo helpers');a=p.parse_args()
+ if a.root_pair and a.forward_import:p.error('select one result mode')
+ if a.root_pair:a.local=True
  if a.forward_import:a.local=True
  with tempfile.TemporaryDirectory(prefix='native64-tokenize-',dir=ROOT) as directory:
   w=Path(directory);limbo=a.limbo.resolve()
@@ -22,7 +24,15 @@ def main():
    source=source.replace('sys->tokenize(text,seps)','forward(text,seps)')
    source+=('pair(s,d:string):(int,list of string){return sys->tokenize(s,d);}' if a.forward_import else 'pair(s,d:string):(int,list of string){(n,l):=sys->tokenize(s,d);return(n,l);}')
    source+='forward(s,d:string):(int,list of string){return pair(s,d);}'
-  rows=G['generate'](limbo,w,source,'Tokens',(4 if a.local else 2,1,0,'~0U'),source_label='original Sys.tokenize with inherited import result' if a.forward_import else 'original Sys.tokenize with local returns' if a.local else 'original Sys.tokenize call')
+  if a.root_pair:
+   source=SOURCE.replace('sys:Sys;text,seps:string;', 'sys:Sys;text,seps,returned:string;')
+   source=source.replace('run(){(n,l):=sys->tokenize(text,seps);count=n;words=l;}', 'run(){(l,s):=forward(text,seps);count=len l;words=l;returned=s;}')
+   source+='pair(s,d:string):(list of string,string){(n,l):=sys->tokenize(s,d);(left,right):=same(l);value:=(left,s);return value;}'
+   source+='slice(s,d:string):(list of string,string){(l,t):=pair(s,d);return(l,t[0:]);}'
+   source+='forward(s,d:string):(list of string,string){return slice(s,d);}'
+   source+='same(l:list of string):(list of string,list of string){return(l,l);}'
+
+  rows=G['generate'](limbo,w,source,'Tokens',(6 if a.root_pair else 4 if a.local else 2,1,0,'~0U'),source_label='original Sys.tokenize with inherited import result' if a.forward_import else 'original Sys.tokenize with local returns' if a.local else 'original Sys.tokenize call')
   header=w/'full.h';header.write_text(header.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n',''))
   data,proofs=E['compile_source'](limbo,w,source,interface='',loads=True)
   imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]
@@ -68,13 +78,27 @@ def main():
   frontier=runpy.run_path(str(ROOT/'utils/tests/awm-native64-preflight.py'))['checked_frontier'](limbo,'appl/cmd/sh/sh.b',w)
   assert next(f for f in frontier['functions']if f['name']=='getbq')['accepted']
   print('PASS unchanged system Sh.getbq: read and tokenize imported calls accepted',flush=True)
+  if a.root_pair:
+   roots=('string','list of string','array of byte','ref P->R','chan of int','P')
+   for first in roots:
+    for second in roots:
+     interface='P:module{R:adt{v:int;};};'
+     pair='('+first+','+second+')'
+     source='implement Client;include "provider.m";Client:module{run:fn();};left:'+first+';right:'+second+';run(){(a,b):=forward();left=a;right=b;}pair():'+pair+'{return(left,right);}forward():'+pair+'{return pair();}'+'nilpair():'+pair+'{return(nil,nil);}'
+     old,cases=E['compile_source'](limbo,w,source,interface=interface,loads=True)
+     assert all(r['accepted']for r in cases),[(r['name'],r.get('reason'))for r in cases]
+     imported=E['BASE']['READ']['legacy_instructions'](old,with_imports=True)[-1]
+     for r in cases:E['verify'](old,r,imported,loads=True,rows=cases)
+   print('PASS local root pairs: 36 declarations, mapped copies and inherited destinations',flush=True)
   offsets={x[0]:x[1]for x in rows[0]['globals']}
-  with header.open('a')as out:out.write('static const uint token_offsets[]={'+','.join(str(offsets[n])for n in ('sys','text','seps','count','words'))+'};\n')
+  with header.open('a')as out:out.write('static const uint token_offsets[]={'+','.join(str(offsets[n])for n in ('sys','text','seps','count','words'))+','+str(offsets.get('returned',0))+'};\n')
   base=('#define TOKEN_IMPORTED_FORWARD 1\n' if a.forward_import else '#define TOKEN_IMPORTED_FORWARD 0\n')+CMD['unit']().replace('int main(int argc,char **argv)','int old_command_main(int argc,char **argv)')
+  base=('#define TOKEN_ROOT_PAIR 1\n' if a.root_pair else '#define TOKEN_ROOT_PAIR 0\n')+base
   extract=CMD['NS']['S']['FILES']['FILES']['function']
   runt=(ROOT/'libinterp/runt.c').read_text();string=(ROOT/'libinterp/string.c').read_text()
   start=runt.index('typedef struct TokenizeResult TokenizeResult;');end=runt.index('/* Keep partial words',start)
   base+='\n#include "sys-native64.h"\n'+extract(string,'String*\nslicer(')+'\n'+extract(runt,'static int\ntokdelim(')+'\n'+runt[start:end]+'\n'+extract(runt,'static int\nbuildtokens(')+'\n'+extract(runt,'void\nSys_tokenize(')
+  base+='\n#define slicec actual_slicec\n'+extract(string,'OP(slicec)')
   vm=(ROOT/'libinterp/xec.c').read_text()
   base+='\n#define movmp actual_movmp\n'+extract((ROOT/'libinterp/heap.c').read_text(),'void\nincmem(')+'\n'+extract(vm,'static int\nmappedcopytype(')+'\n'+extract(vm,'OP(movmp)')
   mainat=base.index('int old_command_main(')
