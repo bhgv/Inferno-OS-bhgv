@@ -1820,13 +1820,15 @@ revlist(l: list of ref Listnode): list of ref Listnode
 fdassignstr(isassign: int, redir: ref Redir): string
 {
 	l: string = nil;
-	if (redir.fd1 >= 0)
-		l = string redir.fd1;
+	fd1 := redir.fd1;
+	if (fd1 >= 0)
+		l = string fd1;
 	
 	if (isassign) {
 		r: string = nil;
-		if (redir.fd2 >= 0)
-			r = string redir.fd2;
+		fd2 := redir.fd2;
+		if (fd2 >= 0)
+			r = string fd2;
 		return "[" + l + "=" + r + "]";
 	}
 	return "[" + l + "]";
@@ -1849,7 +1851,8 @@ cmd2string(n: ref Node): string
 		return "";
 
 	s: string;
-	case n.ntype {
+	kind := n.ntype;
+	case kind {
 	n_BLOCK =>	s = "{" + cmd2string(n.left) + "}";
 	n_VAR =>		s = "$" + cmd2string(n.left);
 				# XXX can this ever occur?
@@ -2344,10 +2347,12 @@ quoted(val: list of ref Listnode, quoteblocks: int): string
 	s := "";
 	for (; val != nil; val = tl val) {
 		el := hd val;
-		if (el.cmd == nil || (quoteblocks && el.word != nil))
-			s += quote(el.word, 0);
+		node := el.cmd;
+		word := el.word;
+		if (node == nil || (quoteblocks && word != nil))
+			s += quote(word, 0);
 		else {
-			cmd := cmd2string(el.cmd);
+			cmd := cmd2string(node);
 			if (quoteblocks)
 				cmd = quote(cmd, 0);
 			s += cmd;

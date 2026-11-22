@@ -19,6 +19,30 @@ typedwmlibclient(Type*t)
   }else if(i>=5&&!typedwmref(v,"Sys","FD"))goto done;
  }if(d)goto done;ok=1;
  done:dis64layoutfree(&l);return ok;}
+/* Closed parser records used by Sh's command formatter. */
+static unsigned int
+typedshsyntaxrecord(Type *t, unsigned int id)
+{
+ static char *node[]={"ntype","left","right","word","redir"};
+ static char *redir[]={"rtype","fd1","fd2"};
+ char **names=id==20?node:redir;
+ Dis64Layout l={0};
+ Decl *d;
+ unsigned int i,n=native64libraryfields(id),result=0;
+ if(!dis64layouttype(t,&l)||l.legacybytes!=4*n||
+    l.bytes!=native64librarybytes(id)||l.count!=n||l.alignment!=(id==20?8:4))goto done;
+ for(i=0,d=t->ids;i<n;i++,d=d->next){
+  int kind=id==21||i==0?Tint:i==3?Tstring:Tref;
+  if(!d||!d->ty||d->store!=Dfield||!d->sym||strcmp(d->sym->name,names[i])||
+     d->ty->kind!=kind||d->offset!=4*i||l.leaves[i].legacy!=4*i||
+     l.leaves[i].oldbytes!=4||l.leaves[i].native!=native64libraryoffset(id,i)||
+     l.leaves[i].bytes!=native64librarywidth(id,i)||l.leaves[i].kind!=kind||
+     (kind==Tref&&!typedwmref(d->ty,"Sh",i==4?"Redir":"Node")))goto done;
+ }
+ if(!d)result=id;
+ done:dis64layoutfree(&l);return result;
+}
+
 static unsigned int
 typedshellrecord(Type *t)
 {
@@ -31,6 +55,8 @@ typedshellrecord(Type *t)
  Decl *d;
  unsigned int id,i=0,j,n,result=0;
  if(!t->decl->dot||!t->decl->dot->sym||strcmp(t->decl->dot->sym->name,"Sh"))return 0;
+ if(!strcmp(t->decl->sym->name,"Node"))return typedshsyntaxrecord(t,20);
+ if(!strcmp(t->decl->sym->name,"Redir"))return typedshsyntaxrecord(t,21);
  for(j=0;j<nelem(records)&&strcmp(t->decl->sym->name,records[j]);j++);
  if(j==nelem(records))return 0;
  id=15+j;n=native64libraryfields(id);
