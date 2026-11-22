@@ -125,6 +125,16 @@ def generate(limbo,w):
   row=next(r for r in records if r['name']==name and (name!='get' or r['export_name']=='Context.get'))
   assert row['accepted'],row
   CMD['verify_nilbranches'](data,row,imports,rows=records)
+ chain=('loadmodule','unloadmodule','builtin_load','builtin_unload')
+ for name in chain:
+  row=next(r for r in records if r['name']==name)
+  assert row['accepted'],row
+  assert row.get('calls'),row
+  if name in ('loadmodule','unloadmodule'):
+   CMD['verify_nilbranches'](data,row,imports,rows=records)
+ context=next(r for r in records if r.get('export_name')=='Context.new')
+ assert context['accepted'],context
+ print('PASS original Sh: checked load, unload, command callers and Context.new autoload',flush=True)
  print('PASS original Sh: checked shell arguments, environment, builtin registration and removal',flush=True)
  for name in('Other','Lay'):
   source='implement Closed;'+name+':adt{d:int;};Closed:module{run:fn(x:'+name+');};run(x:'+name+'){take(x);}take(x:'+name+'){}'

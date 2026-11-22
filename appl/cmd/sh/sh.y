@@ -1203,8 +1203,10 @@ Context.new(drawcontext: ref Draw->Context): ref Context
 	myselfbuiltin->initbuiltin(ctxt, myself);
 	ctxt.env.localenv.flags = ctxt.VERBOSE;
 	for (vl := ctxt.get("autoload"); vl != nil; vl = tl vl)
-		if ((hd vl).cmd == nil && (hd vl).word != nil)
-			loadmodule(ctxt, (hd vl).word);
+		if ((hd vl).cmd == nil && (hd vl).word != nil) {
+			moduleword := (hd vl).word;
+			loadmodule(ctxt, moduleword);
+		}
 	return ctxt;
 }
 
@@ -2046,7 +2048,8 @@ builtin_load(ctxt: ref Context, args: list of ref Listnode, nil: int): string
 	if (args == nil)
 		builtinusage(ctxt, "load path...");
 	for (; args != nil; args = tl args) {
-		s := loadmodule(ctxt, (hd args).word);
+		moduleword := (hd args).word;
+		s := loadmodule(ctxt, moduleword);
 		if (s != nil)
 			raise "fail:" + s;
 	}
@@ -2058,9 +2061,11 @@ builtin_unload(ctxt: ref Context, args: list of ref Listnode, nil: int): string
 	if (tl args == nil)
 		builtinusage(ctxt, "unload path...");
 	status := "";
-	for (args = tl args; args != nil; args = tl args)
-		if ((s := unloadmodule(ctxt, (hd args).word)) != nil)
+	for (args = tl args; args != nil; args = tl args) {
+		moduleword := (hd args).word;
+		if ((s := unloadmodule(ctxt, moduleword)) != nil)
 			status = s;
+	}
 	return status;
 }
 
@@ -2272,8 +2277,11 @@ unloadmodule(ctxt: ref Context, name: string): string
 	}
 	for (ctxt.env.bmods = nil; bl != nil; bl = tl bl)
 		ctxt.env.bmods = hd bl :: ctxt.env.bmods;
-	removebuiltinmod(ctxt.env.builtins, mod);
-	removebuiltinmod(ctxt.env.sbuiltins, mod);
+	environment := ctxt.env;
+	builtins := environment.builtins;
+	removebuiltinmod(builtins, mod);
+	sbuiltins := environment.sbuiltins;
+	removebuiltinmod(sbuiltins, mod);
 	return nil;
 }
 
