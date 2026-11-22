@@ -875,7 +875,8 @@ runexternal(ctxt: ref Context, args: list of ref Listnode, last: int): string
 		mod := load Command npath;
 		if (mod != nil) {
 			argv := list2stringlist(args);
-			export(ctxt.env.localenv);
+			localenv := ctxt.env.localenv;
+			export(localenv);
 
 			if (last) {
 				{
@@ -1611,15 +1612,19 @@ export(e: ref Localenv)
 {
 	if (env == nil)
 		return;
-	if (e.pushed != nil)
-		export(e.pushed);
+	pushed := e.pushed;
+	if (pushed != nil)
+		export(pushed);
 
-	for (i := 0; i < len e.vars; i++) {
-		for (vl := e.vars[i]; vl != nil; vl = tl vl) {
+	vars := e.vars;
+	for (i := 0; i < len vars; i++) {
+		for (vl := vars[i]; vl != nil; vl = tl vl) {
 			v := hd vl;
 			# a bit inefficient: a local variable will get several putenvs.
 			if ((v.flags & Var.CHANGED) && !(v.flags & Var.NOEXPORT)) {
-				setenv(v.name, v.val);
+				name := v.name;
+				value := v.val;
+				setenv(name, value);
 				v.flags &= ~Var.CHANGED;
 			}
 		}

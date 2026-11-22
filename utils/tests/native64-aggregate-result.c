@@ -114,6 +114,8 @@ agchecksyntax(Modlink *ml, WORD n)
  agcheck(word==3,"redirection kind survives relocation");
  memmove(&value,ml->MP+aggregate_globals[55],8);
  agcheck(value!=H&&!strcmp(string2c(value),"[child:?]"),"non-tail recursive syntax result");
+ memmove(&word,ml->MP+aggregate_globals[56],4);
+ agcheck(word==27,"recursive environment export visits outer frame first");
 }
 
 static void

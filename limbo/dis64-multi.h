@@ -1116,13 +1116,15 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     if(c->loads && child==p && c->state[target]==1){
         binding=c->instructions[end-1];
         arg=c->functions[target]->ty->ids;
-        if(p->resultkind==Tnone || !p->code || !p->returns || p->frame.reason || p->data.reason || p->frame.bytes<64)
+        if(!p->code || !p->returns || p->frame.reason || p->data.reason || p->frame.bytes<64)
             return typedfail(p,"multi-self-frame");
-        /* A recursive syntax renderer can return into its current frame.
-         * The normal binding below verifies the result slot and callee layout. */
-        if(!(p->resultkind==Tstring && arg && !arg->next &&
-             typedwmref(arg->ty,"Sh","Node") && binding->op==ILEA && binding->sm==Afp) &&
-           (end+1>=stop || !c->instructions[end+1] || c->instructions[end+1]->op!=IRET ||
+        /* Syntax rendering uses a local result slot. Shell environment export
+         * recurses without a result. Both use the ordinary frame checks. */
+        if(!(arg && !arg->next &&
+             ((p->resultkind==Tstring && typedwmref(arg->ty,"Sh","Node") && binding->op==ILEA && binding->sm==Afp) ||
+              (p->resultkind==Tnone && typedwmref(arg->ty,"Sh","Localenv")))) &&
+           (p->resultkind==Tnone ||
+           end+1>=stop || !c->instructions[end+1] || c->instructions[end+1]->op!=IRET ||
             binding->op!=ILEA || binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset))
             return typedfail(p,"multi-self-tail");
     }else if(!typedmultibody(c,target,depth+1))return typedfail(p,"multi-callee");

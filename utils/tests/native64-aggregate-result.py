@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[2]
 B=runpy.run_path(str(ROOT/'utils/tests/native64-local-geometry-args.py'));G,CMD,E=B['G'],B['CMD'],B['E']
 DECL='Winplace:module{run:fn(n:int);};'
 SOURCE='''implement Winplace;include "sys.m";include "draw.m";include "tk.m";include "sh.m";Point,Rect:import Draw;Listnode,Var,Localenv,Builtins,Node,Redir:import Sh;'''+DECL+'''EW,NS:con iota;Lay:adt{d:int;mkr:fn(l:self Lay,r:Rect):Rect;};
-syntaxtext,syntaxassign,syntaxword,syntaxnest:string;syntaxkind,syntaxtype:int;builtintable:ref Builtins;hit,miss:list of Shellbuiltin;before,between,after,empty:int;envtext,envvalue,envfirst,envfirstvalue:string;builtinmarker,builtinmatch,builtinmissing:Shellbuiltin;lookupchild,lookupparent,lookuppos,lookupmiss:list of ref Sh->Listnode;envvar,hashfirst,hashmiss:ref Sh->Var;envcount:int;shellctx:ref Sh->Context;shellflags:int;catchvalue:int;nodes,converted,empty_nodes:list of ref Sh->Listnode;menutext:string;topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
+syntaxtext,syntaxassign,syntaxword,syntaxnest:string;syntaxkind,syntaxtype,exportorder:int;builtintable:ref Builtins;hit,miss:list of Shellbuiltin;before,between,after,empty:int;envtext,envvalue,envfirst,envfirstvalue:string;builtinmarker,builtinmatch,builtinmissing:Shellbuiltin;lookupchild,lookupparent,lookuppos,lookupmiss:list of ref Sh->Listnode;envvar,hashfirst,hashmiss:ref Sh->Var;envcount:int;shellctx:ref Sh->Context;shellflags:int;catchvalue:int;nodes,converted,empty_nodes:list of ref Sh->Listnode;menutext:string;topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
 run(n:int){rest:=tl nodes;entry:=hd rest;added:=ref Sh->Listnode(nil,entry.word);nodes=added::nodes;front:=hd nodes;menutext=front.word;inputwords:="first"::"second"::nil;converted=stringlist2list(inputwords);no_words:list of string;empty_nodes=stringlist2list(no_words);shellrecords(n);shelllookup();builtinlookup(n);if(n>=0)removebuiltinmod(builtintable,builtinmarker);envpairs(n);buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;catchprobe(n);(top,event):=tkpair(n);topout=top;eventout=event;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
 builtinprobe(){
  table:=builtintable.ba;
@@ -27,7 +27,18 @@ rendernested(tree:ref Node):string {
  suffix:=rendernested(right);
  return "["+prefix+":"+suffix+"]";
 }
+visitexport(e:ref Localenv){
+ parent:=e.pushed;
+ if(parent!=nil)visitexport(parent);
+ flag:=e.flags;
+ order:=10*exportorder+flag;
+ exportorder=order;
+}
 syntaxprobe(n:int){
+ parent:=ref Localenv(nil,nil,2);
+ local:=ref Localenv(nil,parent,7);
+ exportorder=0;
+ visitexport(local);
  redirect:=ref Redir(3,n,7);
  child:=ref Node(11,nil,nil,"child",nil);
  tree:=ref Node(12,child,nil,nil,redirect);
@@ -113,8 +124,8 @@ SOURCE+=re.search(r'(?ms)^Context\.get\([^\n]*\n\{.*?^\}',(ROOT/'appl/cmd/sh/sh.
 
 def generate(limbo,w):
  m=w/'aggregate.m';m.write_text(DECL);h=subprocess.check_output([str(limbo),'-H','-M','Winplace',str(m)],text=True);sigs={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Winplace_(\w+) (0x[0-9a-f]+)U',h,re.M)}
- rows=G['generate'](limbo,w,SOURCE,'Winplace',(38,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
- p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout','nodes','menutext','catchvalue','converted','empty_nodes','shellctx','shellflags','envtext','envcount','envvalue','envfirst','envfirstvalue','envvar','hashfirst','hashmiss','lookupchild','lookupparent','lookuppos','lookupmiss','builtinmarker','builtinmatch','builtinmissing','builtintable','hit','miss','before','between','after','empty','syntaxtext','syntaxassign','syntaxword','syntaxkind','syntaxtype','syntaxnest'))+'};\n')
+ rows=G['generate'](limbo,w,SOURCE,'Winplace',(39,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
+ p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout','nodes','menutext','catchvalue','converted','empty_nodes','shellctx','shellflags','envtext','envcount','envvalue','envfirst','envfirstvalue','envvar','hashfirst','hashmiss','lookupchild','lookupparent','lookuppos','lookupmiss','builtinmarker','builtinmatch','builtinmissing','builtintable','hit','miss','before','between','after','empty','syntaxtext','syntaxassign','syntaxword','syntaxkind','syntaxtype','syntaxnest','exportorder'))+'};\n')
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);count=0
  for row in records:
   for pc,c in enumerate(row['code']):
@@ -165,6 +176,9 @@ def generate(limbo,w):
  loaded=next(r for r in records if r['name']=='builtin_loaded')
  assert loaded['accepted'] and [v['operation'] for v in loaded['variadics']]==[2,2],loaded
  CMD['verify_nilbranches'](data,loaded,imports,rows=records)
+ exporter=next(r for r in records if r['name']=='export')
+ assert exporter['accepted'] and any(call[2]==exporter['first'] and call[5:]==[0,0] for call in exporter['calls']),exporter
+ CMD['verify_nilbranches'](data,exporter,imports,rows=records)
  renderer=next(r for r in records if r['name']=='cmd2string')
  assert renderer['accepted'] and any(call[2]==renderer['first'] and not call[-1] for call in renderer['calls']),renderer
  CMD['verify_nilbranches'](data,renderer,imports,rows=records)
