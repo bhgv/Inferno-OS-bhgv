@@ -118,15 +118,19 @@ panelself(Module *toolbar)
  Modlink *current,*other,*self=H;
  String *path=c2string("$self",5);
  REG saved=R;
- unsigned int j;
- WORD table;
- for(table=0;table<(WORD)atoolbar_spec.ntables;table++){
-  const Native64ModuleTable *candidate=atoolbar_spec.tables+table;
-  for(j=0;j<candidate->count;j++)
-   if(!strcmp(candidate->imports[j].name,"runbuiltin"))break;
-  if(j<candidate->count)break;
+ WORD table=-1;
+ unsigned int pc;
+ for(pc=0;pc<(unsigned int)toolbar->nprog;pc++){
+  const Inst *load=toolbar->prog+pc;
+  String *name;
+  if(load->op!=ILOAD||USRC(load->add)!=AMP)continue;
+  memmove(&name,toolbar->origmp+load->s.ind,8);
+  if(text(name,"$self")){
+   table=load->reg;
+   break;
+  }
  }
- ck(table<(WORD)atoolbar_spec.ntables,"Toolbar self import table");
+ ck(table>=0&&table<(WORD)atoolbar_spec.ntables,"Toolbar self import table");
  toolbar->ref+=2;
  current=linkmod(toolbar,&empty,1);
  other=linkmod(toolbar,&empty,1);
