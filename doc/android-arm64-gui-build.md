@@ -636,3 +636,24 @@ Linux x64/ARM64-QEMU evidence is386 Command pairs plus11 numeric-import pairs an
 1564 main full-console roots per architecture. All16 actual AWM startup sources
 still refuse all four selected profiles; Android/Bionic GUI/APK is not available
 from this step. Details and controls: dis64-inferno-import-helper-report.md.
+
+## Shared typed result storage
+
+`dis64layoutbindresult` in `limbo/dis64-layout.c` now reconstructs caller
+result padding from the declared type layout. Local/imported aggregate bindings
+and the stat/fstat mixed result use this same operation. The helper checks all
+legacy offsets, native widths and root kinds before moving any frame leaf;
+refusal leaves the plan unchanged. Later operand translation and GC map
+construction consume that single plan. No OS, CPU, module or function name is
+part of the storage operation.
+
+The C layout fixture covers Word/root pairs in both orders for String, List,
+Array, Ref, Channel and Module, plus a nested aggregate compared with native C
+`offsetof`. The fstat fixture retains its active mutation control, now removing
+relocation in the shared helper. This is shared Word32/ref64 compiler machinery;
+it does not change the classic 32-bit execution path.
+
+Call admission still uses the existing aggregate contracts. In particular,
+`Sys.tokenize` is not yet admitted by the native64 external-call path: generic
+storage planning alone does not supply result metadata, native-call validation
+or a callable Sys gateway. System Limbo sources are unchanged by this change.

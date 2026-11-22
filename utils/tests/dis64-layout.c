@@ -124,6 +124,56 @@ int main(void)
 		}
 		assert(!dis64layouttype(deep,&p)); dis64layoutfree(&p);
 	}
+    /* Result binding works for Word/root, root/Word, nested aggregates and
+     * reference kinds without interpreting module or function names. */
+    {
+        int roots[]={Tstring,Tlist,Tarray,Tref,Tchan,Tmodule};
+        unsigned int k, reverse, base;
+        for(k=0;k<nelem(roots);k++) for(reverse=0;reverse<2;reverse++){
+            Dis64LayoutLeaf resultcells[2]={{0,0,4,4,Tint},{4,8,4,8,Tstring}};
+            Dis64LayoutLeaf framecells[3], saved[3];
+            Dis64Layout result={0}, frame={0};
+            if(reverse){resultcells[0].bytes=8;resultcells[0].kind=roots[k];resultcells[1].bytes=4;resultcells[1].kind=Tint;}
+            else resultcells[1].kind=roots[k];
+            result.leaves=resultcells;result.count=2;result.bytes=16;result.legacybytes=8;result.alignment=8;
+            framecells[0]=resultcells[0];framecells[1]=resultcells[1];
+            framecells[0].legacy+=32;framecells[1].legacy+=32;
+            framecells[0].native=68;framecells[1].native=76;
+            framecells[2]=(Dis64LayoutLeaf){40,84,4,4,Tint};
+            frame.leaves=framecells;frame.count=3;frame.bytes=88;
+            memmove(saved,framecells,sizeof(saved));base=123;
+            assert(!dis64layoutbindresult(&frame,&result,32,8,0,&base));
+            assert(base==123 && !memcmp(saved,framecells,sizeof(saved)) && frame.bytes==88);
+            assert(dis64layoutbindresult(&frame,&result,32,8,1,&base) && base==72);
+            assert(framecells[0].native==72 && framecells[1].native==80 && framecells[2].native==92 && frame.bytes==96);
+            assert(dis64layoutbindresult(&frame,&result,32,8,0,&base));
+            framecells[1].kind=Tint+100;memmove(saved,framecells,sizeof(saved));
+            assert(!dis64layoutbindresult(&frame,&result,32,8,1,&base));
+            assert(!memcmp(saved,framecells,sizeof(saved)) && frame.bytes==96);
+            assert(!dis64layoutbindresult(&frame,&result,32,3,1,&base));
+            assert(!dis64layoutbindresult(&frame,&result,33,8,1,&base));
+            result.count=4;assert(!dis64layoutbindresult(&frame,&result,32,8,1,&base));
+        }
+    }
+
+    {
+        Dis64Layout result={0}, frame={0};
+        Dis64LayoutLeaf cells[7];
+        unsigned int base, j;
+        assert(dis64layouttype(&outer,&result) && result.count==6);
+        for(j=0;j<result.count;j++){
+            cells[j]=result.leaves[j];cells[j].legacy+=32;cells[j].native+=68;
+        }
+        cells[6]=(Dis64LayoutLeaf){64,68+result.bytes,4,4,Tint};
+        frame.leaves=cells;frame.count=7;frame.bytes=68+result.bytes+4;
+        assert(dis64layoutbindresult(&frame,&result,32,8,1,&base) && base==72);
+        for(j=0;j<result.count;j++) assert(cells[j].native==72+result.leaves[j].native);
+        assert(dis64layoutbindresult(&frame,&result,32,8,0,&base));
+        assert(cells[1].native-base==offsetof(Outer,inner)+offsetof(Oracle,p));
+        assert(cells[4].native-base==offsetof(Outer,array));
+        dis64layoutfree(&result);
+    }
+
 	assert(p.leaves==nil && p.count==0 && p.reason==nil);
 	assert(layoutbanktest());
 	assert(allocations==0);

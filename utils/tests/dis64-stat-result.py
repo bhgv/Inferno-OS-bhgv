@@ -16,9 +16,12 @@ def main():
         allocator=w/'allocator.h';allocator.write_text('#include "lib9.h"\n#undef calloc\n#undef free\n#define free typedfree\nvoid typedfree(void*);\n')
         cmd=cc+['-include',str(allocator),str(ROOT/'limbo/dis64-layout.c'),str(f),'-Wl,--gc-sections','-o',str(binary)]
         subprocess.run(cmd,check=True);subprocess.run(runner+[str(binary)],check=True,timeout=30)
-        header=(ROOT/'limbo/dis64-external.h').read_text();before='if(relocate){\n  if(delta>';assert header.count(before)==1
-        (w/'dis64-multi.h').write_text((ROOT/'limbo/dis64-multi.h').read_text());(w/'dis64-external.h').write_text(header.replace(before,'if(0){\n  if(delta>',1))
-        subprocess.run(cmd,check=True);r=subprocess.run(runner+[str(binary)],capture_output=True,text=True,timeout=30)
+        layout=(ROOT/'limbo/dis64-layout.c').read_text()
+        before='    if(relocate){\n        for(i=0; i<result->count; i++)'
+        assert layout.count(before)==1
+        mutant=w/'layout.c';mutant.write_text(layout.replace(before,before.replace('if(relocate)','if(0)'),1))
+        altered=[str(mutant) if str(x)==str(ROOT/'limbo/dis64-layout.c') else x for x in cmd]
+        subprocess.run(altered,check=True);r=subprocess.run(runner+[str(binary)],capture_output=True,text=True,timeout=30)
         assert r.returncode==10 and 'fstat IR predicate: repacked result group'in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(r.returncode,r.stdout,r.stderr)
         print('PASS fstat IR active control: aggregate repacking required',flush=True)
 if __name__=='__main__':main()

@@ -11,7 +11,7 @@ typedstatresult(Decl *fn,Inst *binding,Dis64TypedBody *p,unsigned int *base,int 
  static const unsigned int old[]={0,8,12,16,20,24,32,36,40,44,48,56,64,68};
  static const unsigned int native[]={0,8,16,24,32,40,48,52,56,60,64,72,80,84};
  static const int kinds[]={Tint,Tstring,Tstring,Tstring,Tstring,Tbig,Tint,Tint,Tint,Tint,Tint,Tbig,Tint,Tint};
- Dis64Layout result={0};Dis64LayoutLeaf *leaf,*cell;Type *t,*fd;Decl *field,*formal;unsigned int i,j,first=0,end,delta;int ok=0;
+ Dis64Layout result={0};Dis64LayoutLeaf *leaf,*cell;Type *t,*fd;Decl *field,*formal;unsigned int i,first=0;int ok=0;
  if(!(formal=fn->ty->ids)||formal->next||!formal->ty||!fn->sym)return 0;
  if(!strcmp(fn->sym->name,"stat")){if(formal->ty->kind!=Tstring)return 0;}
  else if(!strcmp(fn->sym->name,"fstat")){if(formal->ty->kind!=Tref || !(fd=formal->ty->tof) || fd->kind!=Tadt || !fd->decl || !fd->decl->sym || strcmp(fd->decl->sym->name,"FD") || !fd->decl->dot || !fd->decl->dot->sym || strcmp(fd->decl->dot->sym->name,"Sys") || !fd->ids || fd->ids->next || !fd->ids->ty || fd->ids->ty->kind!=Tint || fd->ids->offset || fd->size!=4)return 0;}
@@ -32,17 +32,7 @@ typedstatresult(Decl *fn,Inst *binding,Dis64TypedBody *p,unsigned int *base,int 
      cell->legacy!=binding->s.reg+old[i] || cell->kind!=kinds[i] || cell->oldbytes!=leaf->oldbytes || cell->bytes!=leaf->bytes ||
      (!relocate && cell->native!=*base+native[i]))goto done;
  }
- end=p->frame.leaves[first+13].native+4;
- if(*base>Dis64LayoutBytes-88 || end>*base+88)goto done;
- delta=*base+88-end;
- if(relocate){
-  if(delta>Dis64LayoutBytes-p->frame.bytes)goto done;
-  for(i=0;i<14;i++)p->frame.leaves[first+i].native=*base+native[i];
-  for(j=first+14;j<p->frame.count;j++)p->frame.leaves[j].native+=delta;
-  p->frame.bytes+=delta;
- }
- if(*base%8 || *base>p->frame.bytes || 88>p->frame.bytes-*base)goto done;
- ok=1;
+ ok=dis64layoutbindresult(&p->frame,&result,binding->s.reg,8,relocate,base);
  done:dis64layoutfree(&result);return ok;
 }
 
@@ -61,15 +51,13 @@ typedwmtuple(Type*t,Dis64Layout*l)
  return c;}
 static unsigned int
 typedwmtuplebinding(Decl*fn,Inst*b,Dis64TypedBody*p,unsigned int*base,int relocate)
-{Dis64Layout l={0};unsigned int c,i,j,first,end,delta,next;int ok=0;
- c=typedaggregatecontract(fn->ty->tof,&l);if(!c){dis64layoutfree(&l);c=typedwmtuple(fn->ty->tof,&l);}if(!c||b->sm!=Afp||b->s.reg<32)goto done;
- for(first=0;first<p->frame.count;first++)if(p->frame.leaves[first].legacy==(unsigned int)b->s.reg)break;
- if(first>p->frame.count||l.count>p->frame.count-first)goto done;*base=(p->frame.leaves[first].native+((c==96||c==112)?3:7))&~((c==96||c==112)?3U:7U);
- for(i=0;i<l.count;i++){Dis64LayoutLeaf*a=l.leaves+i,*v=p->frame.leaves+first+i;if(v->legacy!=b->s.reg+a->legacy||v->oldbytes!=a->oldbytes||v->bytes!=a->bytes||v->kind!=a->kind||(!relocate&&v->native!=*base+a->native))goto done;}
- end=p->frame.leaves[first+l.count-1].native+p->frame.leaves[first+l.count-1].bytes;if(*base>Dis64LayoutBytes-l.bytes||end>*base+l.bytes)goto done;next=first+l.count<p->frame.count?p->frame.leaves[first+l.count].native:p->frame.bytes;delta=next<*base+l.bytes?(*base+l.bytes-next+7)&~7U:0;
- if(relocate){if(delta>Dis64LayoutBytes-p->frame.bytes)goto done;for(i=0;i<l.count;i++)p->frame.leaves[first+i].native=*base+l.leaves[i].native;for(j=first+l.count;j<p->frame.count;j++)p->frame.leaves[j].native+=delta;p->frame.bytes=(p->frame.bytes+delta+7)&~7U;}
- if(*base>p->frame.bytes||l.bytes>p->frame.bytes-*base)goto done;ok=1;
- done:dis64layoutfree(&l);return ok?c:0;}
+{Dis64Layout l={0};unsigned int c;int ok=0;
+ c=typedaggregatecontract(fn->ty->tof,&l);
+ if(!c){dis64layoutfree(&l);c=typedwmtuple(fn->ty->tof,&l);}
+ if(c && b->sm==Afp && b->s.reg>=32)
+  ok=dis64layoutbindresult(&p->frame,&l,b->s.reg,(c==96||c==112)?4:8,relocate,base);
+ dis64layoutfree(&l);return ok?c:0;}
+
 static int
 typedwmtupleframe(TypedMulti*c,Decl*owner,Dis64TypedBody*p,unsigned int stop)
 {unsigned int pc,end,base;Inst*in,*call,*b;Decl*fn,*arg;Dis64Layout l={0};unsigned int contract,bytes;

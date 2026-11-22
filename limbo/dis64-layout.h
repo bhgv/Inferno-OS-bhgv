@@ -21,6 +21,8 @@ int dis64layouttype(Type*, Dis64Layout*);
 int dis64layoutstorage(Decl*, Decl*, Desc*, int, Dis64Layout*);
 /* Address role: 0 scalar, 1 managed reference, -1 borrowed native address. */
 int dis64layoutaddress(Dis64Layout*, unsigned int, unsigned int, int, unsigned int*);
+/* Bind a typed result to destructured caller leaves; failure never changes the plan. */
+int dis64layoutbindresult(Dis64Layout*, Dis64Layout*, unsigned int, unsigned int, int, unsigned int*);
 void dis64layoutfree(Dis64Layout*);
 void dis64layoutreport(Decl*, Decl**, int);
 void dis64layoutarrayreport(Type*, int);

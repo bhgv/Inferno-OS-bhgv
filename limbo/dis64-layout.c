@@ -337,3 +337,57 @@ dis64layoutreport(Decl *globals, Decl **functions, int count)
 		fprint(2,"}\n"); dis64layoutfree(&p);
 	}
 }
+
+/* Reconstruct aggregate padding after destructuring, using the declared type's
+ * leaves. Both callers and later GC map generation consume the same frame plan.
+ * No module names, tuple shapes or target OS/CPU are part of this operation. */
+int
+dis64layoutbindresult(Dis64Layout *frame, Dis64Layout *result,
+    unsigned int old, unsigned int alignment, int relocate, unsigned int *base)
+{
+    unsigned int first, i, at, end, next, delta, bytes;
+    Dis64LayoutLeaf *source, *cell;
+
+    if(frame == nil || result == nil || base == nil || frame->reason || result->reason ||
+       !frame->leaves || !result->leaves || !result->count ||
+       !alignment || alignment > 8 || (alignment & (alignment-1)) ||
+       !result->alignment || result->alignment > alignment ||
+       frame->bytes > Dis64LayoutBytes || result->bytes > Dis64LayoutBytes ||
+       old > Dis64LayoutBytes || result->legacybytes > Dis64LayoutBytes-old)
+        return 0;
+    for(first=0; first<frame->count; first++)
+        if(frame->leaves[first].legacy == old) break;
+    if(first == frame->count || result->count > frame->count-first)
+        return 0;
+    if(frame->leaves[first].native > Dis64LayoutBytes-(alignment-1)) return 0;
+    at=(frame->leaves[first].native+alignment-1)&~(alignment-1);
+    if(result->bytes > Dis64LayoutBytes-at) return 0;
+    for(i=0; i<result->count; i++){
+        source=result->leaves+i; cell=frame->leaves+first+i;
+        if(source->legacy > result->legacybytes || source->oldbytes > result->legacybytes-source->legacy ||
+           source->native > result->bytes || source->bytes > result->bytes-source->native ||
+           cell->legacy != old+source->legacy || cell->oldbytes != source->oldbytes ||
+           cell->bytes != source->bytes || cell->kind != source->kind ||
+           cell->native > frame->bytes || cell->bytes > frame->bytes-cell->native ||
+           (!relocate && cell->native != at+source->native)) return 0;
+    }
+    cell=frame->leaves+first+result->count-1;
+    end=cell->native+cell->bytes;
+    if(end > at+result->bytes) return 0;
+    next=first+result->count<frame->count ? frame->leaves[first+result->count].native : frame->bytes;
+    if(next < end || next > frame->bytes) return 0;
+    delta=next<at+result->bytes ? (at+result->bytes-next+7)&~7U : 0;
+    if(delta > Dis64LayoutBytes-frame->bytes || frame->bytes+delta > Dis64LayoutBytes-7) return 0;
+    bytes=(frame->bytes+delta+7)&~7U;
+    for(i=first+result->count; i<frame->count; i++)
+        if(frame->leaves[i].native > frame->bytes ||
+           frame->leaves[i].bytes > frame->bytes-frame->leaves[i].native) return 0;
+    if(!relocate && (at > frame->bytes || result->bytes > frame->bytes-at)) return 0;
+    if(relocate){
+        for(i=0; i<result->count; i++) frame->leaves[first+i].native=at+result->leaves[i].native;
+        for(i=first+result->count; i<frame->count; i++) frame->leaves[i].native+=delta;
+        frame->bytes=bytes;
+    }
+    *base=at;
+    return 1;
+}
