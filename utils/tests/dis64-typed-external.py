@@ -808,14 +808,19 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert not(r[space]['map'][(native+i)//64]&(128>>((native+i)//8%8)))
 
             if contract==16:
-                assert loads and not e['inherited'] and b['mode']==13 and b['m'] is None
-                old=b['s'][0];base=maps['frame'][old]
-                firstleaf=next(l for l in r['frame']['leaves'] if l[0]==old)
-                assert firstleaf[1]==base and firstleaf[4] in (9,4,7) and firstleaf[3]==(4 if firstleaf[4]==9 else 8)
-                second=next(l for l in r['frame']['leaves'] if l[0]==old+firstleaf[2])
-                assert second[1:4]==[base+8,4,8] and second[4] in ROOTS
-                assert e['resultoffset']==base and base>=64 and base%8==0
-                for i in range(16):assert bool(r['frame']['map'][(base+i)//64]&(128>>((base+i)//8%8)))==(i>=8)
+                assert loads and b['m'] is None
+                if e['inherited']:
+                    assert r.get('result_mixed') and r['result_mixed'][1] in ROOTS
+                    assert b['mode']==45 and b['s']==[16,0] and e['resultoffset']==32
+                    assert r['code'][end-1]==[118,13,32,0,32,64]
+                else:
+                    old=b['s'][0];base=maps['frame'][old]
+                    firstleaf=next(l for l in r['frame']['leaves'] if l[0]==old)
+                    assert firstleaf[1]==base and firstleaf[4] in (9,4,7) and firstleaf[3]==(4 if firstleaf[4]==9 else 8)
+                    second=next(l for l in r['frame']['leaves'] if l[0]==old+firstleaf[2])
+                    assert second[1:4]==[base+8,4,8] and second[4] in ROOTS
+                    assert e['resultoffset']==base and base>=64 and base%8==0
+                    for i in range(16):assert bool(r['frame']['map'][(base+i)//64]&(128>>((base+i)//8%8)))==(i>=8)
             if contract==88:
                 assert loads and not e['inherited']and(e['name'],e['signature'])in(('fstat',0xda4499c2),('stat',0x319328dd))and b['mode']==13
                 oldbase=b['s'][0];base=maps['frame'][oldbase];oldfields=(0,8,12,16,20,24,32,36,40,44,48,56,64,68);newfields=(0,8,16,24,32,40,48,52,56,60,64,72,80,84);kinds=(9,13,13,13,13,4,9,9,9,9,9,4,9,9)

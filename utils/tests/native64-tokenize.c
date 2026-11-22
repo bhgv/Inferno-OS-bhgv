@@ -42,7 +42,7 @@ static void tokenmetadata(void){
  Native64ModuleTable table;Native64TypedStep code[64],resultcode[64];Native64ModuleSite site;
  Native64ModuleOwner owner={0};uchar map[64];unsigned int bit,base;int i,before;
  require(full_functions[0].count<=64 && full_functions[0].mapbytes<=64);
- for(i=0;i<(full_spec.nfunctions>2?15:8);i++){
+ for(i=0;i<((TOKEN_IMPORTED_FORWARD?8:full_spec.nfunctions>2?15:8));i++){
   memmove(f,full_functions,sizeof(f));spec.functions=f;
   memmove(code,f[0].code,f[0].count*sizeof(*code));f[0].code=code;
   memmove(map,f[0].map,f[0].mapbytes);f[0].map=map;
@@ -72,7 +72,34 @@ static void tokenmetadata(void){
   if(allocations!=before)fprintf(stderr,"token metadata case=%d allocated=%d\n",i,allocations-before);
   tokencheck(allocations==before&&!owner.module&&!owner.rooted,"metadata refusal before allocation");
  }
- printf("PASS mixed results: %d map, contract, alignment, copy and forwarding refusals before allocation\n",full_spec.nfunctions>2?15:8);
+ printf("PASS mixed results: %d map, contract, alignment, copy and forwarding refusals before allocation\n",(TOKEN_IMPORTED_FORWARD?8:full_spec.nfunctions>2?15:8));
+}
+static void tokenforwardmetadata(void){
+ Native64ModuleSpec spec=full_spec;Native64ModuleFunction f[sizeof(full_functions)/sizeof(full_functions[0])];
+ Native64ModuleImport request;Native64ModuleTable table;Native64ModuleSite site;
+ Native64TypedStep code[64];Native64ModuleOwner owner={0};uint at;int i,before;
+ if(!TOKEN_IMPORTED_FORWARD)return;
+ for(i=0;i<11;i++){
+  memmove(f,full_functions,sizeof(f));spec.functions=f;require(f[2].count<=64);
+  memmove(code,f[2].code,f[2].count*sizeof(*code));f[2].code=code;
+  site=f[2].sites[0];require(site.external&&site.inherited&&site.contract==16);f[2].sites=&site;at=site.end-1;
+  request=full_import_0[0];table=(Native64ModuleTable){&request,1};spec.tables=&table;
+  if(i==0)f[2].resultcontract=0;
+  if(i==1)request.resultcontract=0;
+  if(i==2)site.contract=24;
+  if(i==3)site.inherited=0;
+  if(i==4)code[at].s=40;
+  if(i==5)code[at].m=8;
+  if(i==6)code[at].d=40;
+  if(i==7)code[at].returned=144;
+  if(i==8)code[at].op=ILEA;
+  if(i==9)code[site.end].returned=0;
+  if(i==10)code[at]=(Native64TypedStep){INOP,SRC(AXXX)|DST(AXXX),0,0,0,0};
+  before=allocations;tokencheck(!native64typedmodule(&spec,0,&owner),"invalid imported forwarding refused");
+  if(before!=allocations)fprintf(stderr,"import forwarding metadata case=%d allocated=%d\n",i,allocations-before);
+  tokencheck(before==allocations&&!owner.module&&!owner.rooted,"imported forwarding refusal before allocation");
+ }
+ puts("PASS imported forwarding: 11 caller, import, contract and binding refusals before allocation");
 }
 static void tokenconstruction(void){
  Native64ModuleOwner owner={0};REG saved=R;int jit,i,n,before;
@@ -92,6 +119,7 @@ int main(void){int j,q,c,g;int quantum[]={1,3,1000};
  TOKEN_OPTAB
  optab[IMOVMP]=actual_movmp;
  tokenmetadata();
+ tokenforwardmetadata();
  if(full_spec.nfunctions>2)tokenconstruction();
  for(j=0;j<2;j++)for(q=0;q<3;q++)for(c=0;c<6;c++)for(g=0;g<2;g++)tokencase(j,quantum[q],c,g);
  puts("PASS original Sys.tokenize: 72 C/JIT cases, repeated calls, stack growth, scalar/list result, delimiter edges, exact count/order and complete retirement");return 0;

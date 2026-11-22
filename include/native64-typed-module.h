@@ -1108,7 +1108,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 for(at=step->s;at<(unsigned long)step->s+12;at++){bit=at/8;if(f->map[bit/8]&(128>>(bit%8)))return 0;}
             }
             if(site->contract==16){
-                if((site->inherited && site->external) || site->end<2 || site->end>=f->count)return 0;
+                if(site->end<2 || site->end>=f->count)return 0;
                 if(site->external){
                     if(site->table>=s->ntables || site->target>=s->tables[site->table].count ||
                        s->tables[site->table].imports[site->target].resultcontract!=16)return 0;

@@ -12,16 +12,17 @@ run(){(n,l):=sys->tokenize(text,seps);count=n;words=l;}
 open(){sys=load Sys Sys->PATH;}
 '''
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--local',action='store_true',help='return and forward tokenize results through local Limbo helpers');a=p.parse_args()
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',required=True,type=Path);p.add_argument('--local',action='store_true',help='return and forward tokenize results through local Limbo helpers');p.add_argument('--forward-import',action='store_true',help='forward the imported tuple directly into the original result');a=p.parse_args()
+ if a.forward_import:a.local=True
  with tempfile.TemporaryDirectory(prefix='native64-tokenize-',dir=ROOT) as directory:
   w=Path(directory);limbo=a.limbo.resolve()
   CMD['generate'](limbo,w,'Command',False,argv=True,local=True,pair=True,raises=True)
   source=SOURCE
   if a.local:
    source=source.replace('sys->tokenize(text,seps)','forward(text,seps)')
-   source+='pair(s,d:string):(int,list of string){(n,l):=sys->tokenize(s,d);return(n,l);}'
+   source+=('pair(s,d:string):(int,list of string){return sys->tokenize(s,d);}' if a.forward_import else 'pair(s,d:string):(int,list of string){(n,l):=sys->tokenize(s,d);return(n,l);}')
    source+='forward(s,d:string):(int,list of string){return pair(s,d);}'
-  rows=G['generate'](limbo,w,source,'Tokens',(4 if a.local else 2,1,0,'~0U'),source_label='original Sys.tokenize with local returns' if a.local else 'original Sys.tokenize call')
+  rows=G['generate'](limbo,w,source,'Tokens',(4 if a.local else 2,1,0,'~0U'),source_label='original Sys.tokenize with inherited import result' if a.forward_import else 'original Sys.tokenize with local returns' if a.local else 'original Sys.tokenize call')
   header=w/'full.h';header.write_text(header.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n',''))
   data,proofs=E['compile_source'](limbo,w,source,interface='',loads=True)
   imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]
@@ -41,6 +42,18 @@ def main():
     for r in cases:E['verify'](old,r,imported,loads=True,rows=cases)
     assert cases[0]['externals'][0]['contract']==16
   print('PASS imported scalar/root results: 18 declarations across six managed root kinds',flush=True)
+  if a.forward_import:
+   for scalar in ('int','big','real'):
+    for root in ('string','list of string','array of byte','ref P->R','chan of int','P'):
+     interface='P:module{R:adt{v:int;}; pair:fn():('+scalar+','+root.replace('P->','')+');};'
+     source='implement Client;include "provider.m";Client:module{run:fn():('+scalar+','+root+');open:fn();};p:P;run():('+scalar+','+root+'){return p->pair();}open(){p=load P "provider";}'
+     old,cases=E['compile_source'](limbo,w,source,interface=interface,loads=True)
+     assert all(r['accepted']for r in cases),[(r['name'],r.get('reason'))for r in cases]
+     imported=E['BASE']['READ']['legacy_instructions'](old,with_imports=True)[-1]
+     for r in cases:E['verify'](old,r,imported,loads=True,rows=cases)
+     e=cases[0]['externals'][0];assert e['contract']==16 and e['inherited'] and e['resultoffset']==32
+   print('PASS imported forwarding: 18 declarations reuse the original caller result',flush=True)
+
   if a.local:
    for scalar in ('int','big','real'):
     for root in ('string','list of string','array of byte','ref P->R','chan of int','P'):
@@ -57,7 +70,7 @@ def main():
   print('PASS unchanged system Sh.getbq: read and tokenize imported calls accepted',flush=True)
   offsets={x[0]:x[1]for x in rows[0]['globals']}
   with header.open('a')as out:out.write('static const uint token_offsets[]={'+','.join(str(offsets[n])for n in ('sys','text','seps','count','words'))+'};\n')
-  base=CMD['unit']().replace('int main(int argc,char **argv)','int old_command_main(int argc,char **argv)')
+  base=('#define TOKEN_IMPORTED_FORWARD 1\n' if a.forward_import else '#define TOKEN_IMPORTED_FORWARD 0\n')+CMD['unit']().replace('int main(int argc,char **argv)','int old_command_main(int argc,char **argv)')
   extract=CMD['NS']['S']['FILES']['FILES']['function']
   runt=(ROOT/'libinterp/runt.c').read_text();string=(ROOT/'libinterp/string.c').read_text()
   start=runt.index('typedef struct TokenizeResult TokenizeResult;');end=runt.index('/* Keep partial words',start)

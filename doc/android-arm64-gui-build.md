@@ -665,8 +665,8 @@ Imported native64 calls now use the existing 16-byte mixed result contract for
 type and complete leaf layout; it does not depend on Sys, tokenize or shell
 function names. The shared result planner restores padding and the caller GC map.
 The VM accepts the import contract only with a matching call-site contract,
-aligned caller result and exactly the required reference map. Inherited mixed
-external results remain refused.
+aligned caller result and exactly the required reference map. Inherited mixed external results use the original validated caller destination
+when source types and both contracts match.
 
 `utils/tests/native64-tokenize.py --limbo /path/to/limbo` checks 18 imported
 declarations using String, List, Array, Ref, Channel and Module results, and six
@@ -690,8 +690,7 @@ Local result classification now shares the imported scalar/reference validator.
 The second field retains its declared String/List/Array/Ref/Channel/Module kind
 instead of being treated as String. Caller storage uses the same shared padding
 planner. Forwarding a local mixed result requires matching source types and
-matching caller/callee contract 16. Imported mixed result forwarding is still
-refused.
+matching caller/callee contract 16. Imported mixed result forwarding uses the same original caller destination.
 
 A complete mixed tuple returned with IMOVMP uses a 16-byte descriptor whose only
 root is the second eight-byte slot. The constructor reuses that existing mixed
@@ -709,3 +708,26 @@ allocation. The local constructor also injects failure at every measured allocat
 in both execution modes and requires complete rollback. The direct imported fixture also runs 72 cases. The typed-calls CI
 runs both modes on its existing CPU matrices; local validation here is Linux
 amd64 with UBSan. System Limbo sources and their classic Dis bytes are unchanged.
+
+
+## Imported mixed result forwarding
+
+`return provider->pair()` now lowers a mixed tuple result by forwarding the
+original borrowed result address at native offset 32. The compiler requires the
+complete declared return type to match the caller. The VM checks contract 16 on
+both the importing function and the imported declaration, plus the exact
+IMOVL result-address binding. This keeps the original caller's GC ownership
+through both local and native calls; no extra tuple or reference owner is made.
+
+`native64-tokenize.py --forward-import` executes
+`run -> forward -> pair -> Sys.tokenize`, where pair returns the Sys result
+directly. It checks 18 imported return declarations across all six supported
+managed-reference kinds. The real Sys handler passes 72 C/JIT cases, two calls
+per case, quanta 1/3/1000, both initial stack configurations and Unicode delimiters.
+Eleven additional malformed caller/import/contract/binding cases are refused
+before allocation. Constructor allocation failures roll back completely in both
+execution modes. Direct import and local-copy modes remain separate regressions.
+
+These checks use Linux amd64/Word32-ref64 with UBSan; the existing CPU CI matrices
+include this mode. They do not establish arbitrary nested aggregate calls, full
+shell startup or Android device execution. System Limbo sources are unchanged.
