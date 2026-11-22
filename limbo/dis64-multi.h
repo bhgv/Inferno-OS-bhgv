@@ -1115,9 +1115,16 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     child=c->bodies+target;
     if(c->loads && child==p && c->state[target]==1){
         binding=c->instructions[end-1];
-        if(p->resultkind==Tnone || !p->code || !p->returns || p->frame.reason || p->data.reason || p->frame.bytes<64 ||
-           end+1>=stop || !c->instructions[end+1] || c->instructions[end+1]->op!=IRET || binding->op!=ILEA || binding->sm!=Afpind ||
-           binding->s.reg!=16 || binding->s.offset)return typedfail(p,"multi-self-tail");
+        arg=c->functions[target]->ty->ids;
+        if(p->resultkind==Tnone || !p->code || !p->returns || p->frame.reason || p->data.reason || p->frame.bytes<64)
+            return typedfail(p,"multi-self-frame");
+        /* A recursive syntax renderer can return into its current frame.
+         * The normal binding below verifies the result slot and callee layout. */
+        if(!(p->resultkind==Tstring && arg && !arg->next &&
+             typedwmref(arg->ty,"Sh","Node") && binding->op==ILEA && binding->sm==Afp) &&
+           (end+1>=stop || !c->instructions[end+1] || c->instructions[end+1]->op!=IRET ||
+            binding->op!=ILEA || binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset))
+            return typedfail(p,"multi-self-tail");
     }else if(!typedmultibody(c,target,depth+1))return typedfail(p,"multi-callee");
     if(child!=p && *height<c->height[target]+1)*height=c->height[target]+1;
     if(*height>64)return typedfail(p,"multi-depth");

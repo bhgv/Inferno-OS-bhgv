@@ -1735,24 +1735,32 @@ cmd2string(n: ref Node): string
 	n_COUNT =>	s = "$#" + cmd2string(n.left);
 	n_BQ =>		s = "`" + cmd2string(n.left);
 	n_BQ2 =>		s = "\"" + cmd2string(n.left);
-	n_REDIR =>	s = redirstr(n.redir.rtype);
-				if (n.redir.fd1 != -1)
-					s += fdassignstr(0, n.redir);
+	n_REDIR =>	rd := n.redir;
+				mode := rd.rtype;
+				s = redirstr(mode);
+				if (rd.fd1 != -1)
+					s += fdassignstr(0, rd);
 				s += cmd2string(n.left);
-	n_DUP =>		s = redirstr(n.redir.rtype) + fdassignstr(1, n.redir);
+	n_DUP =>		rd := n.redir;
+				mode := rd.rtype;
+				s = redirstr(mode) + fdassignstr(1, rd);
 	n_LIST =>		s = "(" + cmd2string(n.left) + ")";
 	n_SEQ =>		s = cmd2string(n.left) + ";" + cmd2string(n.right);
 	n_NOWAIT =>	s = cmd2string(n.left) + "&";
 	n_CONCAT =>	s = cmd2string(n.left) + "^" + cmd2string(n.right);
 	n_PIPE =>		s = cmd2string(n.left) + "|";
-				if (n.redir != nil && (n.redir.fd1 != -1 || n.redir.fd2 != -1))
-					s += fdassignstr(n.redir.fd2 != -1, n.redir);
+				rd := n.redir;
+				if (rd != nil && (rd.fd1 != -1 || rd.fd2 != -1)) {
+					assign := rd.fd2 != -1;
+					s += fdassignstr(assign, rd);
+				}
 				s += cmd2string(n.right);
 	n_ASSIGN =>	s = cmd2string(n.left) + "=" + cmd2string(n.right);
 	n_LOCAL =>	s = cmd2string(n.left) + ":=" + cmd2string(n.right);
 	n_ADJ =>		s = cmd2string(n.left) + " " + cmd2string(n.right);
-	n_WORD =>	s = quote(n.word, 1);
-	* =>			s = sys->sprint("unknown%d", n.ntype);
+	n_WORD =>	word := n.word;
+				s = quote(word, 1);
+	* =>			s = sys->sprint("unknown%d", kind);
 	}
 	return s;
 }
@@ -2115,9 +2123,13 @@ builtin_builtin(ctxt: ref Context, args: list of ref Listnode, last: int): strin
 			return result;
 		}
 	}
-	if (ctxt.options() & ctxt.EXECPRINT)
-		sys->fprint(stderr(), "%s\n", quoted(tl args, 0));
-	return runexternal(ctxt, tl args, last);
+	argv := tl args;
+	if (ctxt.options() & ctxt.EXECPRINT) {
+		fd := stderr();
+		line := quoted(argv, 0);
+		sys->fprint(fd, "%s\n", line);
+	}
+	return runexternal(ctxt, argv, last);
 }
 
 modname(ctxt: ref Context, mod: Shellbuiltin): string

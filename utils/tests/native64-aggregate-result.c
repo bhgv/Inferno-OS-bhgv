@@ -112,6 +112,8 @@ agchecksyntax(Modlink *ml, WORD n)
  agcheck(word==11,"child node kind survives relocation");
  memmove(&word,ml->MP+aggregate_globals[54],4);
  agcheck(word==3,"redirection kind survives relocation");
+ memmove(&value,ml->MP+aggregate_globals[55],8);
+ agcheck(value!=H&&!strcmp(string2c(value),"[child:?]"),"non-tail recursive syntax result");
 }
 
 static void
