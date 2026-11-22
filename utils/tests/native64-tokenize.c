@@ -9,15 +9,15 @@ static Module*tokenbuiltin(void){
  m->ext=mallocz(2*sizeof(Link),1);require(m->ext!=nil);m->ext[0].name=strdup("tokenize");m->ext[0].sig=r->signature;m->ext[0].frame=m->type[0];m->ext[0].u.runt=Sys_tokenize;return m;
 }
 static Modlink*tokenlink(Module*m,char*name,uint sig){Import req[2]={{0}};Modlink*l;req[0].name=name;memmove(&req[0].sig,&sig,4);m->ref++;l=linkmod(m,req,1);require(l!=H&&l!=nil);return l;}
-static Module*tokenlauncher(int jit){
- Module*m=mallocz(sizeof(*m),1);Inst*p;uchar map[]={0,128};require(m!=nil);m->ref=1;m->rt=DONTCOMPILE;m->origmp=H;m->ss=4096;m->cstep=native64typedlea8step;
+static Module*tokenlauncher(int jit,int grow){
+ Module*m=mallocz(sizeof(*m),1);Inst*p;uchar map[]={0,128};require(m!=nil);m->ref=1;m->rt=DONTCOMPILE;m->origmp=H;m->ss=grow?0:4096;m->cstep=native64typedlea8step;
  m->ntype=1;m->type=mallocz(sizeof(Type*),1);require(m->type!=nil);m->entryt=m->type[0]=dtype(freeheap,80,map,2);require(m->entryt!=nil);
- p=m->prog=mallocz(3*sizeof(*p),1);require(p!=nil);m->entry=p;m->nprog=3;
+ p=m->prog=mallocz(5*sizeof(*p),1);require(p!=nil);m->entry=p;m->nprog=5;
  p[0].op=IMFRAME;p[0].add=SRC(AFP)|AXIMM|DST(AFP);p[0].s.ind=64;p[0].d.ind=40;
  p[1].op=IMCALL;p[1].add=SRC(AFP)|AXIMM|DST(AFP);p[1].s.ind=40;p[1].d.ind=64;
- p[2].op=IEXIT;p[2].add=SRC(AXXX)|DST(AXXX);if(jit)require(compile(m,3,nil));return m;
+ p[2]=p[0];p[3]=p[1];p[4].op=IEXIT;p[4].add=SRC(AXXX)|DST(AXXX);if(jit)require(compile(m,5,nil));return m;
 }
-static void tokencase(int jit,int quantum,int which){
+static void tokencase(int jit,int quantum,int which,int grow){
  static const char*input[]={" ,alpha,,beta gamma, ","alpha","",",,,","a,b","мирé🚀"};
  static const char*seps[]={" ,",",",",",",","","é"};
  static const char*expected[][3]={{"alpha","beta","gamma"},{"alpha",nil,nil},{nil,nil,nil},{nil,nil,nil},{"a,b",nil,nil},{"мир","🚀",nil}};
@@ -26,7 +26,7 @@ static void tokencase(int jit,int quantum,int which){
  s=c2string((char*)input[which],strlen(input[which]));memmove(owner.module->origmp+token_offsets[1],&s,8);
  s=c2string((char*)seps[which],strlen(seps[which]));memmove(owner.module->origmp+token_offsets[2],&s,8);
  ml=tokenlink(owner.module,"run",full_functions[0].signature);D2H(ml)->ref++;
- outer=tokenlauncher(jit);starting=outer;started=nil;require(kprotect(start,nil));p=started;rootenvironment(p);root=p->R.FP;memmove(root+64,&ml,8);p->quanta=quantum;
+ outer=tokenlauncher(jit,grow);starting=outer;started=nil;require(kprotect(start,nil));p=started;rootenvironment(p);root=p->R.FP;memmove(root+64,&ml,8);p->quanta=quantum;
  for(steps=0;steps<10000;steps++){done=kprotect(executeprocess,p);if(!done)break;}
  if(worker.env->errstr[0])fprintf(stderr,"tokenize execution error=%s\n",worker.env->errstr);
  tokencheck(steps<10000&&!worker.env->errstr[0],"source call completion");
@@ -38,11 +38,11 @@ static void tokencase(int jit,int quantum,int which){
  tokencheck(!live&&!nlinkpins&&!modules&&!worker.nerr,"complete retirement");
 }
 static void tokenmetadata(void){
- Native64ModuleSpec spec=full_spec;Native64ModuleFunction f[2];Native64ModuleImport request;
- Native64ModuleTable table;Native64TypedStep code[64];Native64ModuleSite site;
+ Native64ModuleSpec spec=full_spec;Native64ModuleFunction f[sizeof(full_functions)/sizeof(full_functions[0])];Native64ModuleImport request;
+ Native64ModuleTable table;Native64TypedStep code[64],resultcode[64];Native64ModuleSite site;
  Native64ModuleOwner owner={0};uchar map[64];unsigned int bit,base;int i,before;
  require(full_functions[0].count<=64 && full_functions[0].mapbytes<=64);
- for(i=0;i<8;i++){
+ for(i=0;i<(full_spec.nfunctions>2?15:8);i++){
   memmove(f,full_functions,sizeof(f));spec.functions=f;
   memmove(code,f[0].code,f[0].count*sizeof(*code));f[0].code=code;
   memmove(map,f[0].map,f[0].mapbytes);f[0].map=map;
@@ -55,17 +55,44 @@ static void tokenmetadata(void){
   if(i==5)request.resultcontract=48;
   if(i==6)site.inherited=1;
   if(i==7)code[site.end-1].returned=85;
+  if(i>=8){
+   unsigned int pc;
+   require(f[2].count<=64);memmove(resultcode,f[2].code,f[2].count*sizeof(*resultcode));f[2].code=resultcode;
+   for(pc=0;pc<f[2].count && resultcode[pc].returned!=77;pc++);
+   require(pc<f[2].count);
+   if(i==8)resultcode[pc].m|=4;
+   if(i==9)resultcode[pc].m^=8<<8;
+   if(i==10){memmove(map,f[2].map,f[2].mapbytes);f[2].map=map;bit=(resultcode[pc].s+8)/8;map[bit/8]^=128>>(bit%8);}
+   if(i==13)resultcode[pc]=(Native64TypedStep){INOP,SRC(AXXX)|DST(AXXX),0,0,0,0};
+   if(i==14)resultcode[pc].m=(48<<16)|(16<<8);
+   if(i==11)f[3].resultcontract=0;
+   if(i==12){site=f[3].sites[0];site.contract=24;f[3].sites=&site;}
+  }
   before=allocations;tokencheck(!native64typedmodule(&spec,0,&owner),"malformed tuple metadata refused");
+  if(allocations!=before)fprintf(stderr,"token metadata case=%d allocated=%d\n",i,allocations-before);
   tokencheck(allocations==before&&!owner.module&&!owner.rooted,"metadata refusal before allocation");
  }
- puts("PASS imported mixed results: 8 map, contract, alignment and binding refusals before allocation");
+ printf("PASS mixed results: %d map, contract, alignment, copy and forwarding refusals before allocation\n",full_spec.nfunctions>2?15:8);
 }
-int main(void){int j,q,c;int quantum[]={1,3,1000};
+static void tokenconstruction(void){
+ Native64ModuleOwner owner={0};REG saved=R;int jit,i,n,before;
+ for(jit=0;jit<2;jit++){
+  before=allocations;require(native64typedmodule(&full_spec,jit,&owner));n=allocations-before;require(native64typedmoduleclear(&owner));
+  for(i=1;i<=n;i++){
+   failat=allocations+i;require(!native64typedmodule(&full_spec,jit,&owner));failat=0;
+   tokencheck(!owner.module&&!owner.rooted&&!live&&!nlinkpins&&!memcmp(&R,&saved,sizeof(R)),"mixed descriptor constructor rollback");
+  }
+  printf("PASS local mixed constructor: jit=%d %d allocation failures and complete rollback\n",jit,n);
+ }
+}
+int main(void){int j,q,c,g;int quantum[]={1,3,1000};
  rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;
  worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;
  require(dis64selectlaunch("dis64-calls"));
  TOKEN_OPTAB
+ optab[IMOVMP]=actual_movmp;
  tokenmetadata();
- for(j=0;j<2;j++)for(q=0;q<3;q++)for(c=0;c<6;c++)tokencase(j,quantum[q],c);
- puts("PASS original Sys.tokenize: 36 C/JIT cases, scalar/list result, delimiter edges, exact count/order and complete retirement");return 0;
+ if(full_spec.nfunctions>2)tokenconstruction();
+ for(j=0;j<2;j++)for(q=0;q<3;q++)for(c=0;c<6;c++)for(g=0;g<2;g++)tokencase(j,quantum[q],c,g);
+ puts("PASS original Sys.tokenize: 72 C/JIT cases, repeated calls, stack growth, scalar/list result, delimiter edges, exact count/order and complete retirement");return 0;
 }

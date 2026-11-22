@@ -270,6 +270,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/aggregate-result.log"
           python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/tokenize.log"
+          python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" --local 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/tokenize-local.log"
           python3 utils/tests/native64-winplace-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/winplace-module.log"
           python3 utils/tests/native64-wmlib-snarf.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -497,6 +499,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/aggregate-result.log"
           python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/tokenize.log"
+          python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" --local 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/tokenize-local.log"
           python3 utils/tests/native64-winplace-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/winplace-module.log"
           python3 utils/tests/native64-wmlib-snarf.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

@@ -683,3 +683,29 @@ tokenize imports. No system Limbo source was changed. This proves the imported
 mixed result path on the tested host; the full shell, arbitrary nested aggregate
 calls, Android desktop execution and untested OS/CPU combinations remain separate
 work. The typed-calls CI runs the new fixture in its existing host/CPU matrices.
+
+## Local mixed results and forwarding
+
+Local result classification now shares the imported scalar/reference validator.
+The second field retains its declared String/List/Array/Ref/Channel/Module kind
+instead of being treated as String. Caller storage uses the same shared padding
+planner. Forwarding a local mixed result requires matching source types and
+matching caller/callee contract 16. Imported mixed result forwarding is still
+refused.
+
+A complete mixed tuple returned with IMOVMP uses a 16-byte descriptor whose only
+root is the second eight-byte slot. The constructor reuses that existing mixed
+record descriptor rather than the two-root descriptor. It checks source maps,
+copy bounds and completion on every return path before allocation. Compiler and
+runtime result-flow checks account for both individually written fields and the
+complete mapped tuple copy.
+
+`native64-tokenize.py --local` checks 18 local result declarations and executes
+`run -> forward -> pair -> Sys.tokenize`. Each of 72 C/JIT cases makes two calls,
+with scheduler quanta 1/3/1000 and both initial-stack configurations. It includes
+Unicode delimiters, exact list/count checks and complete retirement. Fifteen
+malformed map, copy, completion and forwarding cases are refused before
+allocation. The local constructor also injects failure at every measured allocation
+in both execution modes and requires complete rollback. The direct imported fixture also runs 72 cases. The typed-calls CI
+runs both modes on its existing CPU matrices; local validation here is Linux
+amd64 with UBSan. System Limbo sources and their classic Dis bytes are unchanged.

@@ -864,6 +864,17 @@ def verify(data,r,imports,loads=False,rows=None):
         if returned==80:rawarray_index(original,r['code'],pc,maps,r);continue
         if returned==79:rawarray_operation(o,r['code'][pc],maps,types,r);continue
         if returned==65:rawarray_use(original,r['code'],pc,maps,r);continue
+        if returned==77 and r.get('result_mixed'):
+            assert loads and op==OPCODES['IMOVMP'] and o['op']==op and o['mode']==mode==77
+            assert o['d']==[16,0] and d==32 and m==(16<<16)|(16<<8)
+            scalar,root=r['result_mixed'];assert scalar in(9,4,7) and root in ROOTS
+            old=o['s'][0];assert s==maps['frame'][old] and s%8==0
+            first=next(l for l in r['frame']['leaves']if l[0]==old)
+            assert first[1:]==[s,4 if scalar==9 else 8,4 if scalar==9 else 8,scalar]
+            second=next(l for l in r['frame']['leaves']if l[0]==old+first[2])
+            assert second[1:]==[s+8,4,8,root]
+            assert types[o['m']]==(8 if scalar==9 else 16,bytes([0x40 if scalar==9 else 0x20]))
+            continue
         if returned==77:
             c=r['result_aggregate'];width={12:12,48:16,72:24,80:16,92:20,96:8,112:16,116:16,124:24}[c];count={12:3,48:2,72:3,80:2,92:5,96:2,112:4,116:2,124:3}[c]
             sm=o['mode']>>3&7;assert loads and op==o['op']and o['d'][0]==16 and o['d'][1]%4==0
@@ -1516,7 +1527,7 @@ def verify(data,r,imports,loads=False,rows=None):
         if returned in(145,146,147,149,150,151):
             assert loads and op==o['op']and mode==o['mode']and o['d'][0]==16
             mixed=returned>=149;kind=9 if returned<=149 else 4 if returned==150 else 7
-            assert (r.get('result_mixed')==[kind,13]if mixed else r.get('result_words')==[9,9,9])
+            assert (r.get('result_mixed',[None,None])[0]==kind and r['result_mixed'][1] in ROOTS if mixed else r.get('result_words')==[9,9,9])
             assert o['d'][1]==(0 if mixed else 4*(returned-145))and d==32+o['d'][1]
             sm=mode>>3&7;assert sm in(0,1,2)
             assert s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
