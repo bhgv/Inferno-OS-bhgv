@@ -807,6 +807,20 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert leaf==[old+i,native+i,4,4,9]
                     assert not(r[space]['map'][(native+i)//64]&(128>>((native+i)//8%8)))
 
+            if contract==48:
+                assert loads and b['m'] is None and len(e['result_pair'])==2 and all(k in ROOTS for k in e['result_pair'])
+                if e['inherited']:
+                    assert r.get('result_pair')==e['result_pair'] or r.get('result_aggregate')==48 and e['result_pair']==[12,13]
+                    assert b['mode']==45 and b['s']==[16,0] and e['resultoffset']==32
+                    assert r['code'][end-1]==[118,13,32,0,32,64]
+                else:
+                    assert b['mode']==13
+                    old=b['s'][0];base=maps['frame'][old]
+                    for i in range(2):
+                        leaf=next(l for l in r['frame']['leaves'] if l[0]==old+4*i)
+                        assert leaf[1:]==[base+8*i,4,8,e['result_pair'][i]]
+                    assert e['resultoffset']==base and base>=64 and base%8==0
+                    for i in range(16):assert r['frame']['map'][(base+i)//64]&(128>>((base+i)//8%8))
             if contract==16:
                 assert loads and b['m'] is None
                 if e['inherited']:

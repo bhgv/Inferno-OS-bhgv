@@ -50,16 +50,21 @@ typedwmtuple(Type*t,Dis64Layout*l)
  else{unsigned int i;static const int kinds[]={Tstring,Tref,Tstring};if(l->legacybytes!=12||l->bytes!=24||l->count!=3||l->alignment!=8)return 0;for(i=0;i<3;i++)if(l->leaves[i].legacy!=4*i||l->leaves[i].native!=8*i||l->leaves[i].oldbytes!=4||l->leaves[i].bytes!=8||l->leaves[i].kind!=kinds[i])return 0;}
  return c;}
 static unsigned int
+typedrootpair(Type *t,Dis64Layout *l)
+{int pair=typedpairtype(t);return pair && pair<3 && dis64layouttype(t,l)?48:0;}
+
+static unsigned int
 typedwmtuplebinding(Decl*fn,Inst*b,Dis64TypedBody*p,unsigned int*base,int relocate)
 {Dis64Layout l={0};unsigned int c;int ok=0;
  c=typedaggregatecontract(fn->ty->tof,&l);
  if(!c){dis64layoutfree(&l);c=typedwmtuple(fn->ty->tof,&l);}
  if(!c){dis64layoutfree(&l);c=typedmixedtuple(fn->ty->tof,&l);}
+ if(!c){dis64layoutfree(&l);c=typedrootpair(fn->ty->tof,&l);}
  if(c && b->sm==Afp && b->s.reg>=32)
   ok=dis64layoutbindresult(&p->frame,&l,b->s.reg,(c==96||c==112)?4:8,relocate,base);
  dis64layoutfree(&l);return ok?c:0;}
 
-/* Local two-root tuples retain every declared field kind when destructured. */
+/* Two-root tuples retain every declared field kind when destructured. */
 static int
 typedrootpairbinding(Decl *fn,Inst *b,Dis64TypedBody *p,unsigned int *base,int relocate)
 {
@@ -73,7 +78,7 @@ static int
 typedwmtupleframe(TypedMulti*c,Decl*owner,Dis64TypedBody*p,unsigned int stop)
 {unsigned int pc,end,base;Inst*in,*call,*b;Decl*fn,*arg;Dis64Layout l={0};unsigned int contract,bytes,pair;
  for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IFRAME)continue;end=pc+1;while(end<stop&&c->instructions[end]&&c->instructions[end]->op!=ICALL&&c->instructions[end]->op!=IFRAME&&!c->instructions[end]->branch)end++;if(end>=stop||!c->instructions[end]||c->instructions[end]->op!=ICALL||c->instructions[end]->d.offset<0||(unsigned int)c->instructions[end]->d.offset>=c->count||c->entries[c->instructions[end]->d.offset]<0)continue;fn=c->functions[c->entries[c->instructions[end]->d.offset]];contract=typedaggregatecontract(fn->ty->tof,&l);if(!contract){dis64layoutfree(&l);contract=typedmixedtuple(fn->ty->tof,&l);}dis64layoutfree(&l);if(!contract && (pair=typedpairtype(fn->ty->tof))>0 && pair<3){if(!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;if(!typedrootpairbinding(fn,b,p,&base,1))return typedfail(p,"local-root-pair-frame");continue;}if(!contract||!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;if(!typedwmtuplebinding(fn,b,p,&base,1))return typedfail(p,"local-aggregate-result-frame");}
- for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IMFRAME||!(fn=in->m.decl)||!fn->ty||fn->ty->kind!=Tfn)continue;contract=typedwmtuple(fn->ty->tof,&l);if(!contract){dis64layoutfree(&l);contract=typedmixedtuple(fn->ty->tof,&l);}bytes=l.legacybytes;dis64layoutfree(&l);if(!contract)continue;
+ for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IMFRAME||!(fn=in->m.decl)||!fn->ty||fn->ty->kind!=Tfn)continue;contract=typedwmtuple(fn->ty->tof,&l);if(!contract){dis64layoutfree(&l);contract=typedmixedtuple(fn->ty->tof,&l);}if(!contract){dis64layoutfree(&l);contract=typedrootpair(fn->ty->tof,&l);}bytes=l.legacybytes;dis64layoutfree(&l);if(!contract)continue;
   end=pc+1;while(end<stop&&c->instructions[end]&&c->instructions[end]->op!=IMCALL&&c->instructions[end]->op!=IMFRAME&&!c->instructions[end]->branch)end++;if(end<=pc+1||end>=stop||!(call=c->instructions[end])||call->op!=IMCALL||call->m.decl!=fn||!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;
   for(arg=owner->ty->ids;arg;arg=arg->next)if(!arg->ty||(b->s.reg<arg->offset+arg->ty->size&&b->s.reg+bytes>arg->offset))return typedfail(p,"wm-tuple-result-formal-overlap");
   if(!typedwmtuplebinding(fn,b,p,&base,1))return typedfail(p,"wm-tuple-result-layout");
@@ -416,13 +421,18 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
             contract=72;
             if(binding->sm==Afp){if(!typedchannelbinding(c,p,binding,&local))return 0;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;}
             else{if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || !p->resulttriple)return typedfail(p,"channel-result-inherit");inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;}
+        }else if(c->loads && kind==Ttuple && binding->sm==Afpind && binding->s.reg==16 && !binding->s.offset && ((p->resultpair>0 && p->resultpair<3) || p->resultaggregate==48)){
+            Dis64Layout l={0};int valid=typedrootpair(fn->ty->tof,&l) && tequal(p->resulttype,fn->ty->tof);
+            dis64layoutfree(&l);if(!valid)return typedfail(p,"external-root-pair-inherit-type");
+            contract=48;inherit=1;local=32;
+            p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;
         }else if(c->loads && kind==Ttuple && binding->sm==Afpind && binding->s.reg==16 && !binding->s.offset && p->resultpair>=3){
             Dis64Layout l={0};int valid=typedmixedtuple(fn->ty->tof,&l) && tequal(p->resulttype,fn->ty->tof);
             dis64layoutfree(&l);if(!valid)return typedfail(p,"external-mixed-inherit-type");
             contract=16;inherit=1;local=32;
             p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;
         }else if(c->loads && kind==Ttuple && (contract=typedwmtuplebinding(fn,binding,p,&local,0))){
-            p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=(contract==12||contract==16)?128|contract:85;
+            p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=(contract==12||contract==16||contract==48)?128|contract:85;
         }else if(c->loads && kind==Ttuple){
             if(!typedstatresult(fn,binding,p,&local,0))return typedfail(p,"external-result-kind");
             contract=88;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;

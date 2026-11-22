@@ -739,8 +739,8 @@ Local tuple results now accept any two declared managed-reference kinds:
 String, List, Array, Ref, Channel and Module. Their exact field kinds remain in
 the compiler proof; forwarding requires equal complete return types. The local
 caller binding checks both fields using the shared typed layout planner instead
-of requiring a Module followed by a String list. Imported two-root calls remain
-outside this change.
+of requiring a Module followed by a String list. That step covered local calls;
+imported two-root calls are covered below.
 
 Both individual pointer results and whole mapped tuple copies use contract 48.
 The mapped copy uses the existing two-root descriptor. Runtime result-flow checks
@@ -763,3 +763,44 @@ The former Tk boundary fixture now distinguishes valid generic local root pairs
 from the specialized Tk result contract: changing the channel payload or first
 ADT keeps a generic pair with its own signature, never contract 116. This updates
 the old refusal expectation without permitting it to impersonate Tk.toplevel.
+
+## Imported pairs of managed references
+
+The same two-root layout is now supported across imported calls. The compiler
+uses the shared result planner to pack destructured caller storage and accepts
+`return provider->fn(...)` only when the complete result types are equal.
+Diagnostics retain both declared field kinds. Contract 48 describes two native
+root cells; it does not identify a particular module, function or root kind.
+The classic Dis bytes and system Limbo sources remain unchanged.
+
+The module constructor and call materializer require matching import/site result
+contracts, both root-map bits for fresh storage and the caller's pair result
+contract for inherited storage. Metadata failures occur before allocation;
+materializer failures leave the output instruction buffer unchanged.
+
+Run `python3 utils/tests/native64-root-pair-import.py --limbo /path/to/limbo`.
+It independently checks all 36 combinations of String, List, Array, Ref, Channel
+and Module result declarations in destructured and inherited forms. Executing
+String/String cases cross a real module link to a controlled C provider or a
+separate interpreted/JIT Limbo provider. The 504 cases cover interpreted/JIT
+callers, quanta 1/3/1000, two calls per successful case, stack growth, field and
+mapped copies, local forwarding, nil/aliased roots, missing modules and provider
+exceptions. Both returned pointers, existing result owners, guard bytes and
+complete caller/provider retirement are checked. Published Limbo exception values
+are retired through the actual handler before fixture teardown.
+
+The test rejects 24 malformed import/site/result/map/binding cases before
+allocation, detects 24 independent source-proof mutations (including field
+kinds), and injects all 30/31 constructor allocation failures in C/JIT modes.
+Two active controls disable the callee/caller result proofs separately and must
+fail the corresponding materializer predicate. CI includes this test in the
+existing native64 CPU jobs.
+
+Local execution evidence is Linux amd64 with UBSan. This closes the imported
+pair-result gap; the unchanged Sh diagnostic frontier remains 70/134 bodies.
+It does not establish full shell startup, an Android APK/device launch, or
+validation of the Windows/macOS/32-bit and other CPU targets.
+
+The existing local/imported call regressions keep their active refusal controls.
+Two stale mutation targets now follow the shared module-operand validator and the
+current source-root map predicate, retaining alignment and ownership checks.

@@ -49,7 +49,7 @@ Array*arraycpy(Array*a){USED(a);require(0);return nil;}
         runner=shlex.split(env.get('NATIVE64_RUNNER',''));runargs=['--materialize-only']if args.materialize_only else []
         subprocess.run(command,check=True,env=env);subprocess.run(runner+[str(binary)]+runargs,check=True,env=env,timeout=120)
         production=(ROOT/'include/native64-typed-multi.h').read_text()
-        for before,after,diagnostic in (('c->moduleoffset%8','0','case=1'),('c->ordinal>32767','0','case=2'),('native64typedblocked(checkstep.d,calls,n)','0','case=5')):
+        for before,after,diagnostic in (('!native64librarymoduleoperand(c->modulemode,c->moduleoffset,fpbytes,mpbytes)','0','case=1'),('c->ordinal>32767','0','case=2'),('native64typedblocked(checkstep.d,calls,n)','0','case=5')):
             assert production.count(before)==1
             (work/'native64-typed-multi.h').write_text(production.replace(before,after))
             subprocess.run(command,check=True,env=env)
