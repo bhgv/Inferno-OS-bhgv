@@ -1359,7 +1359,8 @@ copylocalenv(e: ref Localenv): ref Localenv
 
 newlocalenv(pushed: ref Localenv): ref Localenv
 {
-	e := ref Localenv(array[ENVHASHSIZE] of list of ref Var, pushed, 0);
+	vars := array[ENVHASHSIZE] of list of ref Var;
+	e := ref Localenv(vars, pushed, 0);
 	if (pushed == nil && env != nil) {
 		for (vl := env->getall(); vl != nil; vl = tl vl) {
 			(name, val) := hd vl;

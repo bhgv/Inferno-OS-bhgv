@@ -51,6 +51,9 @@ static void
 agshcontext(Modlink *ml, WORD n)
 {
  void **context,**environment,**builtins,**local;
+ Array *vars;
+ void *cell;
+ unsigned int i;
  WORD value;
  memmove(&context,ml->MP+aggregate_globals[26],8);
  agcheck(context!=H&&D2H(context)->t->size==32,"shell Context layout");
@@ -62,7 +65,18 @@ agshcontext(Modlink *ml, WORD n)
  memmove(&value,builtins+1,4);
  agcheck(builtins[0]==H&&value==n,"shell Builtins Word and nil array");
  memmove(&value,local+2,4);
- agcheck(local[0]==H&&local[1]==H&&value==n,"shell Localenv Word and nil roots");
+ agcheck(local[0]!=H&&local[1]==H&&value==n,"shell Localenv Word and mapped array");
+ vars=local[0];
+ agcheck(vars->len==7&&vars->t->size==8&&vars->t->map[0]==0x80,"shell hash bucket array descriptor");
+ for(i=0;i<7;i++){
+  memmove(&cell,vars->data+8*i,8);
+  agcheck(cell==H,"shell hash bucket starts nil");
+ }
+ memmove(&cell,ml->MP+aggregate_globals[21],8);
+ agcheck(cell!=H,"fixture supplies a live list for array retirement");
+ D2H(cell)->ref++;
+ Setmark(D2H(cell));
+ memmove(vars->data,&cell,8);
  memmove(&value,ml->MP+aggregate_globals[27],4);
  agcheck(value==0,"shell field reads");
 }

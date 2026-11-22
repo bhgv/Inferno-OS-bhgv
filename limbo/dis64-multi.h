@@ -476,6 +476,14 @@ typedimagearrayaddr(Addr*a)
 static int
 typedstringarray(Addr*a)
 {Type*t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;return a->decl&&t&&t->kind==Tarray&&t->tof&&t->tof->kind==Tstring&&a->reg==a->decl->offset&&!a->offset;}
+/* Shell variable buckets are one mapped list reference per element. */
+static int
+typedshellvararray(Addr *a)
+{
+ Type *t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;
+ return a->decl&&t&&t->kind==Tarray&&t->tof&&t->tof->kind==Tlist&&
+        typedwmref(t->tof->tof,"Sh","Var")&&a->reg==a->decl->offset&&!a->offset;
+}
 static int
 typedstringarraystable(TypedMulti*c,Inst*in)
 {unsigned int i;Inst*v;if(in->sm==Afp)return 1;if(in->sm!=Amp||!in->s.decl||in->s.decl->store!=Dglobal)return 0;for(i=0;i<c->count;i++){v=c->instructions[i];if(v&&((v->dm==Amp&&v->d.decl==in->s.decl)||(v->op==ILEA&&v->sm==Amp&&v->s.decl==in->s.decl)))return 0;}return 1;}
@@ -525,7 +533,7 @@ static int
 typedimagearraynew(Inst*in,Dis64TypedBody*p,unsigned int pc)
 {
  Decl*d=in->m.decl;long source,dest;unsigned int sm,dm;int actual;
- if((in->op!=INEWA && in->op!=INEWAZ) || !(typedimagearrayaddr(&in->d)||typedregistryarray(&in->d)||typedstringarray(&in->d)) || in->mm!=Adesc || !d || !d->desc || d->desc->id!=in->m.offset || !(typedwmref(d->ty,"Draw","Image")||typedwmref(d->ty,"Wmsrv","Client")||typedlibraryrecord(d->ty)==12||d->ty&&d->ty->kind==Tstring) || d->desc->size!=4 || d->desc->nmap!=1 || d->desc->map[0]!=0x80 || in->branch ||
+ if((in->op!=INEWA && in->op!=INEWAZ) || !(typedimagearrayaddr(&in->d)||typedregistryarray(&in->d)||typedstringarray(&in->d)||typedshellvararray(&in->d)) || in->mm!=Adesc || !d || !d->desc || d->desc->id!=in->m.offset || !(typedwmref(d->ty,"Draw","Image")||typedwmref(d->ty,"Wmsrv","Client")||typedlibraryrecord(d->ty)==12||d->ty&&d->ty->kind==Tstring||typedshellvararray(&in->d)) || d->desc->size!=4 || d->desc->nmap!=1 || d->desc->map[0]!=0x80 || in->branch ||
     !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) || !typedoperand(in->dm,&in->d,Tarray,0,0,p,&dest,&dm,&actual) || (dm!=AFP && dm!=AMP))return typedfail(p,"image-array-allocation");
  p->code[pc]=(Dis64Instruction){INEWAZ,SRC(sm)|AXIMM|DST(dm),2,source,dest};p->returns[pc]=254;return 1;
 }
@@ -1357,7 +1365,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedimagearraywindowindex(in,c->instructions[pc+1],c->instructions[pc+2],p,pc-p->first))goto fail;inside[pc+1-p->first]=inside[pc+2-p->first]=1;pc+=3;
         }else if(c->loads && in->op==ISLICEA && in->dm==Afpind && fn->ty->tof->kind==Tarray && typedwmref(fn->ty->tof->tof,"Draw","Image")){
             if(!typedimagearrayslice(in,p,pc-p->first,fn->ty->tof))goto fail;pc++;
-        }else if(c->loads && (in->op==INEWA || in->op==INEWAZ) && (typedimagearrayaddr(&in->d)||typedregistryarray(&in->d)||typedstringarray(&in->d))){
+        }else if(c->loads && (in->op==INEWA || in->op==INEWAZ) && (typedimagearrayaddr(&in->d)||typedregistryarray(&in->d)||typedstringarray(&in->d)||typedshellvararray(&in->d))){
             if(!typedimagearraynew(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==IINDW && typedimagearrayaddr(&in->s) && pc+1<stop && (c->instructions[pc+1]->op==IFRAME || c->instructions[pc+1]->op==IMFRAME)){
             if(!typedimagearrayresultindex(in,p,pc-p->first))goto fail;pc++;
