@@ -3328,7 +3328,7 @@ OP(iload)
 	memmove(&name, R.s, sizeof(name));
 	ldt = structural ? nil : moduleimports(m, index);
 	n = string2c(name);
-	if(structural){
+	if(structural && strcmp(n, "$self") != 0){
   ml = m->native64importload(m, index, n);
   if(ml == nil || ml == H) ml = H;
   else {
@@ -3342,6 +3342,9 @@ OP(iload)
   }
  }
  else if(strcmp(n, "$self") == 0) {
+		/* A structural self load shares this instance's MP, as classic Dis does. */
+		if(structural)
+			ldt = moduleimports(m, index);
 		if(mp == nil || m->ref <= 0 || m->ref == 0x7fffffff)
 			error(exModule);
 		h = nil;

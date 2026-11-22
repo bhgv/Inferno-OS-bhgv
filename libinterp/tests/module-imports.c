@@ -32,6 +32,7 @@ struct Module {
 	int ref; // Signed module owner count.
 	Import **ldt; // Sentinel-terminated import table.
 	int (*cstep)(void);
+	Modlink *(*native64importload)(Module*, WORD, char*);
 };
 
 struct Modlink {
@@ -89,6 +90,19 @@ native64lea8step(void)
 static int
 native64stringlea8step(void)
 {
+	abort();
+}
+
+static int
+native64diallea8step(void)
+{
+	abort();
+}
+
+static void
+ptrdel(Heap *heap)
+{
+	(void)heap;
 	abort();
 }
 
@@ -361,6 +375,15 @@ selfrefs(Modlink *current)
 }
 
 
+static Modlink*
+unexpectedselfload(Module *module, WORD table, char *path)
+{
+	(void)module;
+	(void)table;
+	(void)path;
+	abort();
+}
+
 /* Sentinel and large indices must be rejected in both VM word models. */
 int
 main(void)
@@ -387,6 +410,9 @@ main(void)
 	module.rt = 0; reject(&current, 0);
 	module.rt = HASLDT;
 	loads(&current);
+	selfrefs(&current);
+	module.rt = 0;
+	module.native64importload = unexpectedselfload;
 	selfrefs(&current);
 	sysgroup();
 	printf("module imports: %d cases, WORD%d\n", checks, WORD_BITS);

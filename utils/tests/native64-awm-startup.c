@@ -112,6 +112,33 @@ panellink(Module *caller,const Native64ModuleSpec *spec,Module *target,const cha
  destroy(link);
 }
 static void
+panelself(Module *toolbar)
+{
+ Import empty={0};
+ Modlink *current,*other,*self=H;
+ String *path=c2string("$self",5);
+ REG saved=R;
+ unsigned int j;
+ WORD table;
+ for(table=0;table<(WORD)atoolbar_spec.ntables;table++){
+  const Native64ModuleTable *candidate=atoolbar_spec.tables+table;
+  for(j=0;j<candidate->count;j++)
+   if(!strcmp(candidate->imports[j].name,"runbuiltin"))break;
+  if(j<candidate->count)break;
+ }
+ ck(table<(WORD)atoolbar_spec.ntables,"Toolbar self import table");
+ toolbar->ref+=2;
+ current=linkmod(toolbar,&empty,1);
+ other=linkmod(toolbar,&empty,1);
+ ck(current!=nil&&current!=H&&other!=nil&&other!=H,"distinct Toolbar instances");
+ R.M=current;R.m=&table;R.s=&path;R.d=&self;
+ actual_iload();
+ R=saved;
+ ck(self!=nil&&self!=H&&self->m==toolbar&&self->MP==current->MP&&
+    self->MP!=other->MP,"Toolbar self shares only the calling instance's globals");
+ destroy(self);destroy(other);destroy(current);destroy(path);
+}
+static void
 panelconstruction(void)
 {
  Native64ModuleOwner tkclient={0},toolbar={0},wmlib={0};
@@ -120,11 +147,12 @@ panelconstruction(void)
  ck(native64sysmodule(&atoolbar_spec,atoolbar_variadics,nelem(atoolbar_variadics),0,&toolbar),"Toolbar module construction");
  ck(toolbar.module->htab && toolbar.module->htab[0].etab &&
     !strcmp(toolbar.module->htab[0].etab[0].s,"fail:*"),"Toolbar catch installed");
+ panelself(toolbar.module);
  panellink(toolbar.module,&atoolbar_spec,tkclient.module,"toplevel");
  panellink(tkclient.module,&tkclient_spec,wmlib.module,"splitqword");
  ck(native64typedmoduleclear(&toolbar)&&native64typedmoduleclear(&tkclient)&&
     native64typedmoduleclear(&wmlib)&&!live,"panel module retirement");
- puts("PASS original Toolbar -> Tkclient -> Wmlib construction, imports and retirement");
+ puts("PASS original Toolbar -> Tkclient -> Wmlib construction, imports, self and retirement");
 }
 #endif
 int main(void){int jit,q;int quanta[]={1,3,1000};rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freestring;Tarray.free=freearray;Tarray.size=sizeof(Array);require(dis64selectlaunch("dis64-calls"));quotefmtinstall();
