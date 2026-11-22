@@ -1359,7 +1359,7 @@ typedcatch(Dis64TypedBody *p, uchar *inside)
   if(found)return typedfail(p,"catch-count");
   found=e;
  }
- if(!found||p->resultkind!=Tnone||found->ne||!found->c||found->c->nlab!=1||
+ if(!found||found->ne||!found->c||found->c->nlab!=1||
     found->c->iwild||!found->d||found->d->ty!=rtexception)
   return typedfail(p,"catch-shape");
  label=found->c->labs;
@@ -1402,7 +1402,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
      * Command files serialize strings only, so replay through the byte folder. */
     if(i && c->external>=2)for(pc=0;pc<p->count;pc++)
         if((p->code[pc].op==IMOVB || p->code[pc].op==ICVTBW) && USRC(p->code[pc].mode)==AMP){i=0;typedfail(p,"unsupported-opcode");break;}
-    if(i){if(fn->handler&&!typedcatch(p,nil))goto fail;c->state[index]=2;c->height[index]=1;return 1;}
+    if(i){if(fn->handler&&(!typedcatch(p,nil)||!typedresults(p)))goto fail;c->state[index]=2;c->height[index]=1;return 1;}
     if(p->reason==nil || (strcmp(p->reason,"unsupported-opcode") && !((c->external>=2 || c->loads) && p->code && !p->frame.reason && !p->data.reason)))goto fail;
     p->reason=nil;p->ntables=0;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
     if(c->loads){
@@ -1612,8 +1612,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(inside[target]){typedfail(p,"multi-table-setup-branch");goto fail;}
         }
     }
-    if((c->external<2 && !c->loads && !p->nsites && !p->nexternal) || !typedresults(p))goto fail;
-    if(fn->handler&&!typedcatch(p,inside))goto fail;
+    if((c->external<2 && !c->loads && !p->nsites && !p->nexternal) ||
+       (fn->handler&&!typedcatch(p,inside)) || !typedresults(p))goto fail;
     free(inside);p->tail=c->loads?5:c->external?4:3;c->state[index]=2;c->height[index]=h;return 1;
 fail:
     free(inside);c->state[index]=3;return 0;

@@ -881,12 +881,8 @@ runexternal(ctxt: ref Context, args: list of ref Listnode, last: int): string
 
 			if (last) {
 				{
-					sys->pctl(Sys->NEWFD, ctxt.keepfds);
-					mod->init(ctxt.drawcontext, argv);
-					exit;
+					return runlast(mod, ctxt.drawcontext, argv, ctxt.keepfds);
 				} exception e {
-				EPIPE =>
-					return EPIPE;
 				"fail:*" =>
 					return failurestatus(e);
 				}
@@ -921,6 +917,18 @@ runexternal(ctxt: ref Context, args: list of ref Listnode, last: int): string
 	} while (pathlist != nil && nonexistent(err));
 	diagnostic(ctxt, sys->sprint("%s: %s", progname, err));
 	return err;
+}
+
+runlast(mod: Command, drawcontext: ref Draw->Context, argv: list of string, keepfds: list of int): string
+{
+	{
+		sys->pctl(Sys->NEWFD, keepfds);
+		mod->init(drawcontext, argv);
+		exit;
+	} exception e {
+	EPIPE =>
+		return EPIPE;
+	}
 }
 
 failurestatus(e: string): string

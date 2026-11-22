@@ -13,7 +13,7 @@ def checked_catches(data,rows):
   reported=row.get('catches',[])
   assert len(selected)==len(reported)
   for record, (slot,start,stop,cleanup,typed,arms,fallback) in zip(reported,selected):
-   assert row['result']==[0,0] and not typed and fallback==-1 and len(arms)==1
+   assert not typed and fallback==-1 and len(arms)==1
    leaves={leaf[0]:leaf[1] for leaf in row['frame']['leaves'] if leaf[2:4]==[4,8]}
    pattern,target=arms[0]
    clear=[]

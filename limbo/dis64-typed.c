@@ -267,7 +267,11 @@ typedresults(Dis64TypedBody *p)
 	int ok=1;
 	if(p->resultkind==Tnone) return 1;
 	state=allocmem(p->count);memset(state,0,p->count);
-	queue=allocmem(((p->resultaggregate?32:p->resulttriple?4:p->resultpair?3:2)*p->count+1)*sizeof(*queue));state[0]=1;queue[tail++]=0;
+	queue=allocmem(((p->resultaggregate?32:p->resulttriple?4:p->resultpair?3:2)*p->count+2)*sizeof(*queue));state[0]=1;queue[tail++]=0;
+	if(p->catchpattern){
+		if(p->catchtarget>=p->count){free(state);free(queue);return typedfail(p,"catch-result-target");}
+		state[p->catchtarget]=1;queue[tail++]=p->catchtarget;
+	}
 	while(head<tail){
 		pc=queue[head++];flow=state[pc];
         if(p->resultaggregate){unsigned int c=p->resultaggregate,n=c==92?5:c==112?4:(c==12||c==72||c==124)?3:2;if(p->returns[pc]==45)flow|=8;if(p->returns[pc]==32||p->returns[pc]==47)flow=(1U<<(n+1))-1;if(p->returns[pc]==78)flow|=p->code[pc].op==IMCALL&&pc&&p->returns[pc-1]==152?(2U<<(p->code[pc-1].middle/8)):c==112?24:2;if(p->returns[pc]==77){unsigned int off=p->code[pc].middle&255,bytes=(p->code[pc].middle>>8)&255,first=c==80?(off?1:0):off/((c==48||c==116||c==72||c==124)?8:4),count=p->code[pc].op==IMOVP?1:bytes/((c==48||c==116||c==72||c==124)?8:4);while(count--)flow|=2U<<(first++);}}
@@ -346,7 +350,7 @@ typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned in
 		at++;
 	}
 	if(at!=p->count) return typedfail(p,"instruction-count");
-	return typedresults(p);
+	return fn->handler?1:typedresults(p);
 }
 
 int
