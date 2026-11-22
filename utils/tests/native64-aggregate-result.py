@@ -18,7 +18,13 @@ builtinlookup(n:int){
  }
  for(;modules!=nil;modules=tl modules){
   (name,builtin):=hd modules;
-  if(name=="available")builtinmatch=builtin;
+  if(name=="available"){
+   providers:list of Shellbuiltin;
+   providers=builtin::providers;
+   providers=builtinmissing::providers;
+   if(hd providers==builtinmissing)providers=tl providers;
+   if(providers!=nil && hd providers!=builtinmissing)builtinmatch=hd providers;
+  }
   else builtinmissing=builtin;
  }
 }

@@ -28,7 +28,7 @@ def verify_nilbranches(data,row,imports,rows=None):
         if sm not in (0,1)or mm not in (0,1):continue
         a,ak=maps['frame'if sm else'data'][old['s'][0]];b,bk=maps['frame'if mm else'data'][old['m']]
         if ak not in (6,10,11,12,13,20)and bk not in (6,10,11,12,13,20):continue
-        if ak==bk==12 and row['code'][i][5]==231:
+        if ak==bk and ak in (11,12) and row['code'][i][5]==231:
             for space,offset in(('frame'if sm else'data',a),('frame'if mm else'data',b)):
                 assert offset%8==0 and row[space]['map'][offset//64]&(128>>(offset//8%8))
             expected=[codes['IBEQL']if old['op']==codes['IBEQW']else codes['IBNEL'],old['mode'],a,b,old['d'][0]-row['first'],231]

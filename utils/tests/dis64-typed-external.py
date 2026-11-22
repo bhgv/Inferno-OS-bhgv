@@ -1015,12 +1015,20 @@ def verify(data,r,imports,loads=False,rows=None):
                 value=maps['frame'if vm else'data'][direct[0]]
                 assert [s,m,d]==([48,0,value]if read else[value,0,48])
             continue
+        if returned==231:
+            assert loads and (o['op'],op) in ((93,OPCODES['IBEQL']),(94,OPCODES['IBNEL']))
+            sm=mode>>3&7;arm=mode&192;assert mode==o['mode'] and sm in(0,1) and arm in(128,192) and mode&7==2
+            source=next(l for l in r['frame'if sm else'data']['leaves']if l[0]==o['s'][0])
+            middle=next(l for l in r['frame'if arm==128 else'data']['leaves']if l[0]==o['m'])
+            assert source[2:]==middle[2:] and source[2:4]==[4,8] and source[4] in (11,12)
+            assert (s,m,d)==(source[1],middle[1],o['d'][0]-r['first'])
+            continue
         if returned==213:
             assert loads and op==o['op']and op in(OPCODES['ICONSP'],OPCODES['IHEADP'],OPCODES['ITAIL'])and mode==o['mode']and o['m']is None and m==0
             sm=mode>>3&7;dm=mode&7;assert sm in(0,1)and dm in(0,1)
             for address,old,new,kind in((sm,o['s'][0],s,12 if op==OPCODES['ICONSP']else 10),(dm,o['d'][0],d,12 if op==OPCODES['IHEADP']else 10)):
                 leaf=next(l for l in r['frame'if address else'data']['leaves']if l[0]==old)
-                assert leaf[1]==new and leaf[2:4]==[4,8]and (leaf[4]==kind or (op==OPCODES['ICONSP']and address==sm and old==o['s'][0]and leaf[4]==20) or (op==OPCODES['ICONSP']and address==dm and old==o['d'][0]and leaf[4]==12))
+                assert leaf[1]==new and leaf[2:4]==[4,8]and (leaf[4]==kind or (kind==12 and leaf[4]==11) or (op==OPCODES['ICONSP']and address==sm and old==o['s'][0]and leaf[4]==20) or (op==OPCODES['ICONSP']and address==dm and old==o['d'][0]and leaf[4]==12))
             continue
         if returned==214:
             assert loads and op==o['op']==OPCODES['IMOVP']and mode==o['mode']and o['m']is None

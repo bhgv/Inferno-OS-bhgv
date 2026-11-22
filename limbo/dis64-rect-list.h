@@ -36,9 +36,7 @@ typedshellmappedpair(Type *t)
  Decl *d;
  return t&&t->kind==Ttuple&&(d=t->ids)&&d->ty==tstring&&
         d->next&&!d->next->next&&d->next->ty&&
-        (d->next->ty==tstring||
-         (d->next->ty->kind==Tmodule&&d->next->ty->decl&&d->next->ty->decl->sym&&
-          !strcmp(d->next->ty->decl->sym->name,"Shellbuiltin")));
+        (d->next->ty==tstring||typedshellbuiltin(d->next->ty));
 }
 
 static int

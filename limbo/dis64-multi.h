@@ -83,18 +83,38 @@ typedvarlist(Addr *a)
         typedwmref(t->tof,"Sh","Var");
 }
 static int
+typedshellbuiltin(Type *t)
+{
+ return t&&t->kind==Tmodule&&t->decl&&t->decl->sym&&
+        !strcmp(t->decl->sym->name,"Shellbuiltin");
+}
+static int
+typedbuiltinlist(Addr *a)
+{
+ Type *t=a->native64type?a->native64type:a->decl?a->decl->ty:nil;
+ return a->decl&&a->reg==a->decl->offset&&!a->offset&&t&&
+        t->kind==Tlist&&typedshellbuiltin(t->tof);
+}
+static int
+typedshellrootlist(Addr *a)
+{
+ return typedlistnodetype(a)||typedvarlist(a)||typedbuiltinlist(a);
+}
+static int
 typedshelllistop(Inst *in,Dis64TypedBody *p,Dis64Instruction *out,uchar *returned)
 {
  unsigned int sm,dm;long source,dest;int actual,head=in->op==IHEADP,cons=in->op==ICONSP;
  Addr *entry=cons?&in->s:&in->d;
- int vars=typedvarlist(cons?&in->d:&in->s);
+ Addr *list=cons?&in->d:&in->s;
+ int vars=typedvarlist(list), modules=typedbuiltinlist(list);
+ int element=modules?Tmodule:Tref;
  Type *t=entry->native64type?entry->native64type:entry->decl?entry->decl->ty:nil;
  if(in->branch||in->mm!=Anone||
-    ((head||cons)&&(!t||t->kind!=Tref||typedlibraryrecord(t)!=(vars?19:13)))||
-    (!head&&!(vars?typedvarlist(&in->d):typedlistnodetype(&in->d)))||
-    !typedoperand(in->sm,&in->s,cons?TypedRoot:Tlist,0,0,p,&source,&sm,&actual)||actual!=(cons?Tref:Tlist)||
+    ((head||cons)&&(modules?!typedshellbuiltin(t):!t||t->kind!=Tref||typedlibraryrecord(t)!=(vars?19:13)))||
+    (!head&&!(modules?typedbuiltinlist(&in->d):vars?typedvarlist(&in->d):typedlistnodetype(&in->d)))||
+    !typedoperand(in->sm,&in->s,cons?TypedRoot:Tlist,0,0,p,&source,&sm,&actual)||actual!=(cons?element:Tlist)||
     !typedoperand(in->dm,&in->d,head?TypedRoot:Tlist,0,0,p,&dest,&dm,&actual)||
-    actual!=(head?Tref:Tlist))return typedfail(p,"shell-list-operation");
+    actual!=(head?element:Tlist))return typedfail(p,"shell-list-operation");
  *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,dest};*returned=213;return 1;
 }
 static int
@@ -897,18 +917,30 @@ typedloadglobalclient(Addr*a,Dis64TypedBody*p)
   typedclientaddress(a,Ampind,p,&base,&wire,&field,&kind) && wire==(AMP|AIND) && field==0 && kind==Tchan;
 }
 
-/* Equality of two exact canonical Client roots, without object dereference. */
+/* Compare two direct roots of the same supported nominal type. */
 static int
-typedloadclientcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
+typedloadrootcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop,int element)
 {
- Addr*a=&in->s,*b=&in->m;long source,middle,field;unsigned int sm,mm,wire;int kind;
- if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) || !typedloadreftype(a) || !typedloadreftype(b) || typedloadvaluetype(a)->tof!=typedloadvaluetype(b)->tof ||
-    !typedwmref(a->decl->ty,"Wmsrv","Client") || (in->sm!=Afp && in->sm!=Amp) || (in->mm!=Afp && in->mm!=Amp) ||
-    !typedclientaddress(a,in->sm==Afp?Afpind:Ampind,p,&source,&wire,&field,&kind) || field || kind!=Tchan ||
-    !typedclientaddress(b,in->mm==Afp?Afpind:Ampind,p,&middle,&wire,&field,&kind) || field || kind!=Tchan ||
-    !typedoperand(in->sm,a,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=Tref || !typedoperand(in->mm,b,TypedRoot,0,1,p,&middle,&mm,&kind) || kind!=Tref || middle>65535 ||
-    in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc)return typedfail(p,"client-root-compare");
- p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AIMM),middle,source,in->branch->pc-p->first};p->returns[pc]=231;return 1;
+ Addr *a=&in->s,*b=&in->m;
+ long source,middle,field,base;
+ unsigned int sm,mm,wire;
+ int kind;
+ if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
+    (in->sm!=Afp && in->sm!=Amp) || (in->mm!=Afp && in->mm!=Amp) ||
+    !typedoperand(in->sm,a,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=element ||
+    !typedoperand(in->mm,b,TypedRoot,0,1,p,&middle,&mm,&kind) || kind!=element || middle>65535 ||
+    in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first ||
+    in->branch->pc>=(int)stop || in->d.offset!=in->branch->pc)
+  return typedfail(p,"load-root-compare");
+ if(element==Tref &&
+    (typedloadvaluetype(a)->tof!=typedloadvaluetype(b)->tof ||
+     !typedwmref(a->decl->ty,"Wmsrv","Client") ||
+     !typedclientaddress(a,in->sm==Afp?Afpind:Ampind,p,&base,&wire,&field,&kind) || field || kind!=Tchan ||
+     !typedclientaddress(b,in->mm==Afp?Afpind:Ampind,p,&base,&wire,&field,&kind) || field || kind!=Tchan))
+  return typedfail(p,"client-root-compare");
+ p->code[pc]=(Dis64Instruction){in->op==IBEQW?IBEQL:in->op==IBNEW?IBNEL:in->op,
+  SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AIMM),middle,source,in->branch->pc-p->first};
+ p->returns[pc]=231;return 1;
 }
 
 /* Checked native startup needs direct ref ADT, list-of-String and Module nil tests.
@@ -919,7 +951,9 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
 {
  Addr *value=&in->s,*empty=&in->m;int vm=in->sm,nm=in->mm,kind,actual;Type*valuetype;
  unsigned int sm,mm;long source,middle;
- if(typedloadreftype(value) && typedloadreftype(empty))return typedloadclientcompare(in,p,pc,stop);
+ if(typedloadreftype(value) && typedloadreftype(empty))return typedloadrootcompare(in,p,pc,stop,Tref);
+ if(typedshellbuiltin(typedloadvaluetype(value)) && typedshellbuiltin(typedloadvaluetype(empty)))
+  return typedloadrootcompare(in,p,pc,stop,Tmodule);
  if(typedloadvaluetype(value) && typedloadvaluetype(value)->kind==Tany){
   value=&in->m;empty=&in->s;vm=in->mm;nm=in->sm;
  }
@@ -927,7 +961,7 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  if(value->native64type && value->decl && value->decl->store==Dlocal && value->decl->sym && value->decl->sym->name[0]=='.' && value->decl->sym->name[1]=='t' && value->reg==value->decl->offset && !value->offset)valuetype=value->native64type;
  if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
     !value->decl || !value->decl->ty ||
-    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedlistnodetype(value) && !typedvarlist(value) && !typedintlisttype(value) && !typedpointerlisttype(value) && !typedwindowlisttype(value) && !typedrectlisttype(value) && !typedshellmappedpairlist(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
+    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedshellrootlist(value) && !typedintlisttype(value) && !typedpointerlisttype(value) && !typedwindowlisttype(value) && !typedrectlisttype(value) && !typedshellmappedpairlist(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
     !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
     !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || (!valuetype || kind!=valuetype->kind) || (typedloadreftype(value) && sm!=AFP && !(sm==AMP && typedloadglobalclient(value,p))) ||
     !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || (kind==Tchan && middle>65535) ||
@@ -1462,7 +1496,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedshellmappedpairlistop(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSM || in->op==IHEADM || (in->op==ITAIL && typedrectlisttype(&in->s)))){
             if(!typedrectlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
-        }else if(c->loads && ((in->op==ICONSP && (typedlistnodetype(&in->d)||typedvarlist(&in->d))) || ((in->op==IHEADP || in->op==ITAIL) && (typedlistnodetype(&in->s)||typedvarlist(&in->s))))){
+        }else if(c->loads && ((in->op==ICONSP && typedshellrootlist(&in->d)) || ((in->op==IHEADP || in->op==ITAIL) && typedshellrootlist(&in->s)))){
             if(!typedshelllistop(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) && ((in->op!=ICONSP && typedpointerlisttype(&in->s)) || (in->op!=IHEADP && typedpointerlisttype(&in->d)))){
             if(!typedpointerlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
