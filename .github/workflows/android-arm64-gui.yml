@@ -9,6 +9,8 @@ on:
       - 'utils/tests/android-gui-build.py'
       - 'utils/tests/native64-*'
       - 'utils/tests/dis64-*'
+      - 'appl/cmd/sh/sh.b'
+      - 'appl/cmd/sh/sh.y'
       - 'appl/cmd/emuinit.b'
       - 'appl/lib/**'
       - 'appl/wm/awm.b'
@@ -86,7 +88,7 @@ jobs:
           set -o pipefail
           NATIVE64_RUNNER=qemu-aarch64 python3 utils/tests/native64-awm-startup.py \
             --limbo "$RUNNER_TEMP/host-tools/limbo" \
-            --android-ndk "$RUNNER_TEMP/android-ndk-r27c" 2>&1 \
+            --android-ndk "$RUNNER_TEMP/android-ndk-r27c" --panel 2>&1 \
             | tee "$RUNNER_TEMP/bionic-awm-startup.log"
       - name: Compile full Draw/Tk core and link ordinary NativeActivity
         run: |
