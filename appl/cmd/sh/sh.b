@@ -814,8 +814,13 @@ runexternal(ctxt: ref Context, args: list of ref Listnode, last: int): string
 				(ok, info) := sys->fstat(fd);
 				# make permission checking more accurate later
 				if (ok == 0 && (info.mode & Sys->DMDIR) == 0
-						&& (info.mode & 8r111) != 0)
-					return runhashpling(ctxt, fd, path, tl args, last);
+						&& (info.mode & 8r111) != 0) {
+					tail := tl args;
+					script := scriptargv(ctxt, fd, path, tail);
+					if (script == nil)
+						return "bad header";
+					return runexternal(ctxt, script, last);
+				}
 			};
 			err = sys->sprint("%r");
 		}
@@ -835,32 +840,73 @@ failurestatus(e: string): string
 	return "failed";
 }
 
-runhashpling(ctxt: ref Context, fd: ref Sys->FD,
-		path: string, argv: list of ref Listnode, last: int): string
+# Return the first line end for a complete interpreter header.
+scriptheader(header: array of byte, n: int): int
+{
+	if (n < 4)
+		return -1;
+	hash := int header[0];
+	bang := int header[1];
+	if (hash != '#' || bang != '!')
+		return -1;
+	for (i := 2; i < n; i++) {
+		c := int header[i];
+		if (c == '\n') {
+			if (i < 3)
+				return -1;
+			return i;
+		}
+	}
+	return -1;
+}
+
+# Build the reversed argument list used to append the script path and arguments.
+scriptwords(line: string): list of ref Listnode
+{
+	words: list of ref Listnode;
+	i := 0;
+	while (i < len line) {
+		c := line[i];
+		if (c == ' ' || c == '\t') {
+			i++;
+			continue;
+		}
+		start := i++;
+		while (i < len line) {
+			c = line[i];
+			if (c == ' ' || c == '\t')
+				break;
+			i++;
+		}
+		word := line[start:i];
+		entry := ref Listnode(nil, word);
+		words = entry :: words;
+	}
+	return words;
+}
+
+scriptargv(ctxt: ref Context, fd: ref Sys->FD,
+		path: string, argv: list of ref Listnode): list of ref Listnode
 {
 	header := array[1024] of byte;
 	n := sys->read(fd, header, len header);
-	for (i := 0; i < n; i++)
-		if (header[i] == byte '\n')
-			break;
-	if (i == n || i < 3 || header[0] != byte('#') || header[1] != byte('!')) {
+	i := scriptheader(header, n);
+	if (i < 0) {
 		diagnostic(ctxt, "bad script header on " + path);
-		return "bad header";
+		return nil;
 	}
-	(nil, args) := sys->tokenize(string header[2:i], " \t");
-	if (args == nil) {
+	line := string header[2:i];
+	nargs := scriptwords(line);
+	if (nargs == nil) {
 		diagnostic(ctxt, "empty header on " + path);
-		return "bad header";
+		return nil;
 	}
 	header = nil;
 	fd = nil;
-	nargs: list of ref Listnode;
-	for (; args != nil; args = tl args)
-		nargs = ref Listnode(nil, hd args) :: nargs;
 	nargs = ref Listnode(nil, path) :: nargs;
 	for (; argv != nil; argv = tl argv)
 		nargs = hd argv :: nargs;
-	return runexternal(ctxt, revlist(nargs), last);
+	return revlist(nargs);
 }
 
 runblock(ctxt: ref Context, args: list of ref Listnode, last: int): string
