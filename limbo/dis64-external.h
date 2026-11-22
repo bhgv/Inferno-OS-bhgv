@@ -36,6 +36,25 @@ typedstatresult(Decl *fn,Inst *binding,Dis64TypedBody *p,unsigned int *base,int 
  done:dis64layoutfree(&result);return ok;
 }
 
+/* A scalar followed by one managed root. Match the declaration and complete
+ * layout; the contract describes storage, independently of the callee name. */
+static unsigned int
+typedmixedtuple(Type *t, Dis64Layout *l)
+{
+ Decl *a,*b;int root;
+ if(!t || t->kind!=Ttuple || !(a=t->ids) || !(b=a->next) || b->next || !a->ty || !b->ty)return 0;
+ root=b->ty->kind;
+ if(root!=Tstring && root!=Tlist && root!=Tref && root!=Tarray && root!=Tchan && root!=Tmodule)return 0;
+ if(a->ty->kind!=Tint && a->ty->kind!=Tbig && a->ty->kind!=Treal)return 0;
+ if(!dis64layouttype(t,l) || l->count!=2 || l->bytes!=16 || l->alignment!=8 ||
+    l->legacybytes!=(a->ty->kind==Tint?8:16) ||
+    l->leaves[0].legacy || l->leaves[0].native || l->leaves[0].kind!=a->ty->kind ||
+    l->leaves[0].bytes!=(a->ty->kind==Tint?4:8) ||
+    l->leaves[1].legacy!=(a->ty->kind==Tint?4:8) || l->leaves[1].native!=8 ||
+    l->leaves[1].oldbytes!=4 || l->leaves[1].bytes!=8 || l->leaves[1].kind!=root)return 0;
+ return 16;
+}
+
 /* Closed Wmlib tuple results; every scalar and root leaf is checked. */
 static unsigned int
 typedwmtuple(Type*t,Dis64Layout*l)
@@ -54,6 +73,7 @@ typedwmtuplebinding(Decl*fn,Inst*b,Dis64TypedBody*p,unsigned int*base,int reloca
 {Dis64Layout l={0};unsigned int c;int ok=0;
  c=typedaggregatecontract(fn->ty->tof,&l);
  if(!c){dis64layoutfree(&l);c=typedwmtuple(fn->ty->tof,&l);}
+ if(!c){dis64layoutfree(&l);c=typedmixedtuple(fn->ty->tof,&l);}
  if(c && b->sm==Afp && b->s.reg>=32)
   ok=dis64layoutbindresult(&p->frame,&l,b->s.reg,(c==96||c==112)?4:8,relocate,base);
  dis64layoutfree(&l);return ok?c:0;}
@@ -62,7 +82,7 @@ static int
 typedwmtupleframe(TypedMulti*c,Decl*owner,Dis64TypedBody*p,unsigned int stop)
 {unsigned int pc,end,base;Inst*in,*call,*b;Decl*fn,*arg;Dis64Layout l={0};unsigned int contract,bytes;
  for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IFRAME)continue;end=pc+1;while(end<stop&&c->instructions[end]&&c->instructions[end]->op!=ICALL&&c->instructions[end]->op!=IFRAME&&!c->instructions[end]->branch)end++;if(end>=stop||!c->instructions[end]||c->instructions[end]->op!=ICALL||c->instructions[end]->d.offset<0||(unsigned int)c->instructions[end]->d.offset>=c->count||c->entries[c->instructions[end]->d.offset]<0)continue;fn=c->functions[c->entries[c->instructions[end]->d.offset]];contract=typedaggregatecontract(fn->ty->tof,&l);dis64layoutfree(&l);if(!contract||!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;if(!typedwmtuplebinding(fn,b,p,&base,1))return typedfail(p,"local-aggregate-result-frame");}
- for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IMFRAME||!(fn=in->m.decl)||!fn->ty||fn->ty->kind!=Tfn)continue;contract=typedwmtuple(fn->ty->tof,&l);bytes=l.legacybytes;dis64layoutfree(&l);if(!contract)continue;
+ for(pc=p->first;pc<stop;pc++){in=c->instructions[pc];if(!in||in->op!=IMFRAME||!(fn=in->m.decl)||!fn->ty||fn->ty->kind!=Tfn)continue;contract=typedwmtuple(fn->ty->tof,&l);if(!contract){dis64layoutfree(&l);contract=typedmixedtuple(fn->ty->tof,&l);}bytes=l.legacybytes;dis64layoutfree(&l);if(!contract)continue;
   end=pc+1;while(end<stop&&c->instructions[end]&&c->instructions[end]->op!=IMCALL&&c->instructions[end]->op!=IMFRAME&&!c->instructions[end]->branch)end++;if(end<=pc+1||end>=stop||!(call=c->instructions[end])||call->op!=IMCALL||call->m.decl!=fn||!(b=c->instructions[end-1])||b->op!=ILEA||b->sm!=Afp)continue;
   for(arg=owner->ty->ids;arg;arg=arg->next)if(!arg->ty||(b->s.reg<arg->offset+arg->ty->size&&b->s.reg+bytes>arg->offset))return typedfail(p,"wm-tuple-result-formal-overlap");
   if(!typedwmtuplebinding(fn,b,p,&base,1))return typedfail(p,"wm-tuple-result-layout");
@@ -406,7 +426,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
             if(binding->sm==Afp){if(!typedchannelbinding(c,p,binding,&local))return 0;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;}
             else{if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || !p->resulttriple)return typedfail(p,"channel-result-inherit");inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;}
         }else if(c->loads && kind==Ttuple && (contract=typedwmtuplebinding(fn,binding,p,&local,0))){
-            p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=contract==12?128|12:85;
+            p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=(contract==12||contract==16)?128|contract:85;
         }else if(c->loads && kind==Ttuple){
             if(!typedstatresult(fn,binding,p,&local,0))return typedfail(p,"external-result-kind");
             contract=88;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,local,32};p->returns[at-p->first]=128|contract;

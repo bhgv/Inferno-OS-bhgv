@@ -657,3 +657,29 @@ Call admission still uses the existing aggregate contracts. In particular,
 `Sys.tokenize` is not yet admitted by the native64 external-call path: generic
 storage planning alone does not supply result metadata, native-call validation
 or a callable Sys gateway. System Limbo sources are unchanged by this change.
+
+## Imported scalar/reference tuple results
+
+Imported native64 calls now use the existing 16-byte mixed result contract for
+`(int|big|real, managed-reference)` declarations. Selection checks the declared
+type and complete leaf layout; it does not depend on Sys, tokenize or shell
+function names. The shared result planner restores padding and the caller GC map.
+The VM accepts the import contract only with a matching call-site contract,
+aligned caller result and exactly the required reference map. Inherited mixed
+external results remain refused.
+
+`utils/tests/native64-tokenize.py --limbo /path/to/limbo` checks 18 imported
+declarations using String, List, Array, Ref, Channel and Module results, and six
+corruptions of the source result binding. It executes the actual Sys_tokenize
+body through compiled Limbo FRAME/MCALL instructions in 36 C/JIT cases, including
+Unicode delimiters, empty input, repeated delimiters and an empty delimiter set.
+The fixture checks count/order and full root/module retirement. Eight malformed
+map/contract/binding cases must fail before constructor allocation. The existing
+Sys tokenization matrix separately covers allocation failure and old result
+ownership in WORD32/WORD64 models.
+
+The original system Sh.getbq now passes checked lowering with both read and
+tokenize imports. No system Limbo source was changed. This proves the imported
+mixed result path on the tested host; the full shell, arbitrary nested aggregate
+calls, Android desktop execution and untested OS/CPU combinations remain separate
+work. The typed-calls CI runs the new fixture in its existing host/CPU matrices.
