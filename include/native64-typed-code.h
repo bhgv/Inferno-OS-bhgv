@@ -133,6 +133,13 @@ native64typedrectlist(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
  unsigned int sm=USRC(s->mode),dm=UDST(s->mode);long value;
  if(s->returned==250)return s->op==ITAIL && !s->m && s->mode==(SRC(sm)|DST(dm)) && native64typedrootoperand(sm,s->s,fp,mp) && native64typedrootoperand(dm,s->d,fp,mp);
+ if(s->op==ICONSMP||s->op==IHEADMP){
+  unsigned int cons=s->op==ICONSMP,mode=cons?sm:dm;
+  long payload=cons?s->s:s->d;
+  return s->returned==(cons?248:249)&&s->m==16&&s->mode==(SRC(sm)|AXIMM|DST(dm))&&
+         native64typedrootoperand(cons?dm:sm,cons?s->d:s->s,fp,mp)&&
+         native64typedrootoperand(mode,payload,fp,mp)&&native64typedrootoperand(mode,payload+8,fp,mp);
+ }
  if((s->returned!=248 && s->returned!=249) || s->op!=(s->returned==248?ICONSM:IHEADM) || s->mode!=(SRC(sm)|AXIMM|DST(dm)) || s->m!=16)return 0;
  if(s->returned==248){if(!native64typedrootoperand(dm,s->d,fp,mp))return 0;if(sm&AIND)return (sm==(AFP|AIND)||sm==(AMP|AIND)) && native64typedrootoperand(sm&~AIND,s->s,fp,mp);value=s->s;}
  else{if(!native64typedrootoperand(sm,s->s,fp,mp))return 0;sm=dm;value=s->d;}

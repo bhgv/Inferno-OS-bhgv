@@ -985,11 +985,11 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             if(found!=1)return 0;
         }
         for(j=0;j<f->count;j++)if(f->code[j].op==IMOVM && UDST(f->code[j].mode)==(AFP|AIND) && f->code[j].d==32 && f->code[j].returned!=246 && f->code[j].returned!=247 && f->code[j].returned!=77 && f->code[j].returned!=65)return 0;
-        for(j=0;j<f->count;j++)if((f->code[j].op==ICONSM && f->code[j].returned!=248) || (f->code[j].op==IHEADM && f->code[j].returned!=249 && f->code[j].returned!=65 && f->code[j].returned!=64))return 0;
+        for(j=0;j<f->count;j++)if(((f->code[j].op==ICONSM||f->code[j].op==ICONSMP) && f->code[j].returned!=248) || (f->code[j].op==IHEADMP&&f->code[j].returned!=249) || (f->code[j].op==IHEADM && f->code[j].returned!=249 && f->code[j].returned!=65 && f->code[j].returned!=64))return 0;
         for(j=0;j<f->count;j++)if(f->code[j].returned>=248 && f->code[j].returned<=250){
             unsigned int k,mode,width;long offset;step=f->code+j;if(!native64typedrectlist(step,f->bytes,s->databytes))return 0;
             for(k=0;k<2;k++){mode=k?UDST(step->mode):USRC(step->mode);offset=k?step->d:step->s;width=step->returned==250 || (step->returned==248?k==1: k==0) || (mode&AIND)?8:16;map=(mode&~AIND)==AFP?f->map:s->datamap;
-                for(at=0;at<width;at++){bit=(offset+at)/8;if(!!(map[bit/8]&(128>>(bit%8)))!=(width==8))return 0;}}
+                for(at=0;at<width;at++){bit=(offset+at)/8;if(!!(map[bit/8]&(128>>(bit%8)))!=(width==8||step->op==ICONSMP||step->op==IHEADMP))return 0;}}
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
         for(j=0;j<f->count;j++)if(f->code[j].returned==246 || f->code[j].returned==247){
@@ -1176,7 +1176,7 @@ native64modulemake(void *arg)
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==171)triples=1;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==172 || s->functions[i].code[j].returned==174)contexts=1;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==183 || s->functions[i].code[j].returned==185 || s->functions[i].code[j].returned==92){if(s->functions[i].code[j].s==2)mapped2=1;else if(s->functions[i].code[j].s==3)mapped3=1;}
-    for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==194)mapped2=1;else if(s->functions[i].code[j].returned==196)mapped3=1;
+    for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==194||s->functions[i].code[j].op==ICONSMP||s->functions[i].code[j].op==IHEADMP)mapped2=1;else if(s->functions[i].code[j].returned==196)mapped3=1;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++){if(s->functions[i].code[j].returned==201||(s->functions[i].code[j].returned==92&&s->functions[i].code[j].s==6))filewrite=1;if(s->functions[i].code[j].returned==202||(s->functions[i].code[j].returned==92&&s->functions[i].code[j].s==5))fileread=1;}
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==134 || s->functions[i].code[j].returned==135 || (s->functions[i].code[j].returned==136 && s->functions[i].code[j].op!=ILEA) || ((s->functions[i].code[j].returned==183 || s->functions[i].code[j].returned==185) && s->functions[i].code[j].s==1))mixedreply=1;
     for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==68)recordids[s->functions[i].code[j].m]=1;else if(s->functions[i].code[j].returned==154)recordids[s->functions[i].code[j].s]=1;else if(s->functions[i].code[j].returned==90)recordids[8]=1;
@@ -1234,7 +1234,7 @@ native64modulemake(void *arg)
             if(f->code[j].returned==90)m->prog[b->offsets[i]+j].reg=recordids[8];
             if(f->code[j].returned==50)m->prog[b->offsets[i]+j].reg=cursortype;
             if(f->code[j].returned==135)m->prog[b->offsets[i]+j].reg=replytype;
-            if(f->code[j].returned==194)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples;
+            if(f->code[j].returned==194||f->code[j].op==ICONSMP||f->code[j].op==IHEADMP)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples;
             if(f->code[j].returned==201 || f->code[j].returned==202)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples+mapped2+mapped3+(f->code[j].returned==202?filewrite:0);
             if(f->code[j].returned==196)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes+triples+mapped2;
             if(f->code[j].returned==171)m->prog[b->offsets[i]+j].reg=s->nfunctions+1+b->imports+bytes;

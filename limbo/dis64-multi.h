@@ -423,6 +423,7 @@ typedcontextcopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
 #include "dis64-window-list.h"
 static int typedwordargop(int);
 #include "dis64-draw-fields.h"
+static Type *typedloadvaluetype(Addr*);
 #include "dis64-rect-list.h"
 #include "dis64-raw-array.h"
 
@@ -918,7 +919,7 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  if(value->native64type && value->decl && value->decl->store==Dlocal && value->decl->sym && value->decl->sym->name[0]=='.' && value->decl->sym->name[1]=='t' && value->reg==value->decl->offset && !value->offset)valuetype=value->native64type;
  if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
     !value->decl || !value->decl->ty ||
-    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedlistnodetype(value) && !typedintlisttype(value) && !typedpointerlisttype(value) && !typedwindowlisttype(value) && !typedrectlisttype(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
+    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedlistnodetype(value) && !typedintlisttype(value) && !typedpointerlisttype(value) && !typedwindowlisttype(value) && !typedrectlisttype(value) && !typedstringpairlist(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
     !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
     !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || (!valuetype || kind!=valuetype->kind) || (typedloadreftype(value) && sm!=AFP && !(sm==AMP && typedloadglobalclient(value,p))) ||
     !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || (kind==Tchan && middle>65535) ||
@@ -1448,6 +1449,9 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             }
             if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;
             if(c->loads){p->code[pc-p->first].source=0;p->returns[pc-p->first]=UDST(p->code[pc-p->first].mode)==(AFP|AIND)?174:172;}pc++;
+        }else if(c->loads && ((in->op==ICONSMP&&typedstringpairlist(&in->d))||
+                  ((in->op==IHEADMP||in->op==ITAIL)&&typedstringpairlist(&in->s)))){
+            if(!typedstringpairlistop(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSM || in->op==IHEADM || (in->op==ITAIL && typedrectlisttype(&in->s)))){
             if(!typedrectlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && ((in->op==ICONSP && typedlistnodetype(&in->d)) || ((in->op==IHEADP || in->op==ITAIL) && typedlistnodetype(&in->s)))){

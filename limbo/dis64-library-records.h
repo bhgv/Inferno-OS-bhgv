@@ -22,17 +22,17 @@ typedwmlibclient(Type*t)
 static unsigned int
 typedshellrecord(Type *t)
 {
- static char *records[]={"Context","Environment","Builtins","Localenv"};
+ static char *records[]={"Context","Environment","Builtins","Localenv","Var"};
  static char *fields[][4]={{"env","waitfd","drawcontext","keepfds"},
-  {"sbuiltins","builtins","bmods","localenv"},{"ba","n"},{"vars","pushed","flags"}};
+  {"sbuiltins","builtins","bmods","localenv"},{"ba","n"},{"vars","pushed","flags"},{"name","val","flags"}};
  static int kinds[][4]={{Tref,Tref,Tref,Tlist},{Tref,Tref,Tlist,Tref},
-  {Tarray,Tint},{Tarray,Tref,Tint}};
+  {Tarray,Tint},{Tarray,Tref,Tint},{Tstring,Tlist,Tint}};
  Dis64Layout l={0};
  Decl *d;
  unsigned int id,i=0,j,n,result=0;
  if(!t->decl->dot||!t->decl->dot->sym||strcmp(t->decl->dot->sym->name,"Sh"))return 0;
- for(j=0;j<4&&strcmp(t->decl->sym->name,records[j]);j++);
- if(j==4)return 0;
+ for(j=0;j<nelem(records)&&strcmp(t->decl->sym->name,records[j]);j++);
+ if(j==nelem(records))return 0;
  id=15+j;n=native64libraryfields(id);
  if(!dis64layouttype(t,&l)||l.legacybytes!=4*n||l.bytes!=native64librarybytes(id)||
     l.count!=n||l.alignment!=8)goto done;
@@ -49,6 +49,7 @@ typedshellrecord(Type *t)
   if(id==18&&i==1){module="Sh";name="Localenv";}
   if(name&&!typedwmref(field,module,name))goto done;
   if(id==15&&i==3&&(!field->tof||field->tof->kind!=Tint))goto done;
+  if(id==19&&i==1&&!typedwmref(field->tof,"Sh","Listnode"))goto done;
   i++;
  }
  if(i==n)result=id;

@@ -1362,9 +1362,13 @@ newlocalenv(pushed: ref Localenv): ref Localenv
 	vars := array[ENVHASHSIZE] of list of ref Var;
 	e := ref Localenv(vars, pushed, 0);
 	if (pushed == nil && env != nil) {
+		bucketcount := len e.vars;
 		for (vl := env->getall(); vl != nil; vl = tl vl) {
 			(name, val) := hd vl;
-			hashadd(e.vars, hashfn(name, len e.vars), ref Var(name, envstringtoval(val), 0));
+			bucket := hashfn(name, bucketcount);
+			words := envstringtoval(val);
+			entry := ref Var(name, words, 0);
+			hashadd(e.vars, bucket, entry);
 		}
 	}
 	if (pushed != nil)
