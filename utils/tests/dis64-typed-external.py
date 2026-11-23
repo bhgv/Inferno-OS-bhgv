@@ -315,7 +315,8 @@ def record_field(o,c,pc,maps,row):
             kinds.append(kind)
         else:
             assert side not in owners and wire in(0,1,2)
-            assert value==(addr[0]if wire==2 else maps['frame'if wire else'data'][addr[0]])
+            extra=4 if side==1 and op==OPCODES['IGOTO']else 0
+            assert value==(addr[0]if wire==2 else maps['frame'if wire else'data'][addr[0]-extra]+extra)
     if o['op']in(OPCODES['IBEQW'],OPCODES['IBNEW'])and kinds and kinds[0]in ROOTS:
         assert op==(OPCODES['IBEQC']if kinds[0]==13 else OPCODES['IBEQL'])if o['op']==OPCODES['IBEQW']else op==(OPCODES['IBNEC']if kinds[0]==13 else OPCODES['IBNEL'])
     else:assert op==o['op']
@@ -414,6 +415,15 @@ def rawarray_operation(o,c,pc,maps,types,row):
         array_layout(m>>24);assert op==o['op']and op in(OPCODES['ISLICEA'],OPCODES['ISLICELA'])
         mid=o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']];assert m==((m>>24)<<24)|(mid&65535)
     array_operand(row,maps,pc,0,sm,o['s'],s,op==OPCODES['ISLICELA'])
+
+def direct_list_argument(o, c, maps, pending, old, new, kind, row):
+    sm=o['mode']>>3&7
+    assert o['op']in(OPCODES['IHEADP'],OPCODES['ITAIL']) and sm in(0,1) and o['mode']==(sm<<3)|5
+    assert o['m']is None and o['d']==[pending,old]
+    assert kind in ROOTS and (o['op']!=OPCODES['ITAIL'] or kind==10)
+    segment='frame' if sm else 'data';source=maps[segment][o['s'][0]]
+    assert row[segment]['map'][source//64]&(128>>(source//8%8))
+    assert c==[o['op'],o['mode'],source,0,new,64]
 
 def string_head_argument(original, code, at, end, maps, pending, oldoffset, new, kind, r):
     temp=None;tails=0
@@ -581,6 +591,9 @@ def verify(data,r,imports,loads=False,rows=None):
                 old=next(x[0]for x in callee['frame']['leaves']if x[1]==arg[0])
                 at=string_head_argument(original,r['code'],at,end,maps,pending,old,arg[0],13,r)
                 continue
+            if loads and o['op']in(OPCODES['IHEADP'],OPCODES['ITAIL']) and r['code'][at][5]==64:
+                old=next(x[0]for x in callee['frame']['leaves']if x[1]==arg[0])
+                direct_list_argument(o,r['code'][at],maps,pending,old,arg[0],arg[1],r);at+=1;continue
             if loads and arg[1]==9 and r['code'][at][5]==46:
                 a=original[at];assert a['op']==OPCODES['IADDW']and a['mode']==145 and a['s']==[1]
                 source=maps['frame'][a['m']];dest=maps['frame'][a['d'][0]]
@@ -890,6 +903,11 @@ def verify(data,r,imports,loads=False,rows=None):
                 at=string_head_argument(original,r['code'],at,end,maps,pending,oldtarget,new,kind,r)
                 oldoffset=oldtarget+oldbytes
                 continue
+            if loads and at<end and original[at]['op']in(OPCODES['IHEADP'],OPCODES['ITAIL']) and r['code'][at][5]==64:
+                assert oldbytes==4 and width==8
+                oldoffset=(oldoffset+3)&~3
+                direct_list_argument(original[at],r['code'][at],maps,pending,oldoffset,new,kind,r)
+                at+=1;oldoffset+=4;continue
             listclear=None
             if at<end and r['code'][at][5]==112:
                 assert loads and kind==10 and oldbytes==4 and width==8

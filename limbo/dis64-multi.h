@@ -28,6 +28,24 @@ static int typedrecordargument(Inst*,Inst*,Dis64TypedBody*,Type*,unsigned int,un
 static Type *typedloadvaluetype(Addr*);
 
 static int
+typedlistargument(Inst *in, Inst *frame, Decl *arg, Dis64TypedBody *p,
+                  unsigned int pc, unsigned int offset)
+{
+ Type *list=typedloadvaluetype(&in->s);
+ unsigned int mode;
+ long source;
+ int actual;
+ if(!list||list->kind!=Tlist||!list->tof||!tequal(in->op==ITAIL?list:list->tof,arg->ty)||
+    in->mm!=Anone||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||
+    in->d.offset!=arg->offset||offset>65535||
+    !typedoperand(in->sm,&in->s,Tlist,0,0,p,&source,&mode,&actual)||actual!=Tlist)
+  return typedfail(p,"direct-list-argument");
+ p->code[pc]=(Dis64Instruction){in->op,SRC(mode)|DST(AFP|AIND),0,source,offset};
+ p->returns[pc]=64;
+ return 1;
+}
+
+static int
 typedheadfieldstart(TypedMulti *c, unsigned int at, unsigned int end)
 {
  Inst *head,*field;
@@ -505,7 +523,6 @@ typedcontextcopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
 #include "dis64-window-list.h"
 static int typedwordargop(int);
 #include "dis64-draw-fields.h"
-static Type *typedloadvaluetype(Addr*);
 #include "dis64-rect-list.h"
 #include "dis64-raw-array.h"
 
@@ -707,13 +724,14 @@ typedimagearraybinding(TypedMulti*c,Dis64TypedBody*p,Inst*frame,Inst*binding,Typ
  p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP)|DST(AFP|AIND),0,p->code[pc-1-p->first].source,32};p->returns[at-p->first]=131;return 1;
 }
 static int
-typedimagearrayarg(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,unsigned int*at,unsigned int oldoffset,unsigned int offset)
+typedrefarrayarg(TypedMulti*c,Dis64TypedBody*p,Inst*frame,Decl*arg,unsigned int end,unsigned int*at,unsigned int offset)
 {
  Inst*in=c->instructions[*at],*use;long array,index;unsigned int sm,dm;int actual;
- if(*at+1>=end || !(use=c->instructions[*at+1]) || in->op!=IINDW || !typedimagearrayaddr(&in->s) || in->mm!=Afp || !in->m.decl || in->m.offset || in->branch ||
+ Type *element=typedrootarrayelement(&in->s);
+ if(*at+1>=end || !(use=c->instructions[*at+1]) || in->op!=IINDW || !element || !tequal(element,arg->ty) || in->mm!=Afp || !in->m.decl || in->m.offset || in->branch ||
     !typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual) || !typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual) ||
     use->op!=IMOVP || use->sm!=Afpind || use->s.decl!=in->m.decl || use->s.reg!=in->m.reg || use->s.offset || use->mm!=Anone || use->branch ||
-    use->dm!=Afpind || use->d.reg!=frame->d.reg || use->d.offset!=oldoffset)return typedfail(p,"array-call-argument");
+    use->dm!=Afpind || use->d.reg!=frame->d.reg || use->d.offset!=arg->offset)return typedfail(p,"array-call-argument");
  p->code[*at-p->first]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),56,array,index};p->returns[(*at)++-p->first]=127;
  p->code[*at-p->first]=(Dis64Instruction){IMOVP,SRC(AFP|AIND)|DST(AFP|AIND),0,56,offset};p->returns[(*at)++-p->first]=127;return 1;
 }
@@ -1279,24 +1297,15 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     if(c->functions[target]->desc==nil || c->functions[target]->desc->id!=frame->s.offset ||
        (call->branch!=nil && call->branch!=c->functions[target]->pc))return typedfail(p,"multi-target");
     spawning=call->op==ISPAWN;
-    if(spawning && (c->functions[target]->ty->tof->kind!=Tnone || c->state[target]==1))return typedfail(p,"spawn-callee");
+    if(spawning && c->functions[target]->ty->tof->kind!=Tnone)return typedfail(p,"spawn-callee");
     child=c->bodies+target;
-    if(c->loads && child==p && c->state[target]==1){
-        binding=c->instructions[end-1];
-        arg=c->functions[target]->ty->ids;
-        if(!p->code || !p->returns || p->frame.reason || p->data.reason || p->frame.bytes<64)
-            return typedfail(p,"multi-self-frame");
-        /* Syntax rendering uses a local result slot. Shell environment export
-         * recurses without a result. Both use the ordinary frame checks. */
-        if(!(arg && !arg->next &&
-             ((p->resultkind==Tstring && typedwmref(arg->ty,"Sh","Node") && binding->op==ILEA && binding->sm==Afp) ||
-              (p->resultkind==Tnone && typedwmref(arg->ty,"Sh","Localenv")))) &&
-           (p->resultkind==Tnone ||
-           end+1>=stop || !c->instructions[end+1] || c->instructions[end+1]->op!=IRET ||
-            binding->op!=ILEA || binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset))
-            return typedfail(p,"multi-self-tail");
+    if(c->loads && c->state[target]==1){
+        /* An active callee already has its frame and result layout. Its
+         * original lowering must still finish before this graph is accepted. */
+        if(!child->code || !child->returns || child->frame.reason || child->data.reason || child->frame.bytes<64)
+            return typedfail(p,"multi-recursive-frame");
     }else if(!typedmultibody(c,target,depth+1))return typedfail(p,"multi-callee");
-    if(child!=p && *height<c->height[target]+1)*height=c->height[target]+1;
+    if(c->state[target]==2 && *height<c->height[target]+1)*height=c->height[target]+1;
     if(*height>64)return typedfail(p,"multi-depth");
     p->code[pc-p->first]=(Dis64Instruction){IFRAME,SRC(AIMM)|DST(AFP),0,frame->s.offset,40};at=pc+1;
     for(arg=c->functions[target]->ty->ids;arg!=nil;arg=arg->next){
@@ -1378,8 +1387,8 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(c->loads&&!spawning&&kind==Tstring&&in->op==IADDC){long middle;unsigned int mm;
             if(arg->next||in->branch||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||!typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual)||!typedoperand(in->mm,&in->m,Tstring,0,1,p,&middle,&mm,&actual)||!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset))return typedfail(p,"local-string-concat-argument");p->code[at-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,offset};p->returns[at++-p->first]=75;continue;
         }
-        if(c->loads && !spawning && kind==Tref && typedwmref(arg->ty,"Draw","Image") && in->op==IINDW){
-            if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || !typedimagearrayarg(c,p,frame,end,&at,arg->offset,offset))return 0;continue;
+        if(c->loads && !spawning && kind==Tref && in->op==IINDW && typedrootarrayelement(&in->s)){
+            if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || !typedrefarrayarg(c,p,frame,arg,end,&at,offset))return 0;continue;
         }
         if(c->loads && (!spawning||typedclientreferencekind(kind)) && (in->sm==Afpind || in->sm==Ampind)){
             unsigned int view;int k=typedclientreferencekind(kind);
@@ -1404,6 +1413,11 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(c->loads && !spawning && kind==Tint && (in->op==ITAIL || in->op==IHEADP)){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || offset<64 || offset>65535 || !typedexternalinthead(c,p,frame,end,&at,arg->offset,offset))return typedfail(p,"local-int-head-argument");
             continue;
+        }
+        if(c->loads&&!spawning&&in->dm==Afpind&&((root&&in->op==IHEADP)||(kind==Tlist&&in->op==ITAIL))){
+            if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||
+               !typedlistargument(in,frame,arg,p,at-p->first,offset))return 0;
+            at++;continue;
         }
         if(c->loads&&!spawning&&root&&typedheadfieldstart(c,at,end)){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||

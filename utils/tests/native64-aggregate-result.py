@@ -5,8 +5,8 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 B=runpy.run_path(str(ROOT/'utils/tests/native64-local-geometry-args.py'));G,CMD,E=B['G'],B['CMD'],B['E']
 DECL='Winplace:module{run:fn(n:int);};'
-SOURCE='''implement Winplace;include "sys.m";include "draw.m";include "tk.m";include "sh.m";Point,Rect:import Draw;Listnode,Var,Localenv,Builtins,Node,Redir:import Sh;'''+DECL+'''EW,NS:con iota;Lay:adt{d:int;mkr:fn(l:self Lay,r:Rect):Rect;};
-syntaxtext,syntaxassign,syntaxword,syntaxnest:string;syntaxkind,syntaxtype,exportorder:int;builtintable:ref Builtins;hit,miss:list of Shellbuiltin;before,between,after,empty:int;envtext,envvalue,envfirst,envfirstvalue:string;builtinmarker,builtinmatch,builtinmissing:Shellbuiltin;lookupchild,lookupparent,lookuppos,lookupmiss:list of ref Sh->Listnode;envvar,hashfirst,hashmiss:ref Sh->Var;envcount:int;shellctx:ref Sh->Context;shellflags:int;catchvalue:int;catchtext:string;headerbytes,headerbad,headerempty:array of byte;headok,headcut,headbad,headempty,headshort:int;headwords,emptywords:list of ref Listnode;nodes,converted,empty_nodes:list of ref Sh->Listnode;menutext:string;topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
+SOURCE='''implement Winplace;include "sys.m";include "draw.m";include "tk.m";include "sh.m";Point,Rect:import Draw;Listnode,Var,Localenv,Builtins,Node,Redir:import Sh;'''+DECL+'''EW,NS:con iota;Lay:adt{d:int;mkr:fn(l:self Lay,r:Rect):Rect;};Selector:adt{tag:int;};
+recursiveselection:int;listarguments:string;syntaxtext,syntaxassign,syntaxword,syntaxnest:string;syntaxkind,syntaxtype,exportorder:int;builtintable:ref Builtins;hit,miss:list of Shellbuiltin;before,between,after,empty:int;envtext,envvalue,envfirst,envfirstvalue:string;builtinmarker,builtinmatch,builtinmissing:Shellbuiltin;lookupchild,lookupparent,lookuppos,lookupmiss:list of ref Sh->Listnode;envvar,hashfirst,hashmiss:ref Sh->Var;envcount:int;shellctx:ref Sh->Context;shellflags:int;catchvalue:int;catchtext:string;headerbytes,headerbad,headerempty:array of byte;headok,headcut,headbad,headempty,headshort:int;headwords,emptywords:list of ref Listnode;nodes,converted,empty_nodes:list of ref Sh->Listnode;menutext:string;topout:ref Tk->Toplevel;eventout:chan of string;bytebuf:array of byte;pointout:Point;left,middle,right:list of Rect;quoted:string;nextq:int;parsed:Rect;position:int;out:string;word,a,b,c,d,e:int;ctx:ref Draw->Context;image:ref Draw->Image;last:string;
 run(n:int){rest:=tl nodes;entry:=hd rest;added:=ref Sh->Listnode(nil,entry.word);nodes=added::nodes;front:=hd nodes;menutext=front.word;inputwords:="first"::"second"::nil;converted=stringlist2list(inputwords);no_words:list of string;empty_nodes=stringlist2list(no_words);shellrecords(n);shelllookup();builtinlookup(n);if(n>=0)removebuiltinmod(builtintable,builtinmarker);envpairs(n);buf:=array[12] of byte;bplong(buf,4,n);bytebuf=buf;catchprobe(n);catchtext=catchresult(n);(top,event):=tkpair(n);topout=top;eventout=event;(s,v):=mixed(n);out=s;word=v;(v1,v2,v3,v4,v5):=five(n);a=v1;b=v2;c=v3;d=v4;e=v5;(range,z):=nested(n);i:=firstword(range);a=i;b=range.t1+i-i;c=z;(ct,tail):=roots(n);ctx=ct;last=tail;(first,im,tail2):=forward(n);out=first;image=im;last=tail2;(r,end):=s2r(" -2147483648 2147483647 -1 0",0);p:=swappt((n,1),n);pointout=p;lay:=Lay(n>=0);mapped:=lay.mkr(r);parsed=mapped;position=end;(q,stop):=qword(" 'a''b' rest",0);quoted=q;nextq=stop;input:list of Rect;if(n>=0){(lb,seed,rb):=select(nil,nil,0,1,3);input=seed;left=lb;right=rb;}(ls,ms,rs):=select(input,nil,1,2,3);left=ls;middle=ms;right=rs;}
 builtinprobe(){
  table:=builtintable.ba;
@@ -45,6 +45,7 @@ headersprobe(){
 }
 syntaxprobe(n:int){
  headersprobe();
+ recursionprobe(n);
  parent:=ref Localenv(nil,nil,2);
  local:=ref Localenv(nil,parent,7);
  exportorder=0;
@@ -63,6 +64,46 @@ syntaxprobe(n:int){
  syntaxassign=assign;
  nested:=rendernested(tree);
  syntaxnest=nested;
+}
+recursionprobe(n:int){
+ selector:=ref Selector(n);
+ selectors:=array[2] of ref Selector;
+ selectors[1]=selector;
+ a:=leftselect(selectors[1],97);
+ b:=rightselect(selector,97);
+ recursiveselection=a+b;
+ text:=joinheads(hd nodes,hd nodes,tl nodes);
+ listarguments=text;
+}
+leftselect(selector:ref Selector,depth:int):int {
+ if(depth<=0){
+  case selector.tag {
+   0=>return 2;
+   1000 to 1010=>return 7;
+   -100=>return 9;
+   * => return 6;
+  }
+ }
+ value:=rightselect(selector,depth-1);
+ return value+1;
+}
+rightselect(selector:ref Selector,depth:int):int {
+ if(depth<=0){
+  case selector.tag {
+   0=>return 100;1=>return 101;2=>return 102;3=>return 103;
+   4=>return 104;5=>return 105;6=>return 106;7=>return 107;
+   * => return -9;
+  }
+ }
+ return leftselect(selector,depth-1);
+}
+joinheads(a,b:ref Listnode,rest:list of ref Listnode):string {
+ c:=hd rest;
+ left:=a.word;
+ right:=b.word;
+ last:=c.word;
+ prefix:=left+right;
+ return prefix+last;
 }
 builtinlookup(n:int){
  syntaxprobe(n);
@@ -135,8 +176,21 @@ SOURCE+=re.search(r'(?ms)^Context\.get\([^\n]*\n\{.*?^\}',(ROOT/'appl/cmd/sh/sh.
 
 def generate(limbo,w):
  m=w/'aggregate.m';m.write_text(DECL);h=subprocess.check_output([str(limbo),'-H','-M','Winplace',str(m)],text=True);sigs={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Winplace_(\w+) (0x[0-9a-f]+)U',h,re.M)}
- rows=G['generate'](limbo,w,SOURCE,'Winplace',(44,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
- p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout','nodes','menutext','catchvalue','converted','empty_nodes','shellctx','shellflags','envtext','envcount','envvalue','envfirst','envfirstvalue','envvar','hashfirst','hashmiss','lookupchild','lookupparent','lookuppos','lookupmiss','builtinmarker','builtinmatch','builtinmissing','builtintable','hit','miss','before','between','after','empty','syntaxtext','syntaxassign','syntaxword','syntaxkind','syntaxtype','syntaxnest','exportorder','catchtext','headerbytes','headerbad','headerempty','headok','headcut','headbad','headempty','headshort','headwords','emptywords'))+'};\n')
+ rows=G['generate'](limbo,w,SOURCE,'Winplace',(48,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
+ p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout','nodes','menutext','catchvalue','converted','empty_nodes','shellctx','shellflags','envtext','envcount','envvalue','envfirst','envfirstvalue','envvar','hashfirst','hashmiss','lookupchild','lookupparent','lookuppos','lookupmiss','builtinmarker','builtinmatch','builtinmissing','builtintable','hit','miss','before','between','after','empty','syntaxtext','syntaxassign','syntaxword','syntaxkind','syntaxtype','syntaxnest','exportorder','catchtext','headerbytes','headerbad','headerempty','headok','headcut','headbad','headempty','headshort','headwords','emptywords'))+'};\n' +
+  f'static const uint recursive_result={gl["recursiveselection"]},list_result={gl["listarguments"]};\n')
+ recursors={r['name']:r for r in rows if r['name'] in ('leftselect','rightselect')}
+ for name, other, op in (('leftselect','rightselect','ICASE'),('rightselect','leftselect','IGOTO')):
+  r=recursors[name]
+  assert any(call[2]==recursors[other]['first'] for call in r['calls']),r
+  assert any(step[0]==E['OPCODES'][op] and step[5]==72 for step in r['code']),r
+ probe=next(r for r in rows if r['name']=='recursionprobe')
+ assert [step[0] for step in probe['code'] if step[5]==127]==[E['OPCODES'][op] for op in ('IINDL','IMOVP')]
+ cycle='''implement Cycle;Cycle:module{run:fn(n:int);}; Payload:adt{a:int;};
+ run(n:int){back(n);c:=chan of (int,ref Payload);c <-= (n,nil);}
+ back(n:int){if(n>0)run(n-1);}'''
+ _,closed=E['compile_source'](limbo,w,cycle,interface='',loads=True)
+ assert len(closed)==2 and all(not r['accepted'] for r in closed),closed
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);count=0
  for row in records:
   for pc,c in enumerate(row['code']):
@@ -215,7 +269,7 @@ def generate(limbo,w):
    CMD['verify_nilbranches'](data,row,imports,rows=records)
  context=next(r for r in records if r.get('export_name')=='Context.new')
  assert context['accepted'],context
- for name in ('push','pop','concatwords','copybuiltins','addbuiltin','addsbuiltin','initbuiltin'):
+ for name in ('push','pop','concatwords','copybuiltins','addbuiltin','addsbuiltin','initbuiltin','sbuiltin_quote'):
   row=next(r for r in records if r['name']==name)
   assert row['accepted'],row
   CMD['verify_nilbranches'](data,row,imports,rows=records)
@@ -250,7 +304,7 @@ def unit():
  src='#define TEST_REAL_MAPPED_CONS 1\n'+src
  src+='\n'+vm[vm.index('typedef struct ConsMapped'):vm.index('/* Preserve the destination, tail')]
  for sig in ('Type*\ncconsmappedtype(', 'OP(consmp)', 'OP(headmp)'):src+='\n'+extract(vm,sig)+'\n'
- for sig in ('static void\nbranchstring(', 'OP(beqc)', 'OP(bnec)', 'OP(blec)', 'OP(bgec)'):
+ for sig in ('static Inst*\ncasepc(', 'OP(icase)', 'OP(igoto)', 'static void\nbranchstring(', 'OP(beqc)', 'OP(bnec)', 'OP(blec)', 'OP(bgec)'):
   if sig not in src:src+='\n'+extract(vm,sig)+'\n'
  for sig in ('static void\nnewrecord(', 'OP(newz)'):src+='\n'+extract(vm,sig)+'\n'
  for sig in('static uchar*\narrayaddress(','static void\narrayindex(','static void\nnewarray(','OP(newaz)','OP(lena)','OP(indl)','OP(indx)','OP(indb)','OP(cvtbw)','OP(cvtwb)','OP(shrw)','OP(consm)','OP(headm)','OP(consp)','OP(headp)','OP(iraise)'):

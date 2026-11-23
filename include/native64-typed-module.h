@@ -148,7 +148,8 @@ native64modulelists(const Native64ModuleSpec *spec,const Native64ModuleFunction 
   step=fn->code+i;
   if(step->returned==153||step->returned==141)continue;
   if(step->returned==58){mode=USRC(step->mode);if(step->op!=IHEADP||step->mode!=(SRC(mode)|DST(AFP|AIND))||step->m||step->d<64||step->d%8||!native64typedrootoperand(mode,step->s,fn->bytes,spec->databytes))return 0;map=mode==AFP?fn->map:spec->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;continue;}
-  if((step->returned>=248 && step->returned<=250) || step->returned==252 || step->returned==253)continue;
+  if((step->returned>=248 && step->returned<=250) || step->returned==252 || step->returned==253 ||
+     (native64typedlistarg(step->op)&&step->returned==64))continue;
   if(step->returned==213 && !native64typedwindowlist(step,fn->bytes,spec->databytes))return 0;
   if(step->op!=ICONSP && step->op!=IHEADP && step->op!=ITAIL && step->op!=ICONSW && step->op!=IHEADW)continue;
   copy=*step;if(copy.returned==44 || (copy.returned==61&&copy.op==IHEADP) || copy.returned==Native64TypedListPrep || copy.returned==Native64TypedRecordList || copy.returned==187 || copy.returned==213)copy.returned=0;
@@ -616,12 +617,13 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 for(r=0;r<2;r++){map=modes[r]==AFP?f->map:s->datamap;bit=offsets[r]/8;if(!(map[bit/8]&(0x80>>(bit%8))))return 0;}
             }
         }
-        for(j=0;j<f->count;j++)if((f->code[j].op==ILENA || f->code[j].op==ICVTAC || f->code[j].op==ICVTCA) && f->code[j].returned==64){
+        for(j=0;j<f->count;j++)if((f->code[j].op==ILENA || f->code[j].op==ICVTAC || f->code[j].op==ICVTCA || native64typedlistarg(f->code[j].op)) && f->code[j].returned==64){
             unsigned int k,found=0,bit;step=f->code+j;
             for(k=0;k<f->nsites;k++){
                 site=f->sites+k;
                 if(site->first<j && j<site->end && (!site->contract || j<site->end-1)){
-                    if(found++ || ((step->op==ILENA)!=site->external))return 0;
+                    if(found++ || (native64typedlistarg(step->op)?(!site->external&&(site->end>=f->count||f->code[site->end].op!=ICALL)):
+                                  (step->op==ILENA)!=site->external))return 0;
                     if(site->external){
                         if(site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
                         request=s->tables[site->table].imports+site->target;
@@ -1312,6 +1314,7 @@ native64checkedstepkind(const Native64TypedStep *step, unsigned int pc)
        step->returned==Native64TypedRecordPair)return Native64RecordArgStep;
     if(step->returned==Native64TypedRecord||native64rootpathrecord(step))return Native64RecordStep;
     if(native64rawfieldindex(step))return Native64ArrayFieldIndex;
+    if(step->returned==127 && step->op==IINDL)return Native64ArrayStep;
     if(step->returned==80 ||
        (step->returned==79 && (step->op!=INEWAZ || ((USRC(step->mode)|UDST(step->mode))&AIND))) ||
        (step->returned==255 && step->op==IINDX))return Native64ArrayStep;
@@ -1345,7 +1348,8 @@ native64modulecheckedsteps(Module *m, const Native64ModuleSpec *s)
             proof->frame=m->type[i+1];
             proof->instruction=m->prog[pc+j];
             if(kind==Native64ArrayStep || kind==Native64ArrayFieldIndex || kind==Native64ArrayNestedIndex){
-                if(step->returned==255){proof->width=16;proof->mapped=1;}
+                if(step->returned==127){proof->width=8;proof->mapped=0x80;}
+                else if(step->returned==255){proof->width=16;proof->mapped=1;}
                 else{
                     cl=kind==Native64ArrayNestedIndex?(step->m>>8)&255:
                         (unsigned long)step->m>>(step->returned==80?8:step->op==INEWAZ?0:24);

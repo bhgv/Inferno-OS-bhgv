@@ -52,9 +52,12 @@ native64moduletablescheck(const Native64ModuleSpec *s)
                 if(!!(s->datamap[bit/8]&(0x80>>(bit%8)))!=expected)return 0;
             }
             step=f->code+t->pc;width=t->op==ICASEL || t->op==ICASEC?8:4;
-            if(step->op!=t->op || UDST(step->mode)!=AMP || (USRC(step->mode)!=AFP && USRC(step->mode)!=AMP) ||
-               (step->mode&ARM)!=AXNON || step->d!=(long)(t->offset+(t->op==IGOTO?4:0)) || step->m || step->returned ||
-               !native64typedcodeoperand(USRC(step->mode),step->s,f->bytes,s->databytes) || step->s%width ||
+            if(step->op!=t->op || step->d!=(long)(t->offset+(t->op==IGOTO?4:0)))return 0;
+            if(step->returned==Native64TypedRecord){
+                if((t->op!=ICASE&&t->op!=IGOTO)||!native64typedrecord(step,f->bytes,s->databytes))return 0;
+            }else if(step->returned||UDST(step->mode)!=AMP||(USRC(step->mode)!=AFP&&USRC(step->mode)!=AMP)||
+               (step->mode&ARM)!=AXNON||step->m||
+               !native64typedcodeoperand(USRC(step->mode),step->s,f->bytes,s->databytes)||step->s%width||
                width>(USRC(step->mode)==AFP?f->bytes:s->databytes)-step->s)return 0;
             for(k=0;k<t->count;k++){
                 r=t->rows+k;

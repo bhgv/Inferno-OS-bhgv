@@ -91,6 +91,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='typed-tables-',dir=ROOT) as td:
         work=Path(td);generate(a.limbo.resolve(),work)
         text=runpy.run_path(str(ROOT/'utils/tests/native64-typed-module.py'))['unit']()
+        text+='\nHeap*heaparray(Type*t,int n){USED(t);USED(n);require(0);return nil;}\n'
         extract=runpy.run_path(str(ROOT/'libinterp/tests/dis64-runtime.py'))['function']
         xec=(ROOT/'libinterp/xec.c').read_text()
         text+='\n'+extract(xec,'static Inst*\ncasepc(')+'\n'+'\n'.join(extract(xec,'OP('+n+')') for n in ('icase','casel','igoto'))+'\n'

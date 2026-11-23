@@ -243,6 +243,7 @@ static int
 typedrecordinst(Inst*original,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
 {
  Inst copy=*original,*in=&copy;unsigned int w[2],r[2],op=in->op,sm,dm,mm=AXNON,wire;long src,dst,mid=0;int branch;Type*a,*b;
+ if(op==ICASE||op==IGOTO)return 0;
  if(op!=IADDC&&!typedrecordowner(&in->s,in->sm)&&!typedrecordowner(&in->d,in->dm)&&!typedrecordowner(&in->m,in->mm))return 0;
  branch=op==IBEQW||op==IBNEW||op==IBLTW||op==IBLEW||op==IBGTW||op==IBGEW||op==IBEQC||op==IBNEC||op==IBEQL||op==IBNEL;
  if(branch&&typedrecordowner(&in->m,in->mm)){

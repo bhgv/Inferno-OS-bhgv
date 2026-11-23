@@ -153,7 +153,6 @@ typedpointernew(Inst*in,Dis64TypedBody*p,Dis64Instruction*out)
  done:dis64layoutfree(&l);return ok?1:typedfail(p,"pointer-allocation-geometry");
 }
 
-static Type*typedfieldowner(Addr*);
 /* Selected raw Pointer leaves, keeping the reference slot at native width. */
 static int
 typedpointeraddress(Addr*a,int mode,Dis64TypedBody*p,long*base,unsigned int*wire)
@@ -230,7 +229,8 @@ static int typedimagewordargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsig
 static int typedimagegeometry(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
 
 static int typedwmref(Type*,char*,char*);
-static int typedimagearrayarg(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
+static Type *typedrootarrayelement(Addr*);
+static int typedrefarrayarg(TypedMulti*,Dis64TypedBody*,Inst*,Decl*,unsigned int,unsigned int*,unsigned int);
 static int typedimagearraybinding(TypedMulti*,Dis64TypedBody*,Inst*,Inst*,Type*,unsigned int,unsigned int);
 static int typedwordargop(int);
 static int typedwordargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
@@ -358,9 +358,13 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         if(c->loads&&kind==Tstring&&in->op==IINDW){if(!typedexternalstringarray(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afp||in->sm==Amp)&&typedbytearrayaddr(&in->s)){if(!typedexternalbytestring(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&typedlibraryrecord(typedfieldowner(&in->s))==12&&in->s.offset==16){if(!typedexternalstringexpr(c,p,frame,arg,end,&at,offset))return 0;offset+=8;continue;}
+        if(c->loads&&in->dm==Afpind&&((root&&in->op==IHEADP)||(kind==Tlist&&in->op==ITAIL))){
+            if(!typedlistargument(in,frame,arg,p,at-p->first,offset))return 0;
+            at++;offset+=8;continue;
+        }
         if(c->loads&&root&&(typedheadfieldstart(c,at,end)||(in->op==IMOVP&&in->dm==Afp&&(in->sm==Afpind||in->sm==Ampind)))){if(!typedexternalrootpath(c,p,frame,end,&at,arg->offset,offset,arg->ty))return 0;offset+=8;continue;}
         if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Screen") && in->op==IINDW){if(!typedimagescreenarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
-        if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Image") && in->op==IINDW){if(!typedimagearrayarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
+        if(c->loads && kind==Tref && in->op==IINDW && typedrootarrayelement(&in->s)){if(!typedrefarrayarg(c,p,frame,arg,end,&at,offset))return 0;offset+=8;continue;}
         if(c->loads&&kind==Tint&&in->op==IMOVW&&(in->sm==Afpind||in->sm==Ampind)&&typedimagewordargument(in,frame,p,at-p->first,arg->offset,offset)){at++;offset+=4;continue;}
         if(c->loads&&kind==Tint&&(in->sm==Afpind||in->sm==Ampind)&&typedwindowowner(&in->s)){if(!typedwindowwordargument(in,frame,p,at-p->first,arg->offset,offset))return 0;at++;offset+=4;continue;}
         if(c->loads && kind==Tint && typedwordargop(in->op)){if(!typedwordargument(in,frame,p,at-p->first,arg->offset,offset))return 0;at++;offset+=4;continue;}

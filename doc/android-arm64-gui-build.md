@@ -1147,3 +1147,22 @@ The Linux amd64 interpreter/JIT fixture covers `hd tl prompt` and
 `!interactive` together, all six signed Word comparisons at the caller,
 an imported `Bufio.fopen` mode and a list head field with nil and ownership
 checks.
+
+## Checked recursive calls and record selectors
+
+The checked compiler uses the frame and result layout of an active callee
+when validating recursion. Every reachable body must complete validation.
+The calls keep ordinary Dis frames and result bindings, including recursive
+results written to a caller's local slot.
+
+Integer `case` and computed `goto` accept a Word selector from a mapped
+record. The VM checks the field before dispatch, and table targets continue
+to use Dis instruction ordinals. Call setup can copy a list head, list tail
+or reference array element straight into a mapped argument slot. An array
+argument read checks the element geometry and map before indexing.
+
+The unchanged Sh source now has 99 of 134 checked bodies, including
+`sbuiltin_quote`. `walk` reaches `walkpipeline` past the recursive call and
+record selector. `walkpipeline` passes `fds[1]` to itself and reaches `glom`.
+The allocation of a `Redirlist` while preparing a call in `glomoperation`
+remains a compiler barrier. Classic Dis is byte-identical for all 16 modules.

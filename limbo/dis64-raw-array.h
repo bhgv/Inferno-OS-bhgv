@@ -30,8 +30,6 @@ static unsigned int typedrawwidth(unsigned int c){return native64arraywidth(c);}
 static Type *typedrecordvalue(Addr*,int);
 static int typedrecordowner(Addr*,int);
 static int typedrecordoperand(int,Addr*,int,Dis64TypedBody*,long*,unsigned int*);
-static int typedrecordlayoutoperand(int,Addr*,int,Dis64TypedBody*,long*,unsigned int*);
-static int typedrecordregister(Dis64TypedBody*,unsigned int,unsigned int,Type*);
 static int typedrawborrow(Dis64TypedBody*,Addr*,int,unsigned int);
 static int typedarrayfield(unsigned int,unsigned int,unsigned int,int,unsigned int*);
 

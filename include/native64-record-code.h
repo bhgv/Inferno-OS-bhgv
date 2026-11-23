@@ -18,6 +18,9 @@ native64typedrecord(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
  unsigned int w[2],r[2],sm=USRC(s->mode),dm=UDST(s->mode),mm=s->mode&ARM,branch=native64typedbranch(s->op);
  if(s->returned!=Native64TypedRecord||s->mode>255||!native64recordshape(s->op,w,r)||
     (!(sm&AIND)&&!(dm&AIND))||!native64recordoperand(sm,s->s,w[0],r[0],fp,mp,0))return 0;
+ if(s->op==ICASE||s->op==IGOTO)
+  return (sm&AIND)&&dm==AMP&&mm==AXNON&&!s->m&&
+   native64typedwordoperand(AMP,s->d,fp,mp)&&(s->op!=IGOTO||s->d>=4);
  if(branch){if(dm!=AIMM||s->d<0||mm==AXNON)return 0;}
  else if(dm==AIMM||!native64recordoperand(dm,s->d,w[1],r[1],fp,mp,1))return 0;
  if(mm==AXNON)return s->op!=IINDC&&!s->m;

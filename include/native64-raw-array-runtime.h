@@ -58,7 +58,7 @@ native64arraycheckstep(VmFetch *f, Native64RawIndex *proof)
  Array *source,*destination;
 
  switch(f->op){
- case IINDX:
+ case IINDX:case IINDL:
   source=native64arrayvalue(f,sm,&in->s);
   if((dm&AIND)&&proof->kind!=Native64ArrayNestedIndex)native64recordfield(f,dm,&in->d,4,0);
   native64rawarraycheck(source,proof->width,proof->mapped);

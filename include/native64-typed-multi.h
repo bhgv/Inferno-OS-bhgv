@@ -119,10 +119,16 @@ native64typedarrayscreen(const Native64TypedStep*s,unsigned int fp,unsigned int 
 {if(s->returned!=143)return 0;if(s->op==IINDL){Native64TypedStep copy=*s;copy.returned=127;return native64typedarraycall(&copy,fp,mp);}return s->op==IMOVP&&s->mode==(SRC(AFP|AIND)|DST(AFP))&&s->s==56&&!s->m&&native64typedrootoperand(AFP,s->d,fp,mp);}
 
 static int
+native64typedlistarg(unsigned int op)
+{
+ return op==IHEADP||op==ITAIL;
+}
+
+static int
 native64typedcomputedarg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const uchar*map,unsigned int np)
 {
  unsigned int bit,width=s->op==ILENA?4:8,root=s->op!=ILENA;
- if((s->op!=ILENA && s->op!=ICVTAC && s->op!=ICVTCA) || s->mode!=(SRC(USRC(s->mode))|DST(AFP|AIND)) || s->m || s->returned!=64 ||
+ if((s->op!=ILENA && s->op!=ICVTAC && s->op!=ICVTCA && !native64typedlistarg(s->op)) || s->mode!=(SRC(USRC(s->mode))|DST(AFP|AIND)) || s->m || s->returned!=64 ||
     !native64typedrootoperand(USRC(s->mode),s->s,fp,mp) || s->d<64 || s->d%width || (unsigned long)s->d>bytes || width>bytes-s->d || map==nil || map==H)return 0;
  bit=s->d/8;return bit/8<np && !!(map[bit/8]&(0x80>>(bit%8)))==root;
 }
@@ -315,8 +321,9 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 if(((s->returned==227 || s->returned==230) && !c->external) || (!c->external && steps[c->end].op!=ICALL) || c->callee->np<0 || !native64typedgeometryarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
             }
-            if(s->op==ILENA || s->op==ICVTAC || s->op==ICVTCA){
-                if((s->op==ILENA)!=c->external || c->callee->np<0 || !native64typedcomputedarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+            if(s->op==ILENA || s->op==ICVTAC || s->op==ICVTCA || native64typedlistarg(s->op)){
+                if((native64typedlistarg(s->op)?(!c->external&&steps[c->end].op!=ICALL):(s->op==ILENA)!=c->external) ||
+                   c->callee->np<0 || !native64typedcomputedarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
             }
             if(s->op==IADDC){

@@ -56,8 +56,12 @@ typedtextcmp(Sym *a,Sym *b)
     return order?order:a->len<b->len?-1:a->len>b->len;
 }
 
+static Type *typedfieldowner(Addr*);
+static int typedrecordlayoutoperand(int,Addr*,int,Dis64TypedBody*,long*,unsigned int*);
+static int typedrecordregister(Dis64TypedBody*,unsigned int,unsigned int,Type*);
+
 static int
-typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out)
+typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out,uchar *role)
 {
     Decl *d=in->d.decl;Case *c;Label *l;unsigned int base,sm,i,rows=0;long value;int actual,kind;unsigned int altdefault=0;
     kind=in->op==ICASE?Tcase:in->op==ICASEL?Tcasel:in->op==ICASEC?Tcasec:Tgoto;
@@ -95,7 +99,12 @@ typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out)
            (in->op==IGOTO && (l->start->val!=l->stop->val || (i && l->start->val!=c->labs[i-1].start->val+1))))
             return typedfail(p,"table-row-owner-or-order");
     }
-    if(!typedoperand(in->sm,&in->s,in->op==ICASEL?Tbig:in->op==ICASEC?Tstring:Tint,0,0,p,&value,&sm,&actual))return 0;
+    if(p->sourceroles&&(in->op==ICASE||in->op==IGOTO)&&(in->sm==Afpind||in->sm==Ampind)){
+        if(!typedrecordlayoutoperand(in->sm,&in->s,0,p,&value,&sm)||
+           !typedrecordregister(p,in->pc-p->first,0,typedfieldowner(&in->s)->tof))
+            return typedfail(p,"table-record-selector");
+        *role=Native64TypedRecord;
+    }else if(!typedoperand(in->sm,&in->s,in->op==ICASEL?Tbig:in->op==ICASEC?Tstring:Tint,0,0,p,&value,&sm,&actual))return 0;
     if(in->op==IGOTO && in->pc>p->first && p->returns[in->pc-p->first-1]==191 && (sm!=AFP || value!=p->code[in->pc-p->first-1].destination))return typedfail(p,"alt-selection-table");
     p->tables[p->ntables++]=(Dis64TypedTable){in->pc-p->first,base,in->op,c,altdefault};
     *out=(Dis64Instruction){in->op,SRC(sm)|DST(AMP),0,value,base+(in->op==IGOTO?4:0)};return 1;
@@ -187,7 +196,7 @@ typedinst(Inst *in, unsigned int stop, Dis64TypedBody *p, Dis64Instruction *out,
 	int binary=0,branch=0,immediate=1;
 	memset(out,0,sizeof(*out)); out->op=in->op;
 	switch(in->op){
-	case ICASE:case ICASEL:case IGOTO:case ICASEC:return typedtable(in,stop,p,out);
+	case ICASE:case ICASEL:case IGOTO:case ICASEC:return typedtable(in,stop,p,out,result);
 	case IEXIT:
         if(!p->sourceroles)return typedfail(p,"unsupported-opcode");
         /* Process termination has no result or fallthrough edge. */
