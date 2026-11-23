@@ -16,7 +16,8 @@ EXTRACT = CMD['NS']['S']['FILES']['FILES']['function']
 INTERFACES = 'include "sys.m";include "draw.m";include "bufio.m";include "string.m";include "sh.m";'
 LEXER_EXPORTS = ('read', 'scan', 'token', 'parse')
 ARRAY_EXPORTS = ('arrays', 'report', 'buildstring', 'buildfile', 'parse_result',
-                 'fieldpath', 'rootarrays', 'listarg', 'lenarg', 'setlocal_probe', 'status_probe')
+                 'fieldpath', 'rootarrays', 'listarg', 'lenarg', 'setlocal_probe', 'status_probe',
+                 'comparisons', 'fopen_choice', 'envhead')
 
 
 def source():
@@ -42,6 +43,8 @@ Store:adt{
     envelope:ref Envelope;
     pairs:array of Pair;
     context:ref Sh->Context;
+    prompts:list of string;
+    variables:list of ref Sh->Var;
 };
 '''
     interface = INTERFACES + 'Node:type Sh->Node;Redir:type Sh->Redir;' + records + 'Lexer:module{'
@@ -88,7 +91,9 @@ parse(l:ref YYLEX):int { return yyparse(l); }
 buildstring(r:ref Store):int { r.lex = YYLEX.initstring(r.text); return 0; }
 buildfile(r:ref Store):int { r.lex = YYLEX.initfile(r.fd, r.text); return 0; }
 parse_result(r:ref Store):int {
-    (node, problem) := doparse(r.lex, "", r.n);
+    prompts := r.prompts;
+    interactive := r.n;
+    (node, problem) := doparse(r.lex, hd tl prompts, !interactive);
     r.node = node;
     r.problem = problem;
     if (problem != nil)
@@ -144,6 +149,18 @@ listlen(items:list of string):int { return len items; }
 listarg(r:ref Store):int { text := r.text; return listlen(text :: nil); }
 setlocal_probe(r:ref Store):int { setlocal(r.context, r.text, nil); return 0; }
 status_probe(r:ref Store):int { result := setstatus(r.context, r.text); return len result; }
+collect(label:string, a,b,c,d,e,f:int):int { return len label + a + 2*b + 4*c + 8*d + 16*e + 32*f; }
+comparisons(r:ref Store):int {
+    x := r.i;
+    y := r.n;
+    return collect(r.text, x==y, x!=y, x<y, x<=y, x>y, x>=y);
+}
+fopen_choice(r:ref Store):int {
+    n := r.n;
+    bufio->fopen(r.fd, !n);
+    return 0;
+}
+envhead(r:ref Store):int { entries := r.variables; return total(2, (hd entries).name); }
 '''
     aliases = 'Context, Listnode, Var: import Sh;'
     return interface, 'implement Lexer;' + '\n'.join((interface, aliases, constants, tables, debug, stack, blank, wrappers, methods, environment))
@@ -172,7 +189,7 @@ def generate(limbo, work):
                 frames[(name.replace('Iobuf_', 'Iobuf.'), int(sig[1], 16))] = (
                     int(size), [int(v, 0) for v in mapping[1].split(',') if v])
 
-    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (41, 4, 3, '~0U'),
+    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (45, 4, 3, '~0U'),
                          import_frames=frames, export_signatures=signatures,
                          source_label='unchanged Sh constructors, lexer and parser with generic ADT probes')
     code = {r['name']: r['code'] for r in rows}
@@ -189,6 +206,10 @@ def generate(limbo, work):
     assert {c[5] for c in code['listarg']} >= {112, 182}
     assert {c[5] for c in code['setlocal']} >= {154, 155}
     assert sum(c[5] == 43 for c in code['setstatus']) == 4
+    assert sum(c[5] == 49 for c in code['comparisons']) == 24
+    assert {c[5] for c in code['parse_result']} >= {49, 252}
+    assert any(c[5] == 49 for c in code['fopen_choice'])
+    assert any(c[5] == 61 and c[0] == E['OPCODES']['IHEADP'] for c in code['envhead'])
     globals_ = dict((g[0], g[1]) for g in rows[0]['globals'])
     with (work / 'full.h').open('a') as stream:
         for name in ('nil', 'sys', 'bufio', 'str', 'saved', 'blanklex'):

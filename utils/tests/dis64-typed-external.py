@@ -178,6 +178,10 @@ def rootpath_argument(original,code,at,maps,pending,oldoffset,new,r):
     slot=original[at]['d'][0];temp=maps['frame'][slot];n=0
     while code[at][5]==61:
         o=original[at];c=code[at];sm=o['mode']>>3&7;kind=c[3]>>16
+        if o['op']==OPCODES['IHEADP']:
+            assert not n and sm in (0,1) and o['mode']==(sm<<3)|1 and o['m'] is None and o['d']==[slot]
+            assert c==[o['op'],o['mode'],maps['frame' if sm else 'data'][o['s'][0]],0,temp,61]
+            at+=1;n+=1;continue
         assert n<8 and o['op']==41 and o['mode']==(sm<<3)|1 and sm in(4,5)and o['m']is None and o['d']==[slot]
         if n:assert sm==5 and o['s'][0]==slot
         if kind==6:
@@ -428,6 +432,29 @@ def string_head_argument(original, code, at, end, maps, pending, oldoffset, new,
     return at
 
 
+def word_choice(original,code,at,stop,maps,pending,old,new,row):
+    assert at+4<=stop
+    test,one,jump,other=original[at:at+4]
+    sm=test['mode']>>3&7
+    mm={64:2,128:1,192:0}[test['mode']&192]
+    assert sm in (0,1,2) and test['mode']&7==2
+    assert OPCODES['IBEQW']<=test['op']<=OPCODES['IBGEW']
+    assert test['d']==[row['first']+at+3]
+    def word(mode,value):
+        if mode==2:return value
+        space='frame' if mode else 'data'
+        native=maps[space][value]
+        assert not(row[space]['map'][native//64]&(128>>(native//8%8)))
+        return native
+    assert one['s'][0] in (0,1) and other['s']==[1-one['s'][0]]
+    assert all(a==dict(op=45,mode=21,m=None,s=a['s'],d=[pending,old]) for a in (one,other))
+    assert jump==dict(op=OPCODES['IJMP'],mode=26,m=None,s=None,d=[row['first']+at+4])
+    assert code[at:at+4]==[[test['op'],test['mode'],word(sm,test['s'][0]),word(mm,test['m']),at+3,49],
+                          [45,21,one['s'][0],0,new,49], [jump['op'],26,0,0,at+4,49],
+                          [45,21,other['s'][0],0,new,49]]
+    return at+4
+
+
 def verify(data,r,imports,loads=False,rows=None):
     assert r['accepted']and r['schema']in (('inferno-typed-external-v1','inferno-typed-load-v1','inferno-typed-body-v2')if loads else ('inferno-typed-external-v1',))and (loads or r.get('externals'))and (rows is not None or 'calls'not in r)
     if r.get('result')==[14,24]and not r.get('result_aggregate'):assert r.get('result_channels')==[6,6,6]
@@ -444,6 +471,11 @@ def verify(data,r,imports,loads=False,rows=None):
         assert r['code'][first]==[5,17,descriptor,0,40,0]
         for arg in callee['args']:
             prep=False;screenprep=None;idprep=None;o=original[at]
+            if loads and r['code'][at][5]==49:
+                assert arg[1:]==[9,4,4]
+                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0])
+                at=word_choice(original,r['code'],at,end-bool(contract),maps,pending,oldoffset,arg[0],r)
+                continue
             listclear=None
             if loads and r['code'][at][5]==112:
                 assert arg[1:]==[10,4,8] and at==first+1
@@ -800,6 +832,11 @@ def verify(data,r,imports,loads=False,rows=None):
         at=first+1;aggregates={a['index']:a['layout']for a in e.get('aggregate_args',[])};nominals={a['index']:a.get('nominal')for a in e.get('aggregate_args',[])}
         assert len(aggregates)==len(e.get('aggregate_args',[]))
         for j,(new,kind,oldbytes,width)in enumerate(e['args']):
+            if at<end and r['code'][at][5]==49:
+                assert loads and (kind,oldbytes,width)==(9,4,4)
+                oldoffset=(oldoffset+3)&~3
+                at=word_choice(original,r['code'],at,end-bool(e['contract']),maps,pending,oldoffset,new,r)
+                oldoffset+=4;continue
             if at<end and r['code'][at][5]==76:
                 assert loads and kind==13 and oldbytes==4 and width==8;oldoffset=(oldoffset+3)&~3;at=stringarray_argument(original,r['code'],at,maps,pending,oldoffset,new,76);oldoffset+=4;continue
             if at<end and r['code'][at][5]==61:

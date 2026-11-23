@@ -1128,3 +1128,22 @@ lists on Linux amd64. Allocation failures exercise both record and list
 cleanup. The collector test retains an object reachable only from a pending
 frame in a separate stack extent, then reclaims it after the extent leaves
 the process roots.
+
+## Sh Boolean arguments and list head fields
+
+Checked `FRAME` and `MFRAME` sites can materialize a Boolean from a signed
+Word comparison. Both paths store a value in the same unmapped callee slot
+and rejoin at the next instruction. Validation checks the two targets and
+both caller operands. Entry into the call still goes through its frame setup.
+
+Calls can pass a managed field of a list head. The list head stays in a mapped
+temporary until its field is handed off, then the temporary is cleared.
+The compiler accepts `Context.pop`, `glob` and `sbuiltin_unquote`, reaching
+98/134 checked Sh functions and 335/385 checked startup functions. Classic
+Dis output matches byte for byte. `runfile` advances through `doparse` to
+the call to `walk`.
+
+The Linux amd64 interpreter/JIT fixture covers `hd tl prompt` and
+`!interactive` together, all six signed Word comparisons at the caller,
+an imported `Bufio.fopen` mode and a list head field with nil and ownership
+checks.

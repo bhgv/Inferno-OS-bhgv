@@ -402,6 +402,8 @@ static int
 native64typedrootpath(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
  unsigned int sm=USRC(s->mode),field=s->m&65535;
+ if(s->op==IHEADP)return s->returned==61&&!s->m&&s->mode==(SRC(sm)|DST(AFP))&&
+  native64typedrootoperand(sm,s->s,fp,mp)&&native64typedrootoperand(AFP,s->d,fp,mp);
  if(s->op!=IMOVP)return 0;
  if(s->returned==66)return s->mode==(SRC(AMP)|DST(AFP))&&!s->m&&native64typedrootoperand(AMP,s->s,fp,mp)&&native64typedrootoperand(AFP,s->d,fp,mp);
  return s->returned==61&&s->m>=0&&
@@ -796,7 +798,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         }
         if(s->returned==73){p->reg=0;p->s.i.f=s->s;p->s.i.s=(s->m>>8)&4095;p->d.i.f=s->d;p->d.i.s=s->m&255;continue;}
         if(s->returned==68){p->reg=s->m;p->d.i.f=s->d;p->d.i.s=0;continue;}
-        if(s->returned==61||s->returned==66){p->reg=0;p->d.ind=s->d;if(s->returned==61){p->s.i.f=s->s;p->s.i.s=s->m&65535;}continue;}
+        if(s->returned==61||s->returned==66){p->reg=0;p->d.ind=s->d;if(s->returned==61&&s->op!=IHEADP){p->s.i.f=s->s;p->s.i.s=s->m&65535;}continue;}
         if(s->returned==62){p->reg=s->m&255;p->s.i.f=s->s;p->s.i.s=(s->m>>16)&255;p->d.i.f=s->d;p->d.i.s=(s->m>>8)&255;continue;}
         if(s->returned==63){p->reg=0;if(s->op==ICVTCW){p->d.i.f=s->d;p->d.i.s=s->m;}else{p->s.i.f=s->s;p->s.i.s=s->m;p->d.ind=s->d;}continue;}
         if(s->returned==88){p->reg=0;p->d.i.f=s->d;p->d.i.s=s->m;continue;}

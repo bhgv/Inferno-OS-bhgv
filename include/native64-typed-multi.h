@@ -150,6 +150,28 @@ native64typedbranchprobe(Inst*out,const Native64TypedStep*step,unsigned int fp,u
 {Native64TypedStep pair[2];Inst code[2];pair[0]=*step;pair[0].d=1;pair[1]=(Native64TypedStep){IRET,SRC(AXXX)|DST(AXXX),0,0,0,0};if(!native64typedcode(code,2,pair,2,fp,mp))return 0;if(out){*out=code[0];out->d.ins=nil;}return 1;}
 
 static int
+native64typedwordchoice(const Native64TypedStep *steps, unsigned int pc, unsigned int end,
+                       unsigned int fp, unsigned int mp, unsigned int bytes,
+                       const uchar *map, unsigned int np)
+{
+ const Native64TypedStep *test,*one,*jump,*other;
+ Native64TypedStep check;
+ unsigned int i;
+ if(pc>=end||end-pc<4||map==nil||map==H||np!=(bytes+63)/64)return 0;
+ for(i=0;i<4;i++)if(steps[pc+i].returned!=Native64TypedWordChoice)return 0;
+ test=steps+pc;one=test+1;jump=test+2;other=test+3;
+ if(test->op<IBEQW||test->op>IBGEW||test->d!=pc+3||
+    jump->op!=IJMP||jump->mode!=(SRC(AXXX)|DST(AIMM))||jump->s||jump->m||jump->d!=pc+4||
+    one->op!=IMOVW||one->mode!=(SRC(AIMM)|DST(AFP|AIND))||one->m||
+    other->op!=IMOVW||other->mode!=one->mode||other->m||
+    one->s<0||one->s>1||other->s!=1-one->s||other->d!=one->d||one->d>65535||
+    !native64typedwordoperand(AFP,one->d,bytes,0))return 0;
+ if(map[one->d/64]&(128>>((one->d/8)%8)))return 0;
+ check=*test;check.returned=0;
+ return native64typedbranchprobe(nil,&check,fp,mp);
+}
+
+static int
 native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *steps,unsigned int count,unsigned int fpbytes,unsigned int mpbytes,const Native64TypedCall *calls,unsigned int n)
 {
     const Native64TypedCall *c;const Native64TypedStep *s;Native64TypedStep checkstep;
@@ -176,6 +198,11 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
             if(!s->returned){if(c->external || !native64typedargprep(s,fpbytes,mpbytes))return 0;continue;}
+            if(s->returned==Native64TypedWordChoice){
+                if(steps[c->end].op!=(c->external?IMCALL:ICALL)||c->callee->np<0||
+                   !native64typedwordchoice(steps,j,stop,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+                j+=3;continue;
+            }
             if(s->returned==Native64TypedRecordArg){
                 if(!native64recordarglayout(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
@@ -357,6 +384,11 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 s=steps+j;p=out+j;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;
                 if(j==i){p->s.imm=c->external?c->moduleoffset:c->ordinal;p->reg=c->external?c->ordinal:0;p->d.ind=40;if(c->external&&(c->modulemode&AIND)){p->s.i.f=c->moduleoffset&65535;p->s.i.s=(c->moduleoffset>>16)&255;}}
                 else if(j==c->end){p->s.ind=40;if(c->external){p->reg=c->ordinal;p->d.ind=c->moduleoffset;if(c->modulemode&AIND){p->d.i.f=c->moduleoffset&65535;p->d.i.s=(c->moduleoffset>>16)&255;}}else p->d.ins=c->target;}
+                else if(s->returned==Native64TypedWordChoice&&native64typedbranch(s->op)){
+                    checkstep=*s;checkstep.returned=0;
+                    if(!native64typedbranchprobe(p,&checkstep,fpbytes,mpbytes))return 0;
+                    p->d.ins=out+s->d;
+                }
                 else if(s->op==IMOVM && (native64imagegeometryoffset(s->returned)!=~0U)){p->s.i.f=s->s;p->s.i.s=native64imagegeometryoffset(s->returned);p->reg=s->m;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==80||s->returned==Native64TypedBorrowIndex){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
                 else if(s->returned==65){native64rawusecode(p,s);}

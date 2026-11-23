@@ -25,6 +25,57 @@ static int typedlibraryslicearg(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigne
 static int typedlibrarymodule(Inst*,Dis64TypedBody*,long*,unsigned int*,int*);
 static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int,int);
 static int typedrecordargument(Inst*,Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int,unsigned int,int);
+static Type *typedloadvaluetype(Addr*);
+
+static int
+typedheadfieldstart(TypedMulti *c, unsigned int at, unsigned int end)
+{
+ Inst *head,*field;
+ if(at>=end||end-at<2)return 0;
+ head=c->instructions[at];field=c->instructions[at+1];
+ return head&&field&&head->op==IHEADP&&head->dm==Afp&&field->op==IMOVP&&field->sm==Afpind&&
+  field->s.decl==head->d.decl&&field->s.reg==head->d.reg;
+}
+
+/* Limbo materializes Boolean arguments with a compare, two Word writes and
+ * a join. Keep the evaluation order and all original instruction positions. */
+static int
+typedwordchoiceshape(TypedMulti *c, unsigned int pc, unsigned int stop, Inst *frame)
+{
+ Inst *test,*one,*jump,*other;
+ if(pc>=stop||stop-pc<=4)return 0;
+ test=c->instructions[pc];
+ if(test==nil||test->op<IBEQW||test->op>IBGEW||test->dm!=Apc||
+    test->branch!=c->instructions[pc+3]||test->d.offset!=(long)pc+3)return 0;
+ one=c->instructions[pc+1];jump=c->instructions[pc+2];other=c->instructions[pc+3];
+ if(one==nil||jump==nil||other==nil||c->instructions[pc+4]==nil)return 0;
+ return jump->op==IJMP&&jump->sm==Anone&&jump->mm==Anone&&jump->dm==Apc&&
+  jump->branch==c->instructions[pc+4]&&jump->d.offset==(long)pc+4&&
+  one->op==IMOVW&&one->sm==Aimm&&one->mm==Anone&&one->dm==Afpind&&!one->branch&&
+  other->op==IMOVW&&other->sm==Aimm&&other->mm==Anone&&other->dm==Afpind&&!other->branch&&
+  one->s.offset>=0&&one->s.offset<=1&&other->s.offset==1-one->s.offset&&
+  one->d.reg==frame->d.reg&&other->d.reg==frame->d.reg&&one->d.offset==other->d.offset;
+}
+
+static int
+typedwordchoice(TypedMulti *c, Dis64TypedBody *p, Inst *frame, unsigned int stop,
+                unsigned int *at, unsigned int old, unsigned int offset)
+{
+ unsigned int pc=*at-p->first,i;
+ Dis64Instruction *out=p->code+pc;
+ if(offset>65535||!typedwordchoiceshape(c,*at,stop,frame)||
+    c->instructions[*at+1]->d.offset!=old||
+    !typedinst(c->instructions[*at],stop,p,out,p->returns+pc))
+  return typedfail(p,"word-choice-argument");
+ if(out->op<IBEQW||out->op>IBGEW)return typedfail(p,"word-choice-comparison");
+ out[1]=(Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP|AIND),0,c->instructions[*at+1]->s.offset,offset};
+ out[2]=(Dis64Instruction){IJMP,SRC(AXXX)|DST(AIMM),0,0,pc+4};
+ out[3]=(Dis64Instruction){IMOVW,SRC(AIMM)|DST(AFP|AIND),0,c->instructions[*at+3]->s.offset,offset};
+ for(i=0;i<4;i++)p->returns[pc+i]=Native64TypedWordChoice;
+ *at+=4;
+ return 1;
+}
+
 #include "dis64-external.h"
 static int typedclientaddress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
 #include "dis64-variadic.h"
@@ -867,7 +918,22 @@ typedrootfieldcopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
 /* Every nested owner is retained in one compiler scratch root until handoff. */
 static int
 typedexternalrootpath(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,unsigned int*at,unsigned int old,unsigned int native,Type *type)
-{Inst*in,*first=nil;long temp=0;unsigned int n=0,id,pc;Inst field;
+{Inst*in,*first=nil;unsigned int n=0,id,pc;Inst field;
+ if(typedheadfieldstart(c,*at,end)){
+  long source,dest;
+  unsigned int sm,dm;
+  int actual;
+  Type *list,*item;
+  in=c->instructions[*at];list=typedloadvaluetype(&in->s);item=typedloadvaluetype(&in->d);
+  if(!list||list->kind!=Tlist||!list->tof||list->tof->kind!=Tref||!item||!tequal(list->tof,item)||
+     in->mm!=Anone||in->branch||!in->d.decl||in->d.decl->store!=Dlocal||!in->d.decl->sym||
+     in->d.decl->sym->name[0]!='.'||in->d.decl->sym->name[1]!='t'||in->s.offset||in->d.offset||
+     !typedoperand(in->sm,&in->s,Tlist,0,0,p,&source,&sm,&actual)||actual!=Tlist||
+     !typedoperand(Afp,&in->d,TypedRoot,0,0,p,&dest,&dm,&actual)||actual!=Tref)
+   return typedfail(p,"root-path-head");
+  pc=(*at)++-p->first;first=in;n++;
+  p->code[pc]=(Dis64Instruction){IHEADP,SRC(sm)|DST(dm),0,source,dest};p->returns[pc]=61;
+ }
  while(*at<end&&(in=c->instructions[*at])&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afpind||in->sm==Ampind)){
   pc=*at-p->first;if(n++==8||in->mm!=Anone||in->branch||!in->d.decl||in->d.decl->store!=Dlocal||!in->d.decl->sym||in->d.decl->sym->name[0]!='.'||in->d.decl->sym->name[1]!='t'||in->d.offset||!in->s.native64type||in->s.native64type->kind!=Tref)return typedfail(p,"root-path-owner");
   if(first&&(in->sm!=Afpind||in->s.reg!=first->d.reg||in->s.decl!=first->d.decl||in->d.reg!=first->d.reg||in->d.decl!=first->d.decl))return typedfail(p,"root-path-alias");
@@ -876,7 +942,7 @@ typedexternalrootpath(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,
   else if(typeddrawowner(&in->s)==3){if(!typeddrawfield(in,p,pc,0,nil))return 0;id=4;p->code[pc].middle=(id<<16)|p->contextfields[pc];}
   else if(typedwmref(typedfieldowner(&in->s),"Draw","Context")){if(!typedclientfield(in,p,pc,0))return 0;id=3;p->code[pc].middle=(id<<16)|p->contextfields[pc];}
   else if(!typedrecordpath(in,p,pc))return typedfail(p,"root-path-context");
-  temp=p->code[pc].destination;p->returns[pc]=61;if(!first)first=in;(*at)++;
+  p->returns[pc]=61;if(!first)first=in;(*at)++;
  }
  if(!first||*at>=end||!(in=c->instructions[*at])||in->op!=IMOVP||in->sm!=Afpind||in->s.reg!=first->d.reg||in->s.decl!=first->d.decl||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=old||
     !(typedlibraryargument(in,frame,p,*at-p->first,old,native,type->kind)||
@@ -1198,11 +1264,15 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     int target,kind,root,op,actual,spawning;long source;
     if(frame->sm!=Adesc || frame->mm!=Anone || frame->dm!=Afp || frame->branch!=nil || frame->d.reg<32 ||
        frame->d.reg>(int)p->frame.legacybytes-4)return typedfail(p,"multi-frame");
-    while(end<stop && c->instructions[end]!=nil && (c->instructions[end]->dm==Afpind ||
+    while(end<stop && c->instructions[end]!=nil){
+      if(c->loads&&typedwordchoiceshape(c,end,stop,frame)){end+=4;continue;}
+      if(!(c->instructions[end]->dm==Afpind ||
       (c->loads && (((c->instructions[end]->op==IMOVP || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL ||
                      c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICONSW) && c->instructions[end]->dm==Afp) || c->instructions[end]->op==IINDW || c->instructions[end]->op==IINDX || c->instructions[end]->op==ISLICEA || (c->instructions[end]->op==IADDW&&c->instructions[end]->dm==Afp) || (c->instructions[end]->op==ICVTWC && c->instructions[end]->dm==Afp) ||
         ((c->instructions[end]->op==INEW||c->instructions[end]->op==INEWZ)&&c->instructions[end]->dm==Afp) ||
-        (end+1<stop&&typedrawindexprep(c->instructions[end],c->instructions[end+1]))))))end++;
+        (end+1<stop&&typedrawindexprep(c->instructions[end],c->instructions[end+1]))))))break;
+      end++;
+    }
     if(end>=stop || (call=c->instructions[end])==nil || (call->op!=ICALL && !(c->loads && call->op==ISPAWN)) || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Anone || call->dm!=Apc || call->d.offset<0 || (unsigned long)call->d.offset>=c->count ||
        (target=c->entries[call->d.offset])<0)return typedfail(p,"multi-call");
@@ -1244,6 +1314,11 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         }
         if(c->loads&&(in->op==IINDX||in->op==IINDW||in->op==IINDL)&&typedrawclass(&in->s)){if(!typedrawindex(c,p,in,at,end)||++at>=end||!(in=c->instructions[at]))return typedfail(p,"local-raw-index");}
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
+        if(c->loads&&!spawning&&kind==Tint&&in->op>=IBEQW&&in->op<=IBGEW){
+            if(!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset)||
+               !typedwordchoice(c,p,frame,end+1,&at,arg->offset,offset))return 0;
+            continue;
+        }
         if(c->loads&&!spawning&&at==pc+1&&kind==Tlist&&arg->ty->tof&&
            (arg->ty->tof->kind==Tstring||arg->ty->tof->kind==Tint)&&in->op==IMOVP&&in->dm==Afp){
             Type *list=typedloadvaluetype(&in->d);
@@ -1330,8 +1405,13 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             if(!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || offset<64 || offset>65535 || !typedexternalinthead(c,p,frame,end,&at,arg->offset,offset))return typedfail(p,"local-int-head-argument");
             continue;
         }
+        if(c->loads&&!spawning&&root&&typedheadfieldstart(c,at,end)){
+            if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||
+               !typedexternalrootpath(c,p,frame,end,&at,arg->offset,offset,arg->ty))return 0;
+            continue;
+        }
         if(c->loads && !spawning && kind==Tstring && in->op==ITAIL && in->dm==Afp){
-            if(arg->next || !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) ||
+            if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) ||
                offset>65535-8 || !typedexternalheadarg(c,p,frame,arg,end,&at,offset))
                 return typedfail(p,"local-string-head-argument");
             continue;
@@ -1734,7 +1814,8 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     }
     for(pc=p->first;pc<stop;pc++){
         in=c->instructions[pc];
-        if(in->op!=ICALL && in->op!=IMCALL && in->branch!=nil && inside[in->branch->pc-p->first]){typedfail(p,"multi-setup-branch");goto fail;}
+        if(in->op!=ICALL && in->op!=IMCALL && in->branch!=nil && inside[in->branch->pc-p->first] &&
+           p->returns[pc-p->first]!=Native64TypedWordChoice){typedfail(p,"multi-setup-branch");goto fail;}
     }
     for(i=0;i<p->ntables;i++){
         Dis64TypedTable *t=p->tables+i;unsigned int j,target;

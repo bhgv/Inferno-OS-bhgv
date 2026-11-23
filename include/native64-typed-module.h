@@ -94,6 +94,50 @@ native64modulemap(unsigned int bytes,const uchar *map,unsigned int n,int frame)
     return 1;
 }
 
+static int
+native64modulewordchoices(const Native64ModuleSpec *s, const Native64ModuleFunction *f)
+{
+    unsigned int pc,i,bytes,np,stop,mm;
+    const uchar *map;
+    const Native64ModuleSite *site;
+    const Native64TypedStep *test;
+
+    for(pc=0;pc<f->count;pc++){
+        test=f->code+pc;
+        if(test->returned!=Native64TypedWordChoice){
+            if(native64typedbranch(test->op)&&test->d>=0&&(unsigned long)test->d<f->count&&
+               f->code[test->d].returned==Native64TypedWordChoice)return 0;
+            continue;
+        }
+        site=nil;
+        for(i=0;i<f->nsites;i++)if(f->sites[i].first<pc&&pc<f->sites[i].end){
+            if(site!=nil)return 0;
+            site=f->sites+i;
+        }
+        if(site==nil||site->end>=f->count)return 0;
+        if(site->external){
+            const Native64ModuleImport *request;
+            if(site->external!=1||site->table>=s->ntables||site->target>=s->tables[site->table].count||
+               f->code[site->end].op!=IMCALL)return 0;
+            request=s->tables[site->table].imports+site->target;
+            bytes=request->bytes;map=request->map;np=request->mapbytes;
+        }else{
+            const Native64ModuleFunction *child;
+            if(site->target>=s->nfunctions||f->code[site->end].op!=ICALL)return 0;
+            child=s->functions+site->target;
+            bytes=child->bytes;map=child->map;np=child->mapbytes;
+        }
+        stop=site->end-(site->contract!=0);
+        if(!native64modulemap(bytes,map,np,1)||
+           !native64typedwordchoice(f->code,pc,stop,f->bytes,s->databytes,bytes,map,np)||
+           !native64rawarraymap(s,f,USRC(test->mode),test->s,0))return 0;
+        mm=test->mode&ARM;
+        if((mm==AXINF||mm==AXINM)&&!native64rawarraymap(s,f,mm==AXINF?AFP:AMP,test->m,0))return 0;
+        pc+=3;
+    }
+    return 1;
+}
+
 /* Compiler-proved List/String roles still require actual native root cells.
  * The transient result pointer is checked by the existing result binder. */
 static int
@@ -107,7 +151,7 @@ native64modulelists(const Native64ModuleSpec *spec,const Native64ModuleFunction 
   if((step->returned>=248 && step->returned<=250) || step->returned==252 || step->returned==253)continue;
   if(step->returned==213 && !native64typedwindowlist(step,fn->bytes,spec->databytes))return 0;
   if(step->op!=ICONSP && step->op!=IHEADP && step->op!=ITAIL && step->op!=ICONSW && step->op!=IHEADW)continue;
-  copy=*step;if(copy.returned==44 || copy.returned==Native64TypedListPrep || copy.returned==Native64TypedRecordList || copy.returned==187 || copy.returned==213)copy.returned=0;
+  copy=*step;if(copy.returned==44 || (copy.returned==61&&copy.op==IHEADP) || copy.returned==Native64TypedListPrep || copy.returned==Native64TypedRecordList || copy.returned==187 || copy.returned==213)copy.returned=0;
   if(!native64typedcode(&probe,1,&copy,1,fn->bytes,spec->databytes))return 0;
   for(k=0;k<2;k++){
    if(k && step->returned && step->returned!=213)continue;
@@ -498,7 +542,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
            !native64modulemap(f->bytes,f->map,f->mapbytes,1) || f->bytes>32*1024*1024-total ||
            f->nsites>f->count/2 || (f->nsites && (f->sites==nil || f->sites==H)))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
-        if(!native64modulealts(s,f))return 0;
+        if(!native64modulealts(s,f)||!native64modulewordchoices(s,f))return 0;
         if(!native64moduleaggregate(s,f)||!native64modulerawarrays(s,f)||!native64modulerecordfields(s,f))return 0;
         if(!native64modulelists(s,f) || !native64modulecontext(s,f) || !native64modulewindow(s,f) || !native64moduledrawfields(s,f) || !native64moduleargclears(s,f) || !native64modulestringpreps(s,f) || !native64modulerootpaths(s,f) || !native64modulebytestrings(s,f) || !native64modulelocalclears(s,f) || !native64modulelistprefixes(s,f) || !native64modulelistpreps(s,f) || !native64modulegeometry(s,f))return 0;
         for(j=0;j<f->count;j++)if((f->code[j].op==ILEA && USRC(f->code[j].mode)==AMP && f->code[j].returned!=190 && f->code[j].returned!=195 && f->code[j].returned!=197 && f->code[j].returned!=199 && f->code[j].returned!=203 && f->code[j].returned!=134 && f->code[j].returned!=224 && f->code[j].returned!=240) || (f->code[j].returned==(128|24) && USRC(f->code[j].mode)!=AFP)){

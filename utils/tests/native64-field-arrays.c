@@ -8,11 +8,11 @@ static YYLEX *input;
 static WORD inputchar;
 static Sys_FD *filefd;
 static const uchar *fileinput;
-static int openfailure,opens,formats,seedblank;
+static int openfailure,wanted_open_mode,opens,formats,seedblank;
 static int loads, reads, prints, fds, promptmode;
 static int indexes, uses, pending, stackgrowth, nestedindexes;
 static const WORD marker=0x12345678;
-static uchar storemap[]={0xed,0xfc};
+static uchar storemap[]={0xed,0xff};
 static Array *envtable;
 static void *envcontext;
 static int envfault, varallocs, statusconss, statusprobe;
@@ -79,7 +79,7 @@ ctl_fopen(void *fp)
  memmove(&fd,(uchar*)fp+64,8);
  memmove(&mode,(uchar*)fp+72,4);
  memmove(&result,(uchar*)fp+32,8);
- check(fd==filefd&&fd!=nil&&fd!=H&&fd->fd==42&&mode==0&&*result==H,"original fopen arguments and heap result slot");
+ check(fd==filefd&&fd!=nil&&fd!=H&&fd->fd==42&&mode==wanted_open_mode&&*result==H,"original fopen arguments and heap result slot");
  if(!openfailure){
   uchar map[]={0xc0};
   Type *t=dtype(freeheap,sizeof(Bufio_Iobuf),map,1);
@@ -569,6 +569,15 @@ lexer_parse(int jit, int quantum)
 }
 
 static void
+prepend_prompt(List **slot, String *text)
+{
+ List *item=cons(8,slot);
+ item->t=&Tptr;
+ Tptr.ref++;
+ memmove(item->data,&text,sizeof(text));
+}
+
+static void
 lexer_construction(int jit, int quantum)
 {
  static const char *source[]={"alpha beta\n","x )\n","one |[2=1] two\n","x )\n",""};
@@ -613,10 +622,13 @@ lexer_construction(int jit, int quantum)
    check(!cells[0]&&!cells[1]&&(l->prompt==H||textis(l->prompt,"")),"file lexer buffer and default prompt");
    check(openfailure?l->f==H:l->f!=H&&l->f->fd==r->fd,"file constructor preserves fopen outcome");
   }else check(l->s==r->text&&textis(l->path,"internal")&&l->cbuf==H&&l->f==H,"string lexer shares its input");
-  r->n=file;
+  r->n=!file;
+  prepend_prompt(&r->prompts,file?H:c2string("ps2> ",5));
+  prepend_prompt(&r->prompts,c2string("ps1> ",5));
   input=l;
   fileinput=file&&!openfailure?(const uchar*)source[test]:nil;
   run_case(full_fn_parse_result,r,jit,quantum,invalid,"");
+  if(!file)check(textis(l->prompt,"ps2> "),"tail and head deliver the continuation prompt to doparse");
   check((reads>0)==(file&&!openfailure)&&formats==(file&&invalid)&&!prints,"original parser service dispatch");
   if(invalid){
    check(r->node==H&&textis(r->problem,file?"/fixture.sh:1: syntax error":"internal: parse error: syntax error"),
@@ -698,7 +710,7 @@ environment_calls(int jit, int quantum)
  Store *r;
  void **context,**env,**local;
  VarFixture *entry,*original=nil;
- List *bucket;
+ List *bucket,*localbucket=H;
  void **word;
  int i,n;
 
@@ -727,11 +739,18 @@ environment_calls(int jit, int quantum)
   if(bucket==H)continue;
   check(!original&&bucket->tail==H,"one new variable in the original hash table");
   memmove(&original,bucket->data,8);
+  localbucket=bucket;
  }
  check(original&&original!=H&&original->name==r->text&&original->value==H&&original->flags==1,
        "original setlocal installs the correct Var");
  run_case(full_fn_setlocal_probe,r,jit,quantum,0,"");
  check(varallocs==2&&D2H(r->text)->ref==2,"updating an existing Var preserves its ownership");
+ run_case(full_fn_envhead,r,jit,quantum,marker,exNilref);
+ D2H(localbucket)->ref++;
+ r->variables=localbucket;
+ run_case(full_fn_envhead,r,jit,quantum,7,"");
+ check(D2H(localbucket)->ref==2&&D2H(original)->ref==1&&D2H(r->text)->ref==2,
+       "head field argument retires the temporary record and String owners");
  envfault=2;
  statusprobe=1;
  run_case(full_fn_status_probe,r,jit,quantum,marker,exHeap);
@@ -757,6 +776,38 @@ environment_calls(int jit, int quantum)
  envtable=nil;envcontext=nil;
  destroy(r);
  check(!live&&!nlinkpins,"complete environment and pending frame retirement");
+}
+
+static void
+word_choices(int jit, int quantum)
+{
+ static const WORD values[][2]={{0,0},{INT_MIN,INT_MAX},{INT_MAX,-1}};
+ Type *type=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));
+ Store *r;
+ int i;
+ require(type!=nil);
+ r=H2D(Store*,heapz(type));freetype(type);
+ r->text=c2string("abc",3);
+ for(i=0;i<nelem(values);i++){
+  WORD a=values[i][0],b=values[i][1];
+  WORD expected=3+(a==b)+2*(a!=b)+4*(a<b)+8*(a<=b)+16*(a>b)+32*(a>=b);
+  r->i=a;r->n=b;
+  run_case(full_fn_comparisons,r,jit,quantum,expected,"");
+  check(D2H(r->text)->ref==1,"a staged String retires after all six Boolean stores");
+ }
+ type=dtype(freeheap,sizeof(Sys_FD),nil,0);require(type!=nil);
+ r->fd=H2D(Sys_FD*,heapz(type));freetype(type);
+ r->fd->fd=42;
+ filefd=r->fd;openfailure=0;
+ for(i=0;i<2;i++){
+  r->n=i?-1:0;
+  wanted_open_mode=!r->n;
+  run_case(full_fn_fopen_choice,r,jit,quantum,0,"");
+  check(opens==1&&D2H(r->fd)->ref==1,"import gets one selected Word and retires the FD");
+ }
+ filefd=nil;wanted_open_mode=0;
+ destroy(r);
+ check(!live&&!nlinkpins,"complete Word choice retirement");
 }
 
 static void
@@ -842,10 +893,23 @@ metadata(void)
     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
           !owner.module&&allocations==before,"malformed record construction or result refused before allocation");
     total++;
-   }else if(native64rootpathrecord(a)||a->returned==Native64TypedRecordList||
+   }else if(a->returned==Native64TypedWordChoice&&a->op>=IBEQW&&a->op<=IBGEW){
+    check(j+3<base->count,"four instructions materialize a Boolean argument");
+    for(k=0;k<5;k++){
+     memmove(code,base->code,base->count*sizeof(*code));
+     if(k==0)code[j].d++;
+     if(k==1)code[j+1].d=32;
+     if(k==2)code[j+2].d--;
+     if(k==3){code[j].mode=(code[j].mode&~SRC(AMASK))|SRC(AFP);code[j].s=64;}
+     if(k==4)code[0]=(Native64TypedStep){IJMP,SRC(AXXX)|DST(AIMM),0,0,j+3,0};
+     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
+           !owner.module&&allocations==before,"malformed Boolean argument refused before allocation");
+     total++;
+    }
+   }else if(native64rootpathrecord(a)||(a->returned==61&&a->op==IHEADP)||a->returned==Native64TypedRecordList||
             (a->returned==Native64TypedListPrep&&a->op==ICONSP)){
     memmove(code,base->code,base->count*sizeof(*code));
-    if(native64rootpathrecord(a))code[j].m|=1;
+    if(a->returned==61)code[j].m|=1;
     else code[j].d+=8;
     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
           !owner.module&&allocations==before,"malformed nested field or list preparation refused before allocation");
@@ -898,12 +962,14 @@ main(void)
   lexer_construction(j,quanta[q]);
   record_calls(j,quanta[q]);
   environment_calls(j,quanta[q]);
+  word_choices(j,quanta[q]);
   array_fields(j,quanta[q]);
  }
  puts("PASS array fields and unchanged Sh lexer: 162 interpreter/JIT cases with exact operands, tokens, file prompt, scheduler boundaries and ownership");
  puts("PASS unchanged Sh yyparse: 54 interpreter/JIT cases with ASTs, recovery, stack growth and actual aggregate GC roles");
  puts("PASS unchanged Sh YYLEX constructors and doparse: 30 interpreter/JIT cases with file and string inputs, exact shapes and diagnostics");
  puts("PASS record call setup and root-pair arrays: 42 interpreter/JIT cases with nil and wrong-Type controls");
- puts("PASS Sh environment setup: 30 interpreter/JIT cases including pending roots and allocation faults");
+ puts("PASS Sh environment setup: 42 interpreter/JIT cases including allocation faults and list head field arguments");
+ puts("PASS Boolean call arguments: 30 interpreter/JIT cases with six comparisons and imported fopen mode");
  return 0;
 }

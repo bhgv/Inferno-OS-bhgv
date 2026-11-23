@@ -218,7 +218,7 @@ typedrecordargument(Inst *in, Inst *frame, Dis64TypedBody *p, Type *type,
 
  if((!root&&type->kind!=Tint)||(!length&&in->op!=(root?IMOVP:IMOVW))||in->branch||
     in->mm!=Anone||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=old||
-    offset>65535||(!length&&!typedrecordowner(&in->s,in->sm)))
+    offset>65535||(!length&&!(type->kind==Tstring&&!variadic)&&!typedrecordowner(&in->s,in->sm)))
   return 0;
  value=typedrecordvalue(&in->s,in->sm);
  if(!value||(length?value->kind!=Tarray:!tequal(value,type))||
