@@ -206,6 +206,57 @@ native64typedwordchoice(const Native64TypedStep *steps, unsigned int pc, unsigne
 }
 
 static int
+native64spawnrecordnil(const Native64TypedStep *s, long nilslot, long dst)
+{
+ return s->returned==Native64TypedSpawnRecord&&s->op==IMOVP&&
+  s->mode==(SRC(AMP)|DST(AFP))&&!s->m&&s->s==nilslot&&s->d==dst;
+}
+
+static int
+native64typedspawnrecord(const Native64TypedStep *v, unsigned int fp, unsigned int mp,
+                         unsigned int bytes, const uchar *map, unsigned int np)
+{
+ const Native64TypedStep *index=v+1,*read=v+2,*copy=v+4,*cons=v+6,*field=v+7,*store=v+11;
+ long wrapper=v->d,payload=cons->s,list=cons->d,nilslot=v[3].s;
+ unsigned int span;
+
+ if(!native64typedrecordnew(v,fp,mp)||v->mode!=(SRC(AIMM)|DST(AFP))||
+    v->m!=((2L<<Native64RecordMapBits)|1)||wrapper>65535||
+    index->op!=IINDL||USRC(index->mode)!=AFP||!native64typedrefarray(index,fp,mp)||
+    read->op!=IMOVP||read->mode!=(SRC(AFP|AIND)|DST(AFP))||
+    read->d!=payload||!native64typedrefarray(read,fp,mp)||
+    cons->op!=ICONSMP||cons->mode!=(SRC(AFP)|AXIMM|DST(AFP))||
+    !native64typedrectlist(cons,fp,mp)||native64recordmask(cons->m)!=3)
+  return 0;
+ span=native64recordbytes(cons->m);
+ if(span<=16||wrapper==list||(wrapper>=payload&&wrapper<payload+span)||
+    (list>=payload&&list<payload+span)||index->s==wrapper||
+    !native64typedrootoperand(AMP,nilslot,fp,mp)||
+    !native64spawnrecordnil(v+3,nilslot,payload+8)||
+    !native64spawnrecordnil(v+5,nilslot,list)||
+    !native64spawnrecordnil(v+8,nilslot,payload)||
+    !native64spawnrecordnil(v+9,nilslot,payload+8)||
+    !native64spawnrecordnil(v+10,nilslot,list)||
+    !native64spawnrecordnil(v+12,nilslot,wrapper))
+  return 0;
+ if(copy->returned!=Native64TypedSpawnRecord||copy->op!=IMOVM||
+    copy->mode!=(SRC(AFP)|AXIMM|DST(AFP))||
+    copy->m<=0||copy->m%4||(unsigned long)copy->m>span-16||span-16-copy->m>4||
+    copy->d!=payload+16||!native64typedwordoperand(AFP,copy->s,fp,mp)||
+    (unsigned long)copy->m>fp-copy->s||
+    (copy->s<payload+span&&payload<copy->s+copy->m))
+  return 0;
+ if(field->returned!=Native64TypedSpawnRecord||field->op!=IMOVP||
+    field->mode!=(SRC(AFP)|DST(AFP|AIND))||field->m||field->s!=list||field->d!=wrapper||
+    store->returned!=64||store->op!=IMOVP||
+    store->mode!=(SRC(AFP)|DST(AFP|AIND))||store->m||store->s!=wrapper||
+    store->d>65535||!native64typedrootoperand(AFP,store->d,bytes,0)||
+    !map||map==H||np!=(bytes+63)/64)
+  return 0;
+ return !!(map[store->d/64]&(128>>((store->d/8)%8)));
+}
+
+static int
 native64partialretcontract(unsigned int callee, unsigned int caller)
 {
     return (callee==96&&caller==112)||(callee==24&&caller==16);
@@ -243,6 +294,17 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         list=clone=0;
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
+            if(s->returned==Native64TypedRecordNew&&steps[c->end].op==ISPAWN){
+                if(c->external||c->callee->np<0)return 0;
+                if(UDST(s->mode)==(AFP|AIND)){
+                    if(!native64typedspawnrecordnew(s,c->callee->size,c->callee->map,c->callee->np))return 0;
+                }else{
+                    if(stop-j<Native64SpawnRecordSteps||
+                       !native64typedspawnrecord(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+                    j+=Native64SpawnRecordSteps-1;
+                }
+                continue;
+            }
             if(s->returned==Native64TypedHeadList){
                 if(c->external||steps[c->end].op!=ICALL||stop-j<6||c->callee->np<0||
                    !native64typedheadlist(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
@@ -464,8 +526,17 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 else if(s->returned==86){p->reg=s->m;p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==93){p->reg=512|24;p->s.i.f=s->s;p->s.i.s=88;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==153||s->returned==154){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
+                else if(s->returned==Native64TypedRecordNew&&steps[c->end].op==ISPAWN&&UDST(s->mode)==(AFP|AIND)){
+                    p->d.i.f=40;p->d.i.s=s->d;
+                }
                 else if(s->returned==Native64TypedRecordNew||s->returned==Native64TypedRecordInit||s->returned==Native64TypedRecordCopy){
                     native64recordcode(p,s,nil);p->reg=0;
+                }
+                else if(s->returned==Native64TypedSpawnRecord){
+                    native64recordcode(p,s,nil);
+                }
+                else if(s->returned==255||s->returned==248){
+                    native64typedcode(p,1,s,1,fpbytes,mpbytes);
                 }
                 else if(s->returned==Native64TypedRecordClone){p->s.ind=s->s;p->d.ind=s->d;}
                 else if(s->returned==156){if(USRC(s->mode)&AIND){p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;}else p->s.imm=s->s;p->reg=native64librarymiddle(s);p->d.i.f=40;p->d.i.s=s->d;}

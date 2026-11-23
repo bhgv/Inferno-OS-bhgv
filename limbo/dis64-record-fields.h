@@ -85,25 +85,17 @@ typedrecorddescriptor(Decl *d, Dis64Layout *layout, long *shape)
 }
 
 static int
-typedrecordnew(Inst *in, Dis64TypedBody *p, unsigned int pc)
+typedrecordalloc(Inst *in, Dis64TypedBody *p, Type *type, unsigned int pc,
+                 unsigned int dm, long dest)
 {
  Dis64Layout layout={0};
  Decl *d=in->s.decl;
- Type *type=typedrecordvalue(&in->d,in->dm);
- unsigned int dm;
- long dest,shape;
- int actual,ok=0;
+ long shape;
+ int ok=0;
 
  if(in->sm!=Adesc||in->mm!=Anone||in->branch||!d||!d->desc||
-    d->desc->id!=in->s.offset||!typedrecorddescriptor(d,&layout,&shape))
-  goto done;
- if(in->dm==Afpind&&in->d.reg==16&&!in->d.offset){
-  if(p->resultpair||p->resulttriple||p->resultaggregate)goto done;
-  type=p->resulttype;dest=32;dm=AFP|AIND;
- }else if((in->dm!=Afp&&in->dm!=Amp)||
-          !typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&dest,&dm,&actual))
-  goto done;
- if(!type||type->kind!=Tref||!tequal(type->tof,d->ty)||
+    d->desc->id!=in->s.offset||!type||type->kind!=Tref||!tequal(type->tof,d->ty)||
+    !typedrecorddescriptor(d,&layout,&shape)||
     !typedrecordregister(p,pc,2,d->ty))
   goto done;
  p->code[pc]=(Dis64Instruction){INEWZ,SRC(AIMM)|DST(dm),shape,0,dest};
@@ -111,6 +103,22 @@ typedrecordnew(Inst *in, Dis64TypedBody *p, unsigned int pc)
 done:
  dis64layoutfree(&layout);
  return ok;
+}
+
+static int
+typedrecordnew(Inst *in, Dis64TypedBody *p, unsigned int pc)
+{
+ unsigned int dm;
+ long dest;
+ int actual;
+
+ if(in->dm==Afpind&&in->d.reg==16&&!in->d.offset){
+  if(p->resultpair||p->resulttriple||p->resultaggregate)return 0;
+  return typedrecordalloc(in,p,p->resulttype,pc,AFP|AIND,32);
+ }
+ if((in->dm!=Afp&&in->dm!=Amp)||
+    !typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&dest,&dm,&actual))return 0;
+ return typedrecordalloc(in,p,typedrecordvalue(&in->d,in->dm),pc,dm,dest);
 }
 
 /* Keep an aggregate's natural span, including its padding, within its owner. */

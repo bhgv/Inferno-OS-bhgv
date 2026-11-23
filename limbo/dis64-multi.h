@@ -22,6 +22,7 @@ static int typedlibraryinst(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
 static int typedrecordresult(Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int*,int);
 static int typedrecordpath(Inst*,Dis64TypedBody*,unsigned int);
 static int typedrecordnew(Inst*,Dis64TypedBody*,unsigned int);
+static int typedrecordalloc(Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int,long);
 static int typedrecordinst(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
 static int typedrecordwordcopy(Inst*,Dis64TypedBody*,unsigned int);
 static int typedlibraryslicearg(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
@@ -30,6 +31,7 @@ static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigne
 static int typedrecordargument(Inst*,Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int,unsigned int,int);
 static int typedrecordcopy(Inst*,Dis64TypedBody*,unsigned int);
 static int typedrecordlayoutdescriptor(Type*,Desc*,Dis64Layout*,long*);
+static Type *typedrecordvalue(Addr*,int);
 static Type *typedloadvaluetype(Addr*);
 
 /* Canonical Dis spills large middle literals into RTemp. Read the record
@@ -1396,6 +1398,104 @@ typedlocalheadlist(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, Inst
 }
 
 static int
+typedspawnnil(Inst *in, Dis64TypedBody *p, unsigned int pc, long slot)
+{
+ unsigned int sm,dst;
+ long src;
+ int kind;
+ if(in->op!=IMOVP||in->sm!=Amp||in->dm!=Afp||in->mm!=Anone||in->branch||
+    !in->s.decl||in->s.decl->store!=Dglobal||!in->s.decl->sym||
+    strcmp(in->s.decl->sym->name,"nil")||in->s.reg!=in->s.decl->offset||in->s.offset||
+    !typedoperand(Amp,&in->s,TypedRoot,0,0,p,&src,&sm,&kind)||kind!=Tany||
+    in->d.offset||!dis64layoutaddress(&p->frame,in->d.reg,4,1,&dst)||dst!=slot)
+  return 0;
+ p->code[pc]=(Dis64Instruction){IMOVP,SRC(AMP)|DST(AFP),0,src,dst};
+ p->returns[pc]=Native64TypedSpawnRecord;
+ return 1;
+}
+
+static int
+typedspawnrecordindex(Inst *in, Inst *use, Inst *cons, Dis64TypedBody *p,
+                      unsigned int pc, long destination)
+{
+ Type *element=typedaggregatelistelement(&cons->d,Afp),*value=typedrootarrayelement(&in->s);
+ unsigned int sm,dm;
+ long array,index;
+ int actual;
+ if(!element||!element->ids||!value||!tequal(value,element->ids->ty)||
+    in->op!=IINDW||in->sm!=Afp||in->mm!=Afp||!in->m.decl||in->m.offset||in->branch||
+    !typedoperand(in->sm,&in->s,Tarray,0,0,p,&array,&sm,&actual)||
+    !typedoperand(in->dm,&in->d,Tint,1,0,p,&index,&dm,&actual)||
+    use->op!=IMOVP||use->sm!=Afpind||use->mm!=Anone||use->branch||
+    use->s.decl!=in->m.decl||use->s.reg!=in->m.reg||use->s.offset||
+    use->dm!=Afp||use->d.reg!=cons->s.reg||use->d.offset)
+  return 0;
+ p->code[pc]=(Dis64Instruction){IINDL,SRC(sm)|AXINF|DST(dm),48,array,index};
+ p->code[pc+1]=(Dis64Instruction){IMOVP,SRC(AFP|AIND)|DST(AFP),0,48,destination};
+ p->returns[pc]=p->returns[pc+1]=255;
+ return 1;
+}
+
+/* A fresh reference wrapping a singleton list whose payload starts with a
+ * borrowed array root and nil, followed by an inline sequence of Words. */
+static int
+typedspawnrecord(TypedMulti *c, Dis64TypedBody *p, Inst *frame, Decl *arg,
+                 unsigned int start, unsigned int end, unsigned int offset)
+{
+ Inst **v=c->instructions+start;
+ Dis64Instruction *out=p->code+start-p->first;
+ uchar *roles=p->returns+start-p->first;
+ unsigned int pc=start-p->first,wire,base,part,k;
+ long source;
+ Type *owner=arg->ty,*list,*element,*allocated,*field;
+ if(end-start<Native64SpawnRecordSteps||!owner||owner->kind!=Tref||
+    v[0]->dm!=Afp||v[0]->d.offset||
+    v[1]->op!=IINDW||v[2]->dm!=Afp||v[4]->op!=IMOVM||
+    v[4]->sm!=Afp||v[4]->dm!=Afp||v[4]->mm!=Aimm||v[4]->branch||
+    v[6]->op!=ICONSMP||v[6]->sm!=Afp||v[6]->dm!=Afp||
+    !typedrecordnew(v[0],p,pc)||out[0].middle!=((2L<<Native64RecordMapBits)|1)||
+    !typedaggregatelist(v[6],p,pc+6)||
+    !typedspawnrecordindex(v[1],v[2],v[6],p,pc+1,out[6].source)||
+    native64recordmask(out[6].middle)!=3||
+    v[4]->m.offset<=0||v[4]->m.offset%4||
+    v[4]->m.offset>native64recordbytes(out[6].middle)-16||
+    !typedrawspan(p,&v[4]->s,Afp,v[4]->m.offset,&source,&wire)||
+    v[4]->d.offset||!dis64layoutaddress(&p->frame,v[4]->d.reg,4,0,&base)||
+    base!=out[6].source+16)
+  return typedfail(p,"spawn-record-list-payload");
+ for(k=4;k<(unsigned long)v[4]->m.offset;k+=4)
+  if(!dis64layoutaddress(&p->frame,v[4]->d.reg+k,4,0,&part)||part!=base+k)
+   return typedfail(p,"spawn-record-list-words");
+ list=typedloadvaluetype(&v[6]->d);
+ element=typedaggregatelistelement(&v[6]->d,Afp);
+ allocated=typedrecordvalue(&v[0]->d,Afp);
+ field=typedarrayleaf(owner->tof,0);
+ if(!list||!element||!allocated||!field||!tequal(allocated,owner)||
+    field->kind!=Tlist||!tcompat(field,list,0)||v[4]->m.offset!=v[6]->m.decl->desc->size-8)
+  return typedfail(p,"spawn-record-list-field");
+ if(v[7]->op!=IMOVP||v[7]->sm!=Afp||v[7]->mm!=Anone||v[7]->branch||
+    v[7]->s.reg!=v[6]->d.reg||v[7]->s.decl!=v[6]->d.decl||v[7]->s.offset||
+    v[7]->dm!=Afpind||v[7]->d.reg!=v[0]->d.reg||v[7]->d.decl!=v[0]->d.decl||v[7]->d.offset||
+    v[11]->op!=IMOVP||v[11]->sm!=Afp||v[11]->mm!=Anone||v[11]->branch||
+    v[11]->s.reg!=v[0]->d.reg||v[11]->s.decl!=v[0]->d.decl||v[11]->s.offset||
+    v[11]->dm!=Afpind||v[11]->d.reg!=frame->d.reg||v[11]->d.offset!=arg->offset)
+  return typedfail(p,"spawn-record-list-store");
+ if(!typedspawnnil(v[3],p,pc+3,out[6].source+8)||
+    !typedspawnnil(v[5],p,pc+5,out[6].destination)||
+    !typedspawnnil(v[8],p,pc+8,out[6].source)||
+    !typedspawnnil(v[9],p,pc+9,out[6].source+8)||
+    !typedspawnnil(v[10],p,pc+10,out[6].destination)||
+    !typedspawnnil(v[12],p,pc+12,out[0].destination))
+  return typedfail(p,"spawn-record-list-clear");
+ out[4]=(Dis64Instruction){IMOVM,SRC(wire)|AXIMM|DST(AFP),v[4]->m.offset,source,base};
+ out[7]=(Dis64Instruction){IMOVP,SRC(AFP)|DST(AFP|AIND),0,out[6].destination,out[0].destination};
+ out[11]=(Dis64Instruction){IMOVP,SRC(AFP)|DST(AFP|AIND),0,out[0].destination,offset};
+ roles[4]=roles[7]=Native64TypedSpawnRecord;
+ roles[11]=64;
+ return 1;
+}
+
+static int
 typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int depth,unsigned int *next,unsigned int *height)
 {
     Inst *frame=c->instructions[pc],*call,*in,*binding;
@@ -1406,6 +1506,8 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
        frame->d.reg>(int)p->frame.legacybytes-4)return typedfail(p,"multi-frame");
     while(end<stop && c->instructions[end]!=nil){
       if(c->loads&&typedwordchoiceshape(c,end,stop,frame)){end+=4;continue;}
+      if(c->loads&&c->instructions[end]->dm==Afp&&
+         (c->instructions[end]->op==IMOVM||c->instructions[end]->op==ICONSMP)){end++;continue;}
       if(!(c->instructions[end]->dm==Afpind ||
       (c->loads && (((c->instructions[end]->op==IMOVP || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL ||
                      c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICONSW) && c->instructions[end]->dm==Afp) || c->instructions[end]->op==IINDW || c->instructions[end]->op==IINDX || c->instructions[end]->op==ISLICEA || (c->instructions[end]->op==IADDW&&c->instructions[end]->dm==Afp) || (c->instructions[end]->op==ICVTWC && c->instructions[end]->dm==Afp) ||
@@ -1432,6 +1534,20 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     p->code[pc-p->first]=(Dis64Instruction){IFRAME,SRC(AIMM)|DST(AFP),0,frame->s.offset,40};at=pc+1;
     for(arg=c->functions[target]->ty->ids;arg!=nil;arg=arg->next){
         if(at>=end || (in=c->instructions[at])==nil)return typedfail(p,"multi-argument");
+        if(spawning&&(in->op==INEW||in->op==INEWZ)){
+            if(arg->ty->kind!=Tref||!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||offset>65535)
+                return typedfail(p,"spawn-record-argument");
+            if(in->dm==Afpind){
+                if(in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||
+                   !typedrecordalloc(in,p,arg->ty,at-p->first,AFP|AIND,offset))
+                    return typedfail(p,"spawn-record-allocation");
+                at++;
+            }else{
+                if(!typedspawnrecord(c,p,frame,arg,at,end,offset))return 0;
+                at+=Native64SpawnRecordSteps;
+            }
+            continue;
+        }
         if(c->loads&&!spawning&&(in->op==INEW||in->op==INEWZ)){
             if(!typedlocalrecordprep(c,p,child,frame,arg,pc,end,&at))return 0;
             if(arg->ty->kind==Tlist)continue;

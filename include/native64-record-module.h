@@ -9,6 +9,14 @@ native64modulerecordstorage(const Native64ModuleSpec *s, const Native64ModuleFun
  long operand;
  const uchar *map;
  if(v->returned==Native64TypedRecordNew){
+  if(UDST(v->mode)==(AFP|AIND)&&v->d>=64){
+   for(i=0;i<f->nsites;i++){
+    const Native64ModuleSite *site=f->sites+i;
+    if(site->first<pc&&pc<site->end&&site->end<f->count&&
+       !site->external&&f->code[site->end].op==ISPAWN)return 1;
+   }
+   return 0;
+  }
   if(!native64typedrecordnew(v,f->bytes,s->databytes))return 0;
   mode=UDST(v->mode);
   if(mode&AIND){if(f->resultcontract)return 0;}

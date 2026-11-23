@@ -253,7 +253,7 @@ def record_result(o, c, pc, maps, row, base):
     assert c==[o['op'],45,c[2],0,32,41] and c[2]&65535==base
     assert record_address(row,maps,pc,0,5,o['s'],c[2],8) in ROOTS
 
-def record_storage(o, c, pc, maps, row, types):
+def record_storage(o, c, pc, maps, row, types, argument=None):
     op,mode,s,m,d,role=c
     sm=o['mode']>>3&7;dm=o['mode']&7
     witnesses={side:tree for at,side,tree in row['record_owners'] if at==pc}
@@ -268,7 +268,10 @@ def record_storage(o, c, pc, maps, row, types):
     assert m==(bytes_//4)<<24|mask and mode==o['mode']
     if role==38:
         assert op==OPCODES['INEWZ'] and o['op'] in (OPCODES['INEW'],OPCODES['INEWZ']) and not s and o['m'] is None
-        if dm==5:assert o['d']==[16,0] and d==32 and row['result'][0]==12
+        if argument is not None:
+            pending,old,new=argument
+            assert dm==5 and o['d']==[pending,old] and d==new
+        elif dm==5:assert o['d']==[16,0] and d==32 and row['result'][0]==12
         else:
             assert dm in(0,1) and d==maps['frame' if dm else 'data'][o['d'][0]]
             bit=d//8;assert row['frame' if dm else 'data']['map'][bit//8]&(128>>(bit%8))
@@ -285,6 +288,51 @@ def record_storage(o, c, pc, maps, row, types):
         else:
             assert wire in(0,1) and value==maps[space][old[0]]
             assert [(a-old[0],b-value,k,n,v) for a,b,n,v,k in row[space]['leaves'] if value<=b<value+bytes_]==leaves
+
+def spawn_record_argument(original, row, at, end, maps, types, pending, old, new):
+    code=row['code']
+    alloc=original[at]
+    if alloc['mode']&7==5:
+        record_storage(alloc,code[at],at,maps,row,types,(pending,old,new))
+        return at+1
+    assert end-at>=13
+    record_storage(alloc,code[at],at,maps,row,types)
+    _,index,read,zero,copy,init,cons,field,drop0,drop1,drop_list,store,drop_wrapper=original[at:at+13]
+    frame=maps['frame']
+    wrapper=frame[alloc['d'][0]]
+    payload=frame[cons['s'][0]]
+    slot=frame[cons['d'][0]]
+    assert index['op']==OPCODES['IINDW'] and index['mode'] in (137,138,136)
+    indexmode=index['mode']&7
+    indexvalue=index['d'][0] if indexmode==2 else maps['frame' if indexmode else 'data'][index['d'][0]]
+    assert read==dict(op=41,mode=41,m=None,s=[index['m'],0],d=cons['s'])
+    assert code[at+1:at+3]==[[OPCODES['IINDL'],index['mode'],frame[index['s'][0]],48,indexvalue,255],
+                             [41,41,48,0,payload,255]]
+    nil=zero['s']
+    assert next(l for l in row['data']['leaves']if l[0]==nil[0])[2:]==[4,8,20]
+    for i,step,destination in ((3,zero,[cons['s'][0]+4]),(5,init,cons['d']),
+                                (8,drop0,cons['s']),(9,drop1,zero['d']),
+                                (10,drop_list,cons['d']),(12,drop_wrapper,alloc['d'])):
+        assert step==dict(op=41,mode=1,m=None,s=nil,d=destination)
+        assert code[at+i]==[41,1,maps['data'][nil[0]],0,frame[destination[0]],179]
+    assert copy['op']==OPCODES['IMOVM'] and copy['mode']==73 and copy['d']==[cons['s'][0]+8]
+    for i in range(0,copy['m'],4):
+        assert frame[copy['d'][0]+i]==payload+16+i
+        assert frame[copy['s'][0]+i]==frame[copy['s'][0]]+i
+    assert code[at+4]==[copy['op'],73,frame[copy['s'][0]],copy['m'],payload+16,179]
+    assert cons['op']==OPCODES['ICONSMP'] and cons['mode']==73
+    witness=next(tree for pc,side,tree in row['record_owners']if pc==at+6 and side==2)
+    tree=row['record_types'][witness]
+    bytes_,_,leaves=record_geometry(tree)
+    legacybytes,legacymap=types[cons['m']]
+    assert tree[1]==legacybytes and legacymap==bytes([0xc0])
+    assert {b for _,b,k,_,_ in leaves if k in ROOTS or k==20}=={0,8}
+    assert code[at+6]==[cons['op'],73,payload,(bytes_//4)<<24|3,slot,248]
+    assert field==dict(op=41,mode=13,m=None,s=cons['d'],d=alloc['d']+[0])
+    assert code[at+7]==[41,13,slot,0,wrapper,179]
+    assert store==dict(op=41,mode=13,m=None,s=alloc['d'],d=[pending,old])
+    assert code[at+11]==[41,13,wrapper,0,new,64]
+    return at+13
 
 def array_operand(row,maps,pc,side,mode,address,value,root):
     if mode in(4,5):
@@ -511,6 +559,11 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert arg[1:]==[10,4,8] and at==first+1
                 at,listclear=list_constructor(original,r['code'],at,end,maps,r)
                 o=original[at]
+            if loads and r['code'][at][5]==38 and original[end]['op']==OPCODES['ISPAWN']:
+                assert arg[1:]==[12,4,8]
+                old=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0])
+                at=spawn_record_argument(original,r,at,end,maps,types,pending,old,arg[0])
+                continue
             if loads and r['code'][at][5] in(38,154):
                 generic=r['code'][at][5]==38
                 assert arg[1] in (10,12) and arg[2:]==[4,8] and o['mode']&7==1

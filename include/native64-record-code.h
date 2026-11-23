@@ -89,6 +89,16 @@ native64typedrecordnew(const Native64TypedStep *s, unsigned int fp, unsigned int
 }
 
 static int
+native64typedspawnrecordnew(const Native64TypedStep *s, unsigned int bytes,
+                           const uchar *map, unsigned int np)
+{
+ return s->returned==Native64TypedRecordNew&&s->op==INEWZ&&
+  s->mode==(SRC(AIMM)|DST(AFP|AIND))&&!s->s&&native64recorddescriptor(s->m)&&
+  s->d<=65535&&native64typedrootoperand(AFP,s->d,bytes,0)&&
+  map&&map!=H&&np==(bytes+63)/64&&(map[s->d/64]&(128>>((s->d/8)%8)));
+}
+
+static int
 native64recordcopyoperand(unsigned int mode, long value, unsigned int bytes,
                          unsigned int fp, unsigned int mp, int mapped)
 {
