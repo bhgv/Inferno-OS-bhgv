@@ -319,24 +319,26 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
 static int typedwmcontextchannel(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*);
 static int typedclientchanneladdress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
 
-/* Sys.Rwrite: exact (int, string), including its alignment gap. */
+/* Mixed Word/root pair, including its alignment gap. Descriptor and literal
+ * types may have been deduplicated by map or contain a nil root. */
 static int
-typedreplylayout(Type*t,Dis64Layout*l,int nominal)
+typedreplylayout(Type*t,Dis64Layout*l,int allownil)
 {
  Decl*a;
  if(!t || t->kind!=Ttuple || !(a=t->ids) || a->store!=Dfield || a->offset || !a->ty || a->ty->kind!=Tint ||
     !(a=a->next) || a->next || a->store!=Dfield || a->offset!=4 || !a->ty ||
-    (nominal==1?a->ty->kind!=Tstring:nominal==2?(a->ty->kind!=Tstring && a->ty->kind!=Tany):!(a->ty->kind==Tstring || a->ty->kind==Tref || a->ty->kind==Tchan || a->ty->kind==Tarray || a->ty->kind==Tlist || a->ty->kind==Tmodule)) || !dis64layouttype(t,l))return 0;
+    !(typedmanagedkind(a->ty->kind)||(allownil&&a->ty->kind==Tany))||
+    !dis64layouttype(t,l))return 0;
  return l->legacybytes==8 && l->bytes==16 && l->alignment==8 && l->count==2 &&
   l->leaves[0].legacy==0 && l->leaves[0].native==0 && l->leaves[0].oldbytes==4 && l->leaves[0].bytes==4 && l->leaves[0].kind==Tint &&
   l->leaves[1].legacy==4 && l->leaves[1].native==8 && l->leaves[1].oldbytes==4 && l->leaves[1].bytes==8;
 }
 static int
 typedreplytype(Type*t)
-{Dis64Layout l={0};int ok=typedreplylayout(t,&l,1);dis64layoutfree(&l);return ok;}
+{Dis64Layout l={0};int ok=typedreplylayout(t,&l,0);dis64layoutfree(&l);return ok;}
 static int
 typedreplyliteral(Type*t)
-{Dis64Layout l={0};int ok=typedreplylayout(t,&l,2);dis64layoutfree(&l);return ok;}
+{Dis64Layout l={0};int ok=typedreplylayout(t,&l,1);dis64layoutfree(&l);return ok;}
 static int
 typedreplyspan(Dis64Layout*l,unsigned int old,unsigned int*base)
 {unsigned int root;return dis64layoutaddress(l,old,4,0,base) && !(*base%8) && dis64layoutaddress(l,old+4,4,1,&root) && root==*base+8;}
@@ -344,7 +346,7 @@ static int
 typedreplytransfer(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
 {
  int send=in->op==ISEND,cm=send?in->dm:in->sm,vm=send?in->sm:in->dm,actual;Addr*ca=send?&in->d:&in->s,*va=send?&in->s:&in->d;Type*t=ca->native64type?ca->native64type:ca->decl?ca->decl->ty:nil;long channel;unsigned int wire,value;
- if((cm!=Afp && cm!=Amp) || (vm!=Afp && vm!=Amp) || in->mm!=Anone || in->branch || !t || t->kind!=Tchan || !typedreplytype(t->tof) || !typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&wire,&actual) || actual!=Tchan || !typedreplyspan(vm==Afp?&p->frame:&p->data,va->reg,&value))return 0;
+ if((cm!=Afp && cm!=Amp) || (vm!=Afp && vm!=Amp) || va->offset || in->mm!=Anone || in->branch || !t || t->kind!=Tchan || !typedreplytype(t->tof) || !typedoperand(cm,ca,TypedRoot,0,0,p,&channel,&wire,&actual) || actual!=Tchan || !typedreplyspan(vm==Afp?&p->frame:&p->data,va->reg,&value))return 0;
  *out=(Dis64Instruction){in->op,send?SRC(vm==Afp?AFP:AMP)|DST(wire):SRC(wire)|DST(vm==Afp?AFP:AMP),136,send?value:channel,send?channel:value};*returned=136;return 1;
 }
 
@@ -494,9 +496,12 @@ typedclientmappedchannel(Inst*in,Decl*fn,Dis64TypedBody*p,Dis64Instruction*out,u
  t=in->dm==Afpind?fn->ty->tof:in->d.native64type?in->d.native64type:in->d.decl?in->d.decl->ty:nil;
  if(t&&t->kind==Tchan&&typedcursortype(t->tof,0)){if(!typedcursortype(d->ty,1)||d->desc->size!=12||d->desc->map[0]!=0xa0||!typedchanneloutput(in,fn,p,out,returned))goto done;out->source=4;*returned=*returned?185:183;ok=1;goto done;}
 
- if(!t || t->kind!=Tchan)goto done;mixed=typedreplytype(t->tof);
- if(mixed){if(!typedreplylayout(t->tof,&payload,1) || !typedreplylayout(d->ty,&descriptor,0))goto done;}
- else if(!typedmappedpayload(t->tof,&payload) || !typedmappedpayload(d->ty,&descriptor))goto done;
+ if(!t || t->kind!=Tchan)goto done;mixed=typedreplylayout(t->tof,&payload,0);
+ if(mixed){if(!typedreplylayout(d->ty,&descriptor,0))goto done;}
+ else{
+  dis64layoutfree(&payload);
+  if(!typedmappedpayload(t->tof,&payload) || !typedmappedpayload(d->ty,&descriptor))goto done;
+ }
  n=payload.count;if(descriptor.count!=n || d->desc->size!=4*n || d->desc->map[0]!=(mixed?0x40:n==2?0xc0:0xe0))goto done;
  if(!typedchanneloutput(in,fn,p,out,returned))goto done;
  out->source=mixed?1:n;*returned=*returned?185:183;ok=1;

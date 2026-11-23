@@ -7,7 +7,7 @@ PAIR=runpy.run_path(str(ROOT/'utils/tests/native64-alt-pairs.py'));G,CMD,E=PAIR[
 PREFIX='include "sys.m";include "draw.m";'
 PAYLOAD='(int,string)';ARGS='c:chan of '+PAYLOAD+',n:int,s:string,other:chan of '+PAYLOAD
 NAMES=('run','reverse','duplicate','mp','plain','miss','ready','readreply','nilreply')
-DECL='Replies:module{'+''.join(n+':fn('+ARGS+');'for n in NAMES)+'mkpair:fn():chan of '+PAYLOAD+';mkcontext:fn():ref Draw->Context;clear:fn();};'
+DECL='Replies:module{'+''.join(n+':fn('+ARGS+');'for n in (*NAMES,'refreply'))+'mkpair:fn():chan of '+PAYLOAD+';mkcontext:fn():ref Draw->Context;clear:fn();};'
 SOURCE='implement Replies;'+PREFIX+DECL+'shared,alternate:chan of '+PAYLOAD+';sourceword,wordout,received,sent,choice,fallback:int;source,output:string;both:'+PAYLOAD+';rawout:array of byte;'
 for name,body in(zip(NAMES,('unused:=mkpair();spawn reader();spawn sender();','spawn sender();spawn readerrev();','spawn readerdup();spawn sender();','both=(n,s);spawn reader();spawn sendermp();','spawn plainreader();spawn plainsender();','v:=(n,s);alt{shared <-=v=>sent++;* =>fallback++;}alt{(a,b):= <-alternate=>wordout=a;output=b;received++;* =>fallback++;}','v:=(n,s);shared <-=v;alt{(a,b):= <-shared=>wordout=a;output=b;received++;choice=1;* =>fallback++;}alt{shared <-=v=>sent++;* =>fallback++;}(a,b):= <-shared;wordout=a;output=b;','d:=array of byte s;off:=0;if(n>0 && len d>0)off=n%len d;readc:=chan[1] of (array of byte,string);alt{readc <-=(d[off:],nil)=>sent++;* =>fallback++;}alt{(v,e):= <-readc=>rawout=v;output=e;received++;choice=1;* =>fallback++;}','replyc:=chan[1] of (int,string);alt{replyc <-=(n,nil)=>sent++;* =>fallback++;}alt{(v,e):= <-replyc=>wordout=v;output=e;received++;choice=1;* =>fallback++;}'))):
  SOURCE+=name+'('+ARGS+'){prepare(c,n,s,other);'+body+'}'
@@ -15,9 +15,45 @@ SOURCE+='mkpair():chan of '+PAYLOAD+'{return chan of '+PAYLOAD+';}mkcontext():re
 for name,channels in(('reader',('shared','alternate')),('readerrev',('alternate','shared')),('readerdup',('shared','shared'))):
  SOURCE+=name+'(){alt{'+''.join('(a,b):= <-'+c+'=>wordout=a;output=b;received++;choice='+str(i+1)+';'for i,c in enumerate(channels))+'}}'
 SOURCE+='sender(){v:=(sourceword,source);alt{shared <-=v=>sent++;}}sendermp(){alt{shared <-=both=>sent++;}}plainreader(){(a,b):= <-shared;wordout=a;output=b;received++;choice=1;}plainsender(){v:=(sourceword,source);shared <-=v;sent++;}'
+SOURCE+='''
+Packet:adt {name:string;};
+originalpacket, receivedroot: ref Packet;
+refreply('''+ARGS+'''){
+    reply: chan of (int, ref Packet);
+    if (n < 0)
+        reply = chan of (int, ref Packet);
+    else
+        reply = chan[1] of (int, ref Packet);
+    packet: ref Packet;
+    if (len s > 0) packet = ref Packet(s);
+    spawn sendref(reply, n, packet);
+    (w, receivedpacket) := <-reply;
+    originalpacket = packet;
+    receivedroot = receivedpacket;
+    output = nil;
+    if (receivedpacket != nil) output = receivedpacket.name;
+    wordout = w;
+    sent++;
+    received++;
+    choice = 1;
+    spawn sendref(reply, n, nil);
+    <-reply;
+}
+sendref(reply:chan of (int, ref Packet), n:int, packet:ref Packet){
+    value := (n, packet);
+    copied := value;
+    reply <-= copied;
+}
+'''
 def generate(limbo,w):
  m=w/'replies.m';m.write_text(PREFIX+DECL);h=subprocess.check_output([str(limbo),'-H','-M','Replies','-I',str(ROOT/'module'),str(m)],text=True);signatures={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Replies_(\w+) (0x[0-9a-f]+)U',h,re.M)}
- rows=G['generate'](limbo,w,SOURCE,'Replies',(20,0,0,'~0U'),export_signatures=signatures);p=w/'full.h';s=p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','');gl={g[0]:g[1]for g in rows[0]['globals']};s+='\nstatic const uint reply_globals[]={'+','.join(str(gl[n])for n in('output','wordout','received','sent','choice','fallback','rawout'))+'};\n';p.write_text(s)
+ rows=G['generate'](limbo,w,SOURCE,'Replies',(22,0,0,'~0U'),export_signatures=signatures);p=w/'full.h';s=p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','');gl={g[0]:g[1]for g in rows[0]['globals']};s+='\nstatic const uint reply_globals[]={'+','.join(str(gl[n])for n in('output','wordout','received','sent','choice','fallback','rawout'))+'};\n'
+ s+=f'static const uint original_packet={gl["originalpacket"]}, received_packet={gl["receivedroot"]};\n'
+ p.write_text(s)
+ refreply=next(r for r in rows if r['name']=='refreply')
+ sendref=next(r for r in rows if r['name']=='sendref')
+ assert {step[5] for step in refreply['code']} >= {136,183}
+ assert {step[5] for step in sendref['code']} >= {135,136}
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);tables=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];controls=0
  for row in records:
   for pc,c in enumerate(row['code']):

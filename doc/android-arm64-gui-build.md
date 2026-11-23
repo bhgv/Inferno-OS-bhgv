@@ -1194,3 +1194,16 @@ span before decoding its address.
 
 `pipecmd` passes the `OAPPEND` mask, copies `Redir`, and proceeds through
 `sys->pipe` to the mapped channel allocation for `(int, ref Expropagate)`.
+
+## Word and managed reference channels
+
+Checked Limbo shares one descriptor for a two-field channel payload with a
+32-bit Word at offset 0 and a managed reference at offset 8. The compiler
+checks the declared types and the legacy descriptor, and uses the same
+native layout for allocation, tuple copies, send and receive. The interpreter
+and JIT tests cover buffered and unbuffered channels, nil, retained reference
+identity and receiving into a discarded temporary.
+
+The unchanged `pipecmd`, `runsync` and `builtin_subsh` now pass the channel
+allocation and reach the `runasync` spawn setup. Inside `runasync`, the
+checked compiler still stops while resolving `Context.copy`.
