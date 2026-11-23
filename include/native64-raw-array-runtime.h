@@ -1,15 +1,16 @@
 #ifndef NATIVE64_RAW_ARRAY_RUNTIME_H
 #define NATIVE64_RAW_ARRAY_RUNTIME_H
 #include "vmfetch.h"
+#include "native64-array-layout.h"
 /* Owned index proofs. Neither pointers nor this capability come from Dis files. */
 typedef struct Native64RawIndex Native64RawIndex;
 typedef struct Native64RawArrays Native64RawArrays;
 struct Native64RawIndex {unsigned int pc,width,mapped;Type *frame;Inst instruction;};
 struct Native64RawArrays {Native64RawArrays *self;Module *owner;unsigned int count;Native64RawIndex index[1];};
-static unsigned int native64rawarraywidth(unsigned int c){return c==1?4:c==2?12:c==3?16:0;}
+static unsigned int native64rawarraywidth(unsigned int c){return native64arraywidth(c);}
 static void native64rawarrayfree(Module*m){Native64RawArrays*p=m->native64rawarrays;m->native64rawarrays=nil;m->native64rawarraysfree=nil;if(p!=nil)free(p);}
 static void native64rawarraycheck(Array*a,unsigned int width,unsigned int mapped)
-{Type*t;unsigned int i;if(a==H||a==nil)return;if((uintptr)a%8||(uintptr)a>(uintptr)-1-sizeof(Array)||D2H(a)->ref<=0||D2H(a)->t!=&Tarray)error(exBounds);t=a->t;if(t==nil||t==H||t->ref<=0||t->size!=(int)width||t->np<0||t->np>(t->size+63)/64)error(exBounds);if(mapped){if(t->np!=1||t->map[0]!=0xc0)error(exBounds);return;}for(i=0;i<(unsigned int)t->np;i++)if(t->map[i])error(exBounds);}
+{Type*t;unsigned int i;if(a==H||a==nil)return;if((uintptr)a%8||(uintptr)a>(uintptr)-1-sizeof(Array)||D2H(a)->ref<=0||D2H(a)->t!=&Tarray)error(exBounds);t=a->t;if(t==nil||t==H||t->ref<=0||t->size!=(int)width||t->np<0||t->np>(t->size+63)/64)error(exBounds);if(mapped){if(t->np!=1||t->map[0]!=(mapped==1?0xc0:mapped))error(exBounds);return;}for(i=0;i<(unsigned int)t->np;i++)if(t->map[i])error(exBounds);}
 /* Read the owner from its proved frame or module-data root before decoding. */
 static Array*
 native64rawarrayowner(VmFetch*f,unsigned int mode,long offset)

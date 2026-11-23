@@ -837,8 +837,8 @@ comparison, and remove the unproved-copy precheck; each must fail its predicate.
 Image regressions retain 3168 scenarios and their three active controls. Their
 checked IR is identical after routing ordinary accesses through the common path.
 The old nominal allocation boundary now accepts arbitrary reference elements;
-Word arrays are covered below; big/real and inline mixed-record array allocation
-remains outside this change.
+Word and supported mixed-record arrays are covered below; big/real array
+allocation remains outside these protocols.
 The Image stride control and Wmsrv trailing-root control target the current
 shared code after earlier refactors. CI runs the managed-array test in its
 existing CPU jobs and triggers for changes to its fixtures.
@@ -891,9 +891,55 @@ it does not execute Sh. Its classic-reader negative test explicitly selects
 arrays. Managed-array and full Winplace regressions retain 6912 scenarios and
 60 processes with active controls. CI includes the new fixture in both existing
 CPU jobs. The former managed-array boundary now admits global Word allocation;
-big/real and inline mixed-record arrays remain outside this change.
+big/real and unsupported mixed layouts remain outside these protocols.
 
 Local evidence is Linux amd64 with UBSan. The checked startup frontier remains
-309/385, with Sh at 72/134: the mixed parser stack and other shell dependencies
-are still pending. System Limbo files are untouched. This is not a full shell,
+309/385, with Sh at 72/134: parser-stack allocation is covered below, while
+other shell dependencies are still pending. System Limbo files are untouched. This is not a full shell,
 Android device/APK, or other OS/32-bit/CPU acceptance result.
+
+## Mixed record arrays and the yacc stack
+
+The owned FP/MP array protocol now classifies ADTs and tuples by their complete
+layout, without checking module, record or field names. It admits a prefix of
+one to three managed roots followed by one or two `int` fields, including
+padding introduced by a nested ADT. All six root kinds use the common layout
+path; declared referent and nested field types remain part of the compiler
+proof. Interleaved roots/Words, big/real fields, excess fields and general
+mixed-ADT call/result ABIs remain outside this bounded protocol.
+
+Compiler and runtime share a private layout catalog. Classic descriptors still
+use four-byte reference slots; native element Types use eight-byte references
+and exact GC maps. Allocation, indexing, Word/root field moves, mapped copies,
+slice copies and returned fields retain the existing owner-lifetime checks.
+Each mapped copy gets its own pooled Type. Copy validation compares active
+Word locations as well as GC roots: padding must not overwrite another field.
+Malformed class and mode high bits are rejected before module allocation.
+Neither the serialized Dis format nor system Limbo files changed.
+
+For the unchanged Sh declarations, `YYSTYPE` grows from 16 to 32 bytes and
+`YYS` from 20 to 40 bytes. Its state Word moves to offset 32. Copying `yyv`
+uses the 32-byte descriptor, preserving the separate state; copying the whole
+array uses the 40-byte element Type. The test extracts the original declarations
+and compiles the yacc-style growth expression without editing `sh.b` or `sh.y`.
+
+`python3 utils/tests/native64-mixed-arrays.py --limbo /path/to/limbo` executes
+6624 C/JIT scenarios across all nine admitted layouts. Generated natural C
+`sizeof`/`offsetof` witnesses independently check the native geometry. The
+fixture uses real allocation, index, mapped-copy, slice and recursive
+`arraycpy`/`newmp` code; it checks nil roots, signed bounds, three allocation
+faults, source exceptions, result guards, independent MP/array clones, exact
+reference counts and complete retirement. Its classic oracle detects 2664
+instruction-proof mutations. Another 2220 malformed instruction records fail
+before allocation; all 56/57 constructor allocation faults roll back in C/JIT
+modes. Three active controls damage the element GC map, padding check and
+nested-copy Type separately; each must fail its named predicate.
+
+The original `yyparse` passes its allocation at PC 5528 and reaches PC 5552,
+where the unsupported `yylex1` call is the next barrier. Sh remains 72/134
+checked bodies and the complete startup frontier remains 309/385. Word arrays
+retain 4920 cases, managed arrays 6912 cases and full Winplace 60 processes,
+with their active controls. CI runs the mixed-array regression in both existing
+CPU jobs. Local execution evidence is Linux amd64 with UBSan; full shell and
+Android APK/device startup, other OSes and other CPU/32-bit combinations remain
+unverified.

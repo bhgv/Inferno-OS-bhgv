@@ -1138,7 +1138,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     p->code[pc-p->first]=(Dis64Instruction){IFRAME,SRC(AIMM)|DST(AFP),0,frame->s.offset,40};at=pc+1;
     for(arg=c->functions[target]->ty->ids;arg!=nil;arg=arg->next){
         if(at>=end || (in=c->instructions[at])==nil)return typedfail(p,"multi-argument");
-        if(c->loads&&(in->op==IINDX||in->op==IINDW)&&typedrawclass(&in->s)){if(!typedrawindex(c,p,in,at,end)||++at>=end||!(in=c->instructions[at]))return typedfail(p,"local-raw-index");}
+        if(c->loads&&(in->op==IINDX||in->op==IINDW||in->op==IINDL)&&typedrawclass(&in->s)){if(!typedrawindex(c,p,in,at,end)||++at>=end||!(in=c->instructions[at]))return typedfail(p,"local-raw-index");}
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
@@ -1400,7 +1400,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         if(in==nil){typedfail(p,"multi-instruction-order");goto fail;}
         if(c->loads && (in->op==ISLICEA||in->op==ISLICELA) && typedrawclass(&in->d)){if(!typedrawslice(in,p,pc-p->first))goto fail;pc++;}
         else if(c->loads && (in->op==INEWA||in->op==INEWAZ) && typedrawclass(&in->d)){if(!typedrawnew(in,p,pc-p->first))goto fail;pc++;}
-        else if(c->loads && (in->op==IINDX||in->op==IINDW) && typedrawclass(&in->s)){if(!typedrawindex(c,p,in,pc,stop))goto fail;pc++;}
+        else if(c->loads && (in->op==IINDX||in->op==IINDW||in->op==IINDL) && typedrawclass(&in->s)){if(!typedrawindex(c,p,in,pc,stop))goto fail;pc++;}
         else if(c->loads && (typedrawborrow(p,&in->s,in->sm,pc)>=0 || typedrawborrow(p,&in->d,in->dm,pc)>=0)){if(!typedrawuse(p,in,pc,stop,-1))goto fail;pc++;}
         else if(c->loads&&p->resultaggregate&&in->dm==Afpind&&in->d.reg==16&&(in->op==IMOVP||in->op==IMOVW||in->op==IMOVM||in->op==IMOVMP)){if(!typedaggregatereturn(in,p,pc-p->first))goto fail;pc++;}
         else if(c->loads && in->op==IINDB){

@@ -39,7 +39,7 @@ def generate(limbo,w):
 
 def boundaries(limbo,w):
  for ty in ('big','real','Record'):
-  source='implement Closed;Record:adt{s:string;n:int;};Closed:module{run:fn(n:int);};saved:array of '+ty+';run(n:int){saved=array[n]of '+ty+';}'
+  source='implement Closed;Record:adt{n:int;s:string;};Closed:module{run:fn(n:int);};saved:array of '+ty+';run(n:int){saved=array[n]of '+ty+';}'
   _,rows=E['compile_source'](limbo,w,source,interface='',loads=True)
   assert not rows[0]['accepted'],rows
  for ty in ('ref Draw->Image','ref Draw->Pointer','chan of array of string'):
@@ -47,7 +47,7 @@ def boundaries(limbo,w):
   data,rows=E['compile_source'](limbo,w,source,interface='',loads=True)
   assert rows[0]['accepted'],rows
   CMD['verify_nilbranches'](data,rows[0],[],rows=rows)
- print('PASS managed array boundaries: big/real/inline-record allocation remains closed; nominal Image/Pointer and nested channels use common root indexing',flush=True)
+ print('PASS managed array boundaries: big/real/interleaved-record allocation remains closed; nominal Image/Pointer and nested channels use common root indexing',flush=True)
 
 def unit():
  src=BASE['unit']().split('\n#line 1 "native64-image-arrays.c"')[0]

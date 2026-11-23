@@ -1,18 +1,35 @@
-/* Closed raw arrays: Word, Winplace.Delta and Draw.Rect. */
+/* Layout-based mixed records share the owned array/borrow machinery. */
+static unsigned int
+typedmixedarray(Type*t,Dis64Layout*l)
+{
+ unsigned int r=0,w=0,i,c,gap=0;
+ if(!t||(t->kind!=Tadt&&t->kind!=Ttuple)||!dis64layouttype(t,l))return 0;
+ for(i=0;i<l->count&&typedmanagedkind(l->leaves[i].kind);i++)r++;
+ w=l->count-r;if(!r||r>3||!w||w>2||l->legacybytes!=4*l->count||l->alignment!=8)return 0;
+ for(i=0;i<r;i++)if(l->leaves[i].legacy!=4*i||l->leaves[i].native!=8*i||l->leaves[i].oldbytes!=4||l->leaves[i].bytes!=8)return 0;
+ if(w==2){if(l->leaves[r+1].native==8*r+8)gap=32;else if(l->leaves[r+1].native!=8*r+4)return 0;}
+ c=16|(r<<2)|(w-1)|gap;
+ for(i=0;i<w;i++)if(l->leaves[r+i].kind!=Tint||l->leaves[r+i].legacy!=4*(r+i)||l->leaves[r+i].native!=native64arraywordoffset(c,i)||l->leaves[r+i].oldbytes!=4||l->leaves[r+i].bytes!=4)return 0;
+ return l->bytes==native64arraywidth(c)?c:0;
+}
+/* Existing raw records keep their canonical layout classes. */
 static unsigned int
 typedrawarray(Type*t)
 {Dis64Layout l={0};Decl*d,*v;unsigned int i,c=0;if(!t||t->kind!=Tarray||!(t=t->tof))return 0;if(t->kind==Tint)return 1;
+ c=typedmixedarray(t,&l);dis64layoutfree(&l);if(c)return c;
  if(typedwordgeometry(t,&l)&&l.bytes==16)c=3;dis64layoutfree(&l);if(c)return c;d=t->decl;
  if(t->kind!=Tadt||!d||!d->sym||strcmp(d->sym->name,"Delta")||!((d->dot&&d->dot->sym&&!strcmp(d->dot->sym->name,"Winplace"))||(!d->dot&&impdecl&&impdecl->sym&&!strcmp(impdecl->sym->name,"Winplace"))))return 0;
  if(!dis64layouttype(t,&l)||l.bytes!=12||l.legacybytes!=12||l.count!=3||l.alignment!=4)goto done;
  for(i=0,v=t->ids;i<3;i++,v=v->next){static char*names[]={"d","wid","coord"};if(!v||v->store!=Dfield||!v->sym||strcmp(v->sym->name,names[i])||!v->ty||v->ty->kind!=Tint||v->offset!=4*i||l.leaves[i].kind!=Tint||l.leaves[i].native!=4*i||l.leaves[i].legacy!=4*i||l.leaves[i].bytes!=4||l.leaves[i].oldbytes!=4)goto done;}if(v)goto done;c=2;
  done:dis64layoutfree(&l);return c;}
 static unsigned int typedrawclass(Addr*a){return a->decl&&!a->offset&&a->reg==a->decl->offset?typedrawarray(a->native64type?a->native64type:a->decl->ty):0;}
-static unsigned int typedrawwidth(unsigned int c){return c==1?4:c==2?12:c==3?16:0;}
+static unsigned int typedrawwidth(unsigned int c){return native64arraywidth(c);}
 static int
  typedrawnew(Inst*in,Dis64TypedBody*p,unsigned int pc)
 {unsigned int c=typedrawclass(&in->d),sm,dm,i;long src,dst;int k;Decl*d=in->m.decl;
- if(!c||in->branch||in->mm!=Adesc||!d||!d->desc||d->desc->id!=in->m.offset||d->desc->size!=typedrawwidth(c)||!d->ty||d->ty!=(in->d.native64type?in->d.native64type:in->d.decl->ty)->tof)return typedfail(p,"raw-array-descriptor");for(i=0;i<(unsigned int)d->desc->nmap;i++)if(d->desc->map[i])return typedfail(p,"raw-array-descriptor");
+ if(!c||in->branch||in->mm!=Adesc||!d||!d->desc||d->desc->id!=in->m.offset||d->desc->size!=native64arraylegacy(c)||!d->ty||d->ty!=(in->d.native64type?in->d.native64type:in->d.decl->ty)->tof)return typedfail(p,"raw-array-descriptor");
+ if(native64arrayroots(c)){if(d->desc->nmap!=1||!d->desc->map||d->desc->map[0]!=native64arraymap(c))return typedfail(p,"mixed-array-descriptor");}
+ else for(i=0;i<(unsigned int)d->desc->nmap;i++)if(d->desc->map[i])return typedfail(p,"raw-array-descriptor");
  if(!typedoperand(in->sm,&in->s,Tint,1,0,p,&src,&sm,&k)||!typedoperand(in->dm,&in->d,Tarray,0,0,p,&dst,&dm,&k)||(dm!=AFP&&dm!=AMP))return typedfail(p,"raw-array-allocation");p->code[pc]=(Dis64Instruction){INEWAZ,SRC(sm)|AXIMM|DST(dm),c,src,dst};p->returns[pc]=79;return 1;}
 static int
  typedrawindex(TypedMulti*c,Dis64TypedBody*p,Inst*in,unsigned int pc,unsigned int stop)
@@ -20,22 +37,79 @@ static int
  if(!cl||in->branch||(in->sm!=Afp&&in->sm!=Amp)||in->mm!=Afp||!in->m.decl||in->m.offset||!typedoperand(in->sm,&in->s,Tarray,0,0,p,&src,&sm,&k)||!typedoperand(in->dm,&in->d,Tint,1,0,p,&dst,&dm,&k))return typedfail(p,"raw-array-index");
  for(j=pc+1;j<stop;j++){v=c->instructions[j];if(!v)break;if(((v->op==IINDX||v->op==IINDW||v->op==IINDB||v->op==IINDL)&&v->mm==Afp&&v->m.reg==in->m.reg)||(v->dm==Afp&&v->d.reg==in->m.reg))break;if((v->sm==Afpind&&v->s.reg==in->m.reg)||(v->dm==Afpind&&v->d.reg==in->m.reg))last=j;}
  if(last==pc)return typedfail(p,"raw-array-unused-index");for(i=0;i<2;i++)if(p->rawclass[i]&&p->rawreg[i]==in->m.reg)break;if(i==2)for(i=0;i<2;i++)if(!p->rawclass[i]||p->rawuntil[i]<pc)break;if(i==2)return typedfail(p,"raw-array-address-pressure");
- p->rawreg[i]=in->m.reg;p->rawclass[i]=cl;p->rawuntil[i]=last;p->code[pc-p->first]=(Dis64Instruction){IINDX,SRC(sm)|AXINF|DST(dm),(cl<<8)|(48+8*i),src,dst};p->returns[pc-p->first]=80;return 1;}
+ p->rawreg[i]=in->m.reg;p->rawclass[i]=cl;p->rawtype[i]=(in->s.native64type?in->s.native64type:in->s.decl->ty)->tof;p->rawuntil[i]=last;p->code[pc-p->first]=(Dis64Instruction){IINDX,SRC(sm)|AXINF|DST(dm),(cl<<8)|(48+8*i),src,dst};p->returns[pc-p->first]=80;return 1;}
 static int typedrawborrow(Dis64TypedBody*p,Addr*a,int mode,unsigned int pc){unsigned int i;if(mode!=Afpind)return -1;for(i=0;i<2;i++)if(p->rawclass[i]&&p->rawreg[i]==a->reg&&pc<=p->rawuntil[i])return i;return -1;}
 static int
  typedrawspan(Dis64TypedBody*p,Addr*a,int mode,unsigned int n,long*out,unsigned int*wire)
 {unsigned int i,m;long x;int k;Addr v;if(mode!=Afp&&mode!=Amp)return 0;for(i=0;i<n;i+=4){v=*a;v.reg+=i;v.offset=0;if(!typedoperand(mode,&v,Tint,0,0,p,&x,&m,&k)||k!=Tint||(i&&x!=*out+i))return 0;if(!i){*out=x;*wire=m;}}return 1;}
 static int
+typedarrayfield(unsigned int c,unsigned int old,unsigned int n,int root,unsigned int*off)
+{
+ unsigned int r=native64arrayroots(c),word;
+ if(old%4)return 0;
+ if(!r){if(root||old>native64arraywidth(c)||n>native64arraywidth(c)-old)return 0;*off=old;return 1;}
+ if(old%4)return 0;
+ if(root){if(n!=8||old/4>=r)return 0;*off=8*(old/4);return 1;}
+ if(n!=4||old/4<r||(word=old/4-r)>=native64arraywords(c))return 0;
+ *off=native64arraywordoffset(c,word);return 1;
+}
+static int
+typedmixedspan(Dis64TypedBody*p,Addr*a,int mode,Type*t,long*out,unsigned int*wire)
+{
+ Dis64Layout l={0};unsigned int base,c;int ok=0;
+ if((mode==Afp||mode==Amp)&&!a->offset&&(c=typedmixedarray(t,&l)))ok=dis64layoutbindresult(mode==Afp?&p->frame:&p->data,&l,a->reg,8,0,&base);
+ dis64layoutfree(&l);if(ok){*out=base;*wire=mode==Afp?AFP:AMP;}return ok;
+}
+/* Resolve a declared nested field, retaining referent/payload identity. */
+static Type*
+typedarrayleaf(Type*t,unsigned int off)
+{Decl*d;if(!t)return nil;if(t->kind!=Tadt&&t->kind!=Ttuple)return off?nil:t;for(d=t->ids;d;d=d->next)if(d->store==Dfield&&d->ty&&off>=(unsigned int)d->offset&&off<(unsigned int)(d->offset+d->ty->size))return typedarrayleaf(d->ty,off-d->offset);return nil;}
+static int
+typedarraysubtype(Type*owner,unsigned int off,Type*copy)
+{Decl*d;if(!owner)return 0;if(!off&&tequal(owner,copy))return 1;if(owner->kind!=Tadt&&owner->kind!=Ttuple)return 0;for(d=owner->ids;d;d=d->next)if(d->store==Dfield&&d->ty&&off>=(unsigned int)d->offset&&off<(unsigned int)(d->offset+d->ty->size))return typedarraysubtype(d->ty,off-d->offset,copy);return 0;}
+static int
+typedarraycopyoffset(unsigned int owner,unsigned int old,unsigned int copy,unsigned int*out)
+{unsigned int roots=native64arrayroots(owner);if(old%4||old/4>=roots)return 0;*out=8*(old/4);return native64arraycopyspan(owner,*out,copy);}
+static int
+typedmappeduse(Dis64TypedBody*p,Inst*in,unsigned int pc,long argument,int si,int di)
+{
+ unsigned int sm,dm,so=0,doff=0,copy=0,n;long src=0,dst=0;int k;Type*t=nil,*a,*b;Decl*d;Dis64Layout l={0};
+ if(argument>=0||in->branch)return typedfail(p,"mixed-array-use-shape");
+ if(in->op==IMOVMP){
+  d=in->m.decl;if(in->mm!=Adesc||!d||!d->desc||d->desc->id!=in->m.offset||!(copy=typedmixedarray(d->ty,&l))||d->desc->size!=l.legacybytes||d->desc->nmap!=1||!d->desc->map||d->desc->map[0]!=native64arraymap(copy)){dis64layoutfree(&l);return typedfail(p,"mixed-array-copy-descriptor");}
+  dis64layoutfree(&l);t=d->ty;n=native64arraywidth(copy);
+ }else{if(in->op!=IMOVP||in->mm!=Anone)return typedfail(p,"mixed-array-root-opcode");n=8;}
+ if(si>=0){
+  if(copy?(!typedarraysubtype(p->rawtype[si],in->s.offset,t)||!typedarraycopyoffset(p->rawclass[si],in->s.offset,copy,&so)):!typedarrayfield(p->rawclass[si],in->s.offset,n,1,&so))return typedfail(p,"mixed-array-source-field");
+  src=48+8*si;sm=AFP|AIND;
+ }else if(copy){if(!typedmixedspan(p,&in->s,in->sm,t,&src,&sm))return typedfail(p,"mixed-array-copy-source");}
+ else if(!typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&src,&sm,&k))return 0;
+ if(di>=0){
+  if(copy?(!typedarraysubtype(p->rawtype[di],in->d.offset,t)||!typedarraycopyoffset(p->rawclass[di],in->d.offset,copy,&doff)):!typedarrayfield(p->rawclass[di],in->d.offset,n,1,&doff))return typedfail(p,"mixed-array-destination-field");
+  dst=48+8*di;dm=AFP|AIND;
+ }else if(!copy&&si>=0&&in->dm==Afpind&&in->d.reg==16&&!in->d.offset){
+  a=typedarrayleaf(p->rawtype[si],in->s.offset);if(!a||!tequal(a,p->resulttype))return typedfail(p,"mixed-array-result-type");dst=32;dm=AFP|AIND;
+ }else if(copy){if(!typedmixedspan(p,&in->d,in->dm,t,&dst,&dm))return typedfail(p,"mixed-array-copy-destination");}
+ else if(!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&dst,&dm,&k))return 0;
+ if(!copy){
+  a=si>=0?typedarrayleaf(p->rawtype[si],in->s.offset):in->s.native64type?in->s.native64type:typedarrayleaf(in->s.decl?in->s.decl->ty:nil,in->s.decl?in->s.reg-in->s.decl->offset:0);
+  b=di>=0?typedarrayleaf(p->rawtype[di],in->d.offset):dm==(AFP|AIND)?p->resulttype:in->d.native64type?in->d.native64type:typedarrayleaf(in->d.decl?in->d.decl->ty:nil,in->d.decl?in->d.reg-in->d.decl->offset:0);
+  if(!a||!b||(!tequal(a,b)&&a->kind!=Tany))return typedfail(p,"mixed-array-root-type");
+ }
+ p->code[pc-p->first]=(Dis64Instruction){in->op,SRC(sm)|(copy?AXIMM:0)|DST(dm),(so<<24)|(doff<<16)|copy,src,dst};p->returns[pc-p->first]=65;return 1;
+}
+static int
  typedrawuse(Dis64TypedBody*p,Inst*in,unsigned int pc,unsigned int stop,long argument)
 {int si=typedrawborrow(p,&in->s,in->sm,pc),di=argument>=0?-1:typedrawborrow(p,&in->d,in->dm,pc),branch=0,binary=0,k;unsigned int n=4,sm,dm,mm=0,so=0,doff=0;long src=0,dst=0,mid=0;
  if(si<0&&di<0)return 0;
+ if(in->op==IMOVP||in->op==IMOVMP)return typedmappeduse(p,in,pc,argument,si,di);
  switch(in->op){case IMOVM:n=in->m.offset;if(in->mm!=Aimm||(n!=4&&n!=8&&n!=12&&n!=16))return typedfail(p,"raw-array-copy-width");mid=n;mm=AXIMM;break;
  case IHEADM:n=16;if(si>=0||di<0||in->mm!=Aimm||in->m.offset!=16||p->rawclass[di]!=3||!typedrectlisttype(&in->s))return typedfail(p,"raw-array-list-head");mid=16;mm=AXIMM;break;
  case IMOVW:if(in->mm!=Anone)return typedfail(p,"raw-array-word-copy");break;
  case IBEQW:case IBNEW:case IBLTW:case IBLEW:case IBGTW:case IBGEW:branch=1;binary=1;break;
  case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:binary=1;break;
  default:return typedfail(p,"raw-array-use-opcode");}
- if(si>=0){if(in->s.offset<0||in->s.offset%4||(unsigned long)in->s.offset>typedrawwidth(p->rawclass[si])||n>typedrawwidth(p->rawclass[si])-in->s.offset)return typedfail(p,"raw-array-source-field");src=48+8*si;so=in->s.offset;sm=AFP|AIND;}
+ if(si>=0){if(in->s.offset<0||!typedarrayfield(p->rawclass[si],in->s.offset,n,0,&so))return typedfail(p,"raw-array-source-field");src=48+8*si;sm=AFP|AIND;}
  else if(in->op==IHEADM){if(!typedoperand(in->sm,&in->s,Tlist,0,0,p,&src,&sm,&k))return 0;}
  else if(n>4){if(!typedrawspan(p,&in->s,in->sm,n,&src,&sm))return typedfail(p,"raw-array-source-span");}
  else if(!typedoperand(in->sm,&in->s,Tint,1,0,p,&src,&sm,&k))return 0;
@@ -44,7 +118,7 @@ static int
  else if(si>=0 && in->dm==Afpind && in->d.reg==16 && !in->d.offset && in->op==IMOVW){
   if(p->resultkind!=Tint || p->resultpair || p->resultaggregate)return typedfail(p,"raw-array-result-type");dst=32;dm=AFP|AIND;
  }
- else if(di>=0){if(in->d.offset<0||in->d.offset%4||(unsigned long)in->d.offset>typedrawwidth(p->rawclass[di])||n>typedrawwidth(p->rawclass[di])-in->d.offset)return typedfail(p,"raw-array-destination-field");dst=48+8*di;doff=in->d.offset;dm=AFP|AIND;}
+ else if(di>=0){if(in->d.offset<0||!typedarrayfield(p->rawclass[di],in->d.offset,n,0,&doff))return typedfail(p,"raw-array-destination-field");dst=48+8*di;dm=AFP|AIND;}
  else if(n>4){if(!typedrawspan(p,&in->d,in->dm,n,&dst,&dm))return typedfail(p,"raw-array-destination-span");}
  else if(!typedoperand(in->dm,&in->d,Tint,0,0,p,&dst,&dm,&k))return 0;
  if(!branch&&in->branch)return typedfail(p,"raw-array-hidden-branch");if(binary&&in->mm!=Anone){unsigned int m;if(!typedoperand(in->mm,&in->m,Tint,1,1,p,&mid,&m,&k))return 0;mm=m==AIMM?AXIMM:m==AFP?AXINF:AXINM;}else if(branch)return typedfail(p,"raw-array-branch-middle");

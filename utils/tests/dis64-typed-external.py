@@ -165,45 +165,76 @@ def rootpath_argument(original,code,at,maps,pending,oldoffset,new,r):
     assert code[at]==[41,1,maps['data'][o['s'][0]],0,temp,66]
     return at+1
 
+# Explicit ABI catalog, independently checked against classic descriptors and
+# generated C sizeof/offsetof by mixed-array execution fixtures.
+def array_layout(c):
+    mixed={20:(1,1,False),21:(1,2,False),24:(2,1,False),25:(2,2,False),28:(3,1,False),29:(3,2,False),53:(1,2,True),57:(2,2,True),61:(3,2,True)}
+    if c in (1,2,3):
+        n={1:4,2:12,3:16}[c];return n,n,[(i,i,4,False)for i in range(0,n,4)]
+    roots,words,gap=mixed[c]
+    fields=[(4*i,8*i,8,True)for i in range(roots)]+[(4*(roots+i),8*roots+4*i+(4 if i and gap else 0),4,False)for i in range(words)]
+    return (fields[-1][1]+11)//8*8,4*(roots+words),fields
+
 def rawarray_index(original,code,pc,maps,row):
     o=original[pc];op,mode,s,m,d,role=code[pc];sm=o['mode']>>3&7;dm=o['mode']&7
-    assert role==80 and op==OPCODES['IINDX']and o['op']in(OPCODES['IINDX'],OPCODES['IINDW'])and sm in(0,1) and o['mode']==(sm<<3)|128|dm and mode==o['mode']and o['m']is not None
-    assert m>>8 in(1,2,3)and m&255 in(48,56)and(o['op']!=OPCODES['IINDW']or m>>8==1)
+    assert role==80 and op==OPCODES['IINDX']and o['op']in(OPCODES['IINDX'],OPCODES['IINDW'],OPCODES['IINDL'])and sm in(0,1)and o['mode']==(sm<<3)|128|dm and mode==o['mode']and o['m']is not None
+    array_layout(m>>8);assert m&255 in(48,56)and(o['op']!=OPCODES['IINDW']or m>>8==1)and(o['op']!=OPCODES['IINDL']or array_layout(m>>8)[1]==8)
     assert s==maps['frame'if sm else'data'][o['s'][0]]and d==(o['d'][0]if dm==2 else maps['frame'if dm else'data'][o['d'][0]])
     assert next(l for l in row['frame'if sm else'data']['leaves']if l[0]==o['s'][0])[4]in(3,20)
 
-def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None):
+def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None,types=None):
     o=original[pc];op,mode,s,m,d,role=code[pc];sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192;so=do=0
     assert role==65 and op==o['op']and mode==o['mode']
     assert sm==5 or(dm==5 and new is None)
-    n=o['m']if op in(OPCODES['IMOVM'],OPCODES['IHEADM'])else 4
-    assert n in(4,8,12,16)
+    mapped=op==OPCODES['IMOVMP'];root=op==OPCODES['IMOVP']
+    copy=m&65535 if mapped else 0
+    n=array_layout(copy)[0]if mapped else 8 if root else o['m']if op in(OPCODES['IMOVM'],OPCODES['IHEADM'])else 4
+    if mapped:
+        assert types is not None and array_layout(copy)[2][0][3]
+        legacy=array_layout(copy)[1];mask=sum(128>>(i//4)for i,_,_,r in array_layout(copy)[2]if r)
+        assert types[o['m']]==(legacy,bytes([mask]))
     def borrow(addr):
         earlier=[j for j in range(pc)if code[j][5]==80 and original[j]['m']==addr[0]];assert earlier
-        at=earlier[-1];cl=code[at][3]>>8;assert addr[1]%4==0 and addr[1]+n<={1:4,2:12,3:16}[cl]
-        return code[at][3]&255
-    if sm==5:assert s==borrow(o['s']);so=o['s'][1]
+        at=earlier[-1];cl=code[at][3]>>8;width,oldbytes,fields=array_layout(cl)
+        assert addr[1]%4==0 and addr[1]<oldbytes
+        off=next(new for old,new,size,r in fields if old==addr[1])
+        if mapped:
+            cf=array_layout(copy)[2]
+            assert off+n<=width
+            inside=[(new-off,size,r)for old,new,size,r in fields if off<=new<off+n]
+            assert inside==[(new,size,r)for old,new,size,r in cf]
+        else:
+            assert off+n<=width and any(old==addr[1]and r==root and (n==size or not r and cl in(1,2,3))for old,new,size,r in fields)
+        return code[at][3]&255,off
+    if sm==5:scratch,so=borrow(o['s']);assert s==scratch
     else:assert sm in(0,1,2)and s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
     if new is not None:
         assert pending is not None and dm==5 and o['d']==[pending,oldoffset]and d==new
-    elif dm==5 and o['d']==[16,0] and op==OPCODES['IMOVW'] and row['result']==[9,4]:assert d==32 and n==4
-    elif dm==5:assert d==borrow(o['d']);do=o['d'][1]
+    elif dm==5 and o['d']==[16,0]and op in(OPCODES['IMOVW'],OPCODES['IMOVP']):assert d==32 and row['result'][1]==n
+    elif dm==5:scratch,do=borrow(o['d']);assert d==scratch
     elif dm==2:assert op in BRANCHES and d==o['d'][0]-row['first']
     else:assert dm in(0,1)and d==maps['frame'if dm else'data'][o['d'][0]]
-    middle=0 if arm==0 else o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']]
+    middle=copy if mapped else 0 if arm==0 else o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']]
     assert m==(so<<24)|(do<<16)|(middle&65535)
-    if op==OPCODES['IHEADM']:assert sm in(0,1)and n==16
-    for addr,space,wire in((o['s'],'frame'if sm else'data',sm),(o['d'],'frame'if dm else'data',dm)):
+    for addr,space,wire,value in((o['s'],'frame'if sm else'data',sm,s),(o['d'],'frame'if dm else'data',dm,d)):
         if wire not in(0,1)or(op==OPCODES['IHEADM']and addr is o['s']):continue
-        for k in range(0,n,4):assert next(l for l in row[space]['leaves']if l[0]==addr[0]+k)[2:]==[4,4,9]
+        fields=array_layout(copy)[2]if mapped else [(0,0,n,root)]
+        for old,offset,size,ref in fields:
+            if not mapped and not ref:
+                for k in range(0,n,4):assert next(l for l in row[space]['leaves']if l[0]==addr[0]+k)[2:]==[4,4,9]
+                break
+            leaf=next(l for l in row[space]['leaves']if l[0]==addr[0]+old)
+            assert leaf[1:4]==[value+offset,4,size]and(leaf[4]in ROOTS or wire==0 and addr is o['s']and leaf[4]==20 if ref else leaf[4]==9)
 
 def rawarray_operation(o,c,maps,types,row):
     op,mode,s,m,d,role=c;sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192
     assert role==79 and dm in(0,1) and mode==o['mode']and d==maps['frame'if dm else'data'][o['d'][0]]
     if o['op']in(OPCODES['INEWA'],OPCODES['INEWAZ']):
-        assert op==OPCODES['INEWAZ']and arm==64 and m in(1,2,3)and types[o['m']][0]=={1:4,2:12,3:16}[m]and not any(types[o['m']][1])
+        width,legacy,fields=array_layout(m);mask=sum(128>>(old//4)for old,new,size,ref in fields if ref)
+        assert op==OPCODES['INEWAZ']and arm==64 and types[o['m']][0]==legacy
+        assert list(types[o['m']][1])==([mask]if mask else list(types[o['m']][1]))and(mask or not any(types[o['m']][1]))
     else:
-        assert op==o['op']and op in(OPCODES['ISLICEA'],OPCODES['ISLICELA'])and m>>24 in(1,2,3)
+        array_layout(m>>24);assert op==o['op']and op in(OPCODES['ISLICEA'],OPCODES['ISLICELA'])
         mid=o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']];assert m==((m>>24)<<24)|(mid&65535)
     assert sm in(0,1,2)and s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
 
@@ -244,7 +275,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 rawarray_index(original,r['code'],at,maps,r);at+=1;o=original[at]
             if loads and r['code'][at][5]==65:
                 assert arg[1]in(1,9)and arg[3]==(original[at]['m']if original[at]['op']==OPCODES['IMOVM']else 4)
-                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);rawarray_use(original,r['code'],at,maps,r,pending,oldoffset,arg[0]);at+=1;continue
+                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);rawarray_use(original,r['code'],at,maps,r,pending,oldoffset,arg[0],types=types);at+=1;continue
             if loads and arg[1:]==[1,12,12]and o['op']==45:
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0])
                 for k in range(3):
@@ -883,7 +914,7 @@ def verify(data,r,imports,loads=False,rows=None):
         o=original[pc]
         if returned==80:rawarray_index(original,r['code'],pc,maps,r);continue
         if returned==79:rawarray_operation(o,r['code'][pc],maps,types,r);continue
-        if returned==65:rawarray_use(original,r['code'],pc,maps,r);continue
+        if returned==65:rawarray_use(original,r['code'],pc,maps,r,types=types);continue
         if returned==77 and r.get('result_pair'):
             assert loads and op==o['op']==OPCODES['IMOVMP'] and mode==o['mode']==77
             assert o['d']==[16,0] and d==32 and m==(48<<16)|(16<<8)
