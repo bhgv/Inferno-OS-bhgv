@@ -89,11 +89,11 @@ native64typedrecordnew(const Native64TypedStep *s, unsigned int fp, unsigned int
 
 static int
 native64recordcopyoperand(unsigned int mode, long value, unsigned int bytes,
-                         unsigned int fp, unsigned int mp)
+                         unsigned int fp, unsigned int mp, int mapped)
 {
  unsigned int limit=mode==AFP?fp:mp;
- if(mode&AIND)return native64recordoperand(mode,value,8,1,fp,mp,0);
- return native64typedrootoperand(mode,value,fp,mp)&&
+ if(mode&AIND)return native64recordoperand(mode,value,mapped?8:4,mapped,fp,mp,0);
+ return (mode==AFP||mode==AMP)&&(mapped?native64typedrootoperand(mode,value,fp,mp):native64typedwordoperand(mode,value,fp,mp))&&
   (unsigned long)value<=limit&&bytes<=limit-value;
 }
 
@@ -101,13 +101,14 @@ static int
 native64typedrecordcopy(const Native64TypedStep *s, unsigned int fp, unsigned int mp)
 {
  unsigned int sm=USRC(s->mode),dm=UDST(s->mode),bytes;
- if(s->returned!=Native64TypedRecordCopy||s->op!=IMOVMP||
+ int mapped=s->op==IMOVMP;
+ if(s->returned!=Native64TypedRecordCopy||(!mapped&&s->op!=IMOVM)||
     s->mode!=(SRC(sm)|AXIMM|DST(dm))||
-    !native64recorddescriptor(s->m)||!native64recordmask(s->m))
+    !native64recorddescriptor(s->m)||!!native64recordmask(s->m)!=mapped||(!mapped&&!((sm|dm)&AIND)))
   return 0;
  bytes=native64recordbytes(s->m);
- return native64recordcopyoperand(sm,s->s,bytes,fp,mp)&&
-  native64recordcopyoperand(dm,s->d,bytes,fp,mp);
+ return native64recordcopyoperand(sm,s->s,bytes,fp,mp,mapped)&&
+  native64recordcopyoperand(dm,s->d,bytes,fp,mp,mapped);
 }
 
 static int

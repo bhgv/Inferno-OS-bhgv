@@ -773,6 +773,32 @@ fresh_arguments(int jit, int quantum)
 }
 
 static void
+record_mask_copy(int jit, int quantum)
+{
+ uchar roots[]={0x78};
+ Type *t=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));
+ Store *r=H2D(Store*,heapz(t));
+ Sh_Redir *redir;
+ freetype(t);
+ t=dtype(freeheap,sizeof(Sh_Node),roots,1);
+ r->node=H2D(Sh_Node*,heapz(t));freetype(t);
+ run_case(full_fn_mask_copy,r,jit,quantum,marker,exNilref);
+ t=dtype(freeheap,8,nil,0);
+ r->node->redir=H2D(Sh_Redir*,heapz(t));freetype(t);
+ run_case(full_fn_mask_copy,r,jit,quantum,marker,exBounds);
+ destroy(r->node->redir);
+ t=dtype(freeheap,sizeof(Sh_Redir),nil,0);
+ r->node->redir=redir=H2D(Sh_Redir*,heapz(t));freetype(t);
+ redir->rtype=524288;redir->fd1=13;redir->fd2=-3;
+ run_case(full_fn_mask_copy,r,jit,quantum,-1,"");
+ redir->rtype=2;
+ run_case(full_fn_mask_copy,r,jit,quantum,6,"");
+ check(redir->fd1==13&&redir->fd2==-3,"Word copy is independent");
+ destroy(r);
+ check(!live&&!nlinkpins,"record mask and copy owners retired");
+}
+
+static void
 environment_calls(int jit, int quantum)
 {
  typedef struct VarFixture VarFixture;
@@ -971,11 +997,23 @@ metadata(void)
             a->returned==Native64TypedRecordResult||a->returned==Native64TypedRecordPair){
     memmove(code,base->code,base->count*sizeof(*code));
     if(a->returned==Native64TypedRecordNew)code[j].m|=0x40000000UL;
-    else if(a->returned==Native64TypedRecordCopy)code[j].m&=~0xffffffUL;
+    else if(a->returned==Native64TypedRecordCopy){
+     if(a->op==IMOVM)code[j].m|=1;
+     else code[j].m&=~0xffffffUL;
+    }
     else code[j].s++;
     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
           !owner.module&&allocations==before,"malformed record construction or result refused before allocation");
     total++;
+   }else if(a->returned==Native64TypedRecordMask){
+    for(k=0;k<2;k++){
+     memmove(code,base->code,base->count*sizeof(*code));
+     if(k==0)code[j].d+=4;
+     else code[0]=(Native64TypedStep){IJMP,SRC(AXXX)|DST(AIMM),0,0,j,0};
+     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
+           !owner.module&&allocations==before,"mask consumer requires its field read");
+     total++;
+    }
    }else if(a->returned==Native64TypedWordChoice&&a->op>=IBEQW&&a->op<=IBGEW){
     check(j+3<base->count,"four instructions materialize a Boolean argument");
     for(k=0;k<5;k++){
@@ -1048,6 +1086,7 @@ main(void)
   lexer_construction(j,quanta[q]);
   record_calls(j,quanta[q]);
   fresh_arguments(j,quanta[q]);
+  record_mask_copy(j,quanta[q]);
   environment_calls(j,quanta[q]);
   word_choices(j,quanta[q]);
   array_fields(j,quanta[q]);
@@ -1058,6 +1097,7 @@ main(void)
  puts("PASS record call setup and root-pair arrays: 42 interpreter/JIT cases with nil and wrong-Type controls");
  puts("PASS fresh generic record arguments: 42 interpreter/JIT cases with Redirlist, scalar and root fields, and allocation failures");
  puts("PASS paired list tails: 12 interpreter/JIT cases with distinct tails and a nil fault");
+ puts("PASS record mask and raw copy: 24 interpreter/JIT cases with nil and short owners");
  puts("PASS Sh environment setup: 42 interpreter/JIT cases including allocation faults and list head field arguments");
  puts("PASS Boolean call arguments: 30 interpreter/JIT cases with six comparisons and imported fopen mode");
  return 0;

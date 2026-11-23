@@ -42,6 +42,12 @@ native64recordobjectcheck(VmFetch *f, Inst *in, unsigned int bytes, unsigned int
  int copy=in->op==IMOVMP;
  unsigned int id=copy?in->reg:in->s.imm,sm=USRC(in->add),dm=UDST(in->add);
  Type *t;
+ if(in->op==IMOVM){
+  if(in->reg!=bytes||mask)error(exBounds);
+  if(sm&AIND)native64recordspan(f,sm,&in->s,bytes,0);
+  if(dm&AIND)native64recordspan(f,dm,&in->d,bytes,0);
+  return;
+ }
  if(id>=(unsigned int)f->module->ntype||f->module->type==nil||f->module->type==H||
     (t=f->module->type[id])==nil||t==H||t->ref<=0||t->size!=(int)bytes||t->np!=(int)((bytes+63)/64))
   error(exBounds);

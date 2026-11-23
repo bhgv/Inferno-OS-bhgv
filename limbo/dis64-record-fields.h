@@ -134,7 +134,7 @@ typedrecordcopyoperand(Dis64TypedBody *p, Addr *addr, int mode, Type *type,
    goto done;
   old=addr->reg;storage=mode==Afp?&p->frame:&p->data;*wire=mode==Afp?AFP:AMP;base=0;
  }
- if(!dis64layoutbindresult(storage,part,old,8,0,&field))
+ if(!dis64layoutbindresult(storage,part,old,part->alignment,0,&field))
   goto done;
  for(i=0;i<storage->count;i++)
   if(storage->leaves[i].legacy>=old+part->legacybytes&&storage->leaves[i].native<field+part->bytes)
@@ -146,6 +146,35 @@ typedrecordcopyoperand(Dis64TypedBody *p, Addr *addr, int mode, Type *type,
  ok=1;
 done:
  dis64layoutfree(&record);
+ return ok;
+}
+
+static int
+typedrecordwordcopy(Inst *in, Dis64TypedBody *p, unsigned int pc)
+{
+ Dis64Layout part={0},geometry={0};
+ int read=in->sm==Afpind||in->sm==Ampind, ok=0;
+ Addr *indirect=read?&in->s:&in->d;
+ Type *owner=typedfieldowner(indirect),*t=indirect->native64type;
+ unsigned int sm,dm,i;
+ long src,dst;
+
+ if((!t||t->kind!=Tadt)&&owner&&owner->kind==Tref&&!indirect->offset)t=owner->tof;
+ if(in->mm!=Aimm||in->branch||!t||t->kind!=Tadt||typedwordgeometry(t,&geometry)||!dis64layouttype(t,&part)||
+    part.legacybytes!=in->m.offset||!part.bytes||part.bytes>Native64RecordBytes||
+    part.alignment!=4||part.count*4!=part.bytes)goto done;
+ for(i=0;i<part.count;i++)if(part.leaves[i].kind!=Tint)goto done;
+ if(!typedrecordcopyoperand(p,&in->s,in->sm,t,&part,&src,&sm)||
+    !typedrecordcopyoperand(p,&in->d,in->dm,t,&part,&dst,&dm)||!((sm|dm)&AIND))goto done;
+ if((sm&AIND)&&!typedrecordregister(p,pc,0,typedfieldowner(&in->s)->tof))goto done;
+ if((dm&AIND)&&!typedrecordregister(p,pc,1,typedfieldowner(&in->d)->tof))goto done;
+ if(!typedrecordregister(p,pc,2,t))goto done;
+ p->code[pc]=(Dis64Instruction){IMOVM,SRC(sm)|AXIMM|DST(dm),part.bytes/4L<<Native64RecordMapBits,src,dst};
+ p->returns[pc]=Native64TypedRecordCopy;
+ ok=1;
+done:
+ dis64layoutfree(&part);
+ dis64layoutfree(&geometry);
  return ok;
 }
 

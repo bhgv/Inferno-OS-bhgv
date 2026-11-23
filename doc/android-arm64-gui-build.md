@@ -1182,3 +1182,15 @@ reserved legacy temporary. The original `concat` is checked through both
 list tails in its pair assignment. Sh reaches 100 of 134 checked bodies,
 and the startup set reaches 337 of 385. Classic Dis remains byte-identical
 for all 16 modules.
+
+## Record masks and Word copies
+
+A checked bitwise AND can load a Word from a record and then apply a large
+literal in place. The literal uses the ordinary Dis source operand. The
+second instruction requires the preceding field read, and control-flow
+validation protects that entry. Word-only declared record spans use ordinary
+`MOVM` with exact source and destination layouts. The VM verifies the heap
+span before decoding its address.
+
+`pipecmd` passes the `OAPPEND` mask, copies `Redir`, and proceeds through
+`sys->pipe` to the mapped channel allocation for `(int, ref Expropagate)`.

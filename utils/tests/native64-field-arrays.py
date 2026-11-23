@@ -18,7 +18,7 @@ LEXER_EXPORTS = ('read', 'scan', 'token', 'parse')
 ARRAY_EXPORTS = ('arrays', 'report', 'buildstring', 'buildfile', 'parse_result',
                  'fieldpath', 'rootarrays', 'listarg', 'lenarg', 'setlocal_probe', 'status_probe',
                  'comparisons', 'fopen_choice', 'envhead', 'redir_probe', 'record_probe', 'record_list_probe',
-                 'tail_pair')
+                 'tail_pair', 'mask_copy')
 
 
 def source():
@@ -189,6 +189,14 @@ tail_pair(r:ref Store):int {
     (left, right) = (tl right, tl left);
     return 10 * len left + len right;
 }
+mask_copy(r:ref Store):int {
+    node := r.node;
+    redir := node.redir;
+    if (redir.rtype & 524288) return -1;
+    copy := *redir;
+    copy.fd1 = 7;
+    return copy.rtype + copy.fd1 + copy.fd2;
+}
 '''
     aliases = 'Context, Listnode, Var: import Sh;'
     return interface, 'implement Lexer;' + '\n'.join((interface, aliases, constants, tables, debug, stack, blank, wrappers, methods, environment))
@@ -217,7 +225,7 @@ def generate(limbo, work):
                 frames[(name.replace('Iobuf_', 'Iobuf.'), int(sig[1], 16))] = (
                     int(size), [int(v, 0) for v in mapping[1].split(',') if v])
 
-    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (52, 4, 3, '~0U'),
+    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (53, 4, 3, '~0U'),
                          import_frames=frames, export_signatures=signatures,
                          source_label='unchanged Sh constructors, lexer and parser with generic ADT probes')
     code = {r['name']: r['code'] for r in rows}
@@ -242,6 +250,7 @@ def generate(limbo, work):
     assert sum(c[5] == 51 for c in code['record_probe']) == 2
     assert {c[5] for c in code['record_list_probe']} >= {38, 43, 51, 64}
     assert sum(c[0] == E['OPCODES']['ITAIL'] and c[5] == 213 for c in code['tail_pair']) == 3
+    assert {c[5] for c in code['mask_copy']} >= {39, 148}
     globals_ = dict((g[0], g[1]) for g in rows[0]['globals'])
     with (work / 'full.h').open('a') as stream:
         for name in ('nil', 'sys', 'bufio', 'str', 'saved', 'blanklex'):

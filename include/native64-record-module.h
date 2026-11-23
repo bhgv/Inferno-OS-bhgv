@@ -26,6 +26,7 @@ native64modulerecordstorage(const Native64ModuleSpec *s, const Native64ModuleFun
      bit=offset/8+i;
      if(!!(map[bit/8]&(128>>(bit%8)))!=!!(roots&(1U<<i)))return 0;
     }
+    if(!roots)for(i=0;i<bytes;i+=4)if(!native64rawarraymap(s,f,mode,offset+i,0))return 0;
    }
   }
  }
@@ -57,6 +58,14 @@ native64modulerecordfields(const Native64ModuleSpec*s,const Native64ModuleFuncti
  Native64TypedStep field;
  for(pc=0;pc<f->count;pc++){
   v=f->code+pc;
+  if(v->returned==Native64TypedRecordMask){
+   Inst probe;
+   if(!pc||v[-1].returned!=Native64TypedRecord||v[-1].op!=IMOVW||
+      v[-1].mode!=(SRC(USRC(v[-1].mode))|DST(AFP))||!(USRC(v[-1].mode)&AIND)||
+      v[-1].d!=v->d||!native64typedcode(&probe,1,v,1,f->bytes,s->databytes))return 0;
+   for(j=0;j<f->nsites;j++)if(f->sites[j].first<=pc&&pc<=f->sites[j].end)return 0;
+   continue;
+  }
   if(v->returned==Native64TypedRecordNew||v->returned==Native64TypedRecordCopy){
    if(!native64modulerecordstorage(s,f,pc))return 0;
    continue;

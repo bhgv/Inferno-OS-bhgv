@@ -349,6 +349,7 @@ native64typedarraycall(const Native64TypedStep*s,unsigned int fp,unsigned int mp
 static int
 native64typedprotectedentry(const Native64TypedStep*steps,unsigned int count,unsigned int target)
 {
+ if(target<count&&steps[target].returned==Native64TypedRecordMask)return 1;
  unsigned int back;if(target<count)for(back=1;back<=12&&back<=target;back++)if(steps[target-back].returned==157&&((steps[target-back].m>>8)&255)>=back-1)return 1;
  if(target<count&&target&&steps[target-1].returned==80&&(USRC(steps[target-1].mode)&AIND))return 1;
  return target<count && ((target && steps[target-1].returned==157 && ((steps[target-1].m>>8)&255)) || steps[target].returned==158 || (steps[target].returned==111&&(steps[target].op==IMOVP||native64typedbranch(steps[target].op))) || steps[target].returned==142 || (target&&steps[target].returned==213&&steps[target-1].returned==255&&steps[target-1].op==IINDL) || (steps[target].returned==255 && (steps[target].op==IMOVP || steps[target].op==IMOVMP)) ||
@@ -614,6 +615,12 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==136){if((s->op!=ISEND && s->op!=IRECV) || s->mode!=(SRC(sm)|DST(dm)) || s->m!=136 || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes) || !native64typedrootoperand(dm,s->d,fpbytes,mpbytes) || 16>((s->op==ISEND?sm:dm)==AFP?fpbytes:mpbytes)-(s->op==ISEND?s->s:s->d))return 0;continue;}
         if(s->returned==82||s->returned==83){if(!native64typedwindowgeometry(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==88||s->returned==89){if(!native64typedwindowword(s,fpbytes,mpbytes)||(native64typedbranch(s->op)&&(s->d<0||(unsigned long)s->d>=count)))return 0;continue;}
+        if(s->returned==Native64TypedRecordMask){
+            if(s->op!=IANDW||s->mode!=(SRC(AIMM)|DST(AFP))||s->m||
+               !native64typedwordoperand(AIMM,s->s,fpbytes,mpbytes)||
+               !native64typedwordoperand(AFP,s->d,fpbytes,mpbytes))return 0;
+            continue;
+        }
         if(s->returned==Native64TypedRecord){if(!native64typedrecord(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==Native64TypedRecordNew){if(!native64typedrecordnew(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==Native64TypedRecordCopy){if(!native64typedrecordcopy(s,fpbytes,mpbytes))return 0;continue;}
@@ -792,9 +799,10 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==65){native64rawusecode(p,s);if(native64typedbranch(s->op))p->d.ins=out+s->d;continue;}
         if(s->returned==Native64TypedRecordArray){native64rawrecordcode(p,s);continue;}
         if(s->returned==77){p->reg=(s->op==IMOVM)?(s->m>>8)&255:0;p->d.i.f=32;p->d.i.s=s->m&255;continue;}
+        if(s->returned==Native64TypedRecordMask){p->d.ind=s->d;continue;}
         if(s->returned==Native64TypedRecord||s->returned==Native64TypedRecordPair){native64recordcode(p,s,out);continue;}
         if(s->returned==Native64TypedRecordNew||s->returned==Native64TypedRecordCopy){
-            native64recordcode(p,s,out);p->reg=0;continue;
+            native64recordcode(p,s,out);p->reg=s->op==IMOVM?native64recordbytes(s->m):0;continue;
         }
         if(s->returned==73){p->reg=0;p->s.i.f=s->s;p->s.i.s=(s->m>>8)&4095;p->d.i.f=s->d;p->d.i.s=s->m&255;continue;}
         if(s->returned==68){p->reg=s->m;p->d.i.f=s->d;p->d.i.s=0;continue;}

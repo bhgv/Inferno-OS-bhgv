@@ -259,7 +259,8 @@ def record_storage(o, c, pc, maps, row, types):
     witnesses={side:tree for at,side,tree in row['record_owners'] if at==pc}
     tree=row['record_types'][witnesses[2]]
     bytes_,_,leaves=record_geometry(tree)
-    oldbytes,legacy_map=types[o['s'][0] if role==38 else o['m']]
+    raw=op==OPCODES['IMOVM']
+    oldbytes,legacy_map=(o['m'],b'') if raw else types[o['s'][0] if role==38 else o['m']]
     assert tree[1]==oldbytes and 0<bytes_<=192 and bytes_%4==0
     legacy_roots={a//4 for a,_,k,_,_ in leaves if k in ROOTS}
     assert legacy_roots=={8*i+j for i,byte in enumerate(legacy_map) for j in range(8) if byte&(128>>j)}
@@ -272,7 +273,8 @@ def record_storage(o, c, pc, maps, row, types):
             assert dm in(0,1) and d==maps['frame' if dm else 'data'][o['d'][0]]
             bit=d//8;assert row['frame' if dm else 'data']['map'][bit//8]&(128>>(bit%8))
         return
-    assert op==o['op']==OPCODES['IMOVMP'] and bytes_%8==0 and mask
+    assert op==o['op'] and (raw and not mask and all(k==9 for _,_,k,_,_ in leaves) or
+                            op==OPCODES['IMOVMP'] and bytes_%8==0 and mask)
     for side,wire,value,old in ((0,sm,s,o['s']),(1,dm,d,o['d'])):
         space='frame' if wire in(1,5) else 'data'
         if wire in(4,5):
@@ -1194,7 +1196,19 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
-        if returned==72:record_field(o,r['code'][pc],pc,maps,r);continue
+        if returned==72:
+            if pc+1<len(original) and r['code'][pc+1][5]==148:
+                use=original[pc+1]
+                assert o==dict(op=45,mode=17,m=None,s=o['s'],d=[24])
+                assert use['op']==OPCODES['IANDW'] and use['m']==24 and use['mode']==mode|128
+                read=dict(use,op=45,mode=mode,m=None)
+                record_field(read,r['code'][pc],pc,maps,r)
+                assert r['code'][pc+1]==[use['op'],17,o['s'][0],0,d,148]
+                inside.add(pc+1)
+            else:record_field(o,r['code'][pc],pc,maps,r)
+            continue
+        if returned==148:
+            assert pc in inside;continue
         if returned in(38,39):record_storage(o,r['code'][pc],pc,maps,r,types);continue
         if returned==42:
             assert r.get('result_pair') or r.get('result_aggregate')==48

@@ -23,11 +23,37 @@ static int typedrecordresult(Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned i
 static int typedrecordpath(Inst*,Dis64TypedBody*,unsigned int);
 static int typedrecordnew(Inst*,Dis64TypedBody*,unsigned int);
 static int typedrecordinst(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
+static int typedrecordwordcopy(Inst*,Dis64TypedBody*,unsigned int);
 static int typedlibraryslicearg(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
 static int typedlibrarymodule(Inst*,Dis64TypedBody*,long*,unsigned int*,int*);
 static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int,int);
 static int typedrecordargument(Inst*,Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int,unsigned int,int);
 static Type *typedloadvaluetype(Addr*);
+
+/* Canonical Dis spills large middle literals into RTemp. Read the record
+ * field into the final Word cell and apply the literal as the source. */
+static int
+typedrecordmask(Inst *literal, Inst *use, Dis64TypedBody *p)
+{
+ Type *owner;
+ long source,destination;
+ unsigned int pc=literal->pc-p->first,sm,dm;
+ int kind;
+ if(!use||literal->sm!=Aimm||literal->mm!=Anone||literal->branch||
+    literal->s.offset< -536870912L||literal->s.offset>536870911L||
+    (literal->s.offset>=-32768&&literal->s.offset<=32767)||
+    use->op!=IANDW||use->mm!=Afp||use->m.reg!=RTemp||use->m.decl||use->m.offset!=literal->s.offset||
+    use->dm!=Afp||(use->sm!=Afpind&&use->sm!=Ampind)||use->branch)return 0;
+ owner=typedfieldowner(&use->s);
+ if(!owner||!typedrecordlayoutoperand(use->sm,&use->s,0,p,&source,&sm)||
+    !typedoperand(Afp,&use->d,Tint,0,0,p,&destination,&dm,&kind)||
+    !typedrecordregister(p,pc,0,owner->tof))return 0;
+ p->code[pc]=(Dis64Instruction){IMOVW,SRC(sm)|DST(dm),0,source,destination};
+ p->returns[pc]=Native64TypedRecord;
+ p->code[pc+1]=(Dis64Instruction){IANDW,SRC(AIMM)|DST(AFP),0,literal->s.offset,p->code[pc].destination};
+ p->returns[pc+1]=Native64TypedRecordMask;
+ return 1;
+}
 
 static int
 typedlistargument(Inst *in, Inst *frame, Decl *arg, Dis64TypedBody *p,
@@ -1672,6 +1698,9 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             for(i=1;i<=1+gap;i++)inside[pc+i-p->first]=1;pc+=2+gap;
         }else if(c->loads&&in->op==IMOVP&&(in->sm==Afpind||in->sm==Ampind)&&(in->dm==Afpind||in->dm==Ampind)&&typedrootfieldcopy(in,p,pc-p->first)){pc++;
         }else if(c->loads && (in->op==INEW||in->op==INEWZ||in->op==IMOVMP)&&typedwindowconstruct(in,p,pc-p->first)){pc++;
+        }else if(c->loads&&in->op==IMOVW&&in->dm==Afp&&in->d.reg==RTemp&&in->d.offset==0&&
+                 pc+1<stop&&typedrecordmask(in,c->instructions[pc+1],p)){
+            inside[pc+1-p->first]=1;pc+=2;
         }else if(c->loads && typedlibraryinst(in,p,pc-p->first,stop)){pc++;
         }else if(c->loads && typedrecordinst(in,p,pc-p->first,stop)){pc++;
         }else if(c->loads && in->op==ISLICELA){if(!(typedrootarrayelement(&in->s)?typedrootarraycopy(in,p,pc-p->first):typedlibrarybytecopy(in,p,pc-p->first)))goto fail;pc++;
@@ -1691,7 +1720,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->loads && in->op==IMOVM && (in->sm==Afpind||in->sm==Ampind) && (in->dm==Afpind||in->dm==Ampind) && typedwmref(typedfieldowner(&in->s),"Draw","Pointer")){
             if(!typedpointercopy(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && in->op==IMOVM){
-            if(!typedlocalgeometry(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+            if(!typedrecordwordcopy(in,p,pc-p->first)&&!typedlocalgeometry(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && p->resultpair && in->op==IMOVMP && in->dm==Afpind && in->d.reg==16){
             Dis64Layout l={0};Decl*d=in->m.decl;unsigned int base=0;int valid;
             valid=in->sm==Afp && in->mm==Adesc && !in->d.offset && !in->branch && d && d->desc && d->desc->id==in->m.offset && tequal(d->ty,p->resulttype) && dis64layouttype(p->resulttype,&l) && d->desc->size==l.legacybytes && d->desc->nmap==1 && d->desc->map && d->desc->map[0]==(p->resultpair<3?0xc0:(128>>(l.leaves[1].legacy/4))) && dis64layoutbindresult(&p->frame,&l,in->s.reg,8,0,&base);
