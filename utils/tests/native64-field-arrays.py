@@ -18,7 +18,8 @@ LEXER_EXPORTS = ('read', 'scan', 'token', 'parse')
 ARRAY_EXPORTS = ('arrays', 'report', 'buildstring', 'buildfile', 'parse_result',
                  'fieldpath', 'rootarrays', 'listarg', 'lenarg', 'setlocal_probe', 'status_probe',
                  'comparisons', 'fopen_choice', 'envhead', 'redir_probe', 'record_probe', 'record_list_probe',
-                 'tail_pair', 'mask_copy', 'direct_lenarg', 'envbucket', 'clone_probe', 'redirection_list', 'fdformat')
+                 'tail_pair', 'mask_copy', 'direct_lenarg', 'envbucket', 'clone_probe', 'redirection_list', 'fdformat',
+                 'dispatch_probe', 'path_probe', 'singleton_probe', 'nil_payload_probe')
 
 
 def source():
@@ -236,6 +237,38 @@ fdformat(r:ref Store):int {
     text := sys->sprint("fd=%d", ctxt.waitfd.fd);
     return len text;
 }
+dispatch_probe(r:ref Store):int {
+    case r.text {
+    "a" => return 11;
+    "cat" to "f" => return 22;
+    "é" => return 33;
+    * => return 44;
+    }
+}
+path_result(fd:ref Sys->FD):(int, string) {
+    if (fd == nil) return (0, nil);
+    return (-37, sys->fd2path(fd));
+}
+path_probe(r:ref Store):int {
+    (status, path) := path_result(r.fd);
+    return status + len path;
+}
+singleton_probe(r:ref Store):int {
+    entries := r.variables;
+    return singleton_count(3, hd entries :: nil);
+}
+singleton_count(n:int, entries:list of ref Sh->Var):int {
+    entry := hd entries;
+    text := entry.name;
+    return n + len text + len entries;
+}
+nil_payload_probe(r:ref Store):int {
+    fd := r.fd;
+    mode := r.n;
+    entries: list of (ref Sys->FD, string, (int, int, int));
+    entries = (fd, nil, (mode, 19, 7)) :: nil;
+    return len entries;
+}
 '''
     aliases = 'Context, Listnode, Var: import Sh;'
     return interface, 'implement Lexer;' + '\n'.join((interface, aliases, constants, tables, debug, stack, blank, wrappers, methods, environment))
@@ -264,7 +297,7 @@ def generate(limbo, work):
                 frames[(name.replace('Iobuf_', 'Iobuf.'), int(sig[1], 16))] = (
                     int(size), [int(v, 0) for v in mapping[1].split(',') if v])
 
-    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (60, 4, 4, '~0U'),
+    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (66, 4, 4, '~0U'),
                          import_frames=frames, export_signatures=signatures,
                          source_label='unchanged Sh constructors, lexer and parser with generic ADT probes')
     code = {r['name']: r['code'] for r in rows}
@@ -299,6 +332,10 @@ def generate(limbo, work):
     assert any(c[0] == E['OPCODES']['IHEADMP'] and c[3] == expected for c in code['redirection_head'])
     assert any(c[0] == E['OPCODES']['ICONSW'] and c[5] == 72 for c in code['redirection_head'])
     assert any(c[5] == 34 and c[0] == E['OPCODES']['ICVTWL'] for c in code['fdformat'])
+    assert any(c[0] == E['OPCODES']['ICASEC'] and c[5] == 72 for c in code['dispatch_probe'])
+    assert any(c[0] == E['OPCODES']['IMCALL'] and c[5] == 78 for c in code['path_result'])
+    assert sum(c[5] == 178 for c in code['singleton_probe']) == 5
+    assert any(c[0] == E['OPCODES']['ICONSMP'] and c[3] == expected for c in code['nil_payload_probe'])
     globals_ = dict((g[0], g[1]) for g in rows[0]['globals'])
     with (work / 'full.h').open('a') as stream:
         for name in ('nil', 'sys', 'bufio', 'str', 'saved', 'blanklex'):

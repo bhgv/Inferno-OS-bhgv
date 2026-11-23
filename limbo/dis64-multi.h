@@ -1357,6 +1357,45 @@ typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, In
 }
 
 static int
+typedlocalheadlist(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, Inst *frame,
+                   Decl *arg, unsigned int end, unsigned int *at)
+{
+ unsigned int start=*at,pc=start-p->first,sm,dm,offset;
+ Inst *head,*init,*cons,*store,clear;
+ Type *list,*target;
+ long source,item,slot;
+ int actual;
+ if(end-start<6)return typedfail(p,"local-head-list-length");
+ head=c->instructions[start];init=c->instructions[start+1];
+ cons=c->instructions[start+2];store=c->instructions[start+3];
+ list=typedloadvaluetype(&head->s);target=typedloadvaluetype(&init->d);
+ if(!list||!target||!tequal(arg->ty,list)||!tequal(arg->ty,target)||
+    head->mm!=Anone||head->branch||head->dm!=Afp||head->d.offset||
+    !typedoperand(head->sm,&head->s,Tlist,0,0,p,&source,&sm,&actual)||actual!=Tlist||
+    !typedoperand(Afp,&head->d,TypedRoot,0,0,p,&item,&dm,&actual)||actual!=Tref||
+    !typedoperand(Afp,&init->d,Tlist,0,0,p,&slot,&dm,&actual)||actual!=Tlist||slot==item||
+    cons->op!=ICONSP||cons->sm!=Afp||cons->dm!=Afp||cons->mm!=Anone||cons->branch||
+    cons->s.decl!=head->d.decl||cons->s.reg!=head->d.reg||cons->s.offset||
+    cons->d.decl!=init->d.decl||cons->d.reg!=init->d.reg||cons->d.offset||
+    store->op!=IMOVP||store->sm!=Afp||store->mm!=Anone||store->branch||
+    store->s.decl!=init->d.decl||store->s.reg!=init->d.reg||store->s.offset||
+    store->dm!=Afpind||store->d.reg!=frame->d.reg||store->d.offset!=arg->offset||
+    !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||offset>65535)
+  return typedfail(p,"local-head-list-shape");
+ p->code[pc]=(Dis64Instruction){IHEADP,SRC(sm)|DST(AFP),0,source,item};
+ p->code[pc+2]=(Dis64Instruction){ICONSP,SRC(AFP)|DST(AFP),0,item,slot};
+ p->code[pc+3]=(Dis64Instruction){IMOVP,SRC(AFP)|DST(AFP|AIND),0,slot,offset};
+ clear=*store;*at=start+1;
+ if(!typedrootargclear(c,p,&clear,end,at)||*at!=start+2)return typedfail(p,"local-head-list-init");
+ clear.s=head->d;*at=start+4;
+ if(!typedrootargclear(c,p,&clear,end,at)||*at!=start+5||
+    !typedrootargclear(c,p,store,end,at)||*at!=start+6)return typedfail(p,"local-head-list-clear");
+ p->returns[pc]=p->returns[pc+1]=p->returns[pc+2]=p->returns[pc+4]=p->returns[pc+5]=Native64TypedHeadList;
+ p->returns[pc+3]=64;
+ return 1;
+}
+
+static int
 typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int depth,unsigned int *next,unsigned int *height)
 {
     Inst *frame=c->instructions[pc],*call,*in,*binding;
@@ -1406,6 +1445,10 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         }
         if(c->loads&&(in->op==IINDX||in->op==IINDW||in->op==IINDL)&&typedrawclass(&in->s)){if(!typedrawindex(c,p,in,at,end)||++at>=end||!(in=c->instructions[at]))return typedfail(p,"local-raw-index");}
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
+        if(c->loads&&!spawning&&kind==Tlist&&arg->ty->tof&&arg->ty->tof->kind==Tref&&in->op==IHEADP&&in->dm==Afp){
+            if(!typedlocalheadlist(c,p,child,frame,arg,end,&at))return 0;
+            continue;
+        }
         if(c->loads&&!spawning&&kind==Tint&&in->op>=IBEQW&&in->op<=IBGEW){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset)||
                !typedwordchoice(c,p,frame,end+1,&at,arg->offset,offset))return 0;

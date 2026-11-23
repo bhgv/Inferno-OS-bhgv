@@ -57,6 +57,14 @@ ctl_fd(void *fp)
 }
 
 static void
+ctl_fdpath(void *fp)
+{
+ F_Sys_fd2path *f=fp;
+ check(f->fd!=H&&f->fd!=nil&&f->fd->fd==73&&*f->ret==H,"fresh mixed-result String slot and FD argument");
+ *f->ret=c2string("/path",5);
+}
+
+static void
 ctl_getc(void *fp)
 {
  void *value,*result;
@@ -165,6 +173,7 @@ servicefn(const char *name))(void*)
  if(!strcmp(name,"fopen"))return ctl_fopen;
  if(!strcmp(name,"in"))return ctl_in;
  if(!strcmp(name,"fildes"))return ctl_fd;
+ if(!strcmp(name,"fd2path"))return ctl_fdpath;
  if(!strcmp(name,"fprint")||!strcmp(name,"sprint"))return Sys_programcall64;
  check(0,"known source import");
  return nil;
@@ -801,6 +810,7 @@ redirection_lists(int jit, int quantum)
  r->fd=H2D(Sys_FD*,heapz(t));
  freetype(t);
  run_case(full_fn_redirection_list,r,jit,quantum,128,"");
+ run_case(full_fn_nil_payload_probe,r,jit,quantum,1,"");
  check(D2H(r->fd)->ref==1&&D2H(r->text)->ref==1,"list construction and read preserve only the original owners");
  destroy(r);
 
@@ -819,6 +829,37 @@ redirection_lists(int jit, int quantum)
  run_case(full_fn_redirection_head,empty,jit,quantum,marker,exBounds);
  destroy(empty);
  check(!live&&!nlinkpins,"mapped list payloads, descriptors and modules fully retire");
+}
+
+static void
+command_dispatch(int jit, int quantum)
+{
+ const char *names[]={nil,"a","cat","e","f","g","é"};
+ WORD expected[]={44,11,22,22,22,44,33};
+ Type *t=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));
+ Store *r=H2D(Store*,heapz(t));
+ unsigned int i;
+ freetype(t);
+ for(i=0;i<nelem(names);i++){
+  r->text=names[i]?c2string((char*)names[i],strlen(names[i])):H;
+  run_case(full_fn_dispatch_probe,r,jit,quantum,expected[i],"");
+  if(r->text!=H)check(D2H(r->text)->ref==1,"case selector remains owned by its original record");
+  destroy(r->text);r->text=H;
+ }
+ run_case(full_fn_path_probe,r,jit,quantum,0,"");
+ t=dtype(freeheap,8,nil,0);
+ r->fd=H2D(Sys_FD*,heapz(t));
+ freetype(t);
+ r->fd->fd=73;
+ run_case(full_fn_path_probe,r,jit,quantum,-32,"");
+ check(D2H(r->fd)->ref==1,"tuple result binding neither overwrites the Word nor retains the FD");
+ destroy(r);
+ t=dtype(freeheap,8,nil,0);
+ r=H2D(Store*,heapz(t));
+ freetype(t);
+ run_case(full_fn_dispatch_probe,r,jit,quantum,marker,exBounds);
+ destroy(r);
+ check(!live&&!nlinkpins,"dispatch and partial result owners fully retire");
 }
 
 static void
@@ -907,9 +948,11 @@ environment_calls(int jit, int quantum)
  run_case(full_fn_setlocal_probe,r,jit,quantum,0,"");
  check(varallocs==2&&D2H(r->text)->ref==2,"updating an existing Var preserves its ownership");
  run_case(full_fn_envhead,r,jit,quantum,marker,exNilref);
+ run_case(full_fn_singleton_probe,r,jit,quantum,marker,exNilref);
  D2H(localbucket)->ref++;
  r->variables=localbucket;
  run_case(full_fn_envhead,r,jit,quantum,7,"");
+ run_case(full_fn_singleton_probe,r,jit,quantum,9,"");
  check(D2H(localbucket)->ref==2&&D2H(original)->ref==1&&D2H(r->text)->ref==2,
        "head field argument retires the temporary record and String owners");
  envfault=2;
@@ -1032,6 +1075,21 @@ metadata(void)
      if(k==3)code[0]=(Native64TypedStep){IJMP,SRC(AXXX)|DST(AIMM),0,0,j+1,0};
      check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
            !owner.module&&allocations==before,"malformed field pair rejected before allocation");
+     total++;
+    }
+   }else if(a->returned==Native64TypedHeadList&&a->op==IHEADP){
+    memmove(code,base->code,base->count*sizeof(*code));
+    code[j+4].d=code[j+5].d;
+    check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
+          !owner.module&&allocations==before,"singleton argument must retire the head and list owners separately");
+    total++;
+   }else if(a->returned==81&&base->resultcontract==16){
+    for(k=0;k<2;k++){
+     memmove(code,base->code,base->count*sizeof(*code));
+     if(k==0)code[j].m=0;
+     else code[j+1].returned=32;
+     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
+           !owner.module&&allocations==before,"partial result binding must prove its exact field and call owner");
      total++;
     }
    }else if(native64genericlist(a)){
@@ -1162,6 +1220,7 @@ main(void)
   record_calls(j,quanta[q]);
   fresh_arguments(j,quanta[q]);
   redirection_lists(j,quanta[q]);
+  command_dispatch(j,quanta[q]);
   record_mask_copy(j,quanta[q]);
   environment_calls(j,quanta[q]);
   word_choices(j,quanta[q]);
@@ -1177,8 +1236,10 @@ main(void)
  puts("PASS Sh environment setup: 42 interpreter/JIT cases including allocation faults and list head field arguments");
  puts("PASS local array lengths and environment buckets: 30 interpreter/JIT cases with nil, populated and out-of-bounds inputs");
  puts("PASS shallow Var copy during local calls: 12 interpreter/JIT cases with nil, independent Word fields and exact root ownership");
- puts("PASS mixed aggregate list construction and head: 30 interpreter/JIT cases with nil, retained roots, Words and descriptor controls");
+ puts("PASS mixed aggregate list construction and head: 36 interpreter/JIT cases with nil, retained roots, Words and descriptor controls");
  puts("PASS nested Word formatting: 12 interpreter/JIT cases with a nil owner, signed value and scratch retirement");
+ puts("PASS String field dispatch and imported mixed results: 60 interpreter/JIT cases");
+ puts("PASS pending singleton list arguments: 12 interpreter/JIT cases with nil and exact root retirement");
  puts("PASS Boolean call arguments: 30 interpreter/JIT cases with six comparisons and imported fopen mode");
  return 0;
 }

@@ -62,9 +62,11 @@ typedaggregatelistbind(Dis64Layout *storage, Dis64Layout *part, unsigned int old
  if(cons){
   for(first=0;first<storage->count;first++)if(storage->leaves[first].legacy==old)break;
   if(part->count>storage->count-first)return 0;
-  for(i=0;i<part->count;i++)
-   if(storage->leaves[first+i].kind==Tany&&typedmanagedkind(part->leaves[i].kind))
-    part->leaves[i].kind=Tany;
+  for(i=0;i<part->count;i++){
+   int slot=storage->leaves[first+i].kind, field=part->leaves[i].kind;
+   if((slot==Tany&&typedmanagedkind(field))||(field==Tany&&typedmanagedkind(slot)))
+    part->leaves[i].kind=slot;
+  }
  }
  return dis64layoutbindresult(storage,part,old,8,relocate,base);
 }
@@ -89,8 +91,9 @@ typedaggregatelistframe(TypedMulti *c, Decl *fn, Dis64TypedBody *p, unsigned int
   value=cons?&in->s:&in->d;
   if((cons?in->sm:in->dm)!=Afp||value->offset||value->reg<last)continue;
   p->badpc=pc;
-  ok=typedaggregatelistdescriptor(in,typedaggregatelistelement(cons?&in->d:&in->s,cons?in->dm:in->sm),&part,&shape)&&
-     typedaggregatelistbind(&p->frame,&part,value->reg,cons,1,&base);
+  ok=typedaggregatelistdescriptor(in,typedaggregatelistelement(cons?&in->d:&in->s,cons?in->dm:in->sm),&part,&shape);
+  if(!ok){dis64layoutfree(&part);return typedfail(p,"aggregate-list-frame-descriptor");}
+  ok=typedaggregatelistbind(&p->frame,&part,value->reg,cons,1,&base);
   dis64layoutfree(&part);
   if(!ok)return typedfail(p,"aggregate-list-frame");
  }

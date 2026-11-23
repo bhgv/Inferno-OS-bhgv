@@ -48,13 +48,13 @@ native64localbind(void)
         contract=24;
     }
     clientaddress=!!(contract&8192);if(clientaddress)contract&=~8192;retbias=!!(contract&4096);if(retbias)contract&=~4096;windowaddress=!!(contract&2048);if(windowaddress)contract&=~2048;arrayaddress=!!(contract&1024);if(arrayaddress)contract&=~1024;fieldaddress=!!(contract&512);if(fieldaddress)contract&=~512;altaddress=!!(contract&256);if(altaddress)contract&=~256;width=native64wmtuplewidth(contract)?native64wmtuplewidth(contract):native64geometryresultwidth(contract)?native64geometryresultwidth(contract):native64fileiowidth(contract)?native64fileiowidth(contract):contract==72?24:contract==88?88:contract==48?16:contract&15;reference=!native64wmtuplewidth(contract) && !native64geometryresultwidth(contract) && (contract==72 || !!(contract&16));
-    if(retbias&&(windowaddress||arrayaddress||fieldaddress||altaddress||contract!=96||instruction.add!=(SRC(AFP|AIND)|DST(AFP|AIND))||instruction.s.i.f!=32||instruction.s.i.s!=8))error(exBounds);
+    if(retbias&&(windowaddress||arrayaddress||fieldaddress||altaddress||(contract!=96&&contract!=24)||instruction.add!=(SRC(AFP|AIND)|DST(AFP|AIND))||instruction.s.i.f!=32||instruction.s.i.s!=8))error(exBounds);
     if(fieldaddress && (altaddress || (contract!=24 && contract!=4 && contract!=96 && contract!=112) || instruction.add!=(SRC(AFP|AIND)|DST(AFP|AIND)) || (clientaddress?(contract!=24||(instruction.s.i.s!=32&&instruction.s.i.s!=40)):windowaddress?(contract!=24||!native64windowrootfield(instruction.s.i.s)):(contract==96||contract==112)?!native64windowgeometryfield(instruction.s.i.s,width):contract==4?instruction.s.i.s!=12:(instruction.s.i.s!=24&&instruction.s.i.s!=88))))error(exBounds);
     if(windowaddress&&(!fieldaddress||altaddress||arrayaddress))error(exBounds);
     if(clientaddress&&(!fieldaddress||retbias||windowaddress||altaddress||arrayaddress))error(exBounds);
     if(arrayaddress && (fieldaddress || altaddress || contract!=24 || instruction.add!=(SRC(AFP)|DST(AFP|AIND))))error(exBounds);
     if(contract==152&&!altaddress)error(exBounds);
-    sourcewidth=(fieldaddress||arrayaddress||retbias)?8:width;sourceroot=(fieldaddress||arrayaddress)?1:reference;
+    sourcewidth=(fieldaddress||arrayaddress||retbias)?8:width;sourceroot=!retbias&&(fieldaddress||arrayaddress||reference);
     offset=(fieldaddress||retbias||recordaddress)?instruction.s.i.f:instruction.s.ind;
     if(!native64model() || (altaddress?((instruction.add!= (SRC(AFP)|DST(AFP)) && instruction.add!=(SRC(AMP)|DST(AFP))) || (contract!=4 && contract!=8 && contract!=24 && contract!=48 && contract!=72 && contract!=104 && contract!=120 && contract!=136 && contract!=152)):
         ((instruction.add!=(SRC(AFP)|DST(AFP|AIND)) && !((contract==24 || native64geometryresultwidth(contract)) && instruction.add==(SRC(AMP)|DST(AFP|AIND))) && !fieldaddress && !recordaddress && !retbias) || instruction.d.i.f!=40 || instruction.d.i.s!=32)) ||
@@ -103,7 +103,7 @@ native64localbind(void)
     if(callee==nil && target==start)callee=extent->reg.TR;
     if(!native64localtype(callee) || (uintptr)callee->size!=top-target || pending->mr!=nil)error(exBounds);
     address=(void*)(sourcebase+offset);
-    if(retbias){memmove(&address,address,sizeof(address));if(address==nil||address==H||(uintptr)address%4||(uintptr)address>(uintptr)-1-16)error(exBounds);address=(uchar*)address+8;}
+    if(retbias){memmove(&address,address,sizeof(address));if(address==nil||address==H||(uintptr)address%(contract==24?8:4)||(uintptr)address>(uintptr)-1-16)error(exBounds);address=(uchar*)address+8;}
     /* The local mapped owner stays in this caller frame across the import.
      * A global owner could be replaced while the callee is suspended. */
     if(recordaddress)

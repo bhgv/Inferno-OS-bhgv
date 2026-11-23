@@ -99,8 +99,9 @@ typedtable(Inst *in,unsigned int stop,Dis64TypedBody *p,Dis64Instruction *out,uc
            (in->op==IGOTO && (l->start->val!=l->stop->val || (i && l->start->val!=c->labs[i-1].start->val+1))))
             return typedfail(p,"table-row-owner-or-order");
     }
-    if(p->sourceroles&&(in->op==ICASE||in->op==IGOTO)&&(in->sm==Afpind||in->sm==Ampind)){
-        if(!typedrecordlayoutoperand(in->sm,&in->s,0,p,&value,&sm)||
+    if(p->sourceroles&&(in->op==ICASE||in->op==IGOTO||in->op==ICASEC)&&(in->sm==Afpind||in->sm==Ampind)){
+        if((in->op==ICASEC&&(!in->s.native64type||in->s.native64type->kind!=Tstring))||
+           !typedrecordlayoutoperand(in->sm,&in->s,in->op==ICASEC,p,&value,&sm)||
            !typedrecordregister(p,in->pc-p->first,0,typedfieldowner(&in->s)->tof))
             return typedfail(p,"table-record-selector");
         *role=Native64TypedRecord;
@@ -312,7 +313,7 @@ typedresults(Dis64TypedBody *p)
 		pc=queue[head++];flow=state[pc];
         if(p->resultaggregate){unsigned int c=p->resultaggregate,n=c==92?5:c==112?4:(c==12||c==72||c==124)?3:2;if(p->returns[pc]==45)flow|=8;if(p->returns[pc]==32||p->returns[pc]==47)flow=(1U<<(n+1))-1;if(p->returns[pc]==78)flow|=p->code[pc].op==IMCALL&&pc&&p->returns[pc-1]==152?(2U<<(p->code[pc-1].middle/8)):c==112?24:2;if(p->returns[pc]==77){unsigned int off=p->code[pc].middle&255,bytes=(p->code[pc].middle>>8)&255,first=c==80?(off?1:0):off/((c==48||c==116||c==72||c==124)?8:4),count=p->code[pc].op==IMOVP?1:bytes/((c==48||c==116||c==72||c==124)?8:4);while(count--)flow|=2U<<(first++);}}
         else if(p->resulttriple){if(p->returns[pc]==2 || p->returns[pc]==4 || p->returns[pc]==8)flow|=p->returns[pc];if(p->returns[pc]==32 || p->returns[pc]==171)flow=15;}
-        else if(p->resultpair){if(p->returns[pc]==77)flow=7;if(p->returns[pc]==8)flow|=2;if(p->returns[pc]==16)flow|=4;if(p->returns[pc]==32)flow=7;}
+        else if(p->resultpair){if(p->returns[pc]==77)flow=7;if(p->returns[pc]==8)flow|=2;if(p->returns[pc]==16||(p->resultpair>=3&&p->returns[pc]==78))flow|=4;if(p->returns[pc]==32)flow=7;}
         else if(((p->returns[pc]==65 || p->returns[pc]==72) && (p->code[pc].op==IMOVW || p->code[pc].op==IMOVP) && p->code[pc].destination==32 && UDST(p->code[pc].mode)==(AFP|AIND)) || (p->returns[pc] && p->returns[pc]<=32) || ((p->returns[pc]==109 || (p->returns[pc]==111 && p->code[pc].op==IMOVP)) || p->returns[pc]==174 || p->returns[pc]==185 || p->returns[pc]==246 || p->returns[pc]==247 || (p->returns[pc]==158 && p->code[pc].destination==32 && UDST(p->code[pc].mode)==(AFP|AIND)) || ((p->returns[pc]==154 || (p->returns[pc]==153 && !(p->code[pc].middle&0xff0000) && p->code[pc].destination==32)) && UDST(p->code[pc].mode)==(AFP|AIND))))flow=3;
         if(p->returns[pc]==Native64TypedRecordPair)flow|=2;
         if(!p->resultaggregate&&!p->resultpair&&!p->resulttriple&&p->code[pc].destination==32&&

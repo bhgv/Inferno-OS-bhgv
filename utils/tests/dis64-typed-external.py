@@ -301,7 +301,7 @@ def record_field(o,c,pc,maps,row):
     assert mode==o['mode']
     owners={side:tree for at,side,tree in row['record_owners']if at==pc};assert owners and len(owners)==sum(at==pc for at,_,_ in row['record_owners'])
     rootops=(OPCODES['IMOVP'],OPCODES['IADDC'],OPCODES['IBEQL'],OPCODES['IBNEL'],OPCODES['IBEQC'],OPCODES['IBNEC'])
-    sourceops=(OPCODES['IINDC'],OPCODES['ILENC'],OPCODES['ILENA'],OPCODES['ILENL'],OPCODES['ICVTCW'])
+    sourceops=(OPCODES['IINDC'],OPCODES['ILENC'],OPCODES['ILENA'],OPCODES['ILENL'],OPCODES['ICVTCW'],OPCODES['ICASEC'])
     widths=[8,8]if op in rootops else[8,4]if op in sourceops else[4,8]if op in(OPCODES['ICVTWC'],OPCODES['ICONSW'])else[4,4]
     kinds=[]
     for side,wire,value,addr,width in((0,mode>>3&7,s,o['s'],widths[0]),(1,mode&7,d,o['d'],widths[1])):
@@ -489,6 +489,24 @@ def verify(data,r,imports,loads=False,rows=None):
                 at=word_choice(original,r['code'],at,end-bool(contract),maps,pending,oldoffset,arg[0],r)
                 continue
             listclear=None
+            if loads and r['code'][at][5]==178:
+                assert arg[1:]==[10,4,8] and at+6<=end-bool(contract)
+                head,init,cons,store,clear_item,clear_list=original[at:at+6]
+                sm=head['mode']>>3&7
+                item,slot,nil=head['d'],init['d'],init['s']
+                assert sm in (0,1) and head['op']==OPCODES['IHEADP'] and head['mode']==(sm<<3)|1 and head['m'] is None
+                assert item!=slot and init==dict(op=41,mode=1,m=None,s=nil,d=slot)
+                assert next(l for l in r['data']['leaves'] if l[0]==nil[0])[4]==20
+                assert cons==dict(op=OPCODES['ICONSP'],mode=9,m=None,s=item,d=slot)
+                oldtarget=next(l[0] for l in callee['frame']['leaves'] if l[1]==arg[0])
+                assert store==dict(op=41,mode=13,m=None,s=slot,d=[pending,oldtarget])
+                assert clear_item==dict(op=41,mode=1,m=None,s=nil,d=item)
+                assert clear_list==dict(op=41,mode=1,m=None,s=nil,d=slot)
+                source=maps['frame' if sm else 'data'][head['s'][0]]
+                im,sl,nl=maps['frame'][item[0]],maps['frame'][slot[0]],maps['data'][nil[0]]
+                assert r['code'][at:at+6]==[[head['op'],head['mode'],source,0,im,178], [41,1,nl,0,sl,178],
+                    [cons['op'],9,im,0,sl,178], [41,13,sl,0,arg[0],64], [41,1,nl,0,im,178], [41,1,nl,0,sl,178]]
+                at+=6;continue
             if loads and r['code'][at][5]==112:
                 assert arg[1:]==[10,4,8] and at==first+1
                 at,listclear=list_constructor(original,r['code'],at,end,maps,r)
@@ -1134,7 +1152,11 @@ def verify(data,r,imports,loads=False,rows=None):
         if contract:
             b=original[end-1];assert b['op']==39 and b['d']==[pending,16]
             if r['code'][end-1][5]==81 and e['inherited']:
-                assert loads and contract==96 and r.get('result_aggregate')==112 and e['resultoffset']==32 and b['mode']==45 and b['s']==[16,8]
+                assert loads and e['resultoffset']==32 and b['mode']==45
+                if contract==24:
+                    mixed=r['result_mixed']
+                    assert mixed[1] in ROOTS and b['s']==[16,4 if mixed[0]==9 else 8]
+                else:assert contract==96 and r.get('result_aggregate')==112 and b['s']==[16,8]
                 assert r['code'][end-1]==[39,45,32,8,32,81]
             elif r['code'][end-1][5]==81:
                 assert loads and contract in(96,112)and not e['inherited'];window_geometry(b,r['code'][end-1],maps,dict(r,contract=contract),pending);assert e['resultoffset']==r['code'][end-1][2]
@@ -1220,7 +1242,7 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert b['mode']in(5,13)and (b['mode']!=5 or contract in(24,96,112))
                 assert r['code'][end-1]==[39,b['mode'],maps['frame'if b['mode']==13 else'data'][b['s'][0]],0,32,128|contract]
         assert original[end]=={'op':9,'mode':8|64|mode,'m':e['binding'],'s':[pending],'d':o['s']}
-        assert r['code'][end]==[9,8|64|mode,40,e['binding'],offset,(78 if contract==96 and r.get('result_aggregate')==112 else 32)if e['inherited']else 0]
+        assert r['code'][end]==[9,8|64|mode,40,e['binding'],offset,(78 if r['code'][end-1][5]==81 else 32)if e['inherited']else 0]
         covered.update(range(first,end+1));inside.update(range(first+1,end+1))
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
@@ -1523,16 +1545,17 @@ def verify(data,r,imports,loads=False,rows=None):
                 tree=r['record_types'][witness]
                 size,_,leaves=record_geometry(tree)
                 oldbytes,oldmap=types[o['m']]
-                legacy_roots={a//4 for a,_,k,_,_ in leaves if k in ROOTS}
+                roots=set(ROOTS)|{20}
+                legacy_roots={a//4 for a,_,k,_,_ in leaves if k in roots}
                 assert oldbytes==tree[1] and legacy_roots=={8*i+b for i,byte in enumerate(oldmap) for b in range(8) if byte&(128>>b)}
-                mask=sum(1<<(b//8) for _,b,k,_,_ in leaves if k in ROOTS)
+                mask=sum(1<<(b//8) for _,b,k,_,_ in leaves if k in roots)
                 assert m==((size//4)<<24)|mask
                 copied=[(o-old,v-base,k,w,n) for o,v,w,n,k in r[where]['leaves'] if base<=v<base+size]
                 mapped=[o for o in range(0,size,8) if r[where]['map'][(base+o)//64]&(128>>(((base+o)//8)%8))]
                 assert len(copied)==len(leaves)
                 for (a,b,k,w,n),(ca,cb,ck,cw,cn) in zip(leaves,copied):
-                    assert (a,b,w,n)==(ca,cb,cw,cn) and (k==ck or cons and ck==20 and k in ROOTS)
-                assert mapped==[b for _,b,k,_,_ in leaves if k in ROOTS]
+                    assert (a,b,w,n)==(ca,cb,cw,cn) and (k==ck or cons and 20 in (k,ck) and k in roots and ck in roots)
+                assert mapped==[b for _,b,k,_,_ in leaves if k in roots]
             continue
         if returned in(248,249,250):
             sm=o['mode']>>3&7;dm=o['mode']&7;cons=returned==248;head=returned==249

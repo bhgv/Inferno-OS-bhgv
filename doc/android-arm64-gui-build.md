@@ -1243,3 +1243,21 @@ The unchanged Sh `dup` and `doredirs` pass checked compilation. In
 `runasync`, the next barrier is `Context.run`. The compound redirection
 argument during `pipecmd` spawn setup remains open. Sh reaches 106 of 134
 checked bodies, and all 16 classic Dis outputs remain byte-identical.
+
+## Shell dispatch and call arguments
+
+A checked String case can read its selector from a mapped record field.
+The table bridge validates the owner and field before dispatching. An
+imported call can write the reference field of a mixed result directly.
+The return analysis tracks that field separately from the scalar field.
+
+The compiler retains a list head while building a singleton in a pending
+local call, then releases both caller temporaries after publication. An
+untyped `nil` inside a list element contributes its mapped reference slot
+to the element descriptor.
+
+The original `trybuiltin` and `runsbuiltin` raise the checked Sh count to
+108 of 134. `runblock` passes the singleton argument and reaches `walk`.
+`pipecmd` passes layout planning for the redirection list and reaches the
+compound argument setup of `spawn`. Classic Dis remains byte-identical
+for all 16 startup modules.

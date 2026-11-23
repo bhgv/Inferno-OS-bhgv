@@ -476,6 +476,12 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         }else if(c->loads && root && binding->sm==Amp){
             if(!binding->s.decl || binding->s.decl->store!=Dglobal || !typedoperand(Amp,&binding->s,TypedRoot,0,0,p,&source,&sm,&actual) || actual!=kind)return typedfail(p,"external-global-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AMP)|DST(AFP|AIND),0,source,32};p->returns[at-p->first]=128|contract;
+        }else if(c->loads&&root&&p->resultpair>=3&&binding->sm==Afpind&&binding->s.reg==16&&
+                 binding->s.offset==(p->resultpair==3?4:8)&&tequal(p->resulttype->ids->next->ty,fn->ty->tof)){
+            /* The callee writes only the mapped field of the enclosing mixed result. */
+            inherit=1;local=32;
+            p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),8,32,32};
+            p->returns[at-p->first]=81;
         }else{
             if(binding->sm!=Afpind || binding->s.reg!=16 || binding->s.offset || kind!=p->resultkind)return typedfail(p,"external-inherit");
             inherit=1;local=32;p->code[at-p->first]=(Dis64Instruction){IMOVL,SRC(AFP)|DST(AFP|AIND),0,32,32};p->returns[at-p->first]=64;
@@ -483,7 +489,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         at++;
     }
     if(at!=end)return typedfail(p,"external-setup-length");
-    p->code[end-p->first]=(Dis64Instruction){IMCALL,SRC(AFP)|AXIMM|DST(ms),fn->iface->offset,40,mo};p->returns[end-p->first]=inherit?(contract==96&&p->resultaggregate==112?78:32):0;
+    p->code[end-p->first]=(Dis64Instruction){IMCALL,SRC(AFP)|AXIMM|DST(ms),fn->iface->offset,40,mo};p->returns[end-p->first]=inherit?(p->returns[end-p->first-1]==81?78:32):0;
     p->external[p->nexternal++]=(Dis64TypedExternal){pc-p->first,end-p->first,fn->iface->offset,ms,mo,local,contract,inherit,fn};
     *next=end+1;return 1;
 }

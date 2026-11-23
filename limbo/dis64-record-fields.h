@@ -62,14 +62,15 @@ typedrecordlayoutdescriptor(Type *type, Desc *desc, Dis64Layout *layout, long *s
   return 0;
  for(i=0;i<layout->count;i++){
   Dis64LayoutLeaf *l=layout->leaves+i;
-  if(!typedmanagedkind(l->kind))continue;
+  /* An untyped nil literal still occupies a mapped reference cell. */
+  if(!typedmanagedkind(l->kind)&&l->kind!=Tany)continue;
   if(l->legacy%4||l->native%8||l->oldbytes!=4||l->bytes!=8)return 0;
   bits|=1U<<(l->native/8);
  }
  for(i=0;i<(unsigned int)desc->nmap*8;i++){
   if(!(desc->map[i/8]&(128>>(i%8))))continue;
   for(n=0;n<layout->count;n++)if(layout->leaves[n].legacy==i*4)break;
-  if(n==layout->count||!typedmanagedkind(layout->leaves[n].kind))return 0;
+  if(n==layout->count||(!typedmanagedkind(layout->leaves[n].kind)&&layout->leaves[n].kind!=Tany))return 0;
   legacy|=1U<<(layout->leaves[n].native/8);
  }
  if(bits!=legacy)return 0;
