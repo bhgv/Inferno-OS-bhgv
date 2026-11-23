@@ -50,23 +50,48 @@ native64typedlibrary(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
  if(mm==AXNON)return mid==0;
  return native64libraryoperand(mm==AXIMM?AIMM:mm==AXINF?AFP:AMP,mid,0,s->op==ISLICELA?4:w[0],s->op==ISLICELA?0:r[0],fp,mp,0);
 }
+static int native64typedlibraryarg(const Native64TypedStep*,unsigned int,unsigned int,unsigned int,const uchar*,unsigned int);
+
+static int
+native64librarylistclear(const Native64TypedStep *s, long nilslot, long target)
+{
+ return s->returned==Native64TypedRecordList&&s->op==IMOVP&&
+  s->mode==(SRC(AMP)|DST(AFP))&&!s->m&&s->s==nilslot&&s->d==target;
+}
+
 static int
 native64libraryprecall(const Native64TypedStep *steps, unsigned int first, unsigned int pc,
                       unsigned int end, unsigned int fp, unsigned int mp,
-                      unsigned int bytes, const uchar *map, unsigned int np)
+                      unsigned int bytes, const uchar *map, unsigned int np, unsigned int *list)
 {
  const Native64TypedStep *alloc=steps+pc,*s;
- unsigned int j,bit;
+ unsigned int j,bit,next=64,mode;
+ long value=alloc->d;
+ int root;
+ *list=0;
  if(first>=pc||pc>=end||alloc->returned!=154||UDST(alloc->mode)!=AFP||
     !native64typedlibrary(alloc,fp,mp)||!map||map==H||np!=(bytes+63)/64)
   return 0;
+ /* FRAME initializes mapped cells before a later argument can allocate.
+  * Prove each earlier store and keep the new reference's cell disjoint. */
  for(j=first+1;j<pc;j++){
   s=steps+j;
-  if(s->returned!=64||s->op!=IMOVW||s->m||s->mode!=(SRC(USRC(s->mode))|DST(AFP|AIND))||
-     !native64typedwordoperand(USRC(s->mode),s->s,fp,mp)||
-     !native64typedwordoperand(AFP,s->d,bytes,0))
-   return 0;
-  bit=s->d/8;if(map[bit/8]&(128>>(bit%8)))return 0;
+  root=s->op==IMOVP;
+  if(s->d<next)return 0;
+  if(s->returned==155){
+   if(!root||!native64typedlibraryarg(s,fp,mp,bytes,map,np))return 0;
+  }else if(s->returned==Native64TypedRecordArg){
+   if(!root||!native64recordarglayout(s,fp,mp,bytes,map,np))return 0;
+  }else{
+   mode=USRC(s->mode);
+   if(s->returned!=64||(!root&&s->op!=IMOVW)||s->m||s->mode!=(SRC(mode)|DST(AFP|AIND)))return 0;
+   if(root){
+    if(!native64typedrootoperand(mode,s->s,fp,mp)||!native64typedrootoperand(AFP,s->d,bytes,0))return 0;
+   }else if(!native64typedwordoperand(mode,s->s,fp,mp)||!native64typedwordoperand(AFP,s->d,bytes,0))return 0;
+   bit=s->d/8;
+   if(!!(map[bit/8]&(128>>(bit%8)))!=root)return 0;
+  }
+  next=s->d+(root?8:4);
  }
  for(j=pc+1;j<end&&steps[j].returned==153;j++){
   s=steps+j;
@@ -77,9 +102,22 @@ native64libraryprecall(const Native64TypedStep *steps, unsigned int first, unsig
    return 0;
  }
  if(j==end)return 0;
+ if(steps[j].returned==Native64TypedRecordList){
+  const Native64TypedStep *init=steps+j,*cons=steps+j+1;
+  long slot=init->d,nilslot=init->s;
+  if(end-j<5||slot==value||!native64typedrootoperand(AFP,slot,fp,mp)||
+     !native64typedrootoperand(AMP,nilslot,fp,mp)||!native64librarylistclear(init,nilslot,slot)||
+     cons->returned!=Native64TypedRecordList||cons->op!=ICONSP||cons->mode!=(SRC(AFP)|DST(AFP))||
+     cons->m||cons->s!=value||cons->d!=slot||
+     !native64librarylistclear(steps+j+3,nilslot,value)||
+     !native64librarylistclear(steps+j+4,nilslot,slot))return 0;
+  *list=j;
+  j+=2;
+  value=slot;
+ }
  s=steps+j;
  if(s->returned!=64||s->op!=IMOVP||s->mode!=(SRC(AFP)|DST(AFP|AIND))||s->m||
-    s->s!=alloc->d||!native64typedrootoperand(AFP,s->d,bytes,0))
+    s->s!=value||s->d<next||!native64typedrootoperand(AFP,s->d,bytes,0))
   return 0;
  bit=s->d/8;
  return !!(map[bit/8]&(128>>(bit%8)));

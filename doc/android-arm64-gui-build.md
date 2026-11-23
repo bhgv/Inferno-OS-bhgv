@@ -1050,7 +1050,7 @@ Local calls can take a root from an indexed array element, including after
 an addition or subtraction in the caller's index expression. The checked
 call path also permits construction of a record with a supported descriptor
 in a mapped local before passing it to the pending frame. Its validation
-checks the preceding Word arguments, initializer operands, and root slot in
+checks the preceding arguments, initializer operands, and root slot in
 the callee.
 
 `native64-field-arrays.py` compiles the original `yyparse`, helper bodies,
@@ -1108,3 +1108,23 @@ Dis output is identical in the preflight comparison.
 The field-array fixture runs 42 additional interpreter/JIT cases covering
 nested call arguments and results, a two-root array copy, array lengths, a
 locally constructed list, nil references and a mismatched heap Type.
+
+## Sh environment updates during call setup
+
+Checked local calls can allocate and initialize a record after copying Word
+or managed arguments into the callee frame. Validation checks the caller and
+callee root slots and keeps the argument writes disjoint. A call can also
+cons the new record into a one-element list before handing it to the callee.
+The record and list have separate mapped temporaries until the handoff.
+
+The original `Context.set`, `Context.setlocal` and `setstatus` pass the source
+preflight. Checked coverage reaches 95/134 Sh functions and 332/385 functions
+across the startup modules, with identical classic Dis output. `runfile`
+advances to the call to `doparse`, where evaluating a Boolean argument uses
+branches inside the pending call setup.
+
+The fixture runs 30 interpreter/JIT cases for environment updates and status
+lists on Linux amd64. Allocation failures exercise both record and list
+cleanup. The collector test retains an object reachable only from a pending
+frame in a separate stack extent, then reclaims it after the extent leaves
+the process roots.

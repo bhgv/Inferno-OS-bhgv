@@ -16,7 +16,7 @@ EXTRACT = CMD['NS']['S']['FILES']['FILES']['function']
 INTERFACES = 'include "sys.m";include "draw.m";include "bufio.m";include "string.m";include "sh.m";'
 LEXER_EXPORTS = ('read', 'scan', 'token', 'parse')
 ARRAY_EXPORTS = ('arrays', 'report', 'buildstring', 'buildfile', 'parse_result',
-                 'fieldpath', 'rootarrays', 'listarg', 'lenarg')
+                 'fieldpath', 'rootarrays', 'listarg', 'lenarg', 'setlocal_probe', 'status_probe')
 
 
 def source():
@@ -41,6 +41,7 @@ Store:adt{
     problem:string;
     envelope:ref Envelope;
     pairs:array of Pair;
+    context:ref Sh->Context;
 };
 '''
     interface = INTERFACES + 'Node:type Sh->Node;Redir:type Sh->Redir;' + records + 'Lexer:module{'
@@ -64,6 +65,10 @@ Store:adt{
         'YYLEX.getc', 'YYLEX.ungetc', 'YYLEX.error', 'YYLEX.lex', 'readnum',
         'readfdassign', 'stderr', 'yytokname', 'yystatname', 'yylex1', 'mk', 'mkseq', 'yyparse',
         'YYLEX.initstring', 'YYLEX.initfile', 'doparse'))
+    environment = '\n'.join(re.search(r'(?m)^' + re.escape(n) + r'\([^\n]+\n\{.*?^\}', sh, re.S)[0]
+                            for n in ('hashfn', 'hashfind', 'hashadd', 'noexport', 'Context.setlocal', 'setstatus'))
+    environment = environment.replace('Context.setlocal(ctxt: self ref Context', 'setlocal(ctxt: ref Context', 1)
+    environment = environment.replace('ctxt.setlocal(', 'setlocal(ctxt, ', 1)
     wrappers = '''
 sys:Sys;
 bufio:Bufio;
@@ -137,8 +142,11 @@ rootarrays(r:ref Store):int {
 lenarg(r:ref Store):int { return total(len r.pairs, r.text); }
 listlen(items:list of string):int { return len items; }
 listarg(r:ref Store):int { text := r.text; return listlen(text :: nil); }
+setlocal_probe(r:ref Store):int { setlocal(r.context, r.text, nil); return 0; }
+status_probe(r:ref Store):int { result := setstatus(r.context, r.text); return len result; }
 '''
-    return interface, 'implement Lexer;' + '\n'.join((interface, constants, tables, debug, stack, blank, wrappers, methods))
+    aliases = 'Context, Listnode, Var: import Sh;'
+    return interface, 'implement Lexer;' + '\n'.join((interface, aliases, constants, tables, debug, stack, blank, wrappers, methods, environment))
 
 
 def generate(limbo, work):
@@ -164,7 +172,7 @@ def generate(limbo, work):
                 frames[(name.replace('Iobuf_', 'Iobuf.'), int(sig[1], 16))] = (
                     int(size), [int(v, 0) for v in mapping[1].split(',') if v])
 
-    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (33, 4, 3, '~0U'),
+    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (41, 4, 3, '~0U'),
                          import_frames=frames, export_signatures=signatures,
                          source_label='unchanged Sh constructors, lexer and parser with generic ADT probes')
     code = {r['name']: r['code'] for r in rows}
@@ -179,6 +187,8 @@ def generate(limbo, work):
     assert any(c[5] == 79 and c[3] == 8 for c in code['rootarrays'])
     assert any(c[5] == 33 and c[0] == E['OPCODES']['ILENA'] for c in code['lenarg'])
     assert {c[5] for c in code['listarg']} >= {112, 182}
+    assert {c[5] for c in code['setlocal']} >= {154, 155}
+    assert sum(c[5] == 43 for c in code['setstatus']) == 4
     globals_ = dict((g[0], g[1]) for g in rows[0]['globals'])
     with (work / 'full.h').open('a') as stream:
         for name in ('nil', 'sys', 'bufio', 'str', 'saved', 'blanklex'):
@@ -190,6 +200,10 @@ def unit(rows):
     original = BASE['unit']()
     vm = original.split('\n#line 1 "native64-record-fields.c"')[0]
     vm = vm.replace('#define RuntimeBlocks 256', '#define RuntimeBlocks 1024', 1)
+    cons = 'cons(ulong size, void *slot)\n{'
+    assert vm.count(cons) == 1
+    vm = vm.replace('List*\n' + cons,
+                    'static void check_status_cons(void*);\nList*\n' + cons + '\n check_status_cons(slot);', 1)
     vm += '''
 #define LIMBO_NATIVE64_PREFIXES
 #include "sys-native64.h"
@@ -202,7 +216,7 @@ def unit(rows):
         ('emu/port/errstr.c', ('void\nkgerrstr(',)),
         ('libinterp/runt.c', ('int\nSys_setprogram64(', 'void\nSys_programcall64(', 'int\nSys_clearframes64(')),
         ('libinterp/string.c', ('String*\nstringdup(', 'void\ncvtup(')),
-        ('libinterp/xec.c', ('static Inst*\ncasepc(', 'static void\nnewrecord(')),
+        ('libinterp/xec.c', ('static Inst*\ncasepc(', 'static uvlong\ncaseccell(', 'static void\nnewrecord(')),
     ):
         source_text = (ROOT / path).read_text()
         for sig in signatures:

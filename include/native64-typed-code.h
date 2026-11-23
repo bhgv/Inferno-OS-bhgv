@@ -72,8 +72,8 @@ native64typedwordoperand(unsigned int mode,long offset,unsigned int fpbytes,unsi
   (mode==AIMM || ((mode==AFP || mode==AMP) && offset%4==0 && 4<=(mode==AFP?fpbytes:mpbytes)-offset));
 }
 
-#include "native64-library-code.h"
 #include "native64-record-code.h"
+#include "native64-library-code.h"
 
 static int
 native64typedchannelop(unsigned int op)

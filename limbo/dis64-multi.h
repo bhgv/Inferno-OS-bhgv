@@ -1107,21 +1107,68 @@ typedcaughtstring(Inst *in, Dis64TypedBody *p)
 }
 
 static int
-typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Inst *frame, Decl *arg,
+typedlocalrecordlist(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child,
+                     Inst *frame, Inst *alloc, Decl *arg, unsigned int end, unsigned int *at)
+{
+ Inst *init,*cons,*store,clear;
+ Type *list;
+ unsigned int start=*at,offset,mode,pc;
+ long record,slot;
+ int actual;
+
+ if(end-start<5)return typedfail(p,"local-record-list-length");
+ init=c->instructions[start];cons=c->instructions[start+1];store=c->instructions[start+2];
+ list=typedloadvaluetype(&init->d);
+ if(!list||!tequal(list,arg->ty)||init->d.reg==alloc->d.reg||
+    cons->op!=ICONSP||cons->sm!=Afp||cons->mm!=Anone||cons->dm!=Afp||cons->branch||
+    cons->s.decl!=alloc->d.decl||cons->s.reg!=alloc->d.reg||cons->s.offset||
+    cons->d.decl!=init->d.decl||cons->d.reg!=init->d.reg||cons->d.offset||
+    store->op!=IMOVP||store->sm!=Afp||store->mm!=Anone||store->dm!=Afpind||store->branch||
+    store->s.decl!=init->d.decl||store->s.reg!=init->d.reg||store->s.offset||
+    store->d.reg!=frame->d.reg||store->d.offset!=arg->offset||
+    !typedoperand(Afp,&cons->s,TypedRoot,0,0,p,&record,&mode,&actual)||actual!=Tref||
+    !typedoperand(Afp,&cons->d,TypedRoot,0,0,p,&slot,&mode,&actual)||actual!=Tlist||
+    !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||offset>65535)
+  return typedfail(p,"local-record-list-shape");
+ clear=*store;
+ clear.s=init->d;
+ if(!typedrootargclear(c,p,&clear,end,at)||*at!=start+1)
+  return typedfail(p,"local-record-list-init");
+ pc=start-p->first;
+ p->returns[pc]=Native64TypedRecordList;
+ p->code[pc+1]=(Dis64Instruction){ICONSP,SRC(AFP)|DST(AFP),0,record,slot};
+ p->returns[pc+1]=Native64TypedRecordList;
+ p->code[pc+2]=(Dis64Instruction){IMOVP,SRC(AFP)|DST(AFP|AIND),0,slot,offset};
+ p->returns[pc+2]=64;
+ *at=start+3;
+ clear.s=alloc->d;
+ if(!typedrootargclear(c,p,&clear,end,at)||*at!=start+4||
+    !typedrootargclear(c,p,store,end,at)||*at!=start+5)
+  return typedfail(p,"local-record-list-clear");
+ p->returns[pc+3]=p->returns[pc+4]=Native64TypedRecordList;
+ return 1;
+}
+
+static int
+typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, Inst *frame, Decl *arg,
                      unsigned int first, unsigned int end, unsigned int *at)
 {
  Inst *alloc=c->instructions[*at],*in;
  Decl *descriptor=alloc->s.decl;
  Type *type=descriptor?descriptor->ty:nil;
+ Type *reference=arg->ty->kind==Tlist?arg->ty->tof:arg->ty;
  unsigned int j;
 
- if(arg->ty->kind!=Tref||!type||!descriptor->desc||descriptor->desc->id!=alloc->s.offset||
+ if(!reference||reference->kind!=Tref||!type||!descriptor->desc||descriptor->desc->id!=alloc->s.offset||
     alloc->dm!=Afp||alloc->d.offset||!alloc->d.decl||
-    !tequal(arg->ty->tof,type->kind==Tref?type->tof:type))
+    !tequal(reference->tof,type->kind==Tref?type->tof:type))
   return typedfail(p,"local-record-argument-type");
- for(j=first+1;j<*at;j++)
-  if(p->returns[j-p->first]!=64||p->code[j-p->first].op!=IMOVW)
+ for(j=first+1;j<*at;j++){
+  unsigned int role=p->returns[j-p->first],op=p->code[j-p->first].op;
+  if(!(role==64&&(op==IMOVW||op==IMOVP))&&
+     !(op==IMOVP&&(role==155||role==Native64TypedRecordArg)))
    return typedfail(p,"local-record-after-argument");
+ }
  if(!typedlibraryinst(alloc,p,*at-p->first,end)||p->returns[*at-p->first]!=154)
   return typedfail(p,"local-record-argument-allocation");
  for(++*at;*at<end;(*at)++){
@@ -1133,6 +1180,8 @@ typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Inst *frame, Decl *arg,
      !typedlibraryinst(in,p,*at-p->first,end))
    return typedfail(p,"local-record-initializer");
  }
+ if(arg->ty->kind==Tlist)
+  return typedlocalrecordlist(c,p,child,frame,alloc,arg,end,at);
  if(*at>=end||in->op!=IMOVP||in->sm!=Afp||in->s.reg!=alloc->d.reg||
     in->s.decl!=alloc->d.decl||in->s.offset||in->dm!=Afpind||in->d.reg!=frame->d.reg||
     in->d.offset!=arg->offset)
@@ -1183,7 +1232,8 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     for(arg=c->functions[target]->ty->ids;arg!=nil;arg=arg->next){
         if(at>=end || (in=c->instructions[at])==nil)return typedfail(p,"multi-argument");
         if(c->loads&&!spawning&&(in->op==INEW||in->op==INEWZ)){
-            if(!typedlocalrecordprep(c,p,frame,arg,pc,end,&at))return 0;
+            if(!typedlocalrecordprep(c,p,child,frame,arg,pc,end,&at))return 0;
+            if(arg->ty->kind==Tlist)continue;
             in=c->instructions[at];
         }
         if(c->loads&&!spawning&&at+2<end&&typedrawindexprep(in,c->instructions[at+1])){

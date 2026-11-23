@@ -107,7 +107,7 @@ native64modulelists(const Native64ModuleSpec *spec,const Native64ModuleFunction 
   if((step->returned>=248 && step->returned<=250) || step->returned==252 || step->returned==253)continue;
   if(step->returned==213 && !native64typedwindowlist(step,fn->bytes,spec->databytes))return 0;
   if(step->op!=ICONSP && step->op!=IHEADP && step->op!=ITAIL && step->op!=ICONSW && step->op!=IHEADW)continue;
-  copy=*step;if(copy.returned==44 || copy.returned==Native64TypedListPrep || copy.returned==187 || copy.returned==213)copy.returned=0;
+  copy=*step;if(copy.returned==44 || copy.returned==Native64TypedListPrep || copy.returned==Native64TypedRecordList || copy.returned==187 || copy.returned==213)copy.returned=0;
   if(!native64typedcode(&probe,1,&copy,1,fn->bytes,spec->databytes))return 0;
   for(k=0;k<2;k++){
    if(k && step->returned && step->returned!=213)continue;
@@ -492,6 +492,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         }
     }
     for(i=0;i<s->nfunctions;i++){
+        unsigned int recordlist=0;
         f=s->functions+i;
         if(!native64modulename(f->name) || f->exported>1 || !f->count || f->count>65536-code || f->code==nil || f->code==H ||
            !native64modulemap(f->bytes,f->map,f->mapbytes,1) || f->bytes>32*1024*1024-total ||
@@ -511,8 +512,16 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             for(k=0;k<2;k++){mode=k?(step->returned==139?UDST(step->mode)&~AIND:(step->mode&ARM)==AXINF?AFP:AMP):USRC(step->mode)&~AIND;offset=k?(step->returned==139?step->d:step->m&65535):step->s;map=mode==AFP?f->map:s->datamap;bit=offset/8;if(!!(map[bit/8]&(128>>(bit%8)))!=(!k||step->returned==139))return 0;}
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j&&j<=f->sites[at].end)return 0;
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned==153 || f->code[j].returned==154){
-            unsigned int k,w[2],r[2],mode,offset,id;long mid;step=f->code+j;if(!native64typedlibrary(step,f->bytes,s->databytes) || (native64typedbranch(step->op) && (unsigned long)step->d>=f->count))return 0;
+        for(j=0;j<f->count;j++){
+            unsigned int k,w[2],r[2],mode,offset,id;
+            long mid;
+            step=f->code+j;
+            if(step->returned==Native64TypedRecordList){
+                if(!recordlist||j<recordlist||j-recordlist>=5)return 0;
+                continue;
+            }
+            if(step->returned!=153&&step->returned!=154)continue;
+            if(!native64typedlibrary(step,f->bytes,s->databytes) || (native64typedbranch(step->op) && (unsigned long)step->d>=f->count))return 0;
             if(step->returned==154){if(UDST(step->mode)==AFP||UDST(step->mode)==AMP){map=UDST(step->mode)==AFP?f->map:s->datamap;bit=step->d/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}}
             else{
                 if(!native64libraryshape(step,w,r))return 0;mid=native64librarymiddle(step);
@@ -527,12 +536,22 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 site=f->sites+at;
                 if(step->returned==154){
                     const Native64ModuleFunction *child;
+                    unsigned int prep;
                     if(site->external||site->end>=f->count||site->target>=s->nfunctions||
                        f->code[site->end].op!=ICALL)return 0;
                     child=s->functions+site->target;
                     if(!native64modulemap(child->bytes,child->map,child->mapbytes,1)||
                        !native64libraryprecall(f->code,site->first,j,site->end-(site->contract!=0),
-                                             f->bytes,s->databytes,child->bytes,child->map,child->mapbytes))return 0;
+                                             f->bytes,s->databytes,child->bytes,child->map,child->mapbytes,&recordlist))return 0;
+                    for(prep=site->first+1;prep<j;prep++){
+                        const Native64TypedStep *arg=f->code+prep;
+                        if(!native64rawarraymap(s,f,USRC(arg->mode),arg->s,arg->op==IMOVP))return 0;
+                    }
+                    if(recordlist){
+                        const Native64TypedStep *init=f->code+recordlist;
+                        if(!native64rawarraymap(s,f,AFP,init->d,1)||!native64rawarraymap(s,f,AMP,init->s,1)||
+                           !native64modulereadonlynil(s,init->s))return 0;
+                    }
                 }else if(native64typedbranch(step->op)||((UDST(step->mode)&AIND)&&!(step->m&0xff0000)))return 0;
             }
         }

@@ -3,7 +3,7 @@
 /* Private checked-IR annotation; never a serialized Dis opcode or descriptor. */
 enum { Native64TypedRecordArg=33, Native64TypedRecordVararg=34, Native64TypedRecordArray=35,
        Native64TypedRecordNew=38, Native64TypedRecordCopy=39, Native64TypedRecordResult=41,
-       Native64TypedRecordPair=42,
+       Native64TypedRecordPair=42, Native64TypedRecordList=43,
        Native64TypedRecord=72 };
 /* Private descriptor: 24 native GC slots and a size in four-byte units. */
 enum { Native64RecordBytes=192, Native64RecordMapBits=24, Native64RecordResultFlag=16384,

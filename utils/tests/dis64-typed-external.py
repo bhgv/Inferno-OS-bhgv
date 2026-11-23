@@ -450,8 +450,13 @@ def verify(data,r,imports,loads=False,rows=None):
                 at,listclear=list_constructor(original,r['code'],at,end,maps,r)
                 o=original[at]
             if loads and r['code'][at][5]==154:
-                assert arg[1:]==[12,4,8] and o['mode']&7==1
-                assert all(c[0]==OPCODES['IMOVW'] and c[5]==64 for c in r['code'][first+1:at])
+                assert arg[1] in (10,12) and arg[2:]==[4,8] and o['mode']&7==1
+                last=64
+                for op,mode,src,mid,dst,role in r['code'][first+1:at]:
+                    assert (op==45 and role==64 or op==41 and role in (33,64,155)) and mode&7==5
+                    assert last<=dst
+                    last=dst+(8 if op==41 else 4)
+                assert last<=arg[0]
                 library_step(o,r['code'][at],maps,r['first'],types)
                 temp=o['d'];check=r['code'][at][2];at+=1
                 while at<end and r['code'][at][5]==153:
@@ -459,6 +464,23 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert o['op']in(OPCODES['IMOVW'],OPCODES['IMOVP']) and o['mode']>>3&7 in(0,1,2)
                     assert o['mode']&7==5 and o['d'][0]==temp[0] and (c[3]>>16)&255==check
                     library_step(o,c,maps,r['first'],types);at+=1
+                if arg[1]==10:
+                    init,cons,store,clear_record,clear_list=original[at:at+5]
+                    nil=init['s'];slot=init['d'];native_nil=maps['data'][nil[0]]
+                    record=maps['frame'][temp[0]];native_slot=maps['frame'][slot[0]]
+                    oldtarget=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0])
+                    assert init==dict(op=41,mode=1,m=None,s=nil,d=slot)
+                    assert len(slot)==len(nil)==1 and slot!=temp
+                    assert next(l for l in r['data']['leaves']if l[0]==nil[0])[4]==20
+                    assert cons==dict(op=OPCODES['ICONSP'],mode=9,m=None,s=temp,d=slot)
+                    assert store==dict(op=41,mode=13,m=None,s=slot,d=[pending,oldtarget])
+                    assert clear_record==dict(op=41,mode=1,m=None,s=nil,d=temp)
+                    assert clear_list==dict(op=41,mode=1,m=None,s=nil,d=slot)
+                    assert r['code'][at:at+5]==[[41,1,native_nil,0,native_slot,43],
+                        [cons['op'],9,record,0,native_slot,43],
+                        [41,13,native_slot,0,arg[0],64],
+                        [41,1,native_nil,0,record,43], [41,1,native_nil,0,native_slot,43]]
+                    at+=5;continue
                 o=original[at];assert o['op']==OPCODES['IMOVP'] and o['mode']==13 and o['s']==temp
             if loads and r['code'][at][5]==37:
                 mode=o['mode'];sm=mode>>3&7;arm=mode&192

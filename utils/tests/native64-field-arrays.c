@@ -12,7 +12,11 @@ static int openfailure,opens,formats,seedblank;
 static int loads, reads, prints, fds, promptmode;
 static int indexes, uses, pending, stackgrowth, nestedindexes;
 static const WORD marker=0x12345678;
-static uchar storemap[]={0xed,0xf8};
+static uchar storemap[]={0xed,0xfc};
+static Array *envtable;
+static void *envcontext;
+static int envfault, varallocs, statusconss, statusprobe;
+static uint statuslistslot;
 
 static void
 check(int ok, const char *message)
@@ -272,6 +276,39 @@ static void field_root(void){ field_use();actual_movp(); }
 static void field_mapped(void){ field_use();actual_movmp(); }
 
 static void
+field_newrecord(void)
+{
+ if(envtable!=nil&&R.M->m==lexer_module){
+  WORD type;
+  memmove(&type,R.s,sizeof(type));
+  if(R.M->m->type[type]->size==24){
+   uchar *frame;
+   Array *argument;
+   memmove(&frame,R.FP+40,8);
+   memmove(&argument,frame+64,8);
+   check(argument==envtable&&D2H(argument)->ref==2,"pending hash table is rooted during Var allocation");
+   varallocs++;
+   if(envfault==1)failat=allocations+1;
+  }
+ }
+ actual_newz();
+}
+
+static void
+check_status_cons(void *slot)
+{
+ uchar *frame;
+ void *context;
+ if(!statusprobe)return;
+ statusprobe=0;
+ memmove(&frame,(uchar*)slot-statuslistslot+40,8);
+ memmove(&context,frame+64,8);
+ check(context==envcontext&&D2H(context)->ref>=2,"pending Context is rooted during Listnode cons");
+ statusconss++;
+ if(envfault==2)failat=allocations+1;
+}
+
+static void
 run_case(uint fn, void *arg, int jit, int quantum, WORD expected, const char *failure)
 {
  Native64ModuleOwner owner={0};
@@ -323,6 +360,7 @@ run_case(uint fn, void *arg, int jit, int quantum, WORD expected, const char *fa
   check(!pending&&indexes==uses,"field element address consumed within one scheduler quantum");
   if(!more)break;
  }
+ failat=0;
  memmove(&result,root+80,4);
  if(steps>=100000||strcmp(worker.env->errstr,failure)||result!=expected)
   fprintf(stderr,"%s jit=%d quantum=%d result=%d expected=%d error='%s' expected='%s' idx=%d\n",
@@ -651,6 +689,77 @@ record_calls(int jit, int quantum)
 }
 
 static void
+environment_calls(int jit, int quantum)
+{
+ typedef struct VarFixture VarFixture;
+ struct VarFixture {String *name;List *value;WORD flags;};
+ uchar four[]={0xf0},two[]={0xc0},one[]={0x80};
+ Type *t;
+ Store *r;
+ void **context,**env,**local;
+ VarFixture *entry,*original=nil;
+ List *bucket;
+ void **word;
+ int i,n;
+
+ t=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));require(t!=nil);
+ r=H2D(Store*,heapz(t));freetype(t);
+ t=dtype(freeheap,32,four,1);require(t!=nil);
+ r->context=(void*)(context=H2D(void**,heapz(t)));env=H2D(void**,heapz(t));freetype(t);
+ t=dtype(freeheap,24,two,1);require(t!=nil);
+ context[0]=env;env[3]=local=H2D(void**,heapz(t));freetype(t);
+ t=dtype(freeheap,8,one,1);require(t!=nil);
+ envtable=H2D(Array*,heaparray(t,7));local[0]=envtable;freetype(t);
+ envcontext=context;
+ r->text=c2string("local",5);
+ varallocs=statusconss=0;
+ envfault=1;
+ run_case(full_fn_setlocal_probe,r,jit,quantum,marker,exHeap);
+ check(varallocs==1&&D2H(envtable)->ref==1&&D2H(r->text)->ref==1,"failed Var allocation retires pending roots");
+ for(i=0;i<envtable->len;i++){
+  memmove(&bucket,envtable->data+8*i,8);
+  check(bucket==H,"failed setlocal leaves every bucket empty");
+ }
+ envfault=0;
+ run_case(full_fn_setlocal_probe,r,jit,quantum,0,"");
+ for(i=0;i<envtable->len;i++){
+  memmove(&bucket,envtable->data+8*i,8);
+  if(bucket==H)continue;
+  check(!original&&bucket->tail==H,"one new variable in the original hash table");
+  memmove(&original,bucket->data,8);
+ }
+ check(original&&original!=H&&original->name==r->text&&original->value==H&&original->flags==1,
+       "original setlocal installs the correct Var");
+ run_case(full_fn_setlocal_probe,r,jit,quantum,0,"");
+ check(varallocs==2&&D2H(r->text)->ref==2,"updating an existing Var preserves its ownership");
+ envfault=2;
+ statusprobe=1;
+ run_case(full_fn_status_probe,r,jit,quantum,marker,exHeap);
+ check(statusconss==1&&varallocs==2&&D2H(context)->ref==1&&D2H(r->text)->ref==2,
+       "failed list allocation retires both the new record and pending context");
+ envfault=0;
+ statusprobe=1;
+ run_case(full_fn_status_probe,r,jit,quantum,5,"");
+ n=0;
+ for(i=0;i<envtable->len;i++){
+  memmove(&bucket,envtable->data+8*i,8);
+  for(;bucket!=H;bucket=bucket->tail){
+   memmove(&entry,bucket->data,8);
+   if(entry==original)continue;
+   check(textis(entry->name,"status")&&entry->flags==3&&entry->value!=H&&entry->value->tail==H,
+         "original setstatus adds one non-exported status word");
+   memmove(&word,entry->value->data,8);
+   check(word[0]==H&&word[1]==r->text,"list owns the new Listnode and original String");
+   n++;
+  }
+ }
+ check(n==1&&statusconss==2&&varallocs==3&&D2H(r->text)->ref==3,"exact environment and list owners");
+ envtable=nil;envcontext=nil;
+ destroy(r);
+ check(!live&&!nlinkpins,"complete environment and pending frame retirement");
+}
+
+static void
 array_fields(int jit, int quantum)
 {
  Type *type=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));
@@ -733,7 +842,8 @@ metadata(void)
     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
           !owner.module&&allocations==before,"malformed record construction or result refused before allocation");
     total++;
-   }else if(native64rootpathrecord(a)||(a->returned==Native64TypedListPrep&&a->op==ICONSP)){
+   }else if(native64rootpathrecord(a)||a->returned==Native64TypedRecordList||
+            (a->returned==Native64TypedListPrep&&a->op==ICONSP)){
     memmove(code,base->code,base->count*sizeof(*code));
     if(native64rootpathrecord(a))code[j].m|=1;
     else code[j].d+=8;
@@ -747,10 +857,11 @@ metadata(void)
      if(site->first+1>=j||j>=site->end)continue;
      memmove(code,base->code,base->count*sizeof(*code));
      for(next=j+1;next<site->end&&code[next].returned==153;next++);
+     if(next<site->end&&code[next].returned==Native64TypedRecordList)next+=2;
      check(next<site->end&&code[next].op==IMOVP,"record argument initialization fixture");
      code[j-1]=(Native64TypedStep){IMOVP,SRC(AMP)|DST(AFP|AIND),lexer_mp_nil,0,code[next].d,64};
      check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
-           !owner.module&&allocations==before,"allocation after a pending root is refused before allocation");
+           !owner.module&&allocations==before,"overlapping pending arguments are refused before allocation");
      total++;
     }
    }
@@ -774,6 +885,10 @@ main(void)
  FIELD_ARRAY_HANDLERS
  optab[IINDX]=field_index;optab[IMOVW]=field_word;optab[IMOVP]=field_root;optab[IMOVMP]=field_mapped;
  optab[INEWAZ]=field_newarray;
+ optab[INEWZ]=field_newrecord;
+ for(i=0;i<nelem(full_code_setstatus);i++)
+  if(full_code_setstatus[i].op==ICONSP)statuslistslot=full_code_setstatus[i].d;
+ check(statuslistslot>=64,"setstatus has a mapped list scratch slot");
  check(limbo_native64_Lexer_layout(),"generated natural C geometry");
  metadata();
  for(j=0;j<2;j++)for(q=0;q<nelem(quanta);q++){
@@ -782,11 +897,13 @@ main(void)
   lexer_parse(j,quanta[q]);
   lexer_construction(j,quanta[q]);
   record_calls(j,quanta[q]);
+  environment_calls(j,quanta[q]);
   array_fields(j,quanta[q]);
  }
  puts("PASS array fields and unchanged Sh lexer: 162 interpreter/JIT cases with exact operands, tokens, file prompt, scheduler boundaries and ownership");
  puts("PASS unchanged Sh yyparse: 54 interpreter/JIT cases with ASTs, recovery, stack growth and actual aggregate GC roles");
  puts("PASS unchanged Sh YYLEX constructors and doparse: 30 interpreter/JIT cases with file and string inputs, exact shapes and diagnostics");
  puts("PASS record call setup and root-pair arrays: 42 interpreter/JIT cases with nil and wrong-Type controls");
+ puts("PASS Sh environment setup: 30 interpreter/JIT cases including pending roots and allocation faults");
  return 0;
 }

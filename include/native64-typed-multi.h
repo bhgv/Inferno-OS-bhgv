@@ -153,7 +153,7 @@ static int
 native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *steps,unsigned int count,unsigned int fpbytes,unsigned int mpbytes,const Native64TypedCall *calls,unsigned int n)
 {
     const Native64TypedCall *c;const Native64TypedStep *s;Native64TypedStep checkstep;
-    Inst probe,*p;unsigned int i,j,k=0,stop,sm,width;
+    Inst probe,*p;unsigned int i,j,k=0,stop,sm,width,list;
     if(!n)return native64typedcode(out,capacity,steps,count,fpbytes,mpbytes);
     if(!native64model() || out==nil || steps==nil || calls==nil || !count || count>65536 || capacity<count || n>count/2 ||
        fpbytes<64 || fpbytes>1024*1024 || fpbytes%8 || mpbytes>1024*1024 || mpbytes%8)return 0;
@@ -172,6 +172,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             if(s->op!=IMFRAME || s->mode!=(SRC(c->modulemode)|AXIMM|DST(AFP)) || s->s!=c->moduleoffset || s->m!=c->ordinal || s->d!=40 || s->returned)return 0;
         }else if(s->op!=IFRAME || s->mode!=(SRC(AIMM)|DST(AFP)) || s->m || s->d!=40 || s->returned)return 0;
         stop=c->end-(c->contract!=0);
+        list=0;
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
             if(!s->returned){if(c->external || !native64typedargprep(s,fpbytes,mpbytes))return 0;continue;}
@@ -202,7 +203,11 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             if(s->returned==154){
                 if(c->external||steps[c->end].op!=ICALL||
                    !native64libraryprecall(steps,c->first,j,stop,fpbytes,mpbytes,
-                                          c->callee->size,c->callee->map,c->callee->np))return 0;
+                                          c->callee->size,c->callee->map,c->callee->np,&list))return 0;
+                continue;
+            }
+            if(s->returned==Native64TypedRecordList){
+                if(!list||j<list||j-list>=5)return 0;
                 continue;
             }
             if(s->returned==156){if(!native64libraryslicearg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np) || j==c->first+1 || steps[j-1].returned!=155 || steps[j-1].op!=IMOVP || steps[j-1].d!=s->d)return 0;continue;}
@@ -391,7 +396,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 else if(s->returned==141){p->s.ind=s->s;p->reg=0;p->d.ind=s->d;}
                 else if(s->returned==166 || s->returned==235){checkstep=*s;checkstep.returned=s->m==24?214:Native64TypedDraw;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
                 else if(s->returned==Native64TypedArgClear){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
-                else if(s->returned==Native64TypedListPrep){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
+                else if(s->returned==Native64TypedListPrep||s->returned==Native64TypedRecordList){checkstep=*s;checkstep.returned=0;native64typedcode(p,1,&checkstep,1,fpbytes,mpbytes);}
                 else if(!s->returned){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
                 else{p->s.imm=s->s;p->d.i.f=40;p->d.i.s=s->d;if(s->op==IADDC)p->reg=s->m;else if(s->op==IMOVM||s->op==IHEADM)p->reg=s->m;if(c->contract && !c->inherited && j==c->end-1)p->reg=c->contract;}
             }
