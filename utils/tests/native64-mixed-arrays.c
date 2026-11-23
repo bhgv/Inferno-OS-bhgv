@@ -120,6 +120,67 @@ static void mflow(void)
  c[1].m=0;mcheck(!native64modulerawarrays(&s,&f),"root cell is not a Word field");
  puts("PASS mixed spans: nested copy preserves parent state; padding/root-as-Word refused");
 }
+
+static void
+mpairclear(int jit, int grow, int quantum, int nils)
+{
+ Native64ModuleOwner owner={0};
+ Module *rootmod;
+ Modlink *link;
+ Import request[2]={{0}};
+ Prog *process;
+ uchar *frame;
+ Array *array;
+ void *inputs[2],*value;
+ WORD count=3,index=1,result;
+ unsigned int i,j,steps;
+
+ require(native64typedmodule(&full_spec,jit,&owner));
+ request[0].name=(char*)full_functions[mixed_pair_function].name;
+ memmove(&request[0].sig,&full_functions[mixed_pair_function].signature,4);
+ owner.module->ref++;
+ link=linkmod(owner.module,request,1);
+ require(link!=nil&&link!=H);
+ rootmod=mroot(0,grow);
+ if(jit)require(compile(rootmod,rootmod->nprog,nil));
+ rootmod->ref++;
+ starting=rootmod;
+ require(kprotect(start,nil));
+ process=started;
+ rootenvironment(process);
+ frame=process->R.FP;
+ memmove(frame+64,&count,4);
+ memmove(frame+68,&index,4);
+ for(i=0;i<2;i++){
+  inputs[i]=nils?H:mobject(i);
+  if(inputs[i]!=H)D2H(inputs[i])->ref++;
+  memmove(frame+80+8*i,&inputs[i],8);
+ }
+ memmove(frame+104,&link,8);
+ process->quanta=quantum;
+ for(steps=0;steps<10000&&kprotect(executeprocess,process);steps++);
+ mcheck(steps<10000&&!worker.env->errstr[0],"complete pair clear");
+ memmove(&result,frame+112,4);
+ memmove(&array,link->MP+mixed_pairs_offset,8);
+ mcheck(result==count&&array!=H&&array->len==count&&array->t->size==16&&array->t->map[0]==0xc0,
+        "mapped array pair layout preserved");
+ for(i=0;i<(unsigned int)count;i++)for(j=0;j<2;j++){
+  memmove(&value,array->data+16*i+8*j,8);
+  mcheck(value==(i==0?inputs[j]:H),"nil pair cleared only its own element");
+ }
+ for(i=0;i<2;i++)if(inputs[i]!=H)
+  mcheck(D2H(inputs[i])->ref==3,"cleared element relinquished both references");
+ observed=process;
+ progexit();
+ emptyqueues();
+ unload(rootmod);
+ require(native64typedmoduleclear(&owner));
+ for(i=0;i<2;i++)if(inputs[i]!=H){
+  mcheck(D2H(inputs[i])->ref==1,"pair frame and array released their references");
+  destroy(inputs[i]);
+ }
+ mcheck(!live&&!modules&&!nlinkpins&&!worker.nerr,"complete pair clear retirement");
+}
 static void mconstruction(void)
 {
  Native64ModuleOwner owner={0};REG saved=R;int jit,i,n,before;
@@ -159,5 +220,12 @@ int main(void)
   for(j=0;j<nelem(indices);j++)for(profile=0;profile<2;profile++){mrun(kind,get,jit,quanta[q],counts[k],indices[j],profile,0);total++;}
  }
  for(kind=0;kind<9;kind++)for(get=0;get<2;get++)for(jit=0;jit<2;jit++)for(f=1;f<=4;f++){mrun(kind,get,jit,1,4,2,0,f);total++;}
- printf("PASS mixed arrays: %u C/JIT cases across nine layouts, real mapped allocation/copy/growth/field/results, GC maps, nil, bounds, faults, MP/array clones, exact ownership and complete retirement\n",total);return 0;
+ printf("PASS mixed arrays: %u C/JIT cases across nine layouts, real mapped allocation/copy/growth/field/results, GC maps, nil, bounds, faults, MP/array clones, exact ownership and complete retirement\n",total);
+ optab[INEWAZ]=actual_newaz;
+ optab[IINDX]=actual_indx;
+ optab[IMOVMP]=actual_movmp;
+ for(jit=0;jit<2;jit++)for(q=0;q<3;q++)for(k=0;k<2;k++)for(j=0;j<2;j++)
+  mpairclear(jit,k,quanta[q],j);
+ puts("PASS mixed array nil pair: 24 C/JIT cases with neighbor and root ownership checks");
+ return 0;
 }

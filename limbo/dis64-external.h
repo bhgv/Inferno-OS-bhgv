@@ -6,34 +6,65 @@ static int typedchannelbinding(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int*);
  * Prove every scalar/root leaf against both the declaration and caller frame.
  * No aggregate return forwarding or general tuple-call ABI is admitted. */
 static int
-typedstatresult(Decl *fn,Inst *binding,Dis64TypedBody *p,unsigned int *base,int relocate)
+typedstatlayout(Type *t, Dis64Layout *layout)
 {
  static const unsigned int old[]={0,8,12,16,20,24,32,36,40,44,48,56,64,68};
  static const unsigned int native[]={0,8,16,24,32,40,48,52,56,60,64,72,80,84};
  static const int kinds[]={Tint,Tstring,Tstring,Tstring,Tstring,Tbig,Tint,Tint,Tint,Tint,Tint,Tbig,Tint,Tint};
- Dis64Layout result={0};Dis64LayoutLeaf *leaf,*cell;Type *t,*fd;Decl *field,*formal;unsigned int i,first=0;int ok=0;
+ Decl *status,*field;
+ unsigned int i;
+ if(!t||t->kind!=Ttuple||!(status=t->ids)||!status->ty||status->ty->kind!=Tint||
+    !(field=status->next)||field->next||!field->ty||field->ty->kind!=Tadt||
+    !field->ty->decl||!field->ty->decl->sym||strcmp(field->ty->decl->sym->name,"Dir")||
+    !field->ty->decl->dot||!field->ty->decl->dot->sym||strcmp(field->ty->decl->dot->sym->name,"Sys")||
+    !dis64layouttype(t,layout)||layout->count!=nelem(old)||layout->bytes!=88||layout->legacybytes!=72)
+  return 0;
+ for(i=0;i<nelem(old);i++){
+  Dis64LayoutLeaf *leaf=layout->leaves+i;
+  if(leaf->legacy!=old[i]||leaf->native!=native[i]||leaf->kind!=kinds[i]||
+     leaf->oldbytes!=(kinds[i]==Tbig?8:4)||leaf->bytes!=(kinds[i]==Tint?4:8))
+   return 0;
+ }
+ return 1;
+}
+
+static int
+typedstatresult(Decl *fn,Inst *binding,Dis64TypedBody *p,unsigned int *base,int relocate)
+{
+ Dis64Layout result={0};Type *fd;Decl *formal;int ok=0;
  if(!(formal=fn->ty->ids)||formal->next||!formal->ty||!fn->sym)return 0;
  if(!strcmp(fn->sym->name,"stat")){if(formal->ty->kind!=Tstring)return 0;}
  else if(!strcmp(fn->sym->name,"fstat")){if(formal->ty->kind!=Tref || !(fd=formal->ty->tof) || fd->kind!=Tadt || !fd->decl || !fd->decl->sym || strcmp(fd->decl->sym->name,"FD") || !fd->decl->dot || !fd->decl->dot->sym || strcmp(fd->decl->dot->sym->name,"Sys") || !fd->ids || fd->ids->next || !fd->ids->ty || fd->ids->ty->kind!=Tint || fd->ids->offset || fd->size!=4)return 0;}
  else return 0;
- if(!fn->sym || (strcmp(fn->sym->name,"fstat") && strcmp(fn->sym->name,"stat")) || !fn->dot || !fn->dot->sym || strcmp(fn->dot->sym->name,"Sys") ||
-    !(t=fn->ty->tof) || t->kind!=Ttuple || !(field=t->ids) || !field->ty || field->ty->kind!=Tint ||
-    !(field=field->next) || field->next || !field->ty || field->ty->kind!=Tadt || !field->ty->decl ||
-    !field->ty->decl->sym || strcmp(field->ty->decl->sym->name,"Dir") || !field->ty->decl->dot ||
-    !field->ty->decl->dot->sym || strcmp(field->ty->decl->dot->sym->name,"Sys") ||
-    binding->sm!=Afp || binding->s.reg<32 || binding->s.reg>Dis64LayoutBytes-72 || !dis64layouttype(t,&result) || result.count!=14 || result.bytes!=88 || result.legacybytes!=72)goto done;
- for(first=0;first<p->frame.count;first++)if(p->frame.leaves[first].legacy==(unsigned int)binding->s.reg)break;
- if(first>p->frame.count || 14>p->frame.count-first)goto done;
- *base=(p->frame.leaves[first].native+7)&~7U;
- for(i=0;i<14;i++){
-  leaf=result.leaves+i;cell=p->frame.leaves+first+i;
-  if(leaf->legacy!=old[i] || leaf->native!=native[i] || leaf->kind!=kinds[i] ||
-     leaf->oldbytes!=(kinds[i]==Tbig?8:4) || leaf->bytes!=(kinds[i]==Tint?4:8) ||
-     cell->legacy!=binding->s.reg+old[i] || cell->kind!=kinds[i] || cell->oldbytes!=leaf->oldbytes || cell->bytes!=leaf->bytes ||
-     (!relocate && cell->native!=*base+native[i]))goto done;
- }
+ if(!fn->dot||!fn->dot->sym||strcmp(fn->dot->sym->name,"Sys")||
+    binding->sm!=Afp||binding->s.reg<32||binding->s.reg>Dis64LayoutBytes-72||
+    !typedstatlayout(fn->ty->tof,&result))goto done;
  ok=dis64layoutbindresult(&p->frame,&result,binding->s.reg,8,relocate,base);
  done:dis64layoutfree(&result);return ok;
+}
+
+/* A split local produced by tuple destructuring needs the same padding as
+ * the by-value formal. Preserve the formal's layout and relocate locals only. */
+static int
+typedstatcopyframe(Decl *owner, Inst *in, Dis64TypedBody *p)
+{
+ Dis64Layout part={0};
+ Decl *descriptor=in->m.decl,*arg;
+ unsigned int base;
+ int ok;
+ if(in->sm!=Afp||in->dm!=Afp||in->mm!=Adesc||in->branch||in->d.offset||
+    !descriptor||!descriptor->desc||descriptor->desc->id!=in->m.offset||
+    !in->d.native64type||!tequal(in->d.native64type,descriptor->ty))return 1;
+ if(!typedstatlayout(descriptor->ty,&part)){
+  dis64layoutfree(&part);
+  return 1;
+ }
+ ok=in->s.reg==in->d.reg||in->s.reg+72<=in->d.reg||in->d.reg+72<=in->s.reg;
+ for(arg=owner->ty->ids;ok&&arg;arg=arg->next)
+  if(!arg->ty||(in->d.reg<arg->offset+arg->ty->size&&in->d.reg+72>arg->offset))ok=0;
+ if(ok)ok=dis64layoutbindresult(&p->frame,&part,in->d.reg,8,1,&base);
+ dis64layoutfree(&part);
+ return ok||typedfail(p,"stat-copy-frame");
 }
 
 /* Closed Wmlib tuple results; every scalar and root leaf is checked. */
@@ -92,7 +123,9 @@ typedstatframe(TypedMulti *c,Decl *owner,Dis64TypedBody *p,unsigned int stop)
 {
  unsigned int pc,end,base;Inst *in,*binding,*call;Decl *arg,*fn;
  for(pc=p->first;pc<stop;pc++){
-  in=c->instructions[pc];if(!in || in->op!=IMFRAME || !(fn=in->m.decl) || !fn->sym || (strcmp(fn->sym->name,"fstat") && strcmp(fn->sym->name,"stat")) ||
+  in=c->instructions[pc];
+  if(in&&in->op==IMOVMP&&!typedstatcopyframe(owner,in,p))return 0;
+  if(!in || in->op!=IMFRAME || !(fn=in->m.decl) || !fn->sym || (strcmp(fn->sym->name,"fstat") && strcmp(fn->sym->name,"stat")) ||
      !fn->dot || !fn->dot->sym || strcmp(fn->dot->sym->name,"Sys"))continue;
   end=pc+1;while(end<stop && c->instructions[end] && (c->instructions[end]->dm==Afpind||(c->instructions[end]->dm==Afp&&(c->instructions[end]->op==IMOVP||c->instructions[end]->op==IADDC))))end++;
   if(end<=pc+1 || end>=stop || !(call=c->instructions[end]) || call->op!=IMCALL || call->m.decl!=fn ||

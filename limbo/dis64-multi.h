@@ -1496,6 +1496,44 @@ typedspawnrecord(TypedMulti *c, Dis64TypedBody *p, Inst *frame, Decl *arg,
 }
 
 static int
+typedstatargument(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child,
+                  Inst *frame, Decl *arg, unsigned int end, unsigned int *at)
+{
+ Inst *move=c->instructions[*at],*clear;
+ Decl *descriptor=move->m.decl;
+ Dis64Layout part={0};
+ unsigned int src,dst,pc,k;
+ long shape;
+ int ok;
+
+ ok=move->sm==Afp&&!move->s.offset&&move->dm==Afpind&&move->d.reg==frame->d.reg&&
+    move->d.offset==arg->offset&&move->mm==Adesc&&!move->branch&&descriptor&&
+    descriptor->desc&&descriptor->desc->id==move->m.offset&&tequal(descriptor->ty,arg->ty)&&
+    typedstatlayout(arg->ty,&part)&&
+    dis64layoutbindresult(&p->frame,&part,move->s.reg,8,0,&src)&&
+    dis64layoutbindresult(&child->frame,&part,arg->offset,8,0,&dst)&&dst<=65535;
+ dis64layoutfree(&part);
+ if(!ok||!typedrecordlayoutdescriptor(descriptor->ty,descriptor->desc,&part,&shape)){
+  dis64layoutfree(&part);
+  return typedfail(p,"local-stat-argument");
+ }
+ dis64layoutfree(&part);
+ if(shape!=Native64StatArgumentShape)return typedfail(p,"local-stat-argument-map");
+ pc=(*at)++-p->first;
+ p->code[pc]=(Dis64Instruction){IMOVMP,SRC(AFP)|AXIMM|DST(AFP|AIND),shape,src,dst};
+ p->returns[pc]=Native64TypedStatArgument;
+ for(k=1;k<=4&&*at<end;k++){
+  clear=c->instructions[*at];
+  if(clear->op!=IMOVP||clear->dm!=Afp||clear->d.reg!=move->s.reg+4+4*k)break;
+  pc=*at-p->first;
+  if(!typedspawnnil(clear,p,pc,src+8*k))return typedfail(p,"local-stat-argument-clear");
+  p->returns[pc]=Native64TypedStatArgument;
+  (*at)++;
+ }
+ return 1;
+}
+
+static int
 typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int depth,unsigned int *next,unsigned int *height)
 {
     Inst *frame=c->instructions[pc],*call,*in,*binding;
@@ -1602,6 +1640,10 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(c->loads && !spawning && kind==Tadt && typedwordlay(arg->ty)){
             if(!((in->op==IMOVW&&in->mm==Anone)||(in->op==IMOVM&&in->mm==Aimm&&in->m.offset==4)) || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual) || actual!=Tint)return typedfail(p,"local-lay-argument");
             p->code[at-p->first]=(Dis64Instruction){IMOVW,SRC(sm)|DST(AFP|AIND),0,source,offset};p->returns[at++-p->first]=64;continue;
+        }
+        if(c->loads&&!spawning&&kind==Ttuple&&in->op==IMOVMP){
+            if(!typedstatargument(c,p,child,frame,arg,end,&at))return 0;
+            continue;
         }
         if(c->loads && !spawning && kind==Ttuple){
             Dis64Layout tuple={0};unsigned int j,src=0,dst=0,x,y;int valid=dis64layouttype(arg->ty,&tuple),actual;long part;unsigned int wire;

@@ -451,7 +451,7 @@ def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None,
                 for k in range(0,n,4):assert next(l for l in row[space]['leaves']if l[0]==addr[0]+k)[2:]==[4,4,9]
                 break
             leaf=next(l for l in row[space]['leaves']if l[0]==addr[0]+old)
-            assert leaf[1:4]==[value+offset,4,size]and(leaf[4]in ROOTS or wire==0 and addr is o['s']and leaf[4]==20 if ref else leaf[4]==9)
+            assert leaf[1:4]==[value+offset,4,size]and(leaf[4]in ROOTS or addr is o['s']and leaf[4]==20 and (wire==0 or copy==8) if ref else leaf[4]==9)
 
 def rawarray_operation(o,c,pc,maps,types,row):
     op,mode,s,m,d,role=c;sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192
@@ -531,6 +531,31 @@ def verify(data,r,imports,loads=False,rows=None):
         assert r['code'][first]==[5,17,descriptor,0,40,0]
         for arg in callee['args']:
             prep=False;screenprep=None;idprep=None;o=original[at]
+            if loads and r['code'][at][5]==177:
+                assert arg[1:]==[14,72,88]
+                new=arg[0]
+                old=next(l[0]for l in callee['frame']['leaves']if l[1]==new)
+                assert o['op']==OPCODES['IMOVMP'] and o['mode']==77 and o['d']==[pending,old]
+                assert types[o['m']]==(72,b'\x3c')
+                source=maps['frame'][o['s'][0]]
+                assert r['code'][at]==[o['op'],77,source,(22<<24)|30,new,177]
+                geom=((0,0,4),(8,8,8),(12,16,8),(16,24,8),(20,32,8),(24,40,8),
+                      (32,48,4),(36,52,4),(40,56,4),(44,60,4),(48,64,4),
+                      (56,72,8),(64,80,4),(68,84,4))
+                for row,legacy,base in ((r,o['s'][0],source),(callee,old,new)):
+                    for x,y,width in geom:
+                        leaf=next(l for l in row['frame']['leaves']if l[0]==legacy+x)
+                        assert leaf[1]==base+y and leaf[3]==width
+                        assert bool(row['frame']['map'][(base+y)//64]&(128>>((base+y)//8%8)))==(8<=y<40)
+                at+=1
+                for k in range(1,5):
+                    if at>=end or r['code'][at][5]!=177 or r['code'][at][0]==OPCODES['IMOVMP']:break
+                    clear=original[at];nil=clear['s'][0]
+                    assert next(l for l in r['data']['leaves']if l[0]==nil)[4]==20
+                    assert clear==dict(op=41,mode=1,m=None,s=[nil],d=[o['s'][0]+4+4*k])
+                    assert r['code'][at]==[41,1,maps['data'][nil],0,source+8*k,177]
+                    at+=1
+                continue
             if loads and r['code'][at][5]==49:
                 assert arg[1:]==[9,4,4]
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0])

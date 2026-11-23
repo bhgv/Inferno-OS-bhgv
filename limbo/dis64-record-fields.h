@@ -145,7 +145,8 @@ typedrecordcopyoperand(Dis64TypedBody *p, Addr *addr, int mode, Type *type,
   old=addr->offset;storage=&record;base=cell;
  }else{
   if((mode!=Afp&&mode!=Amp)||addr->offset||!addr->decl||
-     !typedarraysubtype(addr->decl->ty,addr->reg-addr->decl->offset,type))
+     (!(addr->native64type&&tequal(addr->native64type,type))&&
+      !typedarraysubtype(addr->decl->ty,addr->reg-addr->decl->offset,type)))
    goto done;
   old=addr->reg;storage=mode==Afp?&p->frame:&p->data;*wire=mode==Afp?AFP:AMP;base=0;
  }

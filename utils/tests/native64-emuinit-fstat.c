@@ -53,11 +53,11 @@ static void statrun(int jit,int grow,int q,int fn,int seed,int failure,int nativ
  failat=0;if(statrootfault){fstatcheck(steps<10000 && !strcmp(worker.env->errstr,exBounds) && !statcalls,"fourth root rejected before builtin");goto cleanup;}if(steps>=10000 || worker.env->errstr[0])fprintf(stderr,"fstat jit=%d grow=%d fn=%d seed=%d failure=%d native=%d err=%s\n",jit,grow,fn,seed,failure,nativefailure,worker.env->errstr);
  fstatcheck(steps<10000 && !worker.env->errstr[0],"complete source call");fstatcheck(statcalls==(fn==3?2:1),"actual Sys.fstat count");
  if(fn==2 || fn==4){memmove(&length,root+80,8);fstatcheck(length==(nativefailure || (failure>=1&&failure<=5)?-1:statlength+(fn==4?18:0)),"source Dir.length full width");}
- else{memmove(&status,root+80,4);fstatcheck(status==(nativefailure || (failure>=1&&failure<=5)?-1:0),"source status result");for(i=84;i<88;i++)fstatcheck(root[i]==0x5a,"scalar result width");}
+ else{memmove(&status,root+80,4);fstatcheck(status==(nativefailure || (failure>=1&&failure<=5)?(fn==5?0:-1):(fn==5?1:0)),"source status and executable permission");for(i=84;i<88;i++)fstatcheck(root[i]==0x5a,"scalar result width");}
  for(i=88;i<128;i++)fstatcheck(root[i]==0x5a,"caller guards");cleanup: observed=process;progexit();emptyqueues();if(damaged)damaged->map[rootbit/8]=savedmap;require(client.module->ref==1);require(native64typedmoduleclear(&client));require(b->ref==1);unload(b);fstatcheck(!live && !nlinkpins && !modules && !worker.nerr && Tstring.ref==1 && Tmodlink.ref==1,"complete roots/module/type retirement");memset(nativeobservations,0,sizeof(nativeobservations));
 }
 static void statpreflight(void){
- Native64ModuleSpec spec=stat_spec;Native64ModuleFunction functions[5];Native64TypedStep code[128];Native64ModuleSite site;Native64ModuleImport request;Native64ModuleTable table;Native64ModuleOwner owner={0};uchar map[128],rmap[2];REG saved=R;uint base,bit;int i,before;
+ Native64ModuleSpec spec=stat_spec;Native64ModuleFunction functions[nelem(stat_functions)];Native64TypedStep code[128];Native64ModuleSite site;Native64ModuleImport request;Native64ModuleTable table;Native64ModuleOwner owner={0};uchar map[128],rmap[2];REG saved=R;uint base,bit;int i,before;
  for(i=0;i<19;i++){
   memmove(functions,stat_functions,sizeof(functions));spec.functions=functions;spec.tables=&table;request=stat_requests[0];table=(Native64ModuleTable){&request,1};request.map=rmap;memmove(rmap,stat_request_map,2);
   site=functions[1].sites[0];functions[1].sites=&site;memmove(code,functions[1].code,functions[1].count*sizeof(*code));functions[1].code=code;memmove(map,functions[1].map,functions[1].mapbytes);functions[1].map=map;base=code[site.end-1].s;
@@ -81,6 +81,49 @@ static void statpreflight(void){
  }
  puts("PASS fstat metadata: nineteen complete result/root/span/import/contract refusals before allocation");
 }
+
+static void statargpreflight(void)
+{
+ Native64ModuleSpec spec=stat_spec;
+ Native64ModuleFunction functions[nelem(stat_functions)];
+ Native64TypedStep code[32];
+ Native64ModuleOwner owner={0};
+ Native64ModuleSite sites[2];
+ uchar map[8];
+ unsigned int i,at,bit;
+ int before;
+
+ spec.functions=functions;
+ for(i=0;i<7;i++){
+  Native64ModuleFunction *f=functions+5;
+  memmove(functions,stat_functions,sizeof(functions));
+  require(f->count<=nelem(code)&&f->nsites==2&&f->mapbytes<=nelem(map));
+  memmove(code,f->code,f->count*sizeof(*code));
+  memmove(sites,f->sites,sizeof(sites));
+  memmove(map,f->map,f->mapbytes);
+  f->code=code;
+  f->sites=sites;
+  f->map=map;
+  at=sites[1].first+1;
+  require(code[at].op==IMOVMP&&code[at].returned==Native64TypedStatArgument);
+  switch(i){
+  case 0: code[at].m^=16; break;
+  case 1: code[at].d+=8; break;
+  case 2: code[at].s++; break;
+  case 3: code[at+1].d=code[at+2].d; break;
+  case 4: code[at+4].s=stat_sys_offset; break;
+  case 5:
+   bit=(code[at].s+32)/8;
+   map[bit/8]&=~(128>>(bit%8));
+   break;
+  case 6: sites[1].external=1; break;
+  }
+  before=allocations;
+  fstatcheck(!native64typedmodule(&spec,0,&owner)&&allocations==before&&!owner.module,
+             "invalid pending stat argument refused before allocation");
+ }
+ puts("PASS stat argument metadata: seven pending layout, ownership and clear refusals");
+}
 static void statconstruction(void){Native64ModuleOwner owner={0};REG saved=R;int jit,i,n,before;
  for(jit=0;jit<2;jit++){before=allocations;require(native64typedmodule(&stat_spec,jit,&owner));n=allocations-before;require(native64typedmoduleclear(&owner));
   for(i=1;i<=n;i++){failat=allocations+i;require(!native64typedmodule(&stat_spec,jit,&owner));failat=0;fstatcheck(!owner.module && !owner.rooted && !live && !nlinkpins && !memcmp(&R,&saved,sizeof(R)),"constructor rollback");}
@@ -89,9 +132,9 @@ static void statconstruction(void){Native64ModuleOwner owner={0};REG saved=R;int
 }
 int main(int argc,char**argv){int jit,g,q,fn,seed,failure,native,total=0;int quanta[]={1,3,1000};require(argc==1 || argc==2);
  rootpgrp.r.ref=rootfgrp.r.ref=rootegrp.r.ref=1;worker.defenv.pgrp=&rootpgrp;worker.defenv.fgrp=&rootfgrp;worker.defenv.egrp=&rootegrp;worker.defenv.errstr=worker.defenv.errbuf0;worker.defenv.syserrstr=worker.defenv.errbuf1;worker.env=&worker.defenv;worker.type=Interp;Tstring.free=freeheap;require(dis64selectlaunch("dis64-calls"));
- statpreflight();statconstruction();if(argc==2 && !strcmp(argv[1],"metadata"))return 0;
+ statpreflight();statargpreflight();statconstruction();if(argc==2 && !strcmp(argv[1],"metadata"))return 0;
  STAT_HANDLERS
- optab[IMOVP]=actual_movp;optab[ILENC]=actual_lenc;
+ optab[IMOVP]=actual_movp;optab[IMOVMP]=actual_movmp;optab[ILENC]=actual_lenc;
  if(argc==2){statrootfault=1;for(jit=0;jit<2;jit++)statrun(jit,1,1,1,0,0,0);puts("PASS fstat binder: fourth result root checked before builtin in C/JIT");return 0;}
- for(jit=0;jit<2;jit++)for(g=0;g<2;g++)for(q=0;q<3;q++)for(fn=1;fn<5;fn++)for(seed=0;seed<3;seed++)for(failure=0;failure<7;failure++)for(native=0;native<2;native++){statrun(jit,g,quanta[q],fn,seed,failure,native);total++;}
+ for(jit=0;jit<2;jit++)for(g=0;g<2;g++)for(q=0;q<3;q++)for(fn=1;fn<=5;fn++)for(seed=0;seed<3;seed++)for(failure=0;failure<7;failure++)for(native=0;native<2;native++){statrun(jit,g,quanta[q],fn,seed,failure,native);total++;}
  printf("PASS actual Sys.fstat: %d C/JIT cases, 88-byte results, all fields, four String roots/replacements/aliases, native/partial-allocation failures and full retirement\n",total);return 0;}

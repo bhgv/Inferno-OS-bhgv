@@ -229,25 +229,57 @@ done:
 }
 
 static int
+typednilpair(Type *type)
+{
+ Decl *first;
+ if(!type||type->kind!=Ttuple||!(first=type->ids)||!first->next||first->next->next)
+  return 0;
+ return first->ty->kind==Tany&&first->next->ty->kind==Tany;
+}
+
+static int
+typednilpairspan(Dis64TypedBody *p, Addr *addr, int mode, long *source)
+{
+ unsigned int first,second;
+ if(mode!=Afp||addr->offset||!typednilpair(addr->native64type)||
+    !dis64layoutaddress(&p->frame,addr->reg,4,1,&first)||
+    !dis64layoutaddress(&p->frame,addr->reg+4,4,1,&second)||second!=first+8)
+  return 0;
+ *source=first;
+ return 1;
+}
+
+static int
 typedmappeduse(Dis64TypedBody*p,Inst*in,unsigned int pc,long argument,int si,int di)
 {
- unsigned int sm,dm,so=0,doff=0,copy=0,n,role=65;long src=0,dst=0;int k;Type*t=nil,*a,*b;Decl*d;Dis64Layout l={0};
+ unsigned int sm,dm,so=0,doff=0,copy=0,n,role=65;long src=0,dst=0;int k,nilpair=0;Type*t=nil,*a,*b;Decl*d;Dis64Layout l={0};
  if(in->branch||(argument>=0&&(in->op!=IMOVP||si<0||in->dm!=Afpind)))
   return typedfail(p,"mixed-array-use-shape");
  if(in->op==IMOVMP){
-  d=in->m.decl;if(in->mm!=Adesc||!d||!d->desc||d->desc->id!=in->m.offset||!(copy=typedmixedarray(d->ty,&l))||d->desc->size!=l.legacybytes||d->desc->nmap!=1||!d->desc->map||d->desc->map[0]!=native64arraymap(copy)){dis64layoutfree(&l);return typedfail(p,"mixed-array-copy-descriptor");}
+  d=in->m.decl;
+  if(in->mm!=Adesc||!d||!d->desc||d->desc->id!=in->m.offset||
+     d->desc->nmap!=1||!d->desc->map)return typedfail(p,"mixed-array-copy-descriptor");
+  nilpair=si<0&&di>=0&&!in->d.offset&&p->rawclass[di]==8&&typednilpair(d->ty);
+  copy=nilpair?8:typedmixedarray(d->ty,&l);
+  if(!copy||d->desc->size!=(nilpair?8:l.legacybytes)||d->desc->map[0]!=native64arraymap(copy)){
+   dis64layoutfree(&l);
+   return typedfail(p,"mixed-array-copy-descriptor");
+  }
   dis64layoutfree(&l);t=d->ty;n=native64arraywidth(copy);
  }else{if(in->op!=IMOVP||in->mm!=Anone)return typedfail(p,"mixed-array-root-opcode");n=8;}
  if(si>=0){
   if(copy?(!typedarraysubtype(p->rawtype[si],in->s.offset,t)||!typedarraycopyoffset(p->rawclass[si],in->s.offset,copy,&so)):!typedarrayfield(p->rawclass[si],in->s.offset,n,1,&so))return typedfail(p,"mixed-array-source-field");
   src=48+8*si;sm=AFP|AIND;
+ }else if(nilpair){
+  if(!typednilpairspan(p,&in->s,in->sm,&src))return typedfail(p,"mixed-array-nil-pair");
+  sm=AFP;
  }else if(typedmixedfield(p,&in->s,in->sm,t,pc,0,&src,&sm)){
   role=Native64TypedRecordArray;
  }else if(copy){if(!typedmixedspan(p,&in->s,in->sm,t,&src,&sm))return typedfail(p,"mixed-array-copy-source");}
  else if(!typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&src,&sm,&k))return 0;
  if(argument>=0){dst=argument;dm=AFP|AIND;}
  else if(di>=0){
-  if(copy?(!typedarraysubtype(p->rawtype[di],in->d.offset,t)||!typedarraycopyoffset(p->rawclass[di],in->d.offset,copy,&doff)):!typedarrayfield(p->rawclass[di],in->d.offset,n,1,&doff))return typedfail(p,"mixed-array-destination-field");
+  if(copy?((!nilpair&&!typedarraysubtype(p->rawtype[di],in->d.offset,t))||!typedarraycopyoffset(p->rawclass[di],in->d.offset,copy,&doff)):!typedarrayfield(p->rawclass[di],in->d.offset,n,1,&doff))return typedfail(p,"mixed-array-destination-field");
   dst=48+8*di;dm=AFP|AIND;
  }else if(!copy&&si>=0&&in->dm==Afpind&&in->d.reg==16&&!in->d.offset){
   a=typedarrayleaf(p->rawtype[si],in->s.offset);if(!a||!tequal(a,p->resulttype))return typedfail(p,"mixed-array-result-type");dst=32;dm=AFP|AIND;

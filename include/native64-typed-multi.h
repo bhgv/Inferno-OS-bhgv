@@ -257,6 +257,26 @@ native64typedspawnrecord(const Native64TypedStep *v, unsigned int fp, unsigned i
 }
 
 static int
+native64typedstatprep(const Native64TypedStep *v, unsigned int count,
+                      unsigned int fp, unsigned int mp, unsigned int bytes,
+                      const uchar *map, unsigned int np)
+{
+ unsigned int i;
+ if(!count||v->returned!=Native64TypedStatArgument||v->op!=IMOVMP||
+    v->mode!=(SRC(AFP)|AXIMM|DST(AFP|AIND))||v->m!=Native64StatArgumentShape||
+    !native64typedrootoperand(AFP,v->s,fp,mp)||88>fp-v->s||
+    v->d<64||v->d>65535||!native64statresultmap(bytes,map,np,v->d))
+  return 0;
+ for(i=1;i<count&&v[i].returned==Native64TypedStatArgument&&v[i].op!=IMOVMP;i++){
+  const Native64TypedStep *clear=v+i;
+  if(i>4||clear->op!=IMOVP||clear->mode!=(SRC(AMP)|DST(AFP))||
+     clear->m||clear->d!=v->s+8*i||!native64typedrootoperand(AMP,clear->s,fp,mp))
+   return 0;
+ }
+ return i;
+}
+
+static int
 native64partialretcontract(unsigned int callee, unsigned int caller)
 {
     return (callee==96&&caller==112)||(callee==24&&caller==16);
@@ -294,6 +314,13 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         list=clone=0;
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
+            if(s->returned==Native64TypedStatArgument){
+                int prepared;
+                if(c->external||steps[c->end].op!=ICALL||c->callee->np<0||
+                   !(prepared=native64typedstatprep(s,stop-j,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np)))return 0;
+                j+=prepared-1;
+                continue;
+            }
             if(s->returned==Native64TypedRecordNew&&steps[c->end].op==ISPAWN){
                 if(c->external||c->callee->np<0)return 0;
                 if(UDST(s->mode)==(AFP|AIND)){
@@ -534,6 +561,10 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 }
                 else if(s->returned==Native64TypedSpawnRecord){
                     native64recordcode(p,s,nil);
+                }
+                else if(s->returned==Native64TypedStatArgument){
+                    if(s->op==IMOVMP){p->s.ind=s->s;p->d.i.f=40;p->d.i.s=s->d;}
+                    else{p->s.ind=s->s;p->d.ind=s->d;}
                 }
                 else if(s->returned==255||s->returned==248){
                     native64typedcode(p,1,s,1,fpbytes,mpbytes);

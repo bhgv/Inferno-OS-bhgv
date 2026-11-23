@@ -1,32 +1,37 @@
 #!/usr/bin/env python3
 """Checked Sys.fstat mixed results through actual MCALL, native binder and Sys handler."""
-import argparse,json,os,runpy,shlex,subprocess,tempfile
+import argparse,json,os,re,runpy,shlex,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 CMD=runpy.run_path(str(ROOT/'utils/tests/native64-typed-command-files.py'));EXT=CMD['EXT']
 SOURCE='''implement Stat;include "provider.m";
-Stat:module{open:fn(path:string);probe:fn(fd:ref Sys->FD):int;length:fn(fd:ref Sys->FD):big;twice:fn(fd:ref Sys->FD):int;shifted:fn(fd:ref Sys->FD,marker:int):big;};sys:Sys;
+Stat:module{open:fn(path:string);probe:fn(fd:ref Sys->FD):int;length:fn(fd:ref Sys->FD):big;twice:fn(fd:ref Sys->FD):int;shifted:fn(fd:ref Sys->FD,marker:int):big;permission:fn(fd:ref Sys->FD):int;};sys:Sys;
 open(path:string){sys=load Sys path;}
 probe(fd:ref Sys->FD):int{(ok,d):=sys->fstat(fd);return ok;}
 length(fd:ref Sys->FD):big{(ok,d):=sys->fstat(fd);if(ok<0)return big -1;return d.length;}
 twice(fd:ref Sys->FD):int{ok:=0;for(i:=0;i<2;i++){(n,d):=sys->fstat(fd);ok=n;}return ok;}
 shifted(fd:ref Sys->FD,marker:int):big{marker++;(ok,d):=sys->fstat(fd);if(ok<0)return big -1;return d.length+big marker;}
+permission(fd:ref Sys->FD):int{return executable(sys->fstat(fd),8r444);}
 '''
 def generate(limbo,w,query="fstat"):
-    source=SOURCE
+    shell=(ROOT/'appl/cmd/sh/sh.b').read_text()
+    executable=re.search(r'(?m)^executable\([^\n]+\n\{.*?^\}',shell,re.S)[0]
+    source=SOURCE+executable
     if query=="stat":source=source.replace("fd:ref Sys->FD","path:string").replace("sys->fstat(fd)","sys->stat(path)")
     signature=0x319328dd if query=="stat"else 0xda4499c2
     data,rows=EXT['compile_source'](limbo,w,source,interface=(ROOT/'module/sys.m').read_text(),loads=True)
-    assert len(rows)==5 and all(r['accepted']for r in rows),[(r['name'],r.get('reason'))for r in rows]
+    assert len(rows)==7 and all(r['accepted']for r in rows),[(r['name'],r.get('reason'))for r in rows]
     imports=EXT['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1]
     assert imports==[[{'signature':signature,'name':query}]]
     EXT['MODULE']['check_exports'](data,rows)
     for r in rows:
-        EXT['verify'](data,r,imports[0],loads=True)
+        EXT['verify'](data,r,imports[0],loads=True,rows=rows)
         for e in r.get('externals',[]):
             assert e['name']==query and e['contract']==88 and not e['inherited']and e['args']==[[64,13 if query=='stat'else 12,4,8]]
             base=e['resultoffset'];expect=[(0,9,4),(8,13,8),(16,13,8),(24,13,8),(32,13,8),(40,4,8),(48,9,4),(52,9,4),(56,9,4),(60,9,4),(64,9,4),(72,4,8),(80,9,4),(84,9,4)]
             assert all(any(l[1]==base+off and l[3:]==[size,kind]for l in r['frame']['leaves'])for off,kind,size in expect)
+    permission=next(r for r in rows if r['name']=='permission')
+    assert any(step[0]==EXT['OPCODES']['IMOVMP'] and step[5]==177 for step in permission['code'])
     # Ordinary external lowering and unrelated tuple imports stay closed.
     _,closed=EXT['compile_source'](limbo,w,source,interface=(ROOT/'module/sys.m').read_text(),loads=False)
     assert all(not r['accepted']for r in closed)
@@ -35,21 +40,28 @@ def generate(limbo,w,query="fstat"):
         *(([(source,real.replace('fd:\tint;','fd:\tbig;'))])if query=='fstat'else[]),
         (source.replace('return d.length','return big d.length'), '\n'.join(l for l in real.replace('length:\tbig;','length:\tint;').splitlines()if not l.lstrip().startswith(('nulldir:','zerodir:'))))):
         _,badrows=EXT['compile_source'](limbo,w,badsource,interface=badinterface,loads=True)
-        assert all(not r['accepted']for r in badrows if r['name']!='open')
+        assert all(not r['accepted']for r in badrows if r['name'] not in ('open','executable'))
     lines=['#include "native64-typed-module.h"','static const uchar stat_request_map[]={0,128};','static const Native64ModuleImport stat_requests[]={{"fstat",0xda4499c2U,72,stat_request_map,2}};','static const Native64ModuleTable stat_tables[]={{stat_requests,1}};']
     exports={e['name']:e for e in EXT['BASE']['READ']['legacy_instructions'](data,with_exports=True)[-1]}
+    indices={r['first']:i for i,r in enumerate(rows)}
     for r in rows:
         n=r['name'];lines+=['static const Native64TypedStep stat_code_'+n+'[]={']+['{'+','.join(map(str,c))+'},'for c in r['code']]+['};','static const uchar stat_map_'+n+'[]={'+','.join(map(str,r['frame']['map']))+'};']
-        sites=r.get('externals',[])
-        if sites:lines+=['static const Native64ModuleSite stat_sites_'+n+'[]={']+['{'+','.join(map(str,(e['first'],e['end'],e['binding'],88,0,1,0,*e['module'])))+'},'for e in sites]+['};']
+        sites=[(e['first'],e['end'],e['binding'],88,0,1,0,*e['module']) for e in r.get('externals',[])]
+        sites.extend((first,end,indices[target],contract,inherited,0,0,0,0)
+                     for first,end,target,_,_,contract,inherited in r.get('calls',[]))
+        r['test_sites']=len(sites)
+        if sites:lines+=['static const Native64ModuleSite stat_sites_'+n+'[]={']+['{'+','.join(map(str,e))+'},'for e in sorted(sites)]+['};']
     lines+=['static const Native64ModuleFunction stat_functions[]={']
     for r in rows:
-        n=r['name'];lines+=['{"'+n+'",'+str(exports[n]['signature'])+f'U,1,stat_code_{n},{len(r["code"])},{r["frame"]["bytes"]},stat_map_{n},{len(r["frame"]["map"])},'+('stat_sites_'+n if r.get('externals')else'nil')+','+str(len(r.get('externals',[])))+'},']
+        n=r['name'];lines+=['{"'+n+'",'+str(exports.get(n,{}).get('signature',0))+f'U,{int(n in exports)},stat_code_{n},{len(r["code"])},{r["frame"]["bytes"]},stat_map_{n},{len(r["frame"]["map"])},'+('stat_sites_'+n if r['test_sites']else'nil')+','+str(r['test_sites'])+'},']
     lines+=['};','static const uchar stat_data_map[]={'+','.join(map(str,rows[0]['data']['map']))+'};']
     initial=EXT['BASE']['READ']['legacy_instructions'](data,with_types=True,with_data=True)[3];values=[]
     for old,cell in initial.items():
-        assert cell['kind']=='long';offset=next(l[1]for l in rows[0]['data']['leaves']if l[0]==old);values.append('{'+f'{offset},8,~0ULL'+'}')
-    lines+=['static const Native64ModuleInit stat_initial[]={'+','.join(values)+'};','static const Native64ModuleSpec stat_spec={"Stat","trusted/Stat",stat_functions,5,~0U,'+str(rows[0]['data']['bytes'])+',stat_data_map,sizeof(stat_data_map),stat_initial,'+str(len(values))+',stat_tables,1,nil,nil,0,read64ownedimport};','static const uint stat_sys_offset='+str(next(g[1]for g in rows[0]['globals']if g[0]=='sys'))+';']
+        assert cell['kind'] in ('word','long')
+        offset=next(l[1]for l in rows[0]['data']['leaves']if l[0]==old)
+        bits=(cell['high']<<32)|cell['low']
+        values.append('{'+f'{offset},{8 if cell["kind"]=="long" else 4},{bits}ULL'+'}')
+    lines+=['static const Native64ModuleInit stat_initial[]={'+','.join(values)+'};','static const Native64ModuleSpec stat_spec={"Stat","trusted/Stat",stat_functions,nelem(stat_functions),~0U,'+str(rows[0]['data']['bytes'])+',stat_data_map,sizeof(stat_data_map),stat_initial,'+str(len(values))+',stat_tables,1,nil,nil,0,read64ownedimport};','static const uint stat_sys_offset='+str(next(g[1]for g in rows[0]['globals']if g[0]=='sys'))+';']
     (w/'stat.h').write_text(('\n'.join(lines)+'\n').replace('\"fstat\",0xda4499c2U','\"'+query+'\",'+hex(signature)+'U'))
     (w/'sys-native64.h').write_text(subprocess.check_output([str(limbo),'-H','-M','Sys',str(ROOT/'module/sys.m')],text=True))
     print('PASS real Sys.'+query+' declarations: complete native 88-byte result, independent classic leaves/calls, source length read and old-profile refusal',flush=True)
@@ -66,6 +78,9 @@ def main():
         source=CMD['unit']().replace('int main(int argc,char **argv)','int old_command_main(int argc,char **argv)')
         extract=CMD['NS']['S']['FILES']['FILES']['function'];port=(ROOT/'emu/port/inferno.c').read_text()
         source+='\n#include "sys-native64.h"\nstatic Dir*statdirfstat(int);\nchar Ebadarg[]="bad arg";\nvoid seterror(char*s,...){kwerrstr("%s",s);}\n'
+        vm=(ROOT/'libinterp/xec.c').read_text()
+        heap=(ROOT/'libinterp/heap.c').read_text()
+        source+='\n'+extract(heap,'void\nincmem(')+'\n'+extract(vm,'static int\nmappedcopytype(')+'\n'+extract(vm,'OP(movmp)')+'\n'
         for sig in('static int\nsysnativeint(','static int\nsysiofd(','static void\nsysstatusframe(','static void*\nsysresultowner(','static void\nsysdirowners(','static void\nunpackdir('):source+='\n'+extract(port,sig)+'\n'
         source+='\n'+extract((ROOT/'libinterp/runt.c').read_text(),'void\nretstr(')+'\n'
         source+='\n#define kdirfstat statdirfstat\n'+extract(port,'void\nSys_fstat(')+'\n#undef kdirfstat\n'

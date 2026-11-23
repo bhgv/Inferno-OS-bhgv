@@ -10,7 +10,7 @@ for k,(roots,words,nested) in enumerate(SHAPES):
  fields='a:ref Box;'+('b:string;'if roots>=2 else'')+('c:chan of int;'if roots==3 else'')+'op:int;'
  TYPES+=('Value'+str(k)+':adt{'+fields+'};'if nested else'')+'Row'+str(k)+':adt{'+('value:Value'+str(k)+';state:int;'if nested else fields+('state:int;'if words==2 else''))+'};'
 NAMES=tuple(name+str(k)for k in range(9)for name in('run','get'))
-DECL='Mixedarrays:module{'+TYPES+''.join(name+':fn(n,i:int,x:ref Box,s:string,c:chan of int):'+('ref Box'if name.startswith('get')else'int')+';'for name in NAMES)+'};'
+DECL='Mixedarrays:module{'+TYPES+''.join(name+':fn(n,i:int,x:ref Box,s:string,c:chan of int):'+('ref Box'if name.startswith('get')else'int')+';'for name in NAMES+('pairclear',))+'};'
 SOURCE='implement Mixedarrays;'+DECL+'fail:int;'
 for k in range(9):SOURCE+='saved'+str(k)+':array of Row'+str(k)+';outa'+str(k)+':ref Box;outb'+str(k)+':string;outc'+str(k)+':chan of int;'
 for k,(roots,words,nested)in enumerate(SHAPES):
@@ -21,15 +21,29 @@ for k,(roots,words,nested)in enumerate(SHAPES):
  start+='outa'+tag+'=saved'+tag+'[i]'+field+';'+('outb'+tag+'=saved'+tag+'[i]'+path+'.b;'if roots>=2 else'')+('outc'+tag+'=saved'+tag+'[i]'+path+'.c;'if roots==3 else'')
  for name in('run','get'):
   SOURCE+=name+tag+'(n,i:int,x:ref Box,s:string,c:chan of int):'+('int'if name=='run'else'ref Box')+'{'+start+'return saved'+tag+'[i]'+(last if name=='run'else field)+';}'
+SOURCE+='''
+pairs:array of (ref Box,string);
+pairclear(n,i:int,x:ref Box,s:string,nil:chan of int):int{
+    a:=array[n] of (ref Box,string);
+    a[i]=(x,s);
+    a[i-1]=(x,s);
+    a[i]=(nil,nil);
+    pairs=a;
+    return len a;
+}
+'''
 
 def generate(limbo,w):
  path=w/'mixedarrays.m';path.write_text(DECL)
  header=subprocess.check_output([str(limbo),'-H','-M','Mixedarrays',str(path)],text=True);(w/'mixed-native.h').write_text(header)
  signatures={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Mixedarrays_(\w+) (0x[0-9a-f]+)U',header,re.M)}
- rows=G['generate'](limbo,w,SOURCE,'Mixedarrays',(18,0,0,'~0U'),export_signatures=signatures)
+ rows=G['generate'](limbo,w,SOURCE,'Mixedarrays',(19,0,0,'~0U'),export_signatures=signatures)
  p=w/'full.h';text=p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','');gl={v[0]:v[1]for v in rows[0]['globals']}
  text+='\nstatic const uint mixed_globals[][4]={'+','.join('{'+','.join(str(gl.get(n+str(k),'~0U'))for n in('saved','outa','outb','outc'))+'}'for k in range(9))+'};\nstatic const uint mixed_fail='+str(gl['fail'])+';\n'
  text+='static const uint mixed_functions[][2]={'+','.join('{'+','.join(str(next(i for i,r in enumerate(rows)if r['name']==n+str(k)))for n in('run','get'))+'}'for k in range(9))+'};\n'
+ pair=next(i for i,r in enumerate(rows)if r['name']=='pairclear')
+ assert sum(step[0]==E['OPCODES']['IMOVMP']and step[5]==65 and step[3]==8 for step in rows[pair]['code'])==3
+ text+=f'static const uint mixed_pair_function={pair}, mixed_pairs_offset={gl["pairs"]};\n'
  # Independent C sizeof/offsetof witnesses, including padding in nested values.
  text+='struct MixedLayout{uint roots,words,width,first,last,copy;};\nstatic const struct MixedLayout mixed_layouts[]={\n'
  for k,(roots,words,nested)in enumerate(SHAPES):
@@ -65,6 +79,7 @@ def shstack(limbo,w):
  assert any(c[5]==65 and c[0]==E['OPCODES']['IMOVMP']and c[3]&65535==28 for c in row['code'])
  frontier=runpy.run_path(str(ROOT/'utils/tests/awm-native64-preflight.py'))['checked_frontier'](limbo,'appl/cmd/sh/sh.b',w)
  yy=next(f for f in frontier['functions']if f['name']=='yyparse');assert yy['accepted']or yy['pc']>yy['first'],yy
+ assert all(f['accepted']for f in frontier['functions']if f['name'] in ('removebuiltin','removesbuiltin'))
  print('PASS unchanged Sh declarations: YYS allocation, nested YYSTYPE copies and yacc-style growth; full yyparse frontier',yy.get('pc'),yy.get('reason'),flush=True)
 
 def unit():
