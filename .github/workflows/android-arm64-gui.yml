@@ -100,12 +100,13 @@ jobs:
           python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
             --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
             --build-root "$RUNNER_TEMP/android-gui-tk" --native64-tk --native64-draw --native64-sys-fixed --native64-formatter
-      - name: Link the Android ARM64 native64 AWM boot profile
+      - name: Package and verify the Android ARM64 AWM test
         run: |
+          sdkmanager 'build-tools;35.0.0' 'platforms;android-35'
           python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
             --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
             --build-root "$RUNNER_TEMP/android-awm" --native64-tk --native64-draw \
-            --native64-sys-fixed --native64-formatter --native64-awm
+            --native64-sys-fixed --native64-formatter --native64-awm --apk-sdk "$ANDROID_HOME"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -123,5 +124,7 @@ jobs:
             ${{ runner.temp }}/android-awm/logs/
             ${{ runner.temp }}/android-awm/result.json
             ${{ runner.temp }}/android-awm/native/libinferno_os_app.so
+            ${{ runner.temp }}/android-awm/Inferno-AWM-arm64-v8a-test.apk
+            ${{ runner.temp }}/android-awm/Inferno-AWM-arm64-v8a-test.apk.sha256
           if-no-files-found: warn
           retention-days: 14

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the complete Android ARM64 GUI native graph; this does not grant AWM admission."""
+"""Build the Android ARM64 GUI and optionally package the panel-free AWM test."""
 import argparse
 import hashlib
 import json
@@ -8,6 +8,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
+from zipfile import ZipFile, ZIP_STORED
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -23,6 +25,77 @@ def run(command, cwd, env, log):
     print('PASS', log.name, flush=True)
 
 
+def stage_awm_runtime(core, app, build, mk, env, logs):
+    for directory in ('lib', 'wm', 'sh'):
+        (core/'dis'/directory).mkdir(parents=True, exist_ok=True)
+    for directory in ('alib', 'cmd', 'cmd/sh', 'wm'):
+        run([str(mk), 'install', 'DIRS='], core/'appl'/directory, env,
+            logs/('dis-'+directory.replace('/', '-')+'.log'))
+    assets = build/'assets'
+    run([sys.executable, str(app/'tools/stage-inferno.py'), '--source', str(core),
+         '--output', str(assets/'inferno')], app, env, logs/'stage-runtime.log')
+    return assets
+
+
+def package_awm(apk_tools, platform, app, build, assets, library, revisions, env, logs):
+    android = '{http://schemas.android.com/apk/res/android}'
+    ET.register_namespace('android', android[1:-1])
+    resources = app/'app/src/main'
+    manifest = ET.parse(resources/'AndroidManifest.xml')
+    root = manifest.getroot()
+    core, launcher = revisions
+    root.set('package', f'bhgv.vitanuova.inferno_os.awm64.c{core[:12]}.a{launcher[:12]}')
+    root.set(android+'versionName', core[:12])
+    application = root.find('application')
+    application.set(android+'extractNativeLibs', 'false')
+    application.set(android+'label', 'Inferno AWM ARM64 test')
+    activity = application.find('activity')
+    activity.set(android+'label', 'Inferno AWM ARM64 test')
+    activity.set(android+'exported', 'true')
+    manifest_path = build/'AndroidManifest.xml'
+    manifest.write(manifest_path, encoding='utf-8', xml_declaration=True)
+
+    unsigned = build/'unsigned.apk'
+    aligned = build/'aligned.apk'
+    signed = build/'signed.apk'
+    key = build/'test.jks'
+    apk = build/'Inferno-AWM-arm64-v8a-test.apk'
+    run([str(apk_tools/'aapt'), 'package', '-f', '-M', str(manifest_path), '-S',
+         str(resources/'res'), '-A', str(assets), '-I', str(platform),
+         '--min-sdk-version', '21', '--target-sdk-version', '28', '-F', str(unsigned)],
+        build, env, logs/'apk-package.log')
+    native = 'lib/arm64-v8a/libinferno_os_app.so'
+    with ZipFile(unsigned, 'a') as archive:
+        archive.write(library, native, compress_type=ZIP_STORED)
+    run([str(apk_tools/'zipalign'), '-P', '16', '-f', '4', str(unsigned), str(aligned)],
+        build, env, logs/'apk-align.log')
+    run(['keytool', '-genkeypair', '-noprompt', '-keystore', str(key), '-storetype', 'JKS',
+         '-storepass', 'android', '-keypass', 'android', '-alias', 'androiddebugkey',
+         '-dname', 'CN=Inferno AWM ARM64 test', '-keyalg', 'RSA', '-keysize', '2048',
+         '-validity', '3650'], build, env, logs/'apk-key.log')
+    run([str(apk_tools/'apksigner'), 'sign', '--ks', str(key), '--ks-key-alias',
+         'androiddebugkey', '--ks-pass', 'pass:android', '--key-pass', 'pass:android',
+         '--out', str(signed), str(aligned)], build, env, logs/'apk-sign.log')
+    run([str(apk_tools/'apksigner'), 'verify', '--verbose', str(signed)], build, env,
+        logs/'apk-verify.log')
+    run([str(apk_tools/'zipalign'), '-c', '-P', '16', '4', str(signed)], build, env,
+        logs/'apk-verify-align.log')
+    run([sys.executable, str(app/'tools/verify-apk-abi.py'), str(signed), '--abi', 'arm64-v8a'],
+        app, env, logs/'apk-abi.log')
+    with ZipFile(signed) as archive:
+        if archive.testzip() is not None or any(name.endswith('.dex') for name in archive.namelist()):
+            raise RuntimeError('Invalid native-only AWM APK')
+        if archive.getinfo(native).compress_type != ZIP_STORED or archive.read(native) != library.read_bytes():
+            raise RuntimeError('Packaged native library differs from the verified AArch64 link')
+        for asset in (assets/'inferno').rglob('*'):
+            if asset.is_file() and archive.getinfo('assets/'+asset.relative_to(assets).as_posix()).file_size != asset.stat().st_size:
+                raise RuntimeError('Packaged runtime asset differs in size: '+str(asset))
+    checksum = hashlib.sha256(signed.read_bytes()).hexdigest()
+    signed.rename(apk)
+    apk.with_suffix('.apk.sha256').write_text(f'{checksum}  {apk.name}\n')
+    return dict(apk=apk.name, apk_sha256=checksum, apk_signature_verified=True)
+
+
 def main():
     """Use an empty output tree, one WORD32/ref64 model and the real NativeActivity frontend."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -35,6 +108,7 @@ def main():
     parser.add_argument('--native64-draw', action='store_true', help='select native64 Draw C frames/registration; full GUI startup stays guarded')
     parser.add_argument('--native64-tk', action='store_true', help='select native64 Tk C frames/registration; full GUI startup stays guarded')
     parser.add_argument('--native64-awm', action='store_true', help='select the compiled-in native64 AWM startup without the panel')
+    parser.add_argument('--apk-sdk', type=Path, help='package the AWM test using Android platform and build-tools 35')
     parser.add_argument('--cmake', default='cmake')
     parser.add_argument('--ninja', default='ninja')
     args = parser.parse_args()
@@ -46,6 +120,14 @@ def main():
         parser.error("Draw and Tk must be selected together: devgui directly calls both interfaces")
     if args.native64_awm and not args.native64_formatter:
         parser.error("Native64 AWM startup requires --native64-formatter")
+    if args.apk_sdk and not args.native64_awm:
+        parser.error("--apk-sdk requires --native64-awm")
+    if args.apk_sdk:
+        apk_tools = args.apk_sdk.resolve()/'build-tools/35.0.0'
+        platform = args.apk_sdk.resolve()/'platforms/android-35/android.jar'
+        if not platform.is_file() or not all(os.access(apk_tools/name, os.X_OK)
+                                             for name in ('aapt', 'zipalign', 'apksigner')):
+            parser.error('Install Android platform 35 and build-tools 35.0.0 in --apk-sdk')
     build, tools, ndk, app = (path.resolve() for path in
                              (args.build_root, args.host_tools, args.ndk, args.app_root))
     for source in (ROOT, app):
@@ -153,8 +235,15 @@ def main():
                   app_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=app, text=True).strip(),
                   library_sha256=hashlib.sha256(library.read_bytes()).hexdigest(),
                   gui_native_linked=True, awm_boot_selected=args.native64_awm, awm_started=False)
-    (build/'result.json').write_text(json.dumps(report, indent=2)+'\n')
+    result = build/'result.json'
+    result.write_text(json.dumps(report, indent=2)+'\n')
     print('PASS complete Android ARM64 GUI native link', flush=True)
+    if args.apk_sdk:
+        assets = stage_awm_runtime(core, app, build, tools/'mk', env, logs)
+        report.update(package_awm(apk_tools, platform, app, build, assets, library,
+                                  (report['core_revision'], report['app_revision']), env, logs))
+        result.write_text(json.dumps(report, indent=2)+'\n')
+        print('PASS signed Android ARM64 AWM test APK', flush=True)
 
 
 if __name__ == '__main__':
