@@ -175,6 +175,10 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
             if(!s->returned){if(c->external || !native64typedargprep(s,fpbytes,mpbytes))return 0;continue;}
+            if(s->returned==Native64TypedRecordArg){
+                if(!native64recordarglayout(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
+                continue;
+            }
             if(s->returned==80){if(!native64typedrawindex(s,fpbytes,mpbytes))return 0;continue;}
             if(s->returned==65){unsigned int n=native64rawusewidth(s),bit,at;if(!native64typedrawuse(s,fpbytes,mpbytes)||UDST(s->mode)!=(AFP|AIND)||s->d<64||(unsigned long)s->d>(unsigned int)c->callee->size||n>(unsigned int)c->callee->size-s->d)return 0;for(at=0;at<n;at++){bit=(s->d+at)/8;if(bit/8<(unsigned int)c->callee->np&&(c->callee->map[bit/8]&(128>>(bit%8))))return 0;}continue;}
             if(s->returned==86){if(!native64typedwindowwordarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;continue;}
@@ -334,6 +338,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 else if(s->returned==93){p->reg=512|24;p->s.i.f=s->s;p->s.i.s=88;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==153){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
                 else if(s->returned==156){if(USRC(s->mode)&AIND){p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;}else p->s.imm=s->s;p->reg=native64librarymiddle(s);p->d.i.f=40;p->d.i.s=s->d;}
+                else if(s->returned==Native64TypedRecordArg)native64recordargcode(p,s);
                 else if(s->returned==155){if(USRC(s->mode)&AIND){p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;}else p->s.ind=s->s;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==131){p->s.ind=s->s;p->reg=1024|24;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==143){if(s->op==IINDL){p->s.ind=s->s;p->reg=56;p->d.imm=s->d;}else{p->s.i.f=56;p->s.i.s=0;p->d.ind=s->d;}}

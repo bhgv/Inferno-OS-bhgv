@@ -350,6 +350,7 @@ static int
 native64typedprotectedentry(const Native64TypedStep*steps,unsigned int count,unsigned int target)
 {
  unsigned int back;if(target<count)for(back=1;back<=12&&back<=target;back++)if(steps[target-back].returned==157&&((steps[target-back].m>>8)&255)>=back-1)return 1;
+ if(target<count&&target&&steps[target-1].returned==80&&(USRC(steps[target-1].mode)&AIND))return 1;
  return target<count && ((target && steps[target-1].returned==157 && ((steps[target-1].m>>8)&255)) || steps[target].returned==158 || (steps[target].returned==111&&(steps[target].op==IMOVP||native64typedbranch(steps[target].op))) || steps[target].returned==142 || (target&&steps[target].returned==213&&steps[target-1].returned==255&&steps[target-1].op==IINDL) || (steps[target].returned==255 && (steps[target].op==IMOVP || steps[target].op==IMOVMP)) ||
   (target && steps[target-1].returned==131 && steps[target-1].op==IINDL));
 }
@@ -759,8 +760,13 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==153){p->reg=native64librarymiddle(s);if(USRC(s->mode)&AIND){p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;}if(native64typedbranch(s->op))p->d.ins=out+s->d;else if(UDST(s->mode)&AIND){p->d.i.f=((s->m>>16)&255)?s->d&65535:32;p->d.i.s=((s->m>>16)&255)?(unsigned long)s->d>>16:0;}else p->d.ind=s->d;continue;}
         if(s->returned==136){p->reg=0;p->d.ind=s->d;continue;}
         if(s->returned==82||s->returned==83){p->reg=s->m&255;if(s->returned==83){p->s.i.f=s->s;p->s.i.s=s->m>>8;p->d.ind=s->d;}else{p->d.i.f=s->d;p->d.i.s=s->m>>8;}continue;}
-        if(s->returned==79){p->d.imm=s->d;p->reg=s->op==INEWAZ?0:(s->mode&ARM)==AXIMM?(short)(s->m&65535):s->m&65535;continue;}
-        if(s->returned==80){p->reg=s->m&255;p->d.imm=s->d;continue;}
+        if(s->returned==79||s->returned==80){
+            p->reg=s->returned==80?s->m&255:s->op==INEWAZ?0:s->m&65535;
+            if(USRC(s->mode)&AIND){p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;}
+            if(UDST(s->mode)&AIND){p->d.i.f=s->d&65535;p->d.i.s=(unsigned long)s->d>>16;}
+            else p->d.imm=s->d;
+            continue;
+        }
         if(s->returned==65){native64rawusecode(p,s);if(native64typedbranch(s->op))p->d.ins=out+s->d;continue;}
         if(s->returned==77){p->reg=(s->op==IMOVM)?(s->m>>8)&255:0;p->d.i.f=32;p->d.i.s=s->m&255;continue;}
         if(s->returned==Native64TypedRecord){native64recordcode(p,s,out);continue;}

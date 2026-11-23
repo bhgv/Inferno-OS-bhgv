@@ -85,6 +85,7 @@ on:
       - 'utils/tests/native64-word-arrays*'
       - 'utils/tests/native64-mixed-arrays*'
       - 'utils/tests/native64-record-fields*'
+      - 'utils/tests/native64-field-arrays*'
       - 'utils/tests/native64-awm-call-cluster*'
       - 'utils/tests/native64-client-cursor*'
       - 'utils/tests/native64-geometry-args*'
@@ -336,6 +337,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/mixed-arrays.log"
           python3 utils/tests/native64-record-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/record-fields.log"
+          python3 utils/tests/native64-field-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/field-arrays.log"
           python3 utils/tests/native64-awm-call-cluster.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/awm-call-cluster.log"
           python3 utils/tests/native64-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
@@ -579,6 +582,8 @@ jobs:
             | tee "$RUNNER_TEMP/typed-call-logs/mixed-arrays.log"
           python3 utils/tests/native64-record-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/record-fields.log"
+          python3 utils/tests/native64-field-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/field-arrays.log"
           python3 utils/tests/native64-awm-call-cluster.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
             | tee "$RUNNER_TEMP/typed-call-logs/awm-call-cluster.log"
           python3 utils/tests/native64-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \

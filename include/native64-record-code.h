@@ -34,4 +34,44 @@ native64recordcode(Inst*p,const Native64TypedStep*s,Inst*out)
  if(native64typedbranch(s->op))p->d.ins=out+s->d;
  else if(dm&AIND){p->d.i.f=s->d&65535;p->d.i.s=(unsigned long)s->d>>16;}else p->d.imm=s->d;
 }
+
+static int
+native64recordargshape(const Native64TypedStep *s, unsigned int fp, unsigned int mp)
+{
+ unsigned int sm=USRC(s->mode);
+ int root=s->op==IMOVP;
+ unsigned int width=root||s->returned==Native64TypedRecordVararg?8:4;
+
+ if(s->returned!=Native64TypedRecordArg&&s->returned!=Native64TypedRecordVararg)
+  return 0;
+ return (root||s->op==(width==8?ICVTWL:IMOVW))&&!s->m&&
+  s->mode==(SRC(sm)|DST(AFP|AIND))&&(sm&AIND)&&
+  native64recordoperand(sm,s->s,root?8:4,root,fp,mp,0)&&
+  s->d>=64&&s->d<=65535&&s->d%width==0;
+}
+
+static int
+native64recordarglayout(const Native64TypedStep *s, unsigned int fp, unsigned int mp,
+                       unsigned int bytes, const uchar *map, unsigned int np)
+{
+ unsigned int bit,width;
+ int root=s->op==IMOVP;
+
+ if(!native64recordargshape(s,fp,mp)||map==nil||map==H||np!=(bytes+63)/64)
+  return 0;
+ width=root||s->returned==Native64TypedRecordVararg?8:4;
+ if((unsigned long)s->d>bytes||width>bytes-s->d)
+  return 0;
+ bit=s->d/8;
+ return !!(map[bit/8]&(128>>(bit%8)))==root;
+}
+
+static void
+native64recordargcode(Inst *out, const Native64TypedStep *s)
+{
+ out->s.i.f=s->s&65535;
+ out->s.i.s=(unsigned long)s->s>>16;
+ out->d.i.f=40;
+ out->d.i.s=s->d;
+}
 #endif

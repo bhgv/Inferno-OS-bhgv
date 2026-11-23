@@ -71,7 +71,7 @@ def main():
   parents=('native64-local-bind.h','native64-typed-module.h','native64-typed-multi.h','native64-typed-code.h','native64-raw-array-runtime.h','native64-raw-array-module.h','native64-raw-array-code.h','native64-typed-tables.h','native64-string-tables.h')
   for name,header,before,after,predicate in (
    ('initializer bits','native64-typed-module.h','for(j=0;j<v->count;j++)memmove(a->data+4*j,v->values+j,4);','for(j=0;j<v->count;j++){UWORD zero=0;memmove(a->data+4*j,&zero,4);}','exact dense and sparse initializer bits'),
-   ('FP/MP owner distinction','native64-raw-array-module.h','&&((flow[k]>>31)==(UDST(v->mode)==AMP))','','FP/MP owner identity kept distinct'),
+   ('FP/MP owner distinction','native64-raw-array-module.h','&&((flow[k]>>31)==(mode==AMP))','','FP/MP owner identity kept distinct'),
    ('global call invalidation','native64-raw-array-module.h','if(v->op==ICALL||v->op==IMCALL||v->op==ISPAWN)for(k=0;k<2;k++)if(flow[k]&0x80000000U)flow[k]=0;','','global borrow invalidated by call')):
    for parent in parents:(w/parent).write_text((ROOT/'include'/parent).read_text())
    path=w/header;text=path.read_text();assert text.count(before)==1;path.write_text(text.replace(before,after,1))

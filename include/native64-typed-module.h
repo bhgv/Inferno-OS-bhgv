@@ -647,12 +647,15 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             }
         }
         for(j=0;j<f->count;j++)if(f->code[j].returned==238){unsigned int k,found=0;if(j<2 || f->code[j-2].returned!=237 || f->code[j-1].op!=IADDC)return 0;for(k=0;k<f->nsites;k++)if(f->sites[k].first<j && j<f->sites[k].end && !f->sites[k].external)found++;if(found!=1)return 0;}
-        for(j=0;j<f->count;j++)if(f->code[j].returned==155 || f->code[j].returned==156){unsigned int k,found=0,bytes=0,np=0;const uchar*argmap=nil;step=f->code+j;
+        for(j=0;j<f->count;j++)if(f->code[j].returned==155 || f->code[j].returned==156 || f->code[j].returned==Native64TypedRecordArg){unsigned int k,found=0,bytes=0,np=0;const uchar*argmap=nil;step=f->code+j;
             for(k=0;k<f->nsites;k++)if(f->sites[k].first<j && j<f->sites[k].end-(f->sites[k].contract!=0)){site=f->sites+k;if(found++)return 0;
                 if(site->external){const Native64ModuleImport*r;if(site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;r=s->tables[site->table].imports+site->target;bytes=r->bytes;np=r->mapbytes;argmap=r->map;}
                 else{const Native64ModuleFunction*r;if(site->target>=s->nfunctions)return 0;r=s->functions+site->target;bytes=r->bytes;np=r->mapbytes;argmap=r->map;}
             }
-            if(found!=1 || !native64modulemap(bytes,argmap,np,1) || !(step->returned==155?native64typedlibraryarg(step,f->bytes,s->databytes,bytes,argmap,np):native64libraryslicearg(step,f->bytes,s->databytes,bytes,argmap,np)))return 0;
+            if(found!=1 || !native64modulemap(bytes,argmap,np,1) ||
+               !(step->returned==Native64TypedRecordArg?native64recordarglayout(step,f->bytes,s->databytes,bytes,argmap,np):
+                 step->returned==155?native64typedlibraryarg(step,f->bytes,s->databytes,bytes,argmap,np):
+                 native64libraryslicearg(step,f->bytes,s->databytes,bytes,argmap,np)))return 0;
             {unsigned int mode=USRC(step->mode);long offset=step->s;if(mode!=AIMM){if(mode&AIND)offset&=65535;map=(mode&~AIND)==AFP?f->map:s->datamap;bit=offset/8;if(!!(map[bit/8]&(128>>(bit%8)))!=((mode&AIND)!=0 || (step->returned==155 && step->op==IMOVP)))return 0;}}
             if(step->returned==156){unsigned int mode=step->mode&ARM;long mid=native64librarymiddle(step);if(mode!=AXIMM){map=mode==AXINF?f->map:s->datamap;bit=mid/8;if(map[bit/8]&(128>>(bit%8)))return 0;}}
         }
@@ -1203,10 +1206,59 @@ native64modulecopy(const char *s)
 }
 
 static int
-native64checkedarraystep(const Native64TypedStep *step)
+native64checkedstepkind(const Native64TypedStep *step, unsigned int pc)
 {
-    return step->returned==Native64TypedRecord || step->returned==80 || (step->returned==79 && step->op!=INEWAZ) ||
-        (step->returned==255 && step->op==IINDX);
+    if(pc && native64rawfieldindex(step-1))return Native64ArrayFieldUse;
+    if(step->returned==Native64TypedRecordArg || step->returned==Native64TypedRecordVararg)return Native64RecordArgStep;
+    if(step->returned==Native64TypedRecord)return Native64RecordStep;
+    if(native64rawfieldindex(step))return Native64ArrayFieldIndex;
+    if(step->returned==80 ||
+       (step->returned==79 && (step->op!=INEWAZ || ((USRC(step->mode)|UDST(step->mode))&AIND))) ||
+       (step->returned==255 && step->op==IINDX))return Native64ArrayStep;
+    return -1;
+}
+
+static void
+native64modulecheckedsteps(Module *m, const Native64ModuleSpec *s)
+{
+    unsigned int i,j,pc=0,n=0,cl;
+    int kind;
+    const Native64TypedStep *step;
+    Native64RawArrays *proofs;
+    Native64RawIndex *proof;
+
+    for(i=0;i<s->nfunctions;i++)
+        for(j=0;j<s->functions[i].count;j++)
+            if(native64checkedstepkind(s->functions[i].code+j,j)>=0)n++;
+    if(!n)return;
+    proofs=mallocz(sizeof(*proofs)+(n-1)*sizeof(proofs->index[0]),1);
+    if(proofs==nil)error(exNomem);
+    proofs->self=proofs;proofs->owner=m;proofs->count=n;
+    proof=proofs->index;
+    for(i=0;i<s->nfunctions;i++){
+        for(j=0;j<s->functions[i].count;j++){
+            step=s->functions[i].code+j;
+            kind=native64checkedstepkind(step,j);
+            if(kind<0)continue;
+            proof->pc=pc+j;
+            proof->kind=kind;
+            proof->frame=m->type[i+1];
+            proof->instruction=m->prog[pc+j];
+            if(kind==Native64ArrayStep || kind==Native64ArrayFieldIndex){
+                if(step->returned==255){proof->width=16;proof->mapped=1;}
+                else{
+                    cl=(unsigned long)step->m>>(step->returned==80?8:step->op==INEWAZ?0:24);
+                    proof->width=native64arraywidth(cl);
+                    proof->mapped=native64arraymap(cl);
+                }
+            }
+            proof++;
+        }
+        pc+=s->functions[i].count;
+    }
+    native64rawarrayfree(m);
+    m->native64rawarrays=proofs;
+    m->native64rawarraysfree=native64rawarrayfree;
 }
 
 static int
@@ -1349,35 +1401,7 @@ native64modulemake(void *arg)
     m->native64importload=s->load;
     if(s->entry!=~0U){m->entry=m->prog+b->offsets[s->entry];m->entryt=m->type[s->entry+1];}
     m->cstep=native64typedlea8step;
-    {
-        unsigned int n=0,pc=0,z=0;
-        Native64RawArrays *p;
-        const Native64TypedStep *step;
-        for(i=0;i<s->nfunctions;i++)
-            for(j=0;j<s->functions[i].count;j++)
-                if(native64checkedarraystep(s->functions[i].code+j))n++;
-        if(n){
-            p=mallocz(sizeof(*p)+(n-1)*sizeof(p->index[0]),1);
-            if(p==nil)error(exNomem);
-            m->native64rawarrays=p;m->native64rawarraysfree=native64rawarrayfree;
-            p->self=p;p->owner=m;p->count=n;
-            for(i=0;i<s->nfunctions;i++){
-                for(j=0;j<s->functions[i].count;j++){
-                    step=s->functions[i].code+j;
-                    if(!native64checkedarraystep(step))continue;
-                    p->index[z].pc=pc+j;
-                    p->index[z].record=step->returned==Native64TypedRecord;
-                    p->index[z].mapped=step->returned==255;
-                    p->index[z].width=p->index[z].mapped?16:
-                        step->returned==Native64TypedRecord?0:native64rawarraywidth((unsigned long)step->m>>(step->returned==80?8:24));
-                    if(step->returned!=255&&step->returned!=Native64TypedRecord)p->index[z].mapped=native64arraymap((unsigned long)step->m>>(step->returned==80?8:24));
-                    p->index[z].frame=m->type[i+1];
-                    p->index[z++].instruction=m->prog[pc+j];
-                }
-                pc+=s->functions[i].count;
-            }
-        }
-    }
+    native64modulecheckedsteps(m,s);
     if(b->jit && !compile(m,m->nprog,nil))error(exCompile);
     return 1;
 }

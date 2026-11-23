@@ -4,16 +4,17 @@
  * 1..2 Words. A nested aggregate may pad between the two Words.
  * Bits: 4=mixed, 2..3=root count, 0=Word count minus one,
  * 5=padding between Words; bit 1 is reserved. Classes 1..3 remain raw. */
+enum { Native64ArrayRoot = 4 };
 static unsigned int native64arrayroots(unsigned int c)
-{return (c&16)&&!(c&~63U)&&((c&3)<2)&&((c>>2)&3)&&(!(c&32)||(c&3))?(c>>2)&3:0;}
+{return c==Native64ArrayRoot?1:(c&16)&&!(c&~63U)&&((c&3)<2)&&((c>>2)&3)&&(!(c&32)||(c&3))?(c>>2)&3:0;}
 static unsigned int native64arraywords(unsigned int c)
-{return native64arrayroots(c)?1+(c&3):0;}
+{return c!=Native64ArrayRoot&&native64arrayroots(c)?1+(c&3):0;}
 static unsigned int native64arraywordoffset(unsigned int c,unsigned int i)
 {return 8*native64arrayroots(c)+4*i+(i&&(c&32)?4:0);}
 static unsigned int native64arraymap(unsigned int c)
 {unsigned int n=native64arrayroots(c);return n?(255U<<(8-n))&255:0;}
 static unsigned int native64arraywidth(unsigned int c)
-{unsigned int n=native64arrayroots(c);return n?(native64arraywordoffset(c,native64arraywords(c)-1)+11)&~7U:c==1?4:c==2?12:c==3?16:0;}
+{unsigned int n=native64arrayroots(c);return c==Native64ArrayRoot?8:n?(native64arraywordoffset(c,native64arraywords(c)-1)+11)&~7U:c==1?4:c==2?12:c==3?16:0;}
 static unsigned int native64arraylegacy(unsigned int c)
 {return native64arrayroots(c)?4*(native64arrayroots(c)+native64arraywords(c)):native64arraywidth(c);}
 static unsigned int native64arrayword(unsigned int c,unsigned int off)
@@ -22,7 +23,7 @@ static unsigned int native64arrayword(unsigned int c,unsigned int off)
 static int native64arraycopyspan(unsigned int owner,unsigned int off,unsigned int copy)
 {
  unsigned int i,n=native64arraywidth(copy),width=native64arraywidth(owner),root;
- if(!native64arrayroots(copy)||off%8||off>width||n>width-off)return 0;
+ if(!native64arraywords(copy)||!native64arrayroots(copy)||off%8||off>width||n>width-off)return 0;
  for(i=0;i<n;i+=4){root=i<8*native64arrayroots(copy);
   if(root!=(off+i<8*native64arrayroots(owner)))return 0;
   if(!root&&native64arrayword(copy,i)!=native64arrayword(owner,off+i))return 0;

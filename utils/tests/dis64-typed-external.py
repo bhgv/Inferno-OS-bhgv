@@ -171,6 +171,7 @@ def array_layout(c):
     mixed={20:(1,1,False),21:(1,2,False),24:(2,1,False),25:(2,2,False),28:(3,1,False),29:(3,2,False),53:(1,2,True),57:(2,2,True),61:(3,2,True)}
     if c in (1,2,3):
         n={1:4,2:12,3:16}[c];return n,n,[(i,i,4,False)for i in range(0,n,4)]
+    if c==4:return 8,4,[(0,0,8,True)]
     roots,words,gap=mixed[c]
     fields=[(4*i,8*i,8,True)for i in range(roots)]+[(4*(roots+i),8*roots+4*i+(4 if i and gap else 0),4,False)for i in range(words)]
     return (fields[-1][1]+11)//8*8,4*(roots+words),fields
@@ -188,6 +189,37 @@ def record_geometry(tree):
         end=old+child[1];size=(size+a-1)//a*a;alignment=max(alignment,a)
         leaves.extend((old+x,size+y,k,b,w)for x,y,k,b,w in sub);size+=n
     return (size+alignment-1)//alignment*alignment,alignment,leaves
+
+def record_address(row, maps, pc, side, mode, address, value, width):
+    assert mode in (4,5) and len(address)==2
+    owner,= (tree for at,s,tree in row['record_owners'] if at==pc and s==side)
+    _,_,leaves=record_geometry(row['record_types'][owner])
+    _,offset,kind,oldbytes,bytes_=next(leaf for leaf in leaves if leaf[0]==address[1])
+    space='frame' if mode==5 else 'data'
+    base=maps[space][address[0]]
+    assert oldbytes==4 and bytes_==width and value==base|(offset<<16)
+    assert row[space]['map'][base//64]&(128>>(base//8%8))
+    return kind
+
+def record_argument(o, c, pc, maps, row, pending, old, new, kind, variadic=False):
+    sm=o['mode']>>3&7
+    assert o['mode']==(sm<<3)|5 and o['d']==[pending,old] and o['m'] is None
+    assert kind in (*ROOTS,9)
+    op=OPCODES['IMOVW'] if kind==9 else OPCODES['IMOVP']
+    assert o['op']==op
+    if kind==9 and variadic:op=OPCODES['ICVTWL']
+    assert c==[op,o['mode'],c[2],0,new,34 if variadic else 33]
+    assert record_address(row,maps,pc,0,sm,o['s'],c[2],4 if kind==9 else 8)==kind
+
+def array_operand(row,maps,pc,side,mode,address,value,root):
+    if mode in(4,5):
+        assert record_address(row,maps,pc,side,mode,address,value,8 if root else 4)==(3 if root else 9)
+    else:
+        assert mode in((0,1)if root else(0,1,2))
+        assert value==(address[0]if mode==2 else maps['frame'if mode else'data'][address[0]])
+        if root:
+            leaf=next(l for l in row['frame'if mode else'data']['leaves']if l[0]==address[0])
+            assert leaf[1:4]==[value,4,8] and leaf[4]in(*ROOTS,20)
 
 def record_field(o,c,pc,maps,row):
     op,mode,s,m,d,role=c;assert role==72
@@ -219,10 +251,16 @@ def record_field(o,c,pc,maps,row):
 
 def rawarray_index(original,code,pc,maps,row):
     o=original[pc];op,mode,s,m,d,role=code[pc];sm=o['mode']>>3&7;dm=o['mode']&7
-    assert role==80 and op==OPCODES['IINDX']and o['op']in(OPCODES['IINDX'],OPCODES['IINDW'],OPCODES['IINDL'])and sm in(0,1)and o['mode']==(sm<<3)|128|dm and mode==o['mode']and o['m']is not None
-    array_layout(m>>8);assert m&255 in(48,56)and(o['op']!=OPCODES['IINDW']or m>>8==1)and(o['op']!=OPCODES['IINDL']or array_layout(m>>8)[1]==8)
-    assert s==maps['frame'if sm else'data'][o['s'][0]]and d==(o['d'][0]if dm==2 else maps['frame'if dm else'data'][o['d'][0]])
-    assert next(l for l in row['frame'if sm else'data']['leaves']if l[0]==o['s'][0])[4]in(3,20)
+    assert role==80 and op==OPCODES['IINDX']and o['op']in(OPCODES['IINDX'],OPCODES['IINDW'],OPCODES['IINDL'])and o['mode']==(sm<<3)|128|dm and mode==o['mode']and o['m']is not None
+    _,legacy,_=array_layout(m>>8)
+    assert m&255 in(48,56)and(o['op']!=OPCODES['IINDW']or legacy==4)and(o['op']!=OPCODES['IINDL']or legacy==8)
+    array_operand(row,maps,pc,0,sm,o['s'],s,True)
+    array_operand(row,maps,pc,1,dm,o['d'],d,False)
+    if sm in(4,5):
+        use=original[pc+1];borrow=o['m'];assert code[pc+1][5]==65
+        src=use['mode']>>3&7==5 and use['s'][0]==borrow
+        dst=use['mode']&7==5 and use['d'][0]==borrow
+        assert src!=dst
 
 def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None,types=None):
     o=original[pc];op,mode,s,m,d,role=code[pc];sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192;so=do=0
@@ -268,9 +306,10 @@ def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None,
             leaf=next(l for l in row[space]['leaves']if l[0]==addr[0]+old)
             assert leaf[1:4]==[value+offset,4,size]and(leaf[4]in ROOTS or wire==0 and addr is o['s']and leaf[4]==20 if ref else leaf[4]==9)
 
-def rawarray_operation(o,c,maps,types,row):
+def rawarray_operation(o,c,pc,maps,types,row):
     op,mode,s,m,d,role=c;sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192
-    assert role==79 and dm in(0,1) and mode==o['mode']and d==maps['frame'if dm else'data'][o['d'][0]]
+    assert role==79 and mode==o['mode']
+    array_operand(row,maps,pc,1,dm,o['d'],d,True)
     if o['op']in(OPCODES['INEWA'],OPCODES['INEWAZ']):
         width,legacy,fields=array_layout(m);mask=sum(128>>(old//4)for old,new,size,ref in fields if ref)
         assert op==OPCODES['INEWAZ']and arm==64 and types[o['m']][0]==legacy
@@ -278,7 +317,7 @@ def rawarray_operation(o,c,maps,types,row):
     else:
         array_layout(m>>24);assert op==o['op']and op in(OPCODES['ISLICEA'],OPCODES['ISLICELA'])
         mid=o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']];assert m==((m>>24)<<24)|(mid&65535)
-    assert sm in(0,1,2)and s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
+    array_operand(row,maps,pc,0,sm,o['s'],s,op==OPCODES['ISLICELA'])
 
 def string_head_argument(original, code, at, end, maps, pending, oldoffset, new, kind, r):
     temp=None;tails=0
@@ -354,6 +393,9 @@ def verify(data,r,imports,loads=False,rows=None):
                 at+=3;continue
             if loads and r['code'][at][5]==155:
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);library_argument(o,r['code'][at],maps,pending,oldoffset,arg[0]);at+=1;continue
+            if loads and r['code'][at][5]==33:
+                oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0])
+                record_argument(o,r['code'][at],at,maps,r,pending,oldoffset,arg[0],arg[1]);at+=1;continue
             if loads and r['code'][at][5]==84:
                 assert arg[1]==1 and arg[2]==arg[3]and arg[3]in(8,12,16)
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);window_geometry(original[at],r['code'][at],maps,r,pending,oldoffset,arg[0]);at+=1;continue
@@ -572,6 +614,8 @@ def verify(data,r,imports,loads=False,rows=None):
                 leaf=next(l for l in r['frame'if sm==5 else'data']['leaves']if l[0]==a['s'][0]);assert leaf[3:]==[8,12]
                 assert r['frame'if sm==5 else'data']['map'][source//64]&(128>>(source//8%8))
                 assert r['code'][at]==[41,a['mode'],source,0,native,222]
+            elif r['code'][at][5]==34:
+                record_argument(a,r['code'][at],at,maps,r,pending,legacy,native,kind,True)
             else:
                 assert a['op']==oldop and sm in((0,1)if kind in(4,7,12,13)else(0,1,2))and a['m']is None and a['d']==[pending,legacy]
                 source=a['s'][0]if sm==2 else maps['frame'if sm else'data'][a['s'][0]]
@@ -641,6 +685,10 @@ def verify(data,r,imports,loads=False,rows=None):
                     mid=a['m']if arm==64 else maps['frame'if arm==128 else'data'][a['m']]
                     assert c==[a['op'],a['mode'],library_operand(a['s'],sm,sid,maps),(sid<<24)|(mid&65535),new,156];at+=1
                 oldoffset+=oldbytes;continue
+            if at<end and r['code'][at][5]==33:
+                oldoffset=(oldoffset+oldbytes-1)//oldbytes*oldbytes
+                record_argument(original[at],r['code'][at],at,maps,r,pending,oldoffset,new,kind)
+                at+=1;oldoffset+=oldbytes;continue
             if at<end and r['code'][at][5]in(127,130)and kind!=1:
                 if r['code'][at][5]==127:
                     assert loads and kind==12;oldoffset=(oldoffset+3)//4*4
@@ -955,8 +1003,11 @@ def verify(data,r,imports,loads=False,rows=None):
         if pc in covered:continue
         o=original[pc]
         if returned==72:record_field(o,r['code'][pc],pc,maps,r);continue
-        if returned==80:rawarray_index(original,r['code'],pc,maps,r);continue
-        if returned==79:rawarray_operation(o,r['code'][pc],maps,types,r);continue
+        if returned==80:
+            rawarray_index(original,r['code'],pc,maps,r)
+            if mode>>3&7 in(4,5):inside.add(pc+1)
+            continue
+        if returned==79:rawarray_operation(o,r['code'][pc],pc,maps,types,r);continue
         if returned==65:rawarray_use(original,r['code'],pc,maps,r,types=types);continue
         if returned==77 and r.get('result_pair'):
             assert loads and op==o['op']==OPCODES['IMOVMP'] and mode==o['mode']==77

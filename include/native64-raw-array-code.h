@@ -4,13 +4,19 @@
 static int native64rawslot(long n){return n==48||n==56;}
 static int native64rawbranch(unsigned int op){return op==IBEQW||op==IBNEW||op==IBLTW||op==IBLEW||op==IBGTW||op==IBGEW;}
 static int
+native64rawfieldindex(const Native64TypedStep *step)
+{
+ return step->returned==80&&(USRC(step->mode)&AIND);
+}
+
+static int
 native64typedrawindex(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
-{return s->returned==80&&s->op==IINDX&&s->m>=0&&((unsigned long)s->m>>8)<64&&native64rawarraywidth((unsigned long)s->m>>8)&&native64rawslot(s->m&255)&&s->mode==(SRC(USRC(s->mode))|AXINF|DST(UDST(s->mode)))&&native64typedrootoperand(USRC(s->mode),s->s,fp,mp)&&native64typedwordoperand(UDST(s->mode),s->d,fp,mp);}
+{return s->returned==80&&s->op==IINDX&&s->m>=0&&((unsigned long)s->m>>8)<64&&native64rawarraywidth((unsigned long)s->m>>8)&&native64rawslot(s->m&255)&&s->mode==(SRC(USRC(s->mode))|AXINF|DST(UDST(s->mode)))&&native64recordoperand(USRC(s->mode),s->s,8,1,fp,mp,0)&&native64recordoperand(UDST(s->mode),s->d,4,0,fp,mp,0);}
 static int
 native64typedrawnew(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
-{return s->returned==79&&s->op==INEWAZ&&s->m>0&&s->m<64&&native64rawarraywidth(s->m)&&s->mode==(SRC(USRC(s->mode))|AXIMM|DST(UDST(s->mode)))&&native64typedwordoperand(USRC(s->mode),s->s,fp,mp)&&native64typedrootoperand(UDST(s->mode),s->d,fp,mp);}
+{return s->returned==79&&s->op==INEWAZ&&s->m>0&&s->m<64&&native64rawarraywidth(s->m)&&s->mode==(SRC(USRC(s->mode))|AXIMM|DST(UDST(s->mode)))&&native64recordoperand(USRC(s->mode),s->s,4,0,fp,mp,0)&&native64recordoperand(UDST(s->mode),s->d,8,1,fp,mp,0);}
 static int native64typedrawslice(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
-{unsigned int sm=USRC(s->mode),arm=s->mode&ARM;return s->returned==79&&s->mode<=255&&s->m>=0&&((unsigned long)s->m>>24)<64&&native64rawarraywidth((unsigned long)s->m>>24)&&(s->m&0xff0000)==0&&native64typedrootoperand(UDST(s->mode),s->d,fp,mp)&&(s->op==ISLICEA?native64typedwordoperand(sm,s->s,fp,mp):s->op==ISLICELA&&native64typedrootoperand(sm,s->s,fp,mp))&&(arm==AXIMM||((arm==AXINF||arm==AXINM)&&native64typedwordoperand(arm==AXINF?AFP:AMP,s->m&65535,fp,mp)));}
+{unsigned int sm=USRC(s->mode),arm=s->mode&ARM;return s->returned==79&&s->mode<=255&&s->m>=0&&((unsigned long)s->m>>24)<64&&native64rawarraywidth((unsigned long)s->m>>24)&&(s->m&0xff0000)==0&&native64recordoperand(UDST(s->mode),s->d,8,1,fp,mp,0)&&(s->op==ISLICEA?native64recordoperand(sm,s->s,4,0,fp,mp,0):s->op==ISLICELA&&native64recordoperand(sm,s->s,8,1,fp,mp,0))&&(arm==AXIMM||((arm==AXINF||arm==AXINM)&&native64typedwordoperand(arm==AXINF?AFP:AMP,s->m&65535,fp,mp)));}
 static unsigned int native64rawusewidth(const Native64TypedStep*s){return s->op==IMOVMP?native64arraywidth(s->m&65535):s->op==IMOVP?8:s->op==IMOVM||s->op==IHEADM?s->m&65535:4;}
 static int
 native64typedrawuse(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
@@ -32,4 +38,35 @@ native64rawusecode(Inst*p,const Native64TypedStep*s)
 {unsigned int sm=USRC(s->mode),dm=UDST(s->mode),arm=s->mode&ARM;memset(p,0,sizeof(*p));p->op=s->op;p->add=s->mode;p->reg=arm==AXIMM?(short)(s->m&65535):s->m&65535;
  if(sm==(AFP|AIND)){p->s.i.f=s->s;p->s.i.s=(s->m>>24)&255;}else p->s.imm=s->s;
  if(dm==(AFP|AIND)){p->d.i.f=native64rawslot(s->d)||s->d==32?s->d:40;p->d.i.s=s->d==32?0:native64rawslot(s->d)?(s->m>>16)&255:s->d;}else p->d.imm=s->d;}
+static int
+native64rawusefits(const Native64TypedStep *use, unsigned int cl, unsigned int off)
+{
+ unsigned int width=native64arraywidth(cl),n=native64rawusewidth(use);
+ if(!width||off>width||n>width-off)
+  return 0;
+ if(use->op==IMOVMP)
+  return native64arraycopyspan(cl,off,use->m&65535);
+ if(use->op==IMOVP)
+  return off%8==0&&off+8<=8*native64arrayroots(cl);
+ return !native64arrayroots(cl)||(n==4&&native64arrayword(cl,off));
+}
+
+static int
+native64rawfieldpair(const Native64TypedStep *index, const Native64TypedStep *use,
+                     unsigned int fp, unsigned int mp)
+{
+ long slot=index->m&255;
+ unsigned int sm=USRC(use->mode),dm=UDST(use->mode),off;
+ int read=sm==(AFP|AIND)&&use->s==slot;
+ int write=dm==(AFP|AIND)&&use->d==slot;
+
+ if(!native64typedrawuse(use,fp,mp)||read==write)
+  return 0;
+ if(read&&dm==(AFP|AIND)&&use->d!=32)
+  return 0;
+ if(write&&(sm&AIND))
+  return 0;
+ off=(use->m>>(read?24:16))&255;
+ return native64rawusefits(use,(unsigned long)index->m>>8,off);
+}
 #endif

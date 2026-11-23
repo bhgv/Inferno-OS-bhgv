@@ -87,6 +87,9 @@ typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int sto
  at=pc+1;
  for(arg=actual->ids,i=0;arg;arg=arg->next,i++){
     if(at>=end || !(in=c->instructions[at]))return typedfail(p,"variadic-setup");
+    if(typedrecordargument(in,frame,p,arg->ty,at-p->first,arg->offset,64+8*i,1)){
+        at++;continue;
+    }
     if(op==3&&i==0&&(in->sm==Afpind||in->sm==Ampind)&&in->dm==Afpind){
      unsigned int id=typedlibraryrecord(typedfieldowner(&in->s));
      if(!((id==8&&in->s.offset==20)||(id==12&&(in->s.offset==20||in->s.offset==24)))||!typedwmref(in->s.native64type,"Sys","FD")||!typedlibraryargument(in,frame,p,at-p->first,arg->offset,64,Tref))return typedfail(p,"variadic-direct-fd");

@@ -3,7 +3,7 @@
 #include "native64-record-layout.h"
 /* The owner is a proved mapped FP/MP slot. Check the actual heap Type before
  * vmdecode forms a field address, including every byte's GC role. */
-static void
+static void*
 native64recordfield(VmFetch*f,unsigned int mode,Adr*a,unsigned int width,unsigned int root)
 {
  void*value;Type*t;Heap*h;unsigned int i,bit,off=a->i.s;
@@ -13,6 +13,7 @@ native64recordfield(VmFetch*f,unsigned int mode,Adr*a,unsigned int width,unsigne
  h=D2H(value);t=h->t;
  if(h->ref<=0||t==nil||t==H||t->ref<=0||t->size<0||t->size>1024*1024||t->np<0||t->np>(t->size+63)/64||off>(unsigned int)t->size||width>(unsigned int)t->size-off)error(exBounds);
  for(i=off;i<off+width;i++){bit=i/8;if(!!(bit/8<(unsigned int)t->np&&(t->map[bit/8]&(128>>(bit%8))))!=root)error(exBounds);}
+ return (uchar*)value+off;
 }
 static void
 native64recordcheck(VmFetch*f,Inst*p)

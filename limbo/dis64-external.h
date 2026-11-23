@@ -344,6 +344,9 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         if(c->loads && typedlibraryargument(in,frame,p,at-p->first,arg->offset,offset,kind)){
             at++;if(at<end && c->instructions[at]->op==ISLICEA){if(kind!=Tarray || !arg->ty->tof || arg->ty->tof->kind!=Tbyte || !typedlibraryslicearg(c->instructions[at],frame,p,at-p->first,arg->offset,offset))return typedfail(p,"library-array-slice");at++;}offset+=width;continue;
         }
+        if(c->loads && typedrecordargument(in,frame,p,arg->ty,at-p->first,arg->offset,offset,0)){
+            at++;offset+=width;continue;
+        }
         if(c->loads&&kind==Tstring&&in->op==IINDW){if(!typedexternalstringarray(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afp||in->sm==Amp)&&typedbytearrayaddr(&in->s)){if(!typedexternalbytestring(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&typedlibraryrecord(typedfieldowner(&in->s))==12&&in->s.offset==16){if(!typedexternalstringexpr(c,p,frame,arg,end,&at,offset))return 0;offset+=8;continue;}

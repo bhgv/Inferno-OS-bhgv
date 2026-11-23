@@ -41,6 +41,30 @@ typedrecordregister(Dis64TypedBody*p,unsigned int pc,unsigned int side,Type*t)
  if(!p->recordowners){p->recordowners=allocmem(p->count*2*sizeof(*p->recordowners));memset(p->recordowners,0,p->count*2*sizeof(*p->recordowners));}
  p->recordowners[2*pc+side]=i+1;return 1;
 }
+
+static int
+typedrecordargument(Inst *in, Inst *frame, Dis64TypedBody *p, Type *type,
+                    unsigned int pc, unsigned int old, unsigned int offset, int variadic)
+{
+ Type *value;
+ long source;
+ unsigned int mode,op;
+ int root=typedmanagedkind(type->kind);
+
+ if((!root&&type->kind!=Tint)||in->op!=(root?IMOVP:IMOVW)||in->branch||
+    in->mm!=Anone||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=old||
+    offset>65535||!typedrecordowner(&in->s,in->sm))
+  return 0;
+ value=typedrecordvalue(&in->s,in->sm);
+ if(!value||!tequal(value,type)||!typedrecordoperand(in->sm,&in->s,root,p,&source,&mode)||
+    !typedrecordregister(p,pc,0,typedfieldowner(&in->s)->tof))
+  return 0;
+ op=variadic&&!root?ICVTWL:in->op;
+ p->code[pc]=(Dis64Instruction){op,SRC(mode)|DST(AFP|AIND),0,source,offset};
+ p->returns[pc]=variadic?Native64TypedRecordVararg:Native64TypedRecordArg;
+ return 1;
+}
+
 static void
 typedrecordtree(Type*t)
 {

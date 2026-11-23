@@ -723,7 +723,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             if(p.nrecordtypes){
                 unsigned int side,n=0;
                 fprint(2,",\"record_types\":[");for(i=0;i<p.nrecordtypes;i++){if(i)fprint(2,",");typedrecordtree(p.recordtypes[i]);}fprint(2,"],\"record_owners\":[");
-                for(i=0;i<p.count;i++)if(p.returns[i]==72)for(side=0;side<2;side++)if(p.recordowners[2*i+side])fprint(2,"%s[%ud,%ud,%ud]",n++?",":"",i,side,(unsigned int)p.recordowners[2*i+side]-1);
+                for(i=0;i<p.count;i++)for(side=0;side<2;side++)if(p.recordowners[2*i+side])fprint(2,"%s[%ud,%ud,%ud]",n++?",":"",i,side,(unsigned int)p.recordowners[2*i+side]-1);
                 fprint(2,"]");
             }
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);

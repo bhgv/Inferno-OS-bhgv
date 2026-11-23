@@ -57,6 +57,14 @@ native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v
         seen=0;fd=~0U;lastroot=~0U;
         for(at=p->first+1;at<p->end-1;at++){
             step=f->code+at;sm=USRC(step->mode);
+            if(step->returned==Native64TypedRecordVararg){
+                if(seen>=fields||step->d!=64+8*seen||
+                   !native64recordarglayout(step,f->bytes,s->databytes,p->bytes,p->map,p->mapbytes)||
+                   !native64rawarraymap(s,f,sm,step->s,1))return 0;
+                kind=seen<fixed||!p->tail?Native64TailRef:p->tail[seen-fixed].kind;
+                if(step->op==IMOVP?kind!=Native64TailRef:kind!=Native64TailInt)return 0;
+                seen++;lastroot=~0U;continue;
+            }
             if(step->returned==153){const Native64TypedStep*b=step+1,*z=step+2;unsigned int root;
                 if(seen<fixed||seen>=fields||!p->tail||p->tail[seen-fixed].kind!=Native64TailRef||at+2>=p->end-1||step->op!=IMOVP||step->mode!=(SRC(AFP|AIND)|DST(AFP))||step->m!=(12L<<24)||((unsigned long)step->s>>16)!=24||!native64typedlibrary(step,f->bytes,s->databytes))return 0;
                 root=(step->s&65535)/8;if(!(f->map[root/8]&(128>>(root%8))))return 0;root=step->d/8;if(!(f->map[root/8]&(128>>(root%8))))return 0;
@@ -126,7 +134,7 @@ native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v
             for(k=0;k<t->count;k++)if(native64sysmoduleblocked(t->rows[k].target,p))return 0;
         }
     }
-    for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==53 || s->functions[i].code[j].returned==57 || s->functions[i].code[j].returned==58 || s->functions[i].code[j].returned==59 || s->functions[i].code[j].returned==95 || s->functions[i].code[j].returned==222 || s->functions[i].code[j].returned==223){
+    for(i=0;i<s->nfunctions;i++)for(j=0;j<s->functions[i].count;j++)if(s->functions[i].code[j].returned==53 || s->functions[i].code[j].returned==57 || s->functions[i].code[j].returned==58 || s->functions[i].code[j].returned==59 || s->functions[i].code[j].returned==95 || s->functions[i].code[j].returned==222 || s->functions[i].code[j].returned==223 || s->functions[i].code[j].returned==Native64TypedRecordVararg){
         seen=0;for(k=0;k<n;k++)if(v[k].function==i && v[k].first<j && j<v[k].end-1)seen++;if(seen!=1)return 0;
     }
     for(i=0;i<s->nfunctions;i++){f=s->functions+i;for(j=6;j<f->count;j++)if(f->code[j].returned==195&&native64altaprintprep(s,f,j,f->code+j)){
@@ -148,7 +156,7 @@ static int
 native64sysmodulemake(void*argument)
 {
     Native64SysModuleBuild*b=argument;Native64ModuleSpec spec=*b->spec;Module*m;Type**types;
-    unsigned int i,j,k,total=0,pc=0,offset,ordinal,slot=0;Inst*out;const Native64TypedStep*step;
+    unsigned int i,j,k,total=0,pc=0,offset,ordinal,slot=0,checked=0;Inst*out;const Native64TypedStep*step;
     for(i=0;i<spec.nfunctions;i++)total+=spec.functions[i].count;
     b->functions=mallocz(spec.nfunctions*sizeof(*b->functions),0);if(b->functions==nil)error(exNomem);
     b->code=mallocz(total*sizeof(*b->code),0);if(b->code==nil)error(exNomem);
@@ -193,6 +201,7 @@ native64sysmodulemake(void*argument)
             step=f->code+j;out=m->prog+offset+j;memset(out,0,sizeof(*out));out->op=step->op;out->add=step->mode;
             if(j==v->first){out->s.imm=ordinal+i;out->d.ind=40;}
             else if(j==v->end){out->reg=v->binding;out->s.ind=40;out->d.ind=v->moduleoffset;}
+            else if(step->returned==Native64TypedRecordVararg){native64recordargcode(out,step);checked=1;}
             else if(step->returned==153){if(!native64typedcode(out,1,step,1,f->bytes,b->spec->databytes))error(exInval);}
             else if(step->returned==57&&step->op==IADDC){out->s.imm=step->s;out->reg=step->m;out->d.i.f=40;out->d.i.s=step->d;}
             else if(step->returned==58){out->s.ind=step->s;out->d.i.f=40;out->d.i.s=step->d;}
@@ -208,6 +217,7 @@ native64sysmodulemake(void*argument)
         p->frame=(Native64SysFrameSpec){v->operation,m->type[ordinal+i],m->type[v->function+1],v->resultoffset,v->count?b->slots+slot:nil,v->count,8,4096,v->inherited,v->inherited&&(f->resultcontract==48||f->resultcontract==80||f->resultcontract==124)?f->resultcontract:0};
         for(j=0;j<v->count;j++)b->slots[slot++]=v->tail?v->tail[j]:(Native64TailSlot){Native64TailRef,8*j,8,&Tstring};
     }
+    if(checked)native64modulecheckedsteps(m,b->spec);
     if(!Sys_setprogram64(m,b->programs,b->count))error(exInval);
     if(b->jit && !compile(m,m->nprog,nil))error(exCompile);
     return 1;

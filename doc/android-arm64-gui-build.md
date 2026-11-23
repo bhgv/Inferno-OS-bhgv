@@ -1009,3 +1009,29 @@ buffer-array field. `yyparse` still stops at the unsupported lexer call at PC
 CPU jobs. System `.b`/`.y` files and ordinary Dis bytes remain unchanged.
 Local execution evidence is Linux amd64 with UBSan; full shell and Android
 APK/device startup, other OSes and other CPU/32-bit combinations are unverified.
+
+## Array fields and lexer execution
+
+Native64 lowering uses declared ADT field layouts for Word, managed-root and
+supported mixed-record array allocation, indexing, slicing and copy. An index
+through an FP or MP record owner requires a single adjacent consumer. The
+module checks its scratch slot, element span and GC roles, and excludes control
+flow into the consumer. The VM checks the heap owner, array element Type and
+both owned instruction snapshots before executing the pair in one quantum.
+Word and managed fields can also supply arguments to fixed calls and supported
+Sys formatting calls. Variadic Word arguments use signed 64-bit slots.
+
+`python3 utils/tests/native64-field-arrays.py --limbo /path/to/limbo` runs
+162 interpreter/JIT cases using original Sh lexer bodies and small generic ADT
+probes. The fixture checks Unicode input, ring wrap, EOF, quoted words,
+redirections, parser token mapping, the Bufio and Sys prompt call boundaries,
+and result and reference ownership. It exercises real VM calls with controlled
+file input and output. Linux amd64 execution uses UBSan. The source oracle
+also checks exact classic Dis bytes across compiler modes. The metadata suite
+rejects 34 malformed operands, entry targets and pending-frame slot bindings.
+The scheduler test detects a skipped adjacent consumer.
+
+The checked native64 frontier reaches 79/134 Sh bodies and 316/385 bodies
+across the 16 startup modules. `getc`, `lex`, `readnum`, `readfdassign`
+and `yylex1` contribute the five additional bodies. `yyparse` advances to
+PC 5577, where it copies `YYLEX.lval` to the parser stack.

@@ -22,6 +22,7 @@ static int typedlibraryinst(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
 static int typedlibraryslicearg(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
 static int typedlibrarymodule(Inst*,Dis64TypedBody*,long*,unsigned int*,int*);
 static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int,int);
+static int typedrecordargument(Inst*,Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int,unsigned int,int);
 #include "dis64-external.h"
 static int typedclientaddress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*,int*);
 #include "dis64-variadic.h"
@@ -1189,7 +1190,10 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         }
         if(c->loads && (!spawning||typedclientreferencekind(kind)) && (in->sm==Afpind || in->sm==Ampind)){
             unsigned int view;int k=typedclientreferencekind(kind);
-            if(dis64layoutaddress(&child->frame,arg->offset,kind==Tbig||kind==Treal?8:4,k,&view) && typedlibraryargument(in,frame,p,at-p->first,arg->offset,view,kind)){at++;continue;}
+            if(!spawning && dis64layoutaddress(&child->frame,arg->offset,4,root,&view) &&
+               typedrecordargument(in,frame,p,arg->ty,at-p->first,arg->offset,view,0)){at++;continue;}
+            if(dis64layoutaddress(&child->frame,arg->offset,kind==Tbig||kind==Treal?8:4,k,&view) &&
+               typedlibraryargument(in,frame,p,at-p->first,arg->offset,view,kind)){at++;continue;}
         }
         if(c->loads && kind==Treal && in->op==ICVTWF){
             if(spawning || in->branch || in->mm!=Anone || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !dis64layoutaddress(&child->frame,arg->offset,8,0,&offset) || !typedoperand(in->sm,&in->s,Tint,1,0,p,&source,&sm,&actual))return typedfail(p,"local-real-argument");
@@ -1399,8 +1403,20 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     for(pc=p->first;pc<stop;){
         in=c->instructions[pc];p->badpc=pc;
         if(in==nil){typedfail(p,"multi-instruction-order");goto fail;}
-        if(c->loads && (in->op==ISLICEA||in->op==ISLICELA) && typedrawclass(&in->d)){if(!typedrawslice(in,p,pc-p->first))goto fail;pc++;}
-        else if(c->loads && (in->op==INEWA||in->op==INEWAZ) && typedrawclass(&in->d)){if(!typedrawnew(in,p,pc-p->first))goto fail;pc++;}
+        if(c->loads && (in->op==ISLICEA||in->op==ISLICELA) &&
+           (typedrawclass(&in->d)||typedrawfieldclass(&in->d,in->dm)||
+            (in->op==ISLICELA&&typedrawfieldclass(&in->s,in->sm)))){
+            if(!typedrawslice(in,p,pc-p->first))goto fail;pc++;
+        }
+        else if(c->loads && (in->op==INEWA||in->op==INEWAZ) &&
+                (typedrawclass(&in->d)||typedrawfieldclass(&in->d,in->dm))){
+            if(!typedrawnew(in,p,pc-p->first))goto fail;pc++;
+        }
+        else if(c->loads && (in->op==IINDX||in->op==IINDW||in->op==IINDL) &&
+                typedrawfieldclass(&in->s,in->sm)){
+            if(!typedrawfieldindex(c,p,in,pc,stop))goto fail;
+            inside[pc+1-p->first]=1;pc+=2;
+        }
         else if(c->loads && (in->op==IINDX||in->op==IINDW||in->op==IINDL) && typedrawclass(&in->s)){if(!typedrawindex(c,p,in,pc,stop))goto fail;pc++;}
         else if(c->loads && (typedrawborrow(p,&in->s,in->sm,pc)>=0 || typedrawborrow(p,&in->d,in->dm,pc)>=0)){if(!typedrawuse(p,in,pc,stop,-1))goto fail;pc++;}
         else if(c->loads&&p->resultaggregate&&in->dm==Afpind&&in->d.reg==16&&(in->op==IMOVP||in->op==IMOVW||in->op==IMOVM||in->op==IMOVMP)){if(!typedaggregatereturn(in,p,pc-p->first))goto fail;pc++;}
