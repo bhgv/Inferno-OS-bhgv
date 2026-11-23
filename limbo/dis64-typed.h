@@ -32,6 +32,7 @@ struct Dis64TypedBody {
     Dis64TypedVariadic *variadic;
     unsigned int nvariadic;
 	unsigned char *returns;
+    Type *recordtypes[64];unsigned int nrecordtypes;unsigned short *recordowners;
     long *contextfields; /* Selected compiler-owned indirect field displacements. */
 	Dis64Layout frame, data;
 	unsigned int first, count, badpc;

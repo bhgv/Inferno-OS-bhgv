@@ -73,6 +73,7 @@ native64typedwordoperand(unsigned int mode,long offset,unsigned int fpbytes,unsi
 }
 
 #include "native64-library-code.h"
+#include "native64-record-code.h"
 
 static int
 native64typedchannelop(unsigned int op)
@@ -597,6 +598,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==136){if((s->op!=ISEND && s->op!=IRECV) || s->mode!=(SRC(sm)|DST(dm)) || s->m!=136 || !native64typedrootoperand(sm,s->s,fpbytes,mpbytes) || !native64typedrootoperand(dm,s->d,fpbytes,mpbytes) || 16>((s->op==ISEND?sm:dm)==AFP?fpbytes:mpbytes)-(s->op==ISEND?s->s:s->d))return 0;continue;}
         if(s->returned==82||s->returned==83){if(!native64typedwindowgeometry(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==88||s->returned==89){if(!native64typedwindowword(s,fpbytes,mpbytes)||(native64typedbranch(s->op)&&(s->d<0||(unsigned long)s->d>=count)))return 0;continue;}
+        if(s->returned==Native64TypedRecord){if(!native64typedrecord(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==79){if(!(s->op==INEWAZ?native64typedrawnew(s,fpbytes,mpbytes):native64typedrawslice(s,fpbytes,mpbytes)))return 0;continue;}
         if(s->returned==80){if(!native64typedrawindex(s,fpbytes,mpbytes))return 0;continue;}
         if(s->returned==65){if(!native64typedrawuse(s,fpbytes,mpbytes))return 0;continue;}
@@ -761,6 +763,7 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==80){p->reg=s->m&255;p->d.imm=s->d;continue;}
         if(s->returned==65){native64rawusecode(p,s);if(native64typedbranch(s->op))p->d.ins=out+s->d;continue;}
         if(s->returned==77){p->reg=(s->op==IMOVM)?(s->m>>8)&255:0;p->d.i.f=32;p->d.i.s=s->m&255;continue;}
+        if(s->returned==Native64TypedRecord){native64recordcode(p,s,out);continue;}
         if(s->returned==73){p->reg=0;p->s.i.f=s->s;p->s.i.s=(s->m>>8)&4095;p->d.i.f=s->d;p->d.i.s=s->m&255;continue;}
         if(s->returned==68){p->reg=s->m;p->d.i.f=s->d;p->d.i.s=0;continue;}
         if(s->returned==61||s->returned==66){p->reg=0;p->d.ind=s->d;if(s->returned==61){p->s.i.f=s->s;p->s.i.s=s->m&65535;}continue;}

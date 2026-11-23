@@ -74,6 +74,7 @@ struct Native64ModuleSpec {
 };
 #include "native64-typed-tables.h"
 #include "native64-raw-array-module.h"
+#include "native64-record-module.h"
 
 static int
 native64modulename(const char *s)
@@ -477,7 +478,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
            f->nsites>f->count/2 || (f->nsites && (f->sites==nil || f->sites==H)))return 0;
         for(j=0;j<i;j++)if(!strcmp(f->name,s->functions[j].name))return 0;
         if(!native64modulealts(s,f))return 0;
-        if(!native64moduleaggregate(s,f)||!native64modulerawarrays(s,f))return 0;
+        if(!native64moduleaggregate(s,f)||!native64modulerawarrays(s,f)||!native64modulerecordfields(s,f))return 0;
         if(!native64modulelists(s,f) || !native64modulecontext(s,f) || !native64modulewindow(s,f) || !native64moduledrawfields(s,f) || !native64moduleargclears(s,f) || !native64modulestringpreps(s,f) || !native64modulerootpaths(s,f) || !native64modulebytestrings(s,f) || !native64modulelocalclears(s,f) || !native64modulelistprefixes(s,f) || !native64modulelistpreps(s,f) || !native64modulegeometry(s,f))return 0;
         for(j=0;j<f->count;j++)if((f->code[j].op==ILEA && USRC(f->code[j].mode)==AMP && f->code[j].returned!=190 && f->code[j].returned!=195 && f->code[j].returned!=197 && f->code[j].returned!=199 && f->code[j].returned!=203 && f->code[j].returned!=134 && f->code[j].returned!=224 && f->code[j].returned!=240) || (f->code[j].returned==(128|24) && USRC(f->code[j].mode)!=AFP)){
             unsigned int k,found=0;step=f->code+j;
@@ -572,7 +573,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 if(!(map[bit/8]&(0x80>>(bit%8))))return 0;
             }
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned!=87 && ((f->code[j].op==IADDC && f->code[j].returned!=64 && f->code[j].returned!=57 && f->code[j].returned!=180 && f->code[j].returned!=75 && f->code[j].returned!=76) || (f->code[j].op==IINDC && f->code[j].returned!=137) || f->code[j].op==IINSC || f->code[j].op==ISLICEC)){
+        for(j=0;j<f->count;j++)if(f->code[j].returned!=87 && ((f->code[j].op==IADDC && f->code[j].returned!=64 && f->code[j].returned!=57 && f->code[j].returned!=180 && f->code[j].returned!=75 && f->code[j].returned!=76) || (f->code[j].op==IINDC && f->code[j].returned!=137 && f->code[j].returned!=Native64TypedRecord) || f->code[j].op==IINSC || f->code[j].op==ISLICEC)){
             unsigned int k,modes[3],offsets[3],roots[3];
             step=f->code+j;
             if(!native64typedstringstep(step,f->bytes,s->databytes))return 0;
@@ -617,19 +618,19 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned==232 || ((f->code[j].op==IBEQC || f->code[j].op==IBNEC) && (USRC(f->code[j].mode)&AIND) && f->code[j].returned && f->code[j].returned!=153 && f->code[j].returned!=111)){
+        for(j=0;j<f->count;j++)if(f->code[j].returned==232 || ((f->code[j].op==IBEQC || f->code[j].op==IBNEC) && (USRC(f->code[j].mode)&AIND) && f->code[j].returned && f->code[j].returned!=153 && f->code[j].returned!=Native64TypedRecord && f->code[j].returned!=111)){
             unsigned int k,modes[2],offsets[2];step=f->code+j;if(!native64typedcursorcompare(step,f->bytes,s->databytes) || step->d<0 || (unsigned long)step->d>=f->count)return 0;
             modes[0]=USRC(step->mode)&~AIND;modes[1]=(step->mode&ARM)==AXINF?AFP:AMP;offsets[0]=step->s;offsets[1]=step->m;
             for(k=0;k<2;k++){map=modes[k]==AFP?f->map:s->datamap;bit=offsets[k]/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;}
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned==234 || (f->code[j].op==IANDW && (USRC(f->code[j].mode)&AIND) && f->code[j].returned && f->code[j].returned!=133 && f->code[j].returned!=153)){
+        for(j=0;j<f->count;j++)if(f->code[j].returned==234 || (f->code[j].op==IANDW && (USRC(f->code[j].mode)&AIND) && f->code[j].returned && f->code[j].returned!=133 && f->code[j].returned!=153 && f->code[j].returned!=Native64TypedRecord)){
             step=f->code+j;if(!native64typedflagsand(step,f->bytes,s->databytes))return 0;
             map=(USRC(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->s/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
             map=UDST(step->mode)==AFP?f->map:s->datamap;for(at=0;at<4;at++){bit=(step->d+at)/8;if(map[bit/8]&(128>>(bit%8)))return 0;}
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
         }
-        for(j=0;j<f->count;j++)if(f->code[j].returned==236 || (f->code[j].op==IORW && (UDST(f->code[j].mode)&AIND) && f->code[j].returned && f->code[j].returned!=130 && f->code[j].returned!=153)){
+        for(j=0;j<f->count;j++)if(f->code[j].returned==236 || (f->code[j].op==IORW && (UDST(f->code[j].mode)&AIND) && f->code[j].returned && f->code[j].returned!=130 && f->code[j].returned!=153 && f->code[j].returned!=Native64TypedRecord)){
             step=f->code+j;if(!native64typedflagsor(step,f->bytes,s->databytes))return 0;
             map=(UDST(step->mode)&~AIND)==AFP?f->map:s->datamap;bit=step->d/8;if(!(map[bit/8]&(128>>(bit%8))))return 0;
             for(at=0;at<f->nsites;at++)if(f->sites[at].first<=j && j<=f->sites[at].end)return 0;
@@ -839,7 +840,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         }
         for(j=0;j<f->count;j++)if(f->code[j].returned!=153 && (f->code[j].op==IBEQC || f->code[j].op==IBNEC || f->code[j].op==IBLTC || f->code[j].op==IBLEC || f->code[j].op==IBGTC || f->code[j].op==IBGEC)){
             unsigned int k,modes[2],offsets[2];Inst probe;step=f->code+j;
-            if(step->returned==232 || step->returned==111)continue; /* Dedicated field/array checks prove indirect String owners. */
+            if(step->returned==232 || step->returned==111 || step->returned==Native64TypedRecord)continue; /* Dedicated field/array checks prove indirect String owners. */
             {Native64TypedStep local=*step;
              if(step->d<0 || (unsigned long)step->d>=f->count)return 0;
              local.d=0;if(!native64typedcode(&probe,1,&local,1,f->bytes,s->databytes))return 0;
@@ -1204,7 +1205,7 @@ native64modulecopy(const char *s)
 static int
 native64checkedarraystep(const Native64TypedStep *step)
 {
-    return step->returned==80 || (step->returned==79 && step->op!=INEWAZ) ||
+    return step->returned==Native64TypedRecord || step->returned==80 || (step->returned==79 && step->op!=INEWAZ) ||
         (step->returned==255 && step->op==IINDX);
 }
 
@@ -1365,10 +1366,11 @@ native64modulemake(void *arg)
                     step=s->functions[i].code+j;
                     if(!native64checkedarraystep(step))continue;
                     p->index[z].pc=pc+j;
+                    p->index[z].record=step->returned==Native64TypedRecord;
                     p->index[z].mapped=step->returned==255;
                     p->index[z].width=p->index[z].mapped?16:
-                        native64rawarraywidth((unsigned long)step->m>>(step->returned==80?8:24));
-                    if(step->returned!=255)p->index[z].mapped=native64arraymap((unsigned long)step->m>>(step->returned==80?8:24));
+                        step->returned==Native64TypedRecord?0:native64rawarraywidth((unsigned long)step->m>>(step->returned==80?8:24));
+                    if(step->returned!=255&&step->returned!=Native64TypedRecord)p->index[z].mapped=native64arraymap((unsigned long)step->m>>(step->returned==80?8:24));
                     p->index[z].frame=m->type[i+1];
                     p->index[z++].instruction=m->prog[pc+j];
                 }

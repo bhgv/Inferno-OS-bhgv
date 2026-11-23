@@ -37,9 +37,10 @@ def generate(limbo,w):
 def refusals(limbo,w):
  for owner,declaration in(('Other','Other:adt{display:ref Draw->Display;screen:ref Draw->Screen;wm:chan of (string,chan of (string,ref Draw->Wmcontext));};'),('Fake->Context','Fake:module{Context:adt{display:ref Draw->Display;screen:ref Draw->Screen;wm:chan of (string,chan of (string,ref Draw->Wmcontext));};};')):
   source='implement Closed;include "sys.m";include "draw.m";'+declaration+'Closed:module{run:fn(c:ref '+owner+');};display:ref Draw->Display;run(c:ref '+owner+'){display=c.display;}'
-  _,rows=G['E']['compile_source'](limbo,w,source,interface='',loads=True)
-  assert len(rows)==1 and not rows[0]['accepted']and rows[0]['reason']=='context-field-roles',rows
- print('PASS Context compiler boundary: identical-layout ADT and wrong namespace refused; ordinary bytes preserved',flush=True)
+  data,rows=G['E']['compile_source'](limbo,w,source,interface='',loads=True)
+  assert len(rows)==1 and rows[0]['accepted']and any(c[5]==72 for c in rows[0]['code']),rows
+  G['E']['verify'](data,rows[0],[],loads=True,rows=rows)
+ print('PASS Context generic boundary: identical-layout ADTs use checked generic fields; canonical Context retains its closed protocol',flush=True)
 
 def unit():
  src=CMD['unit']().replace('int main(int argc,char **argv)','int previous_command_main(int argc,char **argv)')

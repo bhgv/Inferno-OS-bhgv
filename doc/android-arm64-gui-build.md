@@ -943,3 +943,69 @@ with their active controls. CI runs the mixed-array regression in both existing
 CPU jobs. Local execution evidence is Linux amd64 with UBSan; full shell and
 Android APK/device startup, other OSes and other CPU/32-bit combinations remain
 unverified.
+
+## Generic nested ADT fields and lexer state
+
+Checked native64 lowering now derives Word32 and managed-root field accesses
+from the complete declared ADT layout. It handles inline nested ADTs/tuples,
+mixed ordering and padding without choosing a layout by module or field name.
+Existing closed library/Draw protocols retain their encodings. Other ADTs,
+including a structurally identical Context in another namespace, use the new
+generic protocol with runtime heap checks. Declared root types still govern
+copies and returned fields; this does not introduce arbitrary pointer casts.
+
+The private annotation covers field reads/writes, integer arithmetic/branches,
+root copies/results, pointer and String nil tests, lengths and String character
+reads. All six managed root kinds retain their ordinary ownership semantics.
+String tests use String comparison, preserving equality of nil and an allocated
+empty String. Selected leaves must be `int` or managed roots; byte/big/real
+operations, field offsets beyond 4096 bytes, owner slots beyond the 16-bit
+operand range, allocation of arbitrary records, direct field-to-call-argument
+preparation and aggregate result bindings remain outside this protocol.
+
+An owned, immutable per-PC capability extends the existing predecode array
+hook. It records the exact instruction and frame Type. Before `vmdecode` forms
+an indirect field address, the hook reads the proved FP/MP owner and validates
+the actual heap Type, complete selected span and every byte's GC role. Nil
+owners, short payloads and scalar/root map mismatches raise through normal VM
+errors before opcode dispatch. Module construction validates frame/data root
+maps, packed operands, branch targets and exclusion from pending call regions
+before allocation. Capability allocation and teardown use the existing owned
+module lifecycle; no serialized Dis or Module ABI fields were added.
+
+Diagnostic IR additionally carries recursive type trees and per-instruction
+owner witnesses. The classic oracle independently places their fields with
+native alignment rules and checks the original operands and frame/data maps.
+Generated natural C `sizeof`/`offsetof` checks and execution assertions provide
+separate geometry witnesses. A pre-existing Context oracle ambiguity between
+an MP owner and a direct MP nil value is corrected by comparing their offsets,
+while retaining all canonical Context instruction encodings.
+
+`python3 utils/tests/native64-record-fields.py --limbo /path/to/limbo` executes
+2268 generic C/JIT cases with nested FP/MP fields, all six root results,
+arithmetic, Unicode, nil/alias/empty-String cases, real heap-map/size failures,
+four-byte field/result padding guards, exact references and complete retirement.
+The operand/type-tree oracle detects 1716 instruction mutations and nine
+record-extent mutations. Another 1716 malformed records fail before allocation;
+all 28/29 constructor allocation failures roll back in C/JIT modes. Three active
+controls independently damage the heap extent check, GC-role check and field
+displacement; each must fail its named predicate.
+
+The same fixture executes another 864 C/JIT cases using the unchanged bodies
+of Sh's `YYLEX.error` and `YYLEX.ungetc`, connected by a local-call wrapper.
+Their original data declarations are extracted; declarations of unrelated
+methods are omitted solely to isolate this fixture. Generated C checks verify
+the full 128-byte YYLEX geometry and its nine GC roots. These runs cover signed
+Word32 decrement/increment overflow, nil/empty/nonempty buffers, file-state
+branches, first-error preservation, String nil semantics, caller guards and
+exact ownership. They perform no Bufio I/O.
+
+The unchanged full Sh compiler frontier advances from 72/134 to 74/134 bodies
+(`error` and `ungetc`); the 16-module startup frontier is now 311/385. `getc`
+passes its initial state fields and reaches PC 5315, an `IINDW` through the
+buffer-array field. `yyparse` still stops at the unsupported lexer call at PC
+5552. Mixed arrays retain 6624 cases, root arrays 6912 cases and Draw.Context
+252 calls, with active controls. CI includes the new regression in both existing
+CPU jobs. System `.b`/`.y` files and ordinary Dis bytes remain unchanged.
+Local execution evidence is Linux amd64 with UBSan; full shell and Android
+APK/device startup, other OSes and other CPU/32-bit combinations are unverified.

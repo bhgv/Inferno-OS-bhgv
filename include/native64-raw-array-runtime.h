@@ -5,7 +5,7 @@
 /* Owned index proofs. Neither pointers nor this capability come from Dis files. */
 typedef struct Native64RawIndex Native64RawIndex;
 typedef struct Native64RawArrays Native64RawArrays;
-struct Native64RawIndex {unsigned int pc,width,mapped;Type *frame;Inst instruction;};
+struct Native64RawIndex {unsigned int pc,width,mapped,record;Type *frame;Inst instruction;};
 struct Native64RawArrays {Native64RawArrays *self;Module *owner;unsigned int count;Native64RawIndex index[1];};
 static unsigned int native64rawarraywidth(unsigned int c){return native64arraywidth(c);}
 static void native64rawarrayfree(Module*m){Native64RawArrays*p=m->native64rawarrays;m->native64rawarrays=nil;m->native64rawarraysfree=nil;if(p!=nil)free(p);}
@@ -25,16 +25,18 @@ native64rawarrayowner(VmFetch*f,unsigned int mode,long offset)
  }else{error(exBounds);return H;}
  memmove(&a,base+offset,sizeof(a));return a;
 }
+#include "native64-record-runtime.h"
 static int
 native64rawarraystep(VmFetch*f)
 {Native64RawArrays*p=f->module->native64rawarrays;Native64RawIndex*v;unsigned int lo=0,hi,mid;Type*t;Array*a;uintptr base;
  if(p==nil)return 0;if(p==H||p->self!=p||p->owner!=f->module||!p->count||p->count>65536)error(exBounds);hi=p->count;
  while(lo<hi){mid=lo+(hi-lo)/2;if(p->index[mid].pc<(unsigned int)f->index)lo=mid+1;else hi=mid;}
  if(lo==p->count||p->index[lo].pc!=(unsigned int)f->index)return 0;v=p->index+lo;
- if((f->op!=IINDX&&f->op!=ISLICEA&&f->op!=ISLICELA)||memcmp(f->pc,&v->instruction,sizeof(Inst))||R.FP==nil||R.FP==H)error(exBounds);base=(uintptr)R.FP;if(base%8||base>(uintptr)-1-sizeof(Frame))error(exBounds);
+ if((!v->record&&f->op!=IINDX&&f->op!=ISLICEA&&f->op!=ISLICELA)||memcmp(f->pc,&v->instruction,sizeof(Inst))||R.FP==nil||R.FP==H)error(exBounds);base=(uintptr)R.FP;if(base%8||base>(uintptr)-1-sizeof(Frame))error(exBounds);
  memmove(&t,R.FP+O(Frame,t),sizeof(t));if(t==nil){if(base<OA(Stkext,reg.tos.fu))error(exBounds);memmove(&t,(void*)(base-OA(Stkext,reg.tos.fu)+O(Stkext,reg.TR)),sizeof(t));}
  if(t!=v->frame||t==nil||t==H||t->ref<=0||base>(uintptr)-1-t->size)error(exBounds);
- if(f->op==IINDX){a=native64rawarrayowner(f,USRC(v->instruction.add),v->instruction.s.ind);native64rawarraycheck(a,v->width,v->mapped);}
+ if(v->record)native64recordcheck(f,&v->instruction);
+ else if(f->op==IINDX){a=native64rawarrayowner(f,USRC(v->instruction.add),v->instruction.s.ind);native64rawarraycheck(a,v->width,v->mapped);}
  else if(f->op==ISLICEA){a=native64rawarrayowner(f,UDST(v->instruction.add),v->instruction.d.ind);native64rawarraycheck(a,v->width,v->mapped);}
  else{a=native64rawarrayowner(f,USRC(v->instruction.add),v->instruction.s.ind);native64rawarraycheck(a,v->width,v->mapped);if(a!=H&&a!=nil){a=native64rawarrayowner(f,UDST(v->instruction.add),v->instruction.d.ind);native64rawarraycheck(a,v->width,v->mapped);}}
  vmdecode(f);if(optab[f->op]==nil||optab[f->op]==(void(*)(void))H)error(exOp);optab[f->op]();return 1;

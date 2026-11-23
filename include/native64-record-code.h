@@ -1,0 +1,37 @@
+#ifndef NATIVE64_RECORD_CODE_H
+#define NATIVE64_RECORD_CODE_H
+#include "native64-record-layout.h"
+static int
+native64recordoperand(unsigned int mode,long value,unsigned int width,unsigned int root,unsigned int fp,unsigned int mp,int result)
+{
+ unsigned int field,base;
+ if(result&&mode==(AFP|AIND)&&value==32)return 1;
+ if(mode==AFP||mode==AMP)return root?native64typedrootoperand(mode,value,fp,mp):native64typedwordoperand(mode,value,fp,mp);
+ if(mode==AIMM)return !root&&native64typedwordoperand(mode,value,fp,mp);
+ if((mode!=(AFP|AIND)&&mode!=(AMP|AIND))||value<0||(unsigned long)value>0x1000ffffUL)return 0;
+ base=value&65535;field=(unsigned long)value>>16;
+ return field<=4096&&field%width==0&&native64typedrootoperand(mode&~AIND,base,fp,mp);
+}
+static int
+native64typedrecord(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
+{
+ unsigned int w[2],r[2],sm=USRC(s->mode),dm=UDST(s->mode),mm=s->mode&ARM,branch=native64typedbranch(s->op);
+ if(s->returned!=Native64TypedRecord||s->mode>255||!native64recordshape(s->op,w,r)||
+    (!(sm&AIND)&&!(dm&AIND))||!native64recordoperand(sm,s->s,w[0],r[0],fp,mp,0))return 0;
+ if(branch){if(dm!=AIMM||s->d<0||mm==AXNON)return 0;}
+ else if(dm==AIMM||!native64recordoperand(dm,s->d,w[1],r[1],fp,mp,1))return 0;
+ if(mm==AXNON)return s->op!=IINDC&&!s->m;
+ if(s->op==IMOVP||s->op==IMOVW||s->op==ILENC||s->op==ILENA||s->op==ILENL||s->op==ICVTCW||s->op==ICVTWC)return 0;
+ if(mm==AXIMM)return (!r[0]||s->op==IINDC)&&s->m>=-32768&&s->m<=32767;
+ return s->m>=0&&s->m<=65535&&native64recordoperand(mm==AXINF?AFP:AMP,s->m,s->op==IINDC?4:w[0],s->op==IINDC?0:r[0],fp,mp,0);
+}
+static void
+native64recordcode(Inst*p,const Native64TypedStep*s,Inst*out)
+{
+ unsigned int sm=USRC(s->mode),dm=UDST(s->mode);
+ p->reg=s->m;
+ if(sm&AIND){p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;}else p->s.imm=s->s;
+ if(native64typedbranch(s->op))p->d.ins=out+s->d;
+ else if(dm&AIND){p->d.i.f=s->d&65535;p->d.i.s=(unsigned long)s->d>>16;}else p->d.imm=s->d;
+}
+#endif

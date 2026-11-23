@@ -175,6 +175,48 @@ def array_layout(c):
     fields=[(4*i,8*i,8,True)for i in range(roots)]+[(4*(roots+i),8*roots+4*i+(4 if i and gap else 0),4,False)for i in range(words)]
     return (fields[-1][1]+11)//8*8,4*(roots+words),fields
 
+def record_geometry(tree):
+    kind,oldbytes,fields=tree
+    if kind in ROOTS or kind==20:
+        assert oldbytes==4 and not fields;return 8,8,[(0,0,kind,4,8)]
+    if kind in(4,5,7,9):
+        n={4:8,5:1,7:8,9:4}[kind];assert oldbytes==n and not fields;return n,n,[(0,0,kind,n,n)]
+    assert kind in(1,14)and fields
+    size=0;alignment=1;leaves=[];end=0
+    for old,child in fields:
+        n,a,sub=record_geometry(child);assert old>=end and old+child[1]<=oldbytes
+        end=old+child[1];size=(size+a-1)//a*a;alignment=max(alignment,a)
+        leaves.extend((old+x,size+y,k,b,w)for x,y,k,b,w in sub);size+=n
+    return (size+alignment-1)//alignment*alignment,alignment,leaves
+
+def record_field(o,c,pc,maps,row):
+    op,mode,s,m,d,role=c;assert role==72
+    assert mode==o['mode']
+    owners={side:tree for at,side,tree in row['record_owners']if at==pc};assert owners and len(owners)==sum(at==pc for at,_,_ in row['record_owners'])
+    rootops=(OPCODES['IMOVP'],OPCODES['IBEQL'],OPCODES['IBNEL'],OPCODES['IBEQC'],OPCODES['IBNEC'])
+    sourceops=(OPCODES['IINDC'],OPCODES['ILENC'],OPCODES['ILENA'],OPCODES['ILENL'],OPCODES['ICVTCW'])
+    widths=[8,8]if op in rootops else[8,4]if op in sourceops else[4,8]if op==OPCODES['ICVTWC']else[4,4]
+    kinds=[]
+    for side,wire,value,addr,width in((0,mode>>3&7,s,o['s'],widths[0]),(1,mode&7,d,o['d'],widths[1])):
+        if side==1 and op in BRANCHES:
+            assert wire==2 and value==addr[0]-row['first']and side not in owners;continue
+        if wire in(4,5):
+            if side==1 and addr==[16,0]:assert value==32 and row['result'][1]==width and side not in owners;continue
+            assert side in owners
+            size,alignment,leaves=record_geometry(row['record_types'][owners[side]])
+            old,new,kind,b,n=next(l for l in leaves if l[0]==addr[1]);assert b==4 and n==width
+            assert value==maps['frame'if wire==5 else'data'][addr[0]]|(new<<16)
+            assert row['frame'if wire==5 else'data']['map'][(value&65535)//64]&(128>>((value&65535)//8%8))
+            kinds.append(kind)
+        else:
+            assert side not in owners and wire in(0,1,2)
+            assert value==(addr[0]if wire==2 else maps['frame'if wire else'data'][addr[0]])
+    if o['op']in(OPCODES['IBEQW'],OPCODES['IBNEW'])and kinds and kinds[0]in ROOTS:
+        assert op==(OPCODES['IBEQC']if kinds[0]==13 else OPCODES['IBEQL'])if o['op']==OPCODES['IBEQW']else op==(OPCODES['IBNEC']if kinds[0]==13 else OPCODES['IBNEL'])
+    else:assert op==o['op']
+    arm=mode&192
+    assert m==(0 if arm==0 else o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']])
+
 def rawarray_index(original,code,pc,maps,row):
     o=original[pc];op,mode,s,m,d,role=code[pc];sm=o['mode']>>3&7;dm=o['mode']&7
     assert role==80 and op==OPCODES['IINDX']and o['op']in(OPCODES['IINDX'],OPCODES['IINDW'],OPCODES['IINDL'])and sm in(0,1)and o['mode']==(sm<<3)|128|dm and mode==o['mode']and o['m']is not None
@@ -912,6 +954,7 @@ def verify(data,r,imports,loads=False,rows=None):
     for pc,(op,mode,s,m,d,returned)in enumerate(r['code']):
         if pc in covered:continue
         o=original[pc]
+        if returned==72:record_field(o,r['code'][pc],pc,maps,r);continue
         if returned==80:rawarray_index(original,r['code'],pc,maps,r);continue
         if returned==79:rawarray_operation(o,r['code'][pc],maps,types,r);continue
         if returned==65:rawarray_use(original,r['code'],pc,maps,r,types=types);continue
@@ -1528,7 +1571,7 @@ def verify(data,r,imports,loads=False,rows=None):
             for space,old,kind in(('frame'if bm else'data',indirect[0],12),('frame'if vm else'data',direct[0],6 if indirect[1]==8 else 12)):
                 leaf=next(l for l in r[space]['leaves']if l[0]==old)
                 assert leaf[2:4]==[4,8]
-                if leaf[4]!=kind and space==('frame'if bm else'data')and not read:
+                if leaf[4]!=kind and old==indirect[0]and space==('frame'if bm else'data')and not read:
                     starts=[q for q in range(max(0,pc-3),pc)if r['code'][q][5]==172 and r['code'][q][4]==maps[space][old]]
                     assert len(starts)==1 and all(r['code'][q][5]==96 and r['code'][q][4]==maps[space][old]for q in range(starts[0]+1,pc));inside.update(range(starts[0]+1,pc+1))
                 else:assert leaf[4]==kind or(not read and space=='data'and leaf[4]==20)

@@ -303,7 +303,7 @@ typedresults(Dis64TypedBody *p)
         if(p->resultaggregate){unsigned int c=p->resultaggregate,n=c==92?5:c==112?4:(c==12||c==72||c==124)?3:2;if(p->returns[pc]==45)flow|=8;if(p->returns[pc]==32||p->returns[pc]==47)flow=(1U<<(n+1))-1;if(p->returns[pc]==78)flow|=p->code[pc].op==IMCALL&&pc&&p->returns[pc-1]==152?(2U<<(p->code[pc-1].middle/8)):c==112?24:2;if(p->returns[pc]==77){unsigned int off=p->code[pc].middle&255,bytes=(p->code[pc].middle>>8)&255,first=c==80?(off?1:0):off/((c==48||c==116||c==72||c==124)?8:4),count=p->code[pc].op==IMOVP?1:bytes/((c==48||c==116||c==72||c==124)?8:4);while(count--)flow|=2U<<(first++);}}
         else if(p->resulttriple){if(p->returns[pc]==2 || p->returns[pc]==4 || p->returns[pc]==8)flow|=p->returns[pc];if(p->returns[pc]==32 || p->returns[pc]==171)flow=15;}
         else if(p->resultpair){if(p->returns[pc]==77)flow=7;if(p->returns[pc]==8)flow|=2;if(p->returns[pc]==16)flow|=4;if(p->returns[pc]==32)flow=7;}
-        else if((p->returns[pc]==65 && (p->code[pc].op==IMOVW || p->code[pc].op==IMOVP) && p->code[pc].destination==32 && UDST(p->code[pc].mode)==(AFP|AIND)) || (p->returns[pc] && p->returns[pc]<=32) || ((p->returns[pc]==109 || (p->returns[pc]==111 && p->code[pc].op==IMOVP)) || p->returns[pc]==174 || p->returns[pc]==185 || p->returns[pc]==246 || p->returns[pc]==247 || (p->returns[pc]==158 && p->code[pc].destination==32 && UDST(p->code[pc].mode)==(AFP|AIND)) || ((p->returns[pc]==154 || (p->returns[pc]==153 && !(p->code[pc].middle&0xff0000) && p->code[pc].destination==32)) && UDST(p->code[pc].mode)==(AFP|AIND))))flow=3;
+        else if(((p->returns[pc]==65 || p->returns[pc]==72) && (p->code[pc].op==IMOVW || p->code[pc].op==IMOVP) && p->code[pc].destination==32 && UDST(p->code[pc].mode)==(AFP|AIND)) || (p->returns[pc] && p->returns[pc]<=32) || ((p->returns[pc]==109 || (p->returns[pc]==111 && p->code[pc].op==IMOVP)) || p->returns[pc]==174 || p->returns[pc]==185 || p->returns[pc]==246 || p->returns[pc]==247 || (p->returns[pc]==158 && p->code[pc].destination==32 && UDST(p->code[pc].mode)==(AFP|AIND)) || ((p->returns[pc]==154 || (p->returns[pc]==153 && !(p->code[pc].middle&0xff0000) && p->code[pc].destination==32)) && UDST(p->code[pc].mode)==(AFP|AIND))))flow=3;
         n=0;
 		if(p->code[pc].op==IRET || p->code[pc].op==IRAISE || p->code[pc].op==IEXIT) continue;
         if(p->code[pc].op==ICASE || p->code[pc].op==ICASEL || p->code[pc].op==IGOTO || p->code[pc].op==ICASEC){
@@ -510,7 +510,7 @@ dis64typedfree(Dis64TypedBody *p)
 	unsigned int i;
 	free(p->catchcleanup);
     for(i=0;i<p->nvariadic;i++)dis64layoutfree(&p->variadic[i].frame);free(p->variadic);
-	free(p->tables);free(p->contextfields);free(p->external);free(p->sites);free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
+	free(p->tables);free(p->recordowners);free(p->contextfields);free(p->external);free(p->sites);free(p->code);free(p->returns); dis64layoutfree(&p->frame); dis64layoutfree(&p->data); memset(p,0,sizeof(*p));
 }
 
 static void
@@ -720,6 +720,12 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
 			fprint(2,",\"result\":[%d,%ud]",p.resultkind,p.resultbytes);if(p.resultpair && p.resultpair<3)fprint(2,",\"result_pair\":[%d,%d]",p.resulttype->ids->ty->kind,p.resulttype->ids->next->ty->kind);if(p.resultpair>=3)fprint(2,",\"result_mixed\":[%d,%d]",p.resultpair==3?Tint:p.resultpair==4?Tbig:Treal,p.resulttype->ids->next->ty->kind);if(p.resulttriple==2)fprint(2,",\"result_words\":[%d,%d,%d]",Tint,Tint,Tint);if(p.resulttriple==1)fprint(2,",\"result_channels\":[%d,%d,%d]",Tchan,Tchan,Tchan);if(p.resultaggregate)fprint(2,",\"result_aggregate\":%d",p.resultaggregate);if(p.resultgeometry)fprint(2,",\"result_geometry\":%d",p.resultgeometry);
 			fprint(2,",\"descriptor\":%d,\"data_descriptor\":%d,\"frame\":",fn->desc->id,descriptors->id);
 			typedlayout(&p.frame); fprint(2,",\"data\":"); typedlayout(&p.data);
+            if(p.nrecordtypes){
+                unsigned int side,n=0;
+                fprint(2,",\"record_types\":[");for(i=0;i<p.nrecordtypes;i++){if(i)fprint(2,",");typedrecordtree(p.recordtypes[i]);}fprint(2,"],\"record_owners\":[");
+                for(i=0;i<p.count;i++)if(p.returns[i]==72)for(side=0;side<2;side++)if(p.recordowners[2*i+side])fprint(2,"%s[%ud,%ud,%ud]",n++?",":"",i,side,(unsigned int)p.recordowners[2*i+side]-1);
+                fprint(2,"]");
+            }
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);
 			fprint(2,",\"code\":[");
 			for(i=0;i<p.count;i++) fprint(2,"%s[%ud,%ud,%ld,%ld,%ld,%ud]",i?",":"",p.code[i].op,p.code[i].mode,p.code[i].source,p.code[i].middle,p.code[i].destination,p.resulttriple==2 && p.returns[i]==2?145:p.resulttriple==2 && p.returns[i]==4?146:p.resulttriple==2 && p.returns[i]==8?147:p.resulttriple && p.returns[i]==2?168:p.resulttriple && p.returns[i]==4?169:p.resulttriple && p.returns[i]==8?170:p.resultpair>=3 && p.returns[i]==8?146+p.resultpair:p.resultpair && p.returns[i]==8?40:p.resultpair && p.returns[i]==16?56:p.returns[i]>=32?p.returns[i]:p.returns[i]?(p.resultbytes | (p.resultkind==Tstring || p.resultkind==Tref || p.resultkind==Tlist || p.resultkind==Tarray || p.resultkind==Tchan || p.resultkind==Tmodule?16:0)):0);

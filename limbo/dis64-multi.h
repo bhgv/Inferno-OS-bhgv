@@ -1323,6 +1323,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
 
 #include "dis64-alt.h"
 #include "dis64-library-records.h"
+#include "dis64-record-fields.h"
 
 /* One forward string catch in a void function. Translate the cleanup map
  * only after frame repacking has fixed the native offsets. */
@@ -1427,6 +1428,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->loads&&in->op==IMOVP&&(in->sm==Afpind||in->sm==Ampind)&&(in->dm==Afpind||in->dm==Ampind)&&typedrootfieldcopy(in,p,pc-p->first)){pc++;
         }else if(c->loads && (in->op==INEW||in->op==INEWZ||in->op==IMOVMP)&&typedwindowconstruct(in,p,pc-p->first)){pc++;
         }else if(c->loads && typedlibraryinst(in,p,pc-p->first,stop)){pc++;
+        }else if(c->loads && typedrecordinst(in,p,pc-p->first,stop)){pc++;
         }else if(c->loads && in->op==ISLICELA){if(!(typedrootarrayelement(&in->s)?typedrootarraycopy(in,p,pc-p->first):typedlibrarybytecopy(in,p,pc-p->first)))goto fail;pc++;
         }else if(in->op==IFRAME || (c->external && in->op==IMFRAME)){
             if(in->op==IMFRAME){if(!typedexternalsite(c,p,pc,stop,&next))goto fail;}

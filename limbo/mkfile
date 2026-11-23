@@ -33,6 +33,8 @@ HFILES=	limbo.h\
 	dis64-typed.h\
 	dis64-multi.h\
 	dis64-raw-array.h\
+	dis64-record-fields.h\
+	$ROOT/include/native64-record-layout.h\
 	$ROOT/include/native64-array-layout.h\
 	dis64-alt.h\
 	dis64-wmcontext.h\
