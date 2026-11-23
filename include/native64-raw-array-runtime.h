@@ -5,7 +5,9 @@
 /* Owned checks for arrays and record fields in a constructed native64 module. */
 typedef struct Native64RawIndex Native64RawIndex;
 typedef struct Native64RawArrays Native64RawArrays;
-enum { Native64ArrayStep, Native64RecordStep, Native64ArrayFieldIndex, Native64ArrayFieldUse, Native64RecordArgStep };
+enum { Native64ArrayStep, Native64RecordStep, Native64ArrayFieldIndex, Native64ArrayFieldUse,
+       Native64RecordArgStep, Native64ArrayRecordStep, Native64ArrayRecordUse,
+       Native64ArrayNestedIndex };
 struct Native64RawIndex {unsigned int pc,width,mapped,kind;Type *frame;Inst instruction;};
 struct Native64RawArrays {Native64RawArrays *self;Module *owner;unsigned int count;Native64RawIndex index[1];};
 static unsigned int native64rawarraywidth(unsigned int c){return native64arraywidth(c);}
@@ -39,6 +41,16 @@ native64arrayvalue(VmFetch *f, unsigned int mode, Adr *operand)
 }
 
 static void
+native64arrayrecordcheck(VmFetch *f, Native64RawIndex *proof)
+{
+ Inst *in=&proof->instruction;
+ unsigned int mode=USRC(in->add);
+ int destination=mode==(AFP|AIND)&&(in->s.i.f==48||in->s.i.f==56);
+ if(destination)mode=UDST(in->add);
+ native64recordspan(f,mode,destination?&in->d:&in->s,proof->width,proof->mapped);
+}
+
+static void
 native64arraycheckstep(VmFetch *f, Native64RawIndex *proof)
 {
  Inst *in=&proof->instruction;
@@ -48,7 +60,7 @@ native64arraycheckstep(VmFetch *f, Native64RawIndex *proof)
  switch(f->op){
  case IINDX:
   source=native64arrayvalue(f,sm,&in->s);
-  if(dm&AIND)native64recordfield(f,dm,&in->d,4,0);
+  if((dm&AIND)&&proof->kind!=Native64ArrayNestedIndex)native64recordfield(f,dm,&in->d,4,0);
   native64rawarraycheck(source,proof->width,proof->mapped);
   break;
  case INEWAZ:
@@ -96,7 +108,8 @@ native64rawarraystep(VmFetch *f)
  }
  if(lo==proofs->count||proofs->index[lo].pc!=(unsigned int)f->index)return 0;
  proof=proofs->index+lo;
- if(proof->kind==Native64ArrayFieldUse||memcmp(f->pc,&proof->instruction,sizeof(Inst))||
+ if(proof->kind==Native64ArrayFieldUse||proof->kind==Native64ArrayRecordUse||
+    memcmp(f->pc,&proof->instruction,sizeof(Inst))||
     R.FP==nil||R.FP==H||base%8||base>(uintptr)-1-sizeof(Frame))
   error(exBounds);
  memmove(&frame,R.FP+O(Frame,t),sizeof(frame));
@@ -109,11 +122,13 @@ native64rawarraystep(VmFetch *f)
  if(proof->kind==Native64ArrayFieldIndex){
   if(lo+1>=proofs->count||f->index+1>=f->module->nprog)error(exBounds);
   use=proof+1;
-  if(use->kind!=Native64ArrayFieldUse||use->pc!=proof->pc+1||use->frame!=frame||
+  if((use->kind!=Native64ArrayFieldUse&&use->kind!=Native64ArrayRecordUse)||
+     use->pc!=proof->pc+1||use->frame!=frame||
      memcmp(f->pc+1,&use->instruction,sizeof(Inst)))error(exBounds);
   next=(VmFetch){f->module,f->pc+1,f->index+1,use->instruction.op,use->instruction.add};
  }
  if(proof->kind==Native64RecordStep)native64recordcheck(f,&proof->instruction);
+ else if(proof->kind==Native64ArrayRecordStep)native64arrayrecordcheck(f,proof);
  else if(proof->kind==Native64RecordArgStep){
   Inst *in=&proof->instruction;
   int root=in->op==IMOVP;
@@ -124,6 +139,7 @@ native64rawarraystep(VmFetch *f)
  vmrun(f);
  if(use!=nil){
   /* Only the index opcode has executed. Both instructions share this quantum. */
+  if(use->kind==Native64ArrayRecordUse)native64arrayrecordcheck(&next,use);
   vmdecode(&next);
   vmrun(&next);
  }

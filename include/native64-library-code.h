@@ -51,6 +51,41 @@ native64typedlibrary(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
  return native64libraryoperand(mm==AXIMM?AIMM:mm==AXINF?AFP:AMP,mid,0,s->op==ISLICELA?4:w[0],s->op==ISLICELA?0:r[0],fp,mp,0);
 }
 static int
+native64libraryprecall(const Native64TypedStep *steps, unsigned int first, unsigned int pc,
+                      unsigned int end, unsigned int fp, unsigned int mp,
+                      unsigned int bytes, const uchar *map, unsigned int np)
+{
+ const Native64TypedStep *alloc=steps+pc,*s;
+ unsigned int j,bit;
+ if(first>=pc||pc>=end||alloc->returned!=154||UDST(alloc->mode)!=AFP||
+    !native64typedlibrary(alloc,fp,mp)||!map||map==H||np!=(bytes+63)/64)
+  return 0;
+ for(j=first+1;j<pc;j++){
+  s=steps+j;
+  if(s->returned!=64||s->op!=IMOVW||s->m||s->mode!=(SRC(USRC(s->mode))|DST(AFP|AIND))||
+     !native64typedwordoperand(USRC(s->mode),s->s,fp,mp)||
+     !native64typedwordoperand(AFP,s->d,bytes,0))
+   return 0;
+  bit=s->d/8;if(map[bit/8]&(128>>(bit%8)))return 0;
+ }
+ for(j=pc+1;j<end&&steps[j].returned==153;j++){
+  s=steps+j;
+  if((s->op!=IMOVW&&s->op!=IMOVP)||
+     s->mode!=(SRC(USRC(s->mode))|DST(AFP|AIND))||
+     (USRC(s->mode)&AIND)||((s->m>>16)&255)!=alloc->s||
+     (s->d&65535)!=alloc->d||!native64typedlibrary(s,fp,mp))
+   return 0;
+ }
+ if(j==end)return 0;
+ s=steps+j;
+ if(s->returned!=64||s->op!=IMOVP||s->mode!=(SRC(AFP)|DST(AFP|AIND))||s->m||
+    s->s!=alloc->d||!native64typedrootoperand(AFP,s->d,bytes,0))
+  return 0;
+ bit=s->d/8;
+ return !!(map[bit/8]&(128>>(bit%8)));
+}
+
+static int
 native64typedlibraryarg(const Native64TypedStep*s,unsigned int fp,unsigned int mp,unsigned int bytes,const unsigned char*map,unsigned int np)
 {
  unsigned int sm=USRC(s->mode),sid=(unsigned long)s->m>>24,w[2],r[2],i,bit;

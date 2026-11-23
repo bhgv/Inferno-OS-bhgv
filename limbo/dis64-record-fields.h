@@ -18,11 +18,11 @@ typedrecordvalue(Addr*a,int mode)
  return a->native64type?a->native64type:typedarrayleaf(a->decl?a->decl->ty:nil,a->decl?a->reg-a->decl->offset:0);
 }
 static int
-typedrecordoperand(int mode,Addr*a,int root,Dis64TypedBody*p,long*out,unsigned int*wire)
+typedrecordlayoutoperand(int mode,Addr*a,int root,Dis64TypedBody*p,long*out,unsigned int*wire)
 {
  Type*t;Dis64Layout l={0};Addr owner;unsigned int i;long base;int actual,ok=0;
- if(mode!=Afpind&&mode!=Ampind)return typedoperand(mode,a,root?TypedRoot:Tint,!root,0,p,out,wire,&actual);
- if(!typedrecordowner(a,mode)||(t=typedfieldowner(a))==nil||!dis64layouttype(t->tof,&l))goto done;
+ if((mode!=Afpind&&mode!=Ampind)||(t=typedfieldowner(a))==nil||
+    t->kind!=Tref||!t->tof||t->tof->kind!=Tadt||!dis64layouttype(t->tof,&l))goto done;
  for(i=0;i<l.count;i++)if(l.leaves[i].legacy==(unsigned int)a->offset)break;
  if(i==l.count||l.leaves[i].oldbytes!=4||l.leaves[i].bytes!=(root?8:4)||
     (root?!typedmanagedkind(l.leaves[i].kind):l.leaves[i].kind!=Tint)||l.leaves[i].native>4096)goto done;
@@ -30,6 +30,13 @@ typedrecordoperand(int mode,Addr*a,int root,Dis64TypedBody*p,long*out,unsigned i
  if(!typedoperand(mode==Afpind?Afp:Amp,&owner,TypedRoot,0,0,p,&base,wire,&actual)||actual!=Tref||base>65535)goto done;
  *out=((long)l.leaves[i].native<<16)|base;*wire|=AIND;ok=1;
  done:dis64layoutfree(&l);return ok;
+}
+static int
+typedrecordoperand(int mode,Addr*a,int root,Dis64TypedBody*p,long*out,unsigned int*wire)
+{
+ int actual;
+ if(mode!=Afpind&&mode!=Ampind)return typedoperand(mode,a,root?TypedRoot:Tint,!root,0,p,out,wire,&actual);
+ return typedrecordowner(a,mode)&&typedrecordlayoutoperand(mode,a,root,p,out,wire);
 }
 static int
 typedrecordregister(Dis64TypedBody*p,unsigned int pc,unsigned int side,Type*t)

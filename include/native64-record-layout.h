@@ -1,7 +1,7 @@
 #ifndef NATIVE64_RECORD_LAYOUT_H
 #define NATIVE64_RECORD_LAYOUT_H
 /* Private checked-IR annotation; never a serialized Dis opcode or descriptor. */
-enum { Native64TypedRecordArg=33, Native64TypedRecordVararg=34, Native64TypedRecord=72 };
+enum { Native64TypedRecordArg=33, Native64TypedRecordVararg=34, Native64TypedRecordArray=35, Native64TypedRecord=72 };
 static int
 native64recordshape(unsigned int op,unsigned int*w,unsigned int*r)
 {

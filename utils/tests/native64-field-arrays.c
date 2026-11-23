@@ -7,7 +7,7 @@ static Type *fdtype;
 static YYLEX *input;
 static WORD inputchar;
 static int loads, reads, prints, fds, promptmode;
-static int indexes, uses, pending;
+static int indexes, uses, pending, stackgrowth, nestedindexes;
 static const WORD marker=0x12345678;
 
 static void
@@ -189,13 +189,26 @@ lexer_caller(void)
 static void
 field_index(void)
 {
- int field=USRC((R.PC-1)->add)&AIND;
+ Inst *in=R.PC-1;
+ int field=USRC(in->add)&AIND;
+ int nested=!field&&(UDST(in->add)&AIND)&&(in->d.i.f==48||in->d.i.f==56);
  actual_indx();
+ nestedindexes+=nested;
  if(field){
   check(!pending,"no outstanding field element address");
   indexes++;
   pending=1;
  }
+}
+
+static void
+field_newarray(void)
+{
+ Array *array;
+ actual_newaz();
+ memmove(&array,R.d,8);
+ if(array->t->size==40&&array->t->np==1&&array->t->map[0]==0xe0&&array->len>200)
+  stackgrowth++;
 }
 
 static void
@@ -248,20 +261,20 @@ run_case(uint fn, void *arg, int jit, int quantum, WORD expected, const char *fa
  memmove(root+72,&link,8);
  memmove(root+80,&marker,4);
  memset(root+84,0x5a,44);
- loads=reads=prints=fds=indexes=uses=pending=0;
+ loads=reads=prints=fds=indexes=uses=pending=stackgrowth=nestedindexes=0;
  worker.env->errstr[0]=0;
  process->quanta=quantum;
- for(steps=0;steps<10000;steps++){
+ for(steps=0;steps<100000;steps++){
   int more=kprotect(executeprocess,process);
   check(!pending&&indexes==uses,"field element address consumed within one scheduler quantum");
   if(!more)break;
  }
  memmove(&result,root+80,4);
- if(steps>=10000||strcmp(worker.env->errstr,failure)||result!=expected)
+ if(steps>=100000||strcmp(worker.env->errstr,failure)||result!=expected)
   fprintf(stderr,"%s jit=%d quantum=%d result=%d expected=%d error='%s' expected='%s' idx=%d\n",
           specs[1]->name,jit,quantum,result,expected,worker.env->errstr,failure,indexes);
- check(steps<10000&&!strcmp(worker.env->errstr,failure)&&result==expected,"exact lexer result or error");
- check(loads==nelem(services),"exact source service loads");
+ check(steps<100000&&!strcmp(worker.env->errstr,failure)&&result==expected,"exact lexer/parser result or error");
+ check(loads==3,"three source services loaded with parser debug disabled");
  for(i=84;i<128;i++)check(root[i]==0x5a,"caller guard");
  observed=process;
  progexit();
@@ -279,17 +292,19 @@ run_case(uint fn, void *arg, int jit, int quantum, WORD expected, const char *fa
 }
 
 static YYLEX*
-new_lexer(void)
+lexer_with_map(int shortmap)
 {
- static uchar map[]={0xea,0x5a};
+ uchar map[]={shortmap?0x6a:0xea,0x5a};
  Type *t=dtype(freeheap,sizeof(YYLEX),map,nelem(map));
  YYLEX *l;
  require(t!=nil);
  l=H2D(YYLEX*,heapz(t));
  freetype(t);
  l->linenum=11;
+ l->lval.node=H;
  return l;
 }
+static YYLEX* new_lexer(void){return lexer_with_map(0);}
 
 static void
 lexer_read(int jit, int quantum, int test)
@@ -369,9 +384,102 @@ lexer_scan(int jit, int quantum)
 }
 
 static void
+expectword(Sh_Node *node, const char *word)
+{
+ check(node!=H&&node!=nil&&node->ntype==11&&textis(node->word,word)&&
+       node->left==H&&node->right==H,"exact Sh word AST");
+}
+
+static void
+lexer_parse(int jit, int quantum)
+{
+ static const char *lines[]={"\n","alpha beta\n","first; second; third\n","one |[2=1] two\n",
+                             "one && two || three\n","x )\n","cmd >[3]file\n"};
+ char deep[453];
+ uint i;
+ for(i=0;i<nelem(lines)+2;i++){
+  YYLEX *l=lexer_with_map(i==nelem(lines)+1);
+  Sh_Node *node;
+  const char *line;
+  if(i<nelem(lines))line=lines[i];
+  else if(i==nelem(lines)){
+   memset(deep,'(',225);
+   deep[225]='x';
+   memset(deep+226,')',225);
+   deep[451]='\n';
+   deep[452]=0;
+   line=deep;
+  }else line="broken\n";
+  l->s=c2string((char*)line,strlen(line));
+  run_case(full_fn_parse,l,jit,quantum,i>nelem(lines)?marker:0,i>nelem(lines)?exBounds:"");
+  node=l->lval.node;
+  if(i==0||i==5||i>nelem(lines))check(node==H,"empty, recovered, or rejected syntax tree");
+  else check(node!=H&&node!=nil,"parser returned an AST");
+  switch(i){
+  case 1:
+   check(node->ntype==10,"adjacent words parsed");
+   expectword(node->left,"alpha");
+   expectword(node->right,"beta");
+   break;
+  case 2:
+   check(node->ntype==7&&node->right!=H&&node->right->ntype==7,"parser sequence reduction");
+   expectword(node->left,"first");
+   expectword(node->right->left,"second");
+   expectword(node->right->right,"third");
+   break;
+  case 3:
+   check(node->ntype==9&&node->redir!=H&&node->redir->fd1==2&&node->redir->fd2==1,"pipe descriptor survives token stack");
+   expectword(node->left,"one");
+   expectword(node->right,"two");
+   break;
+  case 4:
+   check(node->ntype==10&&node->left!=H&&node->left->ntype==10&&node->right!=H&&node->right->ntype==0,"OR reduction");
+   expectword(node->left->left,"or");
+   expectword(node->right->left,"three");
+   node=node->left->right;
+   check(node!=H&&node->ntype==0&&node->left!=H&&node->left->ntype==10&&
+         node->left->left!=H&&node->left->left->ntype==10,"AND reduction retained inside OR");
+   expectword(node->left->left->left,"and");
+   break;
+  case 5:
+   check(textis(l->err,"syntax error")&&l->errline==11&&nestedindexes>0,"recovery through nested state lookup");
+   break;
+  case 6:
+   check(node->ntype==10&&node->right!=H&&node->right->ntype==4&&node->right->redir!=H&&
+         node->right->redir->fd1==3&&node->right->redir->fd2==-1,"parser redirection carries token data");
+   expectword(node->left,"cmd");
+   expectword(node->right->left,"file");
+   break;
+  case 7:
+   check(stackgrowth>0,"original parser stack grew beyond 200 elements");
+   /* Release the chain one node at a time within destroy's recursion budget. */
+   l->lval.node=H;
+   for(uint depth=0;depth<225;depth++){
+    Sh_Node *next;
+    check(node!=H&&node->ntype==6&&node->right==H&&D2H(node)->ref==1,
+          "nested parser list retains exactly one owner");
+    next=node->left;
+    node->left=H;
+    destroy(node);
+    node=next;
+   }
+   expectword(node,"x");
+   check(D2H(node)->ref==1,"innermost word retains exactly one owner");
+   destroy(node);
+   break;
+  }
+  if(i!=5)check(l->err==H,"parser has no unexpected syntax diagnostic");
+  destroy(l);
+  if(live||nlinkpins)
+   fprintf(stderr,"parser case %u jit=%d quantum=%d live=%d pins=%d\n",i,jit,quantum,live,nlinkpins);
+  check(!live&&!nlinkpins,"complete parser token and AST retirement");
+ }
+}
+
+static void
 array_fields(int jit, int quantum)
 {
- static uchar map[]={0xe8};
+ static uchar map[]={0xec};
  Type *type=dtype(freeheap,sizeof(Store),map,nelem(map));
  Store *r;
  void *v;
@@ -383,11 +491,12 @@ array_fields(int jit, int quantum)
  r->n=3;
  r->text=c2string("abc",3);
  run_case(full_fn_arrays,r,jit,quantum,52,"");
- check(indexes==5&&r->words->len==2&&r->words->t->size==4&&r->texts->t->size==8&&
+ check(indexes==6&&r->words->len==2&&r->words->t->size==4&&r->texts->t->size==8&&
        r->items->t->size==16&&r->texts->t->map[0]==128&&r->items->t->map[0]==128,"Word, root and mixed field array geometry");
  memmove(&n,r->words->data,4);
  memmove(&v,r->texts->data+8,8);
- check(n==3&&v==r->text&&D2H(r->text)->ref==3,"exact slice, payload and root retention");
+ check(n==3&&v==r->text&&r->payload.value==43&&r->payload.text==r->text&&D2H(r->text)->ref==4,
+       "exact slice, copied ADT payload and root retention");
  r->n=-123;
  promptmode=0;
  run_case(full_fn_report,r,jit,quantum,71,"");
@@ -431,6 +540,30 @@ metadata(void)
     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
           !owner.module&&allocations==before,"malformed field argument rejected before allocation");
     total++;
+   }else if(a->returned==Native64TypedRecordArray||a->returned==Native64TypedBorrowIndex||
+            a->returned==Native64TypedArrayArgIndex){
+    memmove(code,base->code,base->count*sizeof(*code));
+    if(a->returned==Native64TypedRecordArray){
+     if(native64rawrecordside(a))code[j].d++;
+     else code[j].s++;
+    }else if(a->returned==Native64TypedBorrowIndex)code[j].m|=0x30000;
+    else code[j].d+=4;
+    check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
+          !owner.module&&allocations==before,"malformed parser stack operation refused before allocation");
+    total++;
+   }else if(a->returned==154){
+    for(k=0;k<base->nsites;k++){
+     const Native64ModuleSite *site=base->sites+k;
+     uint next;
+     if(site->first+1>=j||j>=site->end)continue;
+     memmove(code,base->code,base->count*sizeof(*code));
+     for(next=j+1;next<site->end&&code[next].returned==153;next++);
+     check(next<site->end&&code[next].op==IMOVP,"record argument initialization fixture");
+     code[j-1]=(Native64TypedStep){IMOVP,SRC(AMP)|DST(AFP|AIND),lexer_mp_nil,0,code[next].d,64};
+     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
+           !owner.module&&allocations==before,"allocation after a pending root is refused before allocation");
+     total++;
+    }
    }
   }
   functions[i].code=base->code;
@@ -451,13 +584,16 @@ main(void)
  require(dis64selectlaunch("dis64-calls"));
  FIELD_ARRAY_HANDLERS
  optab[IINDX]=field_index;optab[IMOVW]=field_word;optab[IMOVP]=field_root;optab[IMOVMP]=field_mapped;
+ optab[INEWAZ]=field_newarray;
  check(limbo_native64_Lexer_layout(),"generated natural C geometry");
  metadata();
  for(j=0;j<2;j++)for(q=0;q<nelem(quanta);q++){
   for(i=0;i<9;i++)lexer_read(j,quanta[q],i);
   lexer_scan(j,quanta[q]);
+  lexer_parse(j,quanta[q]);
   array_fields(j,quanta[q]);
  }
  puts("PASS array fields and unchanged Sh lexer: 162 interpreter/JIT cases with exact operands, tokens, file prompt, scheduler boundaries and ownership");
+ puts("PASS unchanged Sh yyparse: 54 interpreter/JIT cases with ASTs, recovery, stack growth and actual aggregate GC roles");
  return 0;
 }

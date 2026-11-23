@@ -27,8 +27,11 @@ native64modulerawindex(const Native64ModuleSpec *s, const Native64ModuleFunction
  const Native64TypedStep *v=f->code+pc;
  unsigned int i;
  if(!native64typedrawindex(v,f->bytes,s->databytes)||
-    !native64rawarraymap(s,f,USRC(v->mode),v->s,1)||
-    !native64rawarraymap(s,f,UDST(v->mode),v->d,0))
+    !native64rawarraymap(s,f,USRC(v->mode),v->s,1))
+  return 0;
+ if(v->returned==Native64TypedBorrowIndex)
+  return 1;
+ if(!native64rawarraymap(s,f,UDST(v->mode),v->d,0))
   return 0;
  if(!native64rawfieldindex(v))
   return 1;
@@ -55,17 +58,57 @@ native64modulerawallocation(const Native64ModuleSpec *s, const Native64ModuleFun
   native64rawarraymap(s,f,middle==AXINF?AFP:AMP,v->m&65535,0);
 }
 
+static int
+native64modulerawargindex(const Native64ModuleSpec *s, const Native64ModuleFunction *f, unsigned int pc)
+{
+ const Native64TypedStep *prep=f->code+pc;
+ unsigned int i,mm=prep->mode&ARM;
+ if(pc+2>=f->count||!native64rawargindexchain(prep,f->bytes,s->databytes)||
+    !native64rawarraymap(s,f,USRC(prep->mode),prep->s,0)||
+    !native64rawarraymap(s,f,AFP,prep->d,0)||
+    ((mm==AXINF||mm==AXINM)&&!native64rawarraymap(s,f,mm==AXINF?AFP:AMP,prep->m,0)))
+  return 0;
+ for(i=0;i<f->nsites;i++)
+  if(!f->sites[i].external&&f->sites[i].first<pc&&pc+2<f->sites[i].end)
+   return 1;
+ return 0;
+}
+
+static int
+native64modulerawrecord(const Native64ModuleSpec *s, const Native64ModuleFunction *f,
+                        unsigned int pc)
+{
+ const Native64TypedStep *step=f->code+pc;
+ int side=native64rawrecordside(step);
+ unsigned int i;
+ if(!native64typedrawrecord(step,f->bytes,s->databytes)||
+    !native64rawarraymap(s,f,side?UDST(step->mode):USRC(step->mode),side?step->d:step->s,1))
+  return 0;
+ for(i=0;i<f->nsites;i++)
+  if(f->sites[i].first<=pc&&pc<=f->sites[i].end)
+   return 0;
+ return 1;
+}
+
 /* Track both non-GC scratch addresses through every edge. A live mapped FP or MP
  * array owner must dominate each raw use and remain unchanged until that use.
  * The checked field-index pair uses its address within one VM step only. */
 static int
 native64modulerawarrays(const Native64ModuleSpec*s,const Native64ModuleFunction*f)
 {unsigned int owners[512][2],queue[1537],head=0,tail=0,i,j,k,at,has=0,flow[2],out[2],edge,to,slot,cl,off,n,mode,np,bit,bytes;uchar reached[512];const Native64TypedStep*v;const Native64ModuleCase*t;const Native64ModuleSite*site;const uchar*map;
- for(i=0;i<f->count;i++)if(f->code[i].returned==65||f->code[i].returned==79||f->code[i].returned==80)has=1;if(!has)return 1;if(f->count>512||f->ncases>f->count||(f->ncases&&(f->cases==nil||f->cases==H)))return 0;
+ for(i=0;i<f->count;i++){
+  unsigned int role=f->code[i].returned;
+  if(role==65||role==79||role==80||role==Native64TypedRecordArray||
+     role==Native64TypedBorrowIndex||role==Native64TypedArrayArgIndex)has=1;
+ }
+ if(!has)return 1;
+ if(f->count>512||f->ncases>f->count||(f->ncases&&(f->cases==nil||f->cases==H)))return 0;
  for(i=0;i<f->ncases;i++){t=f->cases+i;if(t->pc>=f->count||t->count>512||(t->count&&(t->rows==nil||t->rows==H)))return 0;}
  for(i=0;i<f->count;i++){v=f->code+i;
   if(v->returned==79){if(!native64modulerawallocation(s,f,v))return 0;continue;}
-  if(v->returned==80){if(!native64modulerawindex(s,f,i))return 0;continue;}
+  if(v->returned==80||v->returned==Native64TypedBorrowIndex){if(!native64modulerawindex(s,f,i))return 0;continue;}
+  if(v->returned==Native64TypedArrayArgIndex){if(!native64modulerawargindex(s,f,i))return 0;continue;}
+  if(v->returned==Native64TypedRecordArray){if(!native64modulerawrecord(s,f,i))return 0;continue;}
   if(v->returned!=65)continue;if(!native64typedrawuse(v,f->bytes,s->databytes))return 0;n=native64rawusewidth(v);
   for(k=0;k<2;k++){mode=k?UDST(v->mode):USRC(v->mode);off=k?v->d:v->s;
    if(k&&native64rawbranch(v->op))continue;if(mode==(AFP|AIND)){if(native64rawslot(off))continue;if(k&&off==32&&(v->op==IMOVW||v->op==IMOVP)){if(f->resultcontract)return 0;continue;}
@@ -80,8 +123,15 @@ native64modulerawarrays(const Native64ModuleSpec*s,const Native64ModuleFunction*
  }
  memset(reached,0,sizeof(reached));memset(owners,0,sizeof(owners));reached[0]=1;queue[tail++]=0;
  while(head<tail){i=queue[head++];v=f->code+i;flow[0]=owners[i][0];flow[1]=owners[i][1];
-  if(v->returned==80){slot=((v->m&255)-48)/8;flow[slot]=native64rawfieldindex(v)?0:(v->s<<6)|((unsigned long)v->m>>8)|(USRC(v->mode)==AMP?0x80000000U:0);}
-  else if(v->returned==65){
+  if(v->returned==Native64TypedBorrowIndex){
+   at=flow[(v->d-48)/8];
+   if(!at||!native64arrayword(at&63,(unsigned long)v->m>>16))return 0;
+  }
+  if(v->returned==80||v->returned==Native64TypedBorrowIndex){
+   slot=((v->m&255)-48)/8;
+   flow[slot]=native64rawfieldindex(v)?0:(v->s<<6)|((v->m>>8)&255)|(USRC(v->mode)==AMP?0x80000000U:0);
+  }
+  else if(v->returned==65||v->returned==Native64TypedRecordArray){
    if(!i||!native64rawfieldindex(v-1))
     for(k=0;k<2;k++){
      mode=k?UDST(v->mode):USRC(v->mode);at=k?v->d:v->s;
@@ -92,7 +142,8 @@ native64modulerawarrays(const Native64ModuleSpec*s,const Native64ModuleFunction*
   }
   mode=UDST(v->mode);
   if(v->op==IINDW||v->op==IINDL||v->op==IINDB||v->op==IINDF||v->op==IINDX){
-   if(v->returned!=80&&(v->mode&ARM)==AXINF&&native64rawslot(v->m))flow[(v->m-48)/8]=0;
+   if(v->returned!=80&&v->returned!=Native64TypedBorrowIndex&&
+      (v->mode&ARM)==AXINF&&native64rawslot(v->m))flow[(v->m-48)/8]=0;
   }else if((mode==AFP||mode==AMP)&&v->op!=ISLICELA){
    for(k=0;k<2;k++){
     if(mode==AFP&&v->d==48+8*k)flow[k]=0;

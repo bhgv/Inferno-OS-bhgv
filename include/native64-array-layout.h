@@ -5,6 +5,7 @@
  * Bits: 4=mixed, 2..3=root count, 0=Word count minus one,
  * 5=padding between Words; bit 1 is reserved. Classes 1..3 remain raw. */
 enum { Native64ArrayRoot = 4 };
+enum { Native64TypedBorrowIndex = 36, Native64TypedArrayArgIndex = 37 };
 static unsigned int native64arrayroots(unsigned int c)
 {return c==Native64ArrayRoot?1:(c&16)&&!(c&~63U)&&((c&3)<2)&&((c>>2)&3)&&(!(c&32)||(c&3))?(c>>2)&3:0;}
 static unsigned int native64arraywords(unsigned int c)

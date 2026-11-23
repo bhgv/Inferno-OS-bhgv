@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the original Sh lexer and generic array field access in C and native JIT."""
+"""Run the original Sh lexer and parser with generic array field probes in C and JIT."""
 import argparse
 import os
 import re
@@ -14,7 +14,8 @@ BASE = runpy.run_path(str(ROOT / 'utils/tests/native64-record-fields.py'))
 G, CMD, E = BASE['G'], BASE['CMD'], BASE['E']
 EXTRACT = CMD['NS']['S']['FILES']['FILES']['function']
 INTERFACES = 'include "sys.m";include "draw.m";include "bufio.m";include "string.m";include "sh.m";'
-EXPORTS = ('read', 'scan', 'token', 'arrays', 'report')
+LEXER_EXPORTS = ('read', 'scan', 'token', 'parse')
+ARRAY_EXPORTS = ('arrays', 'report')
 
 
 def source():
@@ -22,26 +23,32 @@ def source():
     records = ''.join(re.search(r'(?m)^' + n + r':\s*adt\s*\{.*?^\};', sh, re.S)[0]
                       for n in ('YYSTYPE', 'YYLEX'))
     records = re.sub(r'(?m)^\s*init(?:string|file):\s*fn\([^;]+;', '', records)
-    records += 'Item:adt{text:string;value:int;};Store:adt{words:array of int;texts:array of string;items:array of Item;i,n:int;text:string;};'
+    records += 'Item:adt{text:string;value:int;};Store:adt{words:array of int;texts:array of string;items:array of Item;i,n:int;text:string;payload:Item;};'
     interface = INTERFACES + 'Node:type Sh->Node;Redir:type Sh->Redir;' + records + 'Lexer:module{'
-    interface += ''.join(n + ':fn(l:ref YYLEX):int;' for n in EXPORTS[:3])
-    interface += ''.join(n + ':fn(r:ref Store):int;' for n in EXPORTS[3:]) + 'setup:fn();};'
+    interface += ''.join(n + ':fn(l:ref YYLEX):int;' for n in LEXER_EXPORTS)
+    interface += ''.join(n + ':fn(r:ref Store):int;' for n in ARRAY_EXPORTS) + 'setup:fn();};'
     constants = ''.join(re.search(r'(?m)^' + n + r':\s*con[^;]+;', sh)[0]
                         for n in ('DUP', 'REDIR', 'WORD', 'OP', 'END', 'ERROR', 'ANDAND', 'OROR',
-                                  'NOTOKEN', 'YYPRIVATE', 'yydebug', 'OAPPEND'))
+                                  'NOTOKEN', 'YYPRIVATE', 'yydebug', 'OAPPEND', 'YYFLAG', 'YYLAST',
+                                  'YYMAXDEPTH', 'YYEOFCODE', 'YYERRCODE'))
     constants += ''.join(n + ':con Sh->' + n + ';'
-                         for n in ('GLOB', 'n_ASSIGN', 'n_LOCAL', 'n_COUNT', 'n_SQUASH', 'n_VAR', 'n_BQ', 'n_BQ2'))
-    tokens = ''.join(re.search(r'(?m)^yytok' + str(i) + r' := array\[\] of \{.*?\};', sh, re.S)[0]
-                     for i in (1, 2, 3))
+                         for n in ('GLOB', 'n_ASSIGN', 'n_LOCAL', 'n_COUNT', 'n_SQUASH', 'n_VAR',
+                                   'n_BQ', 'n_BQ2', 'n_NOWAIT', 'n_ADJ', 'n_WORD', 'n_BLOCK',
+                                   'n_PIPE', 'n_DUP', 'n_REDIR', 'n_CONCAT', 'n_LIST', 'n_SEQ'))
+    tables = '\n'.join(re.search(r'(?m)^' + name + r' := array\[\] of \{.*?\};', sh, re.S)[0]
+                       for name in ('yytok1', 'yytok2', 'yytok3', 'yyexca', 'yyact', 'yypact',
+                                    'yypgo', 'yyr1', 'yyr2', 'yychk', 'yydef'))
     debug = re.search(r'(?m)^YYSys: module.*?^yystderr: ref YYSys->FD;', sh, re.S)[0]
+    stack = re.search(r'(?m)^YYS:\s*adt\s*\{.*?^\};', sh, re.S)[0]
     methods = '\n'.join(re.search(r'(?m)^' + re.escape(n) + r'\([^\n]+\n\{.*?^\}', sh, re.S)[0] for n in (
         'YYLEX.getc', 'YYLEX.ungetc', 'YYLEX.error', 'YYLEX.lex', 'readnum',
-        'readfdassign', 'stderr', 'yytokname', 'yylex1'))
+        'readfdassign', 'stderr', 'yytokname', 'yystatname', 'yylex1', 'mk', 'mkseq', 'yyparse'))
     wrappers = '''
 sys:Sys;
 bufio:Bufio;
 str:String;
 yytoknames:array of string;
+yystates:array of string;
 saved:ref Store;
 setup() {
     sys = load Sys "$Sys";
@@ -51,6 +58,7 @@ setup() {
 read(l:ref YYLEX):int { return l.getc(); }
 scan(l:ref YYLEX):int { return l.lex(); }
 token(l:ref YYLEX):int { return yylex1(l); }
+parse(l:ref YYLEX):int { return yyparse(l); }
 total(n:int, s:string):int {
     while (n < 0)
         n++;
@@ -66,10 +74,10 @@ arrays(r:ref Store):int {
     r.texts[r.i] = t;
     s := saved.texts[r.i];
     r.items = array[r.n] of Item;
-    v:Item;
-    v.text = s;
-    v.value = 43;
-    r.items[r.i] = v;
+    r.payload.text = s;
+    r.payload.value = 43;
+    r.items[r.i] = saved.payload;
+    saved.payload = r.items[r.i];
     w := saved.items[r.i];
     r.words = saved.words[1:len r.words];
     copy := array[r.n] of int;
@@ -79,7 +87,7 @@ arrays(r:ref Store):int {
 }
 report(r:ref Store):int { return sys->fprint(stderr(), "%s %d", r.text, r.n); }
 '''
-    return interface, 'implement Lexer;' + '\n'.join((interface, constants, tokens, debug, wrappers, methods))
+    return interface, 'implement Lexer;' + '\n'.join((interface, constants, tables, debug, stack, wrappers, methods))
 
 
 def generate(limbo, work):
@@ -105,16 +113,17 @@ def generate(limbo, work):
                 frames[(name.replace('Iobuf_', 'Iobuf.'), int(sig[1], 16))] = (
                     int(size), [int(v, 0) for v in mapping[1].split(',') if v])
 
-    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (15, 3, 2, '~0U'),
+    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (21, 4, 2, '~0U'),
                          import_frames=frames, export_signatures=signatures,
-                         source_label='unchanged YYLEX.getc/lex and yylex1 with generic array field probes')
+                         source_label='unchanged Sh lexer and yyparse with generic array field probes')
     code = {r['name']: r['code'] for r in rows}
     assert any(c[5] == 80 and (c[1] >> 3 & 7) in (4, 5) for c in code['getc'])
-    assert {c[5] for c in code['arrays']} >= {33, 65, 79, 80}
+    assert {c[5] for c in code['arrays']} >= {33, 35, 65, 79, 80}
     assert sum(c[5] == 34 for c in code['report']) == 2
+    assert {c[5] for c in code['yyparse']} >= {35, 36, 37, 65, 79, 80, 154}
     globals_ = dict((g[0], g[1]) for g in rows[0]['globals'])
     with (work / 'full.h').open('a') as stream:
-        for name in ('sys', 'bufio', 'str', 'saved'):
+        for name in ('nil', 'sys', 'bufio', 'str', 'saved'):
             stream.write(f'static const uint lexer_mp_{name} = {globals_[name]};\n')
     return rows
 
@@ -122,6 +131,7 @@ def generate(limbo, work):
 def unit(rows):
     original = BASE['unit']()
     vm = original.split('\n#line 1 "native64-record-fields.c"')[0]
+    vm = vm.replace('#define RuntimeBlocks 256', '#define RuntimeBlocks 1024', 1)
     vm += '''
 #define LIMBO_NATIVE64_PREFIXES
 #include "sys-native64.h"

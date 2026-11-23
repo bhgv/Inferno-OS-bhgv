@@ -1,3 +1,5 @@
+#include "../include/native64-record-layout.h"
+
 /* Layout-based mixed records share the owned array/borrow machinery. */
 static unsigned int
 typedmixedarray(Type*t,Dis64Layout*l)
@@ -27,7 +29,10 @@ static unsigned int typedrawwidth(unsigned int c){return native64arraywidth(c);}
 static Type *typedrecordvalue(Addr*,int);
 static int typedrecordowner(Addr*,int);
 static int typedrecordoperand(int,Addr*,int,Dis64TypedBody*,long*,unsigned int*);
+static int typedrecordlayoutoperand(int,Addr*,int,Dis64TypedBody*,long*,unsigned int*);
 static int typedrecordregister(Dis64TypedBody*,unsigned int,unsigned int,Type*);
+static int typedrawborrow(Dis64TypedBody*,Addr*,int,unsigned int);
+static int typedarrayfield(unsigned int,unsigned int,unsigned int,int,unsigned int*);
 
 /* The declared leaf, including its element type, determines the array class. */
 static Type*
@@ -81,11 +86,19 @@ static int
 typedrawindexslot(Dis64TypedBody *p, Inst *in, Type *array, unsigned int cl,
                   unsigned int pc, unsigned int last)
 {
- unsigned int i,sm,dm;
+ unsigned int i,sm,dm,off=0,role=80;
  long src,dst;
+ int borrow=typedrawborrow(p,&in->d,in->dm,pc);
  if(!cl||in->branch||in->mm!=Afp||!in->m.decl||in->m.offset||
-    !typedrawoperand(p,pc-p->first,0,&in->s,in->sm,1,&src,&sm)||
-    !typedrawoperand(p,pc-p->first,1,&in->d,in->dm,0,&dst,&dm))
+    !typedrawoperand(p,pc-p->first,0,&in->s,in->sm,1,&src,&sm))
+  return typedfail(p,"raw-array-index");
+ if(borrow>=0){
+  if((sm&AIND)||!typedarrayfield(p->rawclass[borrow],in->d.offset,4,0,&off))
+   return typedfail(p,"raw-array-index-word");
+  dst=48+8*borrow;
+  dm=AFP|AIND;
+  role=Native64TypedBorrowIndex;
+ }else if(!typedrawoperand(p,pc-p->first,1,&in->d,in->dm,0,&dst,&dm))
   return typedfail(p,"raw-array-index");
  for(i=0;i<2;i++)
   if(p->rawclass[i]&&p->rawreg[i]==in->m.reg)
@@ -100,8 +113,8 @@ typedrawindexslot(Dis64TypedBody *p, Inst *in, Type *array, unsigned int cl,
  p->rawclass[i]=cl;
  p->rawtype[i]=array->tof;
  p->rawuntil[i]=last;
- p->code[pc-p->first]=(Dis64Instruction){IINDX,SRC(sm)|AXINF|DST(dm),(cl<<8)|(48+8*i),src,dst};
- p->returns[pc-p->first]=80;
+ p->code[pc-p->first]=(Dis64Instruction){IINDX,SRC(sm)|AXINF|DST(dm),(off<<16)|(cl<<8)|(48+8*i),src,dst};
+ p->returns[pc-p->first]=role;
  return 1;
 }
 
@@ -111,6 +124,15 @@ typedarrayindexop(int op)
  return op==IINDX||op==IINDW||op==IINDB||op==IINDL||op==IINDF;
 }
 
+static int
+typedrawindexprep(Inst *in, Inst *index)
+{
+ return in&&index&&(in->op==IADDW||in->op==ISUBW)&&in->dm==Afp&&
+  !in->d.offset&&!in->branch&&typedarrayindexop(index->op)&&
+  index->dm==Afp&&!index->d.offset&&index->d.reg==in->d.reg&&
+  index->d.decl==in->d.decl&&typedrawclass(&index->s);
+}
+
 static unsigned int
 typedrawlast(TypedMulti *c, Inst *index, unsigned int pc, unsigned int stop)
 {
@@ -118,12 +140,13 @@ typedrawlast(TypedMulti *c, Inst *index, unsigned int pc, unsigned int stop)
  Inst *use;
  for(j=pc+1;j<stop;j++){
   use=c->instructions[j];
-  if(!use||(typedarrayindexop(use->op)&&use->mm==Afp&&use->m.reg==index->m.reg)||
-     (use->dm==Afp&&use->d.reg==index->m.reg))
-   break;
+  if(!use)break;
   if((use->sm==Afpind&&use->s.reg==index->m.reg)||
      (use->dm==Afpind&&use->d.reg==index->m.reg))
    last=j;
+  if((typedarrayindexop(use->op)&&use->mm==Afp&&use->m.reg==index->m.reg)||
+     (use->dm==Afp&&use->d.reg==index->m.reg))
+   break;
  }
  return last;
 }
@@ -168,11 +191,43 @@ typedarraysubtype(Type*owner,unsigned int off,Type*copy)
 static int
 typedarraycopyoffset(unsigned int owner,unsigned int old,unsigned int copy,unsigned int*out)
 {unsigned int roots=native64arrayroots(owner);if(old%4||old/4>=roots)return 0;*out=8*(old/4);return native64arraycopyspan(owner,*out,copy);}
+
+static int
+typedmixedfield(Dis64TypedBody *p, Addr *a, int mode, Type *copy,
+                unsigned int pc, unsigned int side, long *out, unsigned int *wire)
+{
+ Dis64Layout record={0},part={0};
+ Type *owner;
+ unsigned int i,base,last;
+ int ok=0;
+
+ if(!typedrecordlayoutoperand(mode,a,1,p,out,wire))
+  return 0;
+ owner=typedfieldowner(a)->tof;
+ if(copy){
+  if(!typedarraysubtype(owner,a->offset,copy)||!dis64layouttype(owner,&record)||
+     !dis64layouttype(copy,&part)||
+     !dis64layoutbindresult(&record,&part,a->offset,8,0,&base)||
+     base!=(unsigned long)*out>>16)
+   goto done;
+  last=a->offset+part.legacybytes;
+  for(i=0;i<record.count;i++)
+   if(record.leaves[i].legacy>=last&&record.leaves[i].native<base+part.bytes)
+    goto done;
+ }
+ ok=typedrecordregister(p,pc-p->first,side,owner);
+done:
+ dis64layoutfree(&record);
+ dis64layoutfree(&part);
+ return ok;
+}
+
 static int
 typedmappeduse(Dis64TypedBody*p,Inst*in,unsigned int pc,long argument,int si,int di)
 {
- unsigned int sm,dm,so=0,doff=0,copy=0,n;long src=0,dst=0;int k;Type*t=nil,*a,*b;Decl*d;Dis64Layout l={0};
- if(argument>=0||in->branch)return typedfail(p,"mixed-array-use-shape");
+ unsigned int sm,dm,so=0,doff=0,copy=0,n,role=65;long src=0,dst=0;int k;Type*t=nil,*a,*b;Decl*d;Dis64Layout l={0};
+ if(in->branch||(argument>=0&&(in->op!=IMOVP||si<0||in->dm!=Afpind)))
+  return typedfail(p,"mixed-array-use-shape");
  if(in->op==IMOVMP){
   d=in->m.decl;if(in->mm!=Adesc||!d||!d->desc||d->desc->id!=in->m.offset||!(copy=typedmixedarray(d->ty,&l))||d->desc->size!=l.legacybytes||d->desc->nmap!=1||!d->desc->map||d->desc->map[0]!=native64arraymap(copy)){dis64layoutfree(&l);return typedfail(p,"mixed-array-copy-descriptor");}
   dis64layoutfree(&l);t=d->ty;n=native64arraywidth(copy);
@@ -180,21 +235,27 @@ typedmappeduse(Dis64TypedBody*p,Inst*in,unsigned int pc,long argument,int si,int
  if(si>=0){
   if(copy?(!typedarraysubtype(p->rawtype[si],in->s.offset,t)||!typedarraycopyoffset(p->rawclass[si],in->s.offset,copy,&so)):!typedarrayfield(p->rawclass[si],in->s.offset,n,1,&so))return typedfail(p,"mixed-array-source-field");
   src=48+8*si;sm=AFP|AIND;
+ }else if(typedmixedfield(p,&in->s,in->sm,t,pc,0,&src,&sm)){
+  role=Native64TypedRecordArray;
  }else if(copy){if(!typedmixedspan(p,&in->s,in->sm,t,&src,&sm))return typedfail(p,"mixed-array-copy-source");}
  else if(!typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&src,&sm,&k))return 0;
- if(di>=0){
+ if(argument>=0){dst=argument;dm=AFP|AIND;}
+ else if(di>=0){
   if(copy?(!typedarraysubtype(p->rawtype[di],in->d.offset,t)||!typedarraycopyoffset(p->rawclass[di],in->d.offset,copy,&doff)):!typedarrayfield(p->rawclass[di],in->d.offset,n,1,&doff))return typedfail(p,"mixed-array-destination-field");
   dst=48+8*di;dm=AFP|AIND;
  }else if(!copy&&si>=0&&in->dm==Afpind&&in->d.reg==16&&!in->d.offset){
   a=typedarrayleaf(p->rawtype[si],in->s.offset);if(!a||!tequal(a,p->resulttype))return typedfail(p,"mixed-array-result-type");dst=32;dm=AFP|AIND;
+ }else if(typedmixedfield(p,&in->d,in->dm,t,pc,1,&dst,&dm)){
+  role=Native64TypedRecordArray;
  }else if(copy){if(!typedmixedspan(p,&in->d,in->dm,t,&dst,&dm))return typedfail(p,"mixed-array-copy-destination");}
  else if(!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&dst,&dm,&k))return 0;
  if(!copy){
-  a=si>=0?typedarrayleaf(p->rawtype[si],in->s.offset):in->s.native64type?in->s.native64type:typedarrayleaf(in->s.decl?in->s.decl->ty:nil,in->s.decl?in->s.reg-in->s.decl->offset:0);
-  b=di>=0?typedarrayleaf(p->rawtype[di],in->d.offset):dm==(AFP|AIND)?p->resulttype:in->d.native64type?in->d.native64type:typedarrayleaf(in->d.decl?in->d.decl->ty:nil,in->d.decl?in->d.reg-in->d.decl->offset:0);
+  a=si>=0?typedarrayleaf(p->rawtype[si],in->s.offset):typedrecordvalue(&in->s,in->sm);
+  b=argument>=0?a:di>=0?typedarrayleaf(p->rawtype[di],in->d.offset):
+   dm==(AFP|AIND)&&dst==32?p->resulttype:typedrecordvalue(&in->d,in->dm);
   if(!a||!b||(!tequal(a,b)&&a->kind!=Tany))return typedfail(p,"mixed-array-root-type");
  }
- p->code[pc-p->first]=(Dis64Instruction){in->op,SRC(sm)|(copy?AXIMM:0)|DST(dm),(so<<24)|(doff<<16)|copy,src,dst};p->returns[pc-p->first]=65;return 1;
+ p->code[pc-p->first]=(Dis64Instruction){in->op,SRC(sm)|(copy?AXIMM:0)|DST(dm),(so<<24)|(doff<<16)|copy,src,dst};p->returns[pc-p->first]=role;return 1;
 }
 static int
  typedrawuse(Dis64TypedBody*p,Inst*in,unsigned int pc,unsigned int stop,long argument)

@@ -1101,6 +1101,40 @@ typedcaughtstring(Inst *in, Dis64TypedBody *p)
 }
 
 static int
+typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Inst *frame, Decl *arg,
+                     unsigned int first, unsigned int end, unsigned int *at)
+{
+ Inst *alloc=c->instructions[*at],*in;
+ Decl *descriptor=alloc->s.decl;
+ Type *type=descriptor?descriptor->ty:nil;
+ unsigned int j;
+
+ if(arg->ty->kind!=Tref||!type||!descriptor->desc||descriptor->desc->id!=alloc->s.offset||
+    alloc->dm!=Afp||alloc->d.offset||!alloc->d.decl||
+    !tequal(arg->ty->tof,type->kind==Tref?type->tof:type))
+  return typedfail(p,"local-record-argument-type");
+ for(j=first+1;j<*at;j++)
+  if(p->returns[j-p->first]!=64||p->code[j-p->first].op!=IMOVW)
+   return typedfail(p,"local-record-after-argument");
+ if(!typedlibraryinst(alloc,p,*at-p->first,end)||p->returns[*at-p->first]!=154)
+  return typedfail(p,"local-record-argument-allocation");
+ for(++*at;*at<end;(*at)++){
+  in=c->instructions[*at];
+  if(in->dm!=Afpind||in->d.reg!=alloc->d.reg||in->d.decl!=alloc->d.decl)
+   break;
+  if((in->op!=IMOVW&&in->op!=IMOVP)||in->branch||in->mm!=Anone||
+     (in->sm!=Afp&&in->sm!=Amp&&in->sm!=Aimm)||
+     !typedlibraryinst(in,p,*at-p->first,end))
+   return typedfail(p,"local-record-initializer");
+ }
+ if(*at>=end||in->op!=IMOVP||in->sm!=Afp||in->s.reg!=alloc->d.reg||
+    in->s.decl!=alloc->d.decl||in->s.offset||in->dm!=Afpind||in->d.reg!=frame->d.reg||
+    in->d.offset!=arg->offset)
+  return typedfail(p,"local-record-argument-store");
+ return 1;
+}
+
+static int
 typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop,unsigned int depth,unsigned int *next,unsigned int *height)
 {
     Inst *frame=c->instructions[pc],*call,*in,*binding;
@@ -1110,7 +1144,9 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     if(frame->sm!=Adesc || frame->mm!=Anone || frame->dm!=Afp || frame->branch!=nil || frame->d.reg<32 ||
        frame->d.reg>(int)p->frame.legacybytes-4)return typedfail(p,"multi-frame");
     while(end<stop && c->instructions[end]!=nil && (c->instructions[end]->dm==Afpind ||
-      (c->loads && (((c->instructions[end]->op==IMOVP || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL) && c->instructions[end]->dm==Afp) || c->instructions[end]->op==IINDW || c->instructions[end]->op==IINDX || c->instructions[end]->op==ISLICEA || (c->instructions[end]->op==IADDW&&c->instructions[end]->dm==Afp) || (c->instructions[end]->op==ICVTWC && c->instructions[end]->dm==Afp)))))end++;
+      (c->loads && (((c->instructions[end]->op==IMOVP || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL) && c->instructions[end]->dm==Afp) || c->instructions[end]->op==IINDW || c->instructions[end]->op==IINDX || c->instructions[end]->op==ISLICEA || (c->instructions[end]->op==IADDW&&c->instructions[end]->dm==Afp) || (c->instructions[end]->op==ICVTWC && c->instructions[end]->dm==Afp) ||
+        ((c->instructions[end]->op==INEW||c->instructions[end]->op==INEWZ)&&c->instructions[end]->dm==Afp) ||
+        (end+1<stop&&typedrawindexprep(c->instructions[end],c->instructions[end+1]))))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || (call->op!=ICALL && !(c->loads && call->op==ISPAWN)) || call->sm!=Afp || call->s.reg!=frame->d.reg ||
        call->mm!=Anone || call->dm!=Apc || call->d.offset<0 || (unsigned long)call->d.offset>=c->count ||
        (target=c->entries[call->d.offset])<0)return typedfail(p,"multi-call");
@@ -1139,13 +1175,30 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     p->code[pc-p->first]=(Dis64Instruction){IFRAME,SRC(AIMM)|DST(AFP),0,frame->s.offset,40};at=pc+1;
     for(arg=c->functions[target]->ty->ids;arg!=nil;arg=arg->next){
         if(at>=end || (in=c->instructions[at])==nil)return typedfail(p,"multi-argument");
+        if(c->loads&&!spawning&&(in->op==INEW||in->op==INEWZ)){
+            if(!typedlocalrecordprep(c,p,frame,arg,pc,end,&at))return 0;
+            in=c->instructions[at];
+        }
+        if(c->loads&&!spawning&&at+2<end&&typedrawindexprep(in,c->instructions[at+1])){
+            if(!typedinst(in,end,p,p->code+at-p->first,p->returns+at-p->first))
+                return typedfail(p,"local-array-index-prep");
+            p->returns[at++-p->first]=Native64TypedArrayArgIndex;
+            in=c->instructions[at];
+        }
         if(c->loads&&(in->op==IINDX||in->op==IINDW||in->op==IINDL)&&typedrawclass(&in->s)){if(!typedrawindex(c,p,in,at,end)||++at>=end||!(in=c->instructions[at]))return typedfail(p,"local-raw-index");}
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
         width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
         if(c->loads && !spawning && (in->sm==Afpind) && typedrawborrow(p,&in->s,in->sm,at)>=0){
             unsigned int bytes=kind==Tadt?arg->ty->size:4;
-            if((kind!=Tadt&&kind!=Tint)||(in->op==IMOVM?(unsigned int)in->m.offset:4)!=bytes||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset)||!typedrawuse(p,in,at,end,offset))return typedfail(p,"local-raw-array-argument");at++;continue;
+            int slot=typedrawborrow(p,&in->s,in->sm,at);
+            Type *source=typedarrayleaf(p->rawtype[slot],in->s.offset);
+            if(in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=arg->offset||
+               (root?in->op!=IMOVP||!source||!tequal(source,arg->ty):
+                (kind!=Tadt&&kind!=Tint)||(in->op==IMOVM?(unsigned int)in->m.offset:4)!=bytes)||
+               !dis64layoutaddress(&child->frame,arg->offset,4,root,&offset)||
+               !typedrawuse(p,in,at,end,offset))return typedfail(p,"local-raw-array-argument");
+            at++;continue;
         }
         if(c->loads && !spawning && kind==Tadt && typedrawdelta(arg->ty)){
             unsigned int k,part;long src;unsigned int wire;

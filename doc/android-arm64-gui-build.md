@@ -1035,3 +1035,34 @@ The checked native64 frontier reaches 79/134 Sh bodies and 316/385 bodies
 across the 16 startup modules. `getc`, `lex`, `readnum`, `readfdassign`
 and `yylex1` contribute the five additional bodies. `yyparse` advances to
 PC 5577, where it copies `YYLEX.lval` to the parser stack.
+
+## Original Sh parser execution
+
+The compiler lowers a mapped ADT copy between an inline heap field and an
+array element using the declared subtype and its relocated field layout.
+The VM verifies the actual heap span and all GC roles before decoding the
+copy. Managed scalar moves use the same field check. For nested indexing the
+module proves that the earlier array element supplies a Word and that its
+owner remains live until the next index takes the value. The next index can
+reuse the same address slot after reading the Word.
+
+Local calls can take a root from an indexed array element, including after
+an addition or subtraction in the caller's index expression. The checked
+call path also permits construction of a record with a supported descriptor
+in a mapped local before passing it to the pending frame. Its validation
+checks the preceding Word arguments, initializer operands, and root slot in
+the callee.
+
+`native64-field-arrays.py` compiles the original `yyparse`, helper bodies,
+and parser tables into a test module with controlled services. Its 54
+interpreter/JIT parser cases cover command trees, pipe and redirection
+descriptors, error recovery, a 225-level input that grows the original
+200-element stack, and refusal of a mismatched aggregate GC map. The suite
+also checks 162 lexer and generic ADT array cases and 71 malformed metadata
+cases. The deep-tree test checks each node's ownership before releasing the
+chain in bounded steps.
+
+The source check covers all 485 instructions of `yyparse` and also accepts
+`pipe2cmd`. Sh reaches 81/134 checked bodies and the 16 startup modules reach
+318/385. Both compiler modes emit identical classic Dis bytes. These parser
+execution results were verified on Linux amd64 with UBSan.

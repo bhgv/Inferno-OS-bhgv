@@ -251,20 +251,27 @@ def record_field(o,c,pc,maps,row):
 
 def rawarray_index(original,code,pc,maps,row):
     o=original[pc];op,mode,s,m,d,role=code[pc];sm=o['mode']>>3&7;dm=o['mode']&7
-    assert role==80 and op==OPCODES['IINDX']and o['op']in(OPCODES['IINDX'],OPCODES['IINDW'],OPCODES['IINDL'])and o['mode']==(sm<<3)|128|dm and mode==o['mode']and o['m']is not None
-    _,legacy,_=array_layout(m>>8)
+    assert role in(36,80) and op==OPCODES['IINDX']and o['op']in(OPCODES['IINDX'],OPCODES['IINDW'],OPCODES['IINDL'])and o['mode']==(sm<<3)|128|dm and mode==o['mode']and o['m']is not None
+    _,legacy,_=array_layout((m>>8)&255)
     assert m&255 in(48,56)and(o['op']!=OPCODES['IINDW']or legacy==4)and(o['op']!=OPCODES['IINDL']or legacy==8)
     array_operand(row,maps,pc,0,sm,o['s'],s,True)
+    if role==36:
+        assert sm in(0,1) and dm==5
+        parent=next(j for j in reversed(range(pc))if code[j][5]in(36,80)and original[j]['m']==o['d'][0])
+        fields=array_layout((code[parent][3]>>8)&255)[2]
+        assert d==code[parent][3]&255 and (o['d'][1],m>>16,4,False)in fields
+        return
+    assert not m>>16
     array_operand(row,maps,pc,1,dm,o['d'],d,False)
     if sm in(4,5):
-        use=original[pc+1];borrow=o['m'];assert code[pc+1][5]==65
+        use=original[pc+1];borrow=o['m'];assert code[pc+1][5]in(35,65)
         src=use['mode']>>3&7==5 and use['s'][0]==borrow
         dst=use['mode']&7==5 and use['d'][0]==borrow
         assert src!=dst
 
 def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None,types=None):
     o=original[pc];op,mode,s,m,d,role=code[pc];sm=o['mode']>>3&7;dm=o['mode']&7;arm=o['mode']&192;so=do=0
-    assert role==65 and op==o['op']and mode==o['mode']
+    assert role in(35,65) and op==o['op']and mode==o['mode']
     assert sm==5 or(dm==5 and new is None)
     mapped=op==OPCODES['IMOVMP'];root=op==OPCODES['IMOVP']
     copy=m&65535 if mapped else 0
@@ -274,8 +281,8 @@ def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None,
         legacy=array_layout(copy)[1];mask=sum(128>>(i//4)for i,_,_,r in array_layout(copy)[2]if r)
         assert types[o['m']]==(legacy,bytes([mask]))
     def borrow(addr):
-        earlier=[j for j in range(pc)if code[j][5]==80 and original[j]['m']==addr[0]];assert earlier
-        at=earlier[-1];cl=code[at][3]>>8;width,oldbytes,fields=array_layout(cl)
+        earlier=[j for j in range(pc)if code[j][5]in(36,80)and original[j]['m']==addr[0]];assert earlier
+        at=earlier[-1];cl=(code[at][3]>>8)&255;width,oldbytes,fields=array_layout(cl)
         assert addr[1]%4==0 and addr[1]<oldbytes
         off=next(new for old,new,size,r in fields if old==addr[1])
         if mapped:
@@ -286,6 +293,22 @@ def rawarray_use(original,code,pc,maps,row,pending=None,oldoffset=None,new=None,
         else:
             assert off+n<=width and any(old==addr[1]and r==root and (n==size or not r and cl in(1,2,3))for old,new,size,r in fields)
         return code[at][3]&255,off
+    if role==35:
+        assert (mapped or root) and pending is None and arm==(64 if mapped else 0)
+        src=sm==5 and s in(48,56);dst=dm==5 and d in(48,56)
+        assert src!=dst
+        fieldside=int(src)
+        mode_,addr,value=(dm,o['d'],d)if src else(sm,o['s'],s)
+        assert record_address(row,maps,pc,fieldside,mode_,addr,value,8)in ROOTS
+        if mapped:
+            owner,=(tree for at,side,tree in row['record_owners']if at==pc and side==fieldside)
+            width,_,leaves=record_geometry(row['record_types'][owner])
+            off=value>>16
+            assert off+n<=width
+            assert [(x-addr[1],y-off,w,k in ROOTS)for x,y,k,_,w in leaves if off<=y<off+n]==array_layout(copy)[2]
+        scratch,off=borrow(o['s']if src else o['d'])
+        assert (s if src else d)==scratch and m==(off<<(24 if src else 16))|copy
+        return
     if sm==5:scratch,so=borrow(o['s']);assert s==scratch
     else:assert sm in(0,1,2)and s==(o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]])
     if new is not None:
@@ -352,10 +375,31 @@ def verify(data,r,imports,loads=False,rows=None):
         assert r['code'][first]==[5,17,descriptor,0,40,0]
         for arg in callee['args']:
             prep=False;screenprep=None;idprep=None;o=original[at]
-            while loads and r['code'][at][5]==80:
+            if loads and r['code'][at][5]==154:
+                assert arg[1:]==[12,4,8] and o['mode']&7==1
+                assert all(c[0]==OPCODES['IMOVW'] and c[5]==64 for c in r['code'][first+1:at])
+                library_step(o,r['code'][at],maps,r['first'],types)
+                temp=o['d'];check=r['code'][at][2];at+=1
+                while at<end and r['code'][at][5]==153:
+                    o=original[at];c=r['code'][at]
+                    assert o['op']in(OPCODES['IMOVW'],OPCODES['IMOVP']) and o['mode']>>3&7 in(0,1,2)
+                    assert o['mode']&7==5 and o['d'][0]==temp[0] and (c[3]>>16)&255==check
+                    library_step(o,c,maps,r['first'],types);at+=1
+                o=original[at];assert o['op']==OPCODES['IMOVP'] and o['mode']==13 and o['s']==temp
+            if loads and r['code'][at][5]==37:
+                mode=o['mode'];sm=mode>>3&7;arm=mode&192
+                index=original[at+1]
+                assert o['op']in(OPCODES['IADDW'],OPCODES['ISUBW']) and mode&7==1 and sm in(0,1,2)
+                assert index['mode']&7==1 and index['d']==o['d'] and r['code'][at+1][5]==80 and r['code'][at+2][5]==65
+                s=o['s'][0]if sm==2 else maps['frame'if sm else'data'][o['s'][0]]
+                m=0 if arm==0 else o['m']if arm==64 else maps['frame'if arm==128 else'data'][o['m']]
+                assert r['code'][at]==[o['op'],mode,s,m,maps['frame'][o['d'][0]],37]
+                at+=1;o=index
+            while loads and r['code'][at][5]in(36,80):
                 rawarray_index(original,r['code'],at,maps,r);at+=1;o=original[at]
             if loads and r['code'][at][5]==65:
-                assert arg[1]in(1,9)and arg[3]==(original[at]['m']if original[at]['op']==OPCODES['IMOVM']else 4)
+                if o['op']==OPCODES['IMOVP']:assert arg[1]in ROOTS and arg[3]==8
+                else:assert arg[1]in(1,9)and arg[3]==(o['m']if o['op']==OPCODES['IMOVM']else 4)
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0]);rawarray_use(original,r['code'],at,maps,r,pending,oldoffset,arg[0],types=types);at+=1;continue
             if loads and arg[1:]==[1,12,12]and o['op']==45:
                 oldoffset=next(l[0]for l in callee['frame']['leaves']if l[1]==arg[0])
@@ -1003,12 +1047,12 @@ def verify(data,r,imports,loads=False,rows=None):
         if pc in covered:continue
         o=original[pc]
         if returned==72:record_field(o,r['code'][pc],pc,maps,r);continue
-        if returned==80:
+        if returned in(36,80):
             rawarray_index(original,r['code'],pc,maps,r)
             if mode>>3&7 in(4,5):inside.add(pc+1)
             continue
         if returned==79:rawarray_operation(o,r['code'][pc],pc,maps,types,r);continue
-        if returned==65:rawarray_use(original,r['code'],pc,maps,r,types=types);continue
+        if returned in(35,65):rawarray_use(original,r['code'],pc,maps,r,types=types);continue
         if returned==77 and r.get('result_pair'):
             assert loads and op==o['op']==OPCODES['IMOVMP'] and mode==o['mode']==77
             assert o['d']==[16,0] and d==32 and m==(48<<16)|(16<<8)
