@@ -45,8 +45,148 @@ typedrecordregister(Dis64TypedBody*p,unsigned int pc,unsigned int side,Type*t)
  for(i=0;i<p->nrecordtypes;i++)if(p->recordtypes[i]==t)break;
  if(i==64)return 0;
  if(i==p->nrecordtypes)p->recordtypes[p->nrecordtypes++]=t;
- if(!p->recordowners){p->recordowners=allocmem(p->count*2*sizeof(*p->recordowners));memset(p->recordowners,0,p->count*2*sizeof(*p->recordowners));}
- p->recordowners[2*pc+side]=i+1;return 1;
+ if(!p->recordowners){p->recordowners=allocmem(p->count*3*sizeof(*p->recordowners));memset(p->recordowners,0,p->count*3*sizeof(*p->recordowners));}
+ p->recordowners[3*pc+side]=i+1;return 1;
+}
+
+static int
+typedrecorddescriptor(Decl *d, Dis64Layout *layout, long *shape)
+{
+ unsigned int i,bits=0,legacy=0,n;
+ if(!d||!d->ty||d->ty->kind!=Tadt||!d->desc||
+    !dis64layouttype(d->ty,layout)||layout->legacybytes!=(unsigned int)d->desc->size||
+    !layout->bytes||layout->bytes>Native64RecordBytes||layout->bytes%4||
+    layout->legacybytes>Native64RecordBytes||d->desc->nmap<0||
+    (unsigned int)d->desc->nmap>(layout->legacybytes+31)/32||
+    (d->desc->nmap&&!d->desc->map))
+  return 0;
+ for(i=0;i<layout->count;i++){
+  Dis64LayoutLeaf *l=layout->leaves+i;
+  if(!typedmanagedkind(l->kind))continue;
+  if(l->legacy%4||l->native%8||l->oldbytes!=4||l->bytes!=8)return 0;
+  bits|=1U<<(l->native/8);
+ }
+ for(i=0;i<(unsigned int)d->desc->nmap*8;i++){
+  if(!(d->desc->map[i/8]&(128>>(i%8))))continue;
+  for(n=0;n<layout->count;n++)if(layout->leaves[n].legacy==i*4)break;
+  if(n==layout->count||!typedmanagedkind(layout->leaves[n].kind))return 0;
+  legacy|=1U<<(layout->leaves[n].native/8);
+ }
+ if(bits!=legacy)return 0;
+ *shape=(layout->bytes/4L<<Native64RecordMapBits)|bits;
+ return native64recorddescriptor(*shape);
+}
+
+static int
+typedrecordnew(Inst *in, Dis64TypedBody *p, unsigned int pc)
+{
+ Dis64Layout layout={0};
+ Decl *d=in->s.decl;
+ Type *type=typedrecordvalue(&in->d,in->dm);
+ unsigned int dm;
+ long dest,shape;
+ int actual,ok=0;
+
+ if(in->sm!=Adesc||in->mm!=Anone||in->branch||!d||!d->desc||
+    d->desc->id!=in->s.offset||!typedrecorddescriptor(d,&layout,&shape))
+  goto done;
+ if(in->dm==Afpind&&in->d.reg==16&&!in->d.offset){
+  if(p->resultpair||p->resulttriple||p->resultaggregate)goto done;
+  type=p->resulttype;dest=32;dm=AFP|AIND;
+ }else if((in->dm!=Afp&&in->dm!=Amp)||
+          !typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&dest,&dm,&actual))
+  goto done;
+ if(!type||type->kind!=Tref||!tequal(type->tof,d->ty)||
+    !typedrecordregister(p,pc,2,d->ty))
+  goto done;
+ p->code[pc]=(Dis64Instruction){INEWZ,SRC(AIMM)|DST(dm),shape,0,dest};
+ p->returns[pc]=Native64TypedRecordNew;ok=1;
+done:
+ dis64layoutfree(&layout);
+ return ok;
+}
+
+/* Keep an aggregate's natural span, including its padding, within its owner. */
+static int
+typedrecordcopyoperand(Dis64TypedBody *p, Addr *addr, int mode, Type *type,
+                       Dis64Layout *part, long *operand, unsigned int *wire)
+{
+ Dis64Layout record={0},*storage;
+ Type *owner;
+ Addr pointer;
+ unsigned int old,field,base,i;
+ long cell;
+ int actual,ok=0;
+
+ if(mode==Afpind||mode==Ampind){
+  owner=typedfieldowner(addr);
+  if(!owner||owner->kind!=Tref||!owner->tof||owner->tof->kind!=Tadt||
+     !typedarraysubtype(owner->tof,addr->offset,type)||!dis64layouttype(owner->tof,&record))
+   goto done;
+  pointer=*addr;pointer.offset=0;pointer.native64type=owner;
+  if(!typedoperand(mode==Afpind?Afp:Amp,&pointer,TypedRoot,0,0,p,&cell,wire,&actual)||
+     actual!=Tref||cell>65535)
+   goto done;
+  old=addr->offset;storage=&record;base=cell;
+ }else{
+  if((mode!=Afp&&mode!=Amp)||addr->offset||!addr->decl||
+     !typedarraysubtype(addr->decl->ty,addr->reg-addr->decl->offset,type))
+   goto done;
+  old=addr->reg;storage=mode==Afp?&p->frame:&p->data;*wire=mode==Afp?AFP:AMP;base=0;
+ }
+ if(!dis64layoutbindresult(storage,part,old,8,0,&field))
+  goto done;
+ for(i=0;i<storage->count;i++)
+  if(storage->leaves[i].legacy>=old+part->legacybytes&&storage->leaves[i].native<field+part->bytes)
+   goto done;
+ if(mode==Afpind||mode==Ampind){
+  if(field>4096)goto done;
+  *operand=((long)field<<16)|base;*wire|=AIND;
+ }else *operand=field;
+ ok=1;
+done:
+ dis64layoutfree(&record);
+ return ok;
+}
+
+static int
+typedrecordcopy(Inst *in, Dis64TypedBody *p, unsigned int pc)
+{
+ Dis64Layout layout={0};
+ Decl *d=in->m.decl;
+ long src,dst,shape;
+ unsigned int sm,dm;
+ int ok=0;
+ if(in->mm!=Adesc||in->branch||!d||!d->desc||d->desc->id!=in->m.offset||
+    !typedrecorddescriptor(d,&layout,&shape)||!native64recordmask(shape)||
+    !typedrecordcopyoperand(p,&in->s,in->sm,d->ty,&layout,&src,&sm)||
+    !typedrecordcopyoperand(p,&in->d,in->dm,d->ty,&layout,&dst,&dm)||
+    !typedrecordregister(p,pc,2,d->ty))
+  goto done;
+ if((sm&AIND)&&!typedrecordregister(p,pc,0,typedfieldowner(&in->s)->tof))goto done;
+ if((dm&AIND)&&!typedrecordregister(p,pc,1,typedfieldowner(&in->d)->tof))goto done;
+ p->code[pc]=(Dis64Instruction){IMOVMP,SRC(sm)|AXIMM|DST(dm),shape,src,dst};
+ p->returns[pc]=Native64TypedRecordCopy;ok=1;
+done:
+ dis64layoutfree(&layout);
+ return ok;
+}
+
+static int
+typedrecordresult(Inst *in, Dis64TypedBody *p, Type *result, unsigned int pc, unsigned int *base)
+{
+ Type *field;
+ long source;
+ unsigned int mode;
+ if(in->sm!=Afpind||!typedrecordowner(&in->s,in->sm)||
+    !(field=typedrecordvalue(&in->s,in->sm))||!tequal(result,field)||
+    !typedrecordoperand(in->sm,&in->s,1,p,&source,&mode)||
+    !typedrecordregister(p,pc,0,typedfieldowner(&in->s)->tof))
+  return 0;
+ *base=source&65535;
+ p->code[pc]=(Dis64Instruction){ILEA,SRC(mode)|DST(AFP|AIND),0,source,32};
+ p->returns[pc]=Native64TypedRecordResult;
+ return 1;
 }
 
 static int
@@ -93,6 +233,7 @@ typedrecordinst(Inst*original,Dis64TypedBody*p,unsigned int pc,unsigned int stop
  a=typedrecordvalue(&in->s,in->sm);
  if(branch&&(op==IBEQW||op==IBNEW)&&a&&typedmanagedkind(a->kind))op=a->kind==Tstring?(op==IBEQW?IBEQC:IBNEC):(op==IBEQW?IBEQL:IBNEL);
  if(!native64recordshape(op,w,r)||!typedrecordoperand(in->sm,&in->s,r[0],p,&src,&sm))return 0;
+ if(op==IADDC&&(!a||a->kind!=Tstring))return 0;
  if(op==IINDC||op==ILENC||op==ICVTCW){if(!a||a->kind!=Tstring)return 0;}
  if(op==ILENA&&(!a||a->kind!=Tarray))return 0;
  if(op==ILENL&&(!a||a->kind!=Tlist))return 0;
@@ -100,10 +241,19 @@ typedrecordinst(Inst*original,Dis64TypedBody*p,unsigned int pc,unsigned int stop
   if(in->dm!=Apc||!in->branch||in->d.offset!=in->branch->pc||in->d.offset<(int)p->first||in->d.offset>=(int)stop)return 0;
   dst=in->d.offset-p->first;dm=AIMM;
  }else if(in->dm==Afpind&&in->d.reg==16&&!in->d.offset){
+  if(op==IMOVP&&(p->resultaggregate==48||(p->resultpair&&p->resultpair<3))&&
+     (sm&AIND)&&in->mm==Anone&&!in->branch&&p->resulttype->ids&&
+     a&&tequal(a,p->resulttype->ids->ty)&&
+     typedrecordregister(p,pc,0,typedfieldowner(&in->s)->tof)){
+   p->code[pc]=(Dis64Instruction){IMOVP,SRC(sm)|DST(AFP|AIND),0,src,32};
+   p->returns[pc]=Native64TypedRecordPair;
+   return 1;
+  }
   if(p->resultaggregate||p->resultpair||p->resulttriple||(r[1]?!a||!tequal(a,p->resulttype):p->resultkind!=Tint))return 0;
   dst=32;dm=AFP|AIND;
  }else if(in->branch||!typedrecordoperand(in->dm,&in->d,r[1],p,&dst,&dm))return 0;
  if(op==IMOVP){b=typedrecordvalue(&in->d,in->dm);if(dst==32&&dm==(AFP|AIND))b=p->resulttype;if(!a||!b||(!tequal(a,b)&&a->kind!=Tany))return 0;}
+ if(op==IADDC){b=typedrecordvalue(&in->d,in->dm);if(dst==32&&dm==(AFP|AIND))b=p->resulttype;if(!b||b->kind!=Tstring)return 0;}
  if(in->mm!=Anone){int actual;
   if(op==IMOVP||op==IMOVW||op==ILENC||op==ILENA||op==ILENL||op==ICVTCW||op==ICVTWC)return 0;
   if(!typedoperand(in->mm,&in->m,r[0]&&op!=IINDC?TypedRoot:Tint,!r[0]||op==IINDC,1,p,&mid,&wire,&actual))return 0;

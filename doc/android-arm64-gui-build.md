@@ -1066,3 +1066,21 @@ The source check covers all 485 instructions of `yyparse` and also accepts
 `pipe2cmd`. Sh reaches 81/134 checked bodies and the 16 startup modules reach
 318/385. Both compiler modes emit identical classic Dis bytes. These parser
 execution results were verified on Linux amd64 with UBSan.
+
+## Original Sh lexer construction
+
+Checked native64 can allocate and copy ADTs up to 192 bytes using a
+descriptor derived from the declared layout and validated against the
+classic GC map. Mapped copies check the natural span and root slots of
+each heap operand at execution. Local and imported calls can write a
+managed result directly into a record field when the caller retains its
+owner in a mapped stack slot across the call.
+
+This covers `YYLEX.initstring`, `YYLEX.initfile`, `doparse` and `Sh.parse`
+in the source preflight. The constructors and `doparse` also run in 30
+interpreter/JIT tests on Linux amd64 with UBSan and controlled file
+services. The tests cover successful string and file parses, diagnostics,
+a nil `Bufio.fopen` result, and a record copy with a live String and a
+signed Word. Checked coverage rises to 85/134 Sh bodies and 322/385 bodies
+across the 16 startup modules. The preflight compares classic Dis output
+byte for byte.

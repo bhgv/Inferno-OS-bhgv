@@ -211,6 +211,42 @@ def record_argument(o, c, pc, maps, row, pending, old, new, kind, variadic=False
     assert c==[op,o['mode'],c[2],0,new,34 if variadic else 33]
     assert record_address(row,maps,pc,0,sm,o['s'],c[2],4 if kind==9 else 8)==kind
 
+def record_result(o, c, pc, maps, row, base):
+    assert o['op']==OPCODES['ILEA'] and o['mode']==45 and o['m'] is None
+    assert c==[o['op'],45,c[2],0,32,41] and c[2]&65535==base
+    assert record_address(row,maps,pc,0,5,o['s'],c[2],8) in ROOTS
+
+def record_storage(o, c, pc, maps, row, types):
+    op,mode,s,m,d,role=c
+    sm=o['mode']>>3&7;dm=o['mode']&7
+    witnesses={side:tree for at,side,tree in row['record_owners'] if at==pc}
+    tree=row['record_types'][witnesses[2]]
+    bytes_,_,leaves=record_geometry(tree)
+    oldbytes,legacy_map=types[o['s'][0] if role==38 else o['m']]
+    assert tree[1]==oldbytes and 0<bytes_<=192 and bytes_%4==0
+    legacy_roots={a//4 for a,_,k,_,_ in leaves if k in ROOTS}
+    assert legacy_roots=={8*i+j for i,byte in enumerate(legacy_map) for j in range(8) if byte&(128>>j)}
+    mask=sum(1<<(b//8) for _,b,k,_,_ in leaves if k in ROOTS)
+    assert m==(bytes_//4)<<24|mask and mode==o['mode']
+    if role==38:
+        assert op==OPCODES['INEWZ'] and o['op'] in (OPCODES['INEW'],OPCODES['INEWZ']) and not s and o['m'] is None
+        if dm==5:assert o['d']==[16,0] and d==32 and row['result'][0]==12
+        else:
+            assert dm in(0,1) and d==maps['frame' if dm else 'data'][o['d'][0]]
+            bit=d//8;assert row['frame' if dm else 'data']['map'][bit//8]&(128>>(bit%8))
+        return
+    assert op==o['op']==OPCODES['IMOVMP'] and bytes_%8==0 and mask
+    for side,wire,value,old in ((0,sm,s,o['s']),(1,dm,d,o['d'])):
+        space='frame' if wire in(1,5) else 'data'
+        if wire in(4,5):
+            width,_,owner=record_geometry(row['record_types'][witnesses[side]])
+            start=next(b for a,b,_,_,_ in owner if a==old[1])
+            assert start+bytes_<=width and value==maps[space][old[0]]|(start<<16)
+            assert [(a-old[1],b-start,k,n,v) for a,b,k,n,v in owner if start<=b<start+bytes_]==leaves
+        else:
+            assert wire in(0,1) and value==maps[space][old[0]]
+            assert [(a-old[0],b-value,k,n,v) for a,b,n,v,k in row[space]['leaves'] if value<=b<value+bytes_]==leaves
+
 def array_operand(row,maps,pc,side,mode,address,value,root):
     if mode in(4,5):
         assert record_address(row,maps,pc,side,mode,address,value,8 if root else 4)==(3 if root else 9)
@@ -225,7 +261,7 @@ def record_field(o,c,pc,maps,row):
     op,mode,s,m,d,role=c;assert role==72
     assert mode==o['mode']
     owners={side:tree for at,side,tree in row['record_owners']if at==pc};assert owners and len(owners)==sum(at==pc for at,_,_ in row['record_owners'])
-    rootops=(OPCODES['IMOVP'],OPCODES['IBEQL'],OPCODES['IBNEL'],OPCODES['IBEQC'],OPCODES['IBNEC'])
+    rootops=(OPCODES['IMOVP'],OPCODES['IADDC'],OPCODES['IBEQL'],OPCODES['IBNEL'],OPCODES['IBEQC'],OPCODES['IBNEC'])
     sourceops=(OPCODES['IINDC'],OPCODES['ILENC'],OPCODES['ILENA'],OPCODES['ILENL'],OPCODES['ICVTCW'])
     widths=[8,8]if op in rootops else[8,4]if op in sourceops else[4,8]if op==OPCODES['ICVTWC']else[4,4]
     kinds=[]
@@ -569,7 +605,10 @@ def verify(data,r,imports,loads=False,rows=None):
         assert at+bool(contract)==end
         if contract:
             binding=original[end-1];assert binding['op']==39 and binding['d']==[pending,16]and binding['m']is None
-            if r['code'][end-1][5]==131:
+            if r['code'][end-1][5]==41:
+                assert loads and contract==24 and not inherited
+                record_result(binding,r['code'][end-1],end-1,maps,r,offset)
+            elif r['code'][end-1][5]==131:
                 index=original[first-1];assert loads and contract==24 and not inherited and index['op']==OPCODES['IINDW']and index['mode']>>3&7==1 and binding['mode']==45 and binding['s']==[index['m'],0]
                 assert offset==maps['frame'][index['s'][0]]and r['code'][end-1]==[39,13,offset,0,32,131]
             elif r['code'][end-1][5]==81:
@@ -1016,6 +1055,9 @@ def verify(data,r,imports,loads=False,rows=None):
                 for j in range(width):assert bool(r['frame']['map'][(base+j)//64]&(128>>((base+j)//8%8)))==(contract==80 and j<8 or contract in(116,124))
                 assert r['code'][end-1]==[39,13,base,0,32,85]
             elif r['code'][end-1][5]==81:pass
+            elif r['code'][end-1][5]==41:
+                assert loads and contract==24 and not e['inherited']
+                record_result(b,r['code'][end-1],end-1,maps,r,e['resultoffset'])
             elif r['code'][end-1][5]==60:
                 fields=({20:288,24:296}if r['code'][end-1][3]in(288,296)else{0:0,20:24,40:48,52:64,56:72,84:104})
                 assert loads and contract==24 and not e['inherited']and b['mode']==45 and b['m']is None and b['s'][1]in fields
@@ -1047,6 +1089,14 @@ def verify(data,r,imports,loads=False,rows=None):
         if pc in covered:continue
         o=original[pc]
         if returned==72:record_field(o,r['code'][pc],pc,maps,r);continue
+        if returned in(38,39):record_storage(o,r['code'][pc],pc,maps,r,types);continue
+        if returned==42:
+            assert r.get('result_pair') or r.get('result_aggregate')==48
+            assert op==o['op']==OPCODES['IMOVP'] and mode==o['mode'] and mode&7==5
+            assert o['d']==[16,0] and d==32 and not m and o['m'] is None
+            kind=record_address(r,maps,pc,0,mode>>3&7,o['s'],s,8)
+            assert kind in ROOTS and (not r.get('result_pair') or kind==r['result_pair'][0])
+            continue
         if returned in(36,80):
             rawarray_index(original,r['code'],pc,maps,r)
             if mode>>3&7 in(4,5):inside.add(pc+1)

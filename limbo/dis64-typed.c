@@ -1,5 +1,6 @@
 #include "native64-array-layout.h"
 #include "limbo.h"
+#include "native64-record-layout.h"
 #include "dis64-typed.h"
 
 enum { TypedRoot=-10, TypedInstructions=65536 };
@@ -304,6 +305,10 @@ typedresults(Dis64TypedBody *p)
         else if(p->resulttriple){if(p->returns[pc]==2 || p->returns[pc]==4 || p->returns[pc]==8)flow|=p->returns[pc];if(p->returns[pc]==32 || p->returns[pc]==171)flow=15;}
         else if(p->resultpair){if(p->returns[pc]==77)flow=7;if(p->returns[pc]==8)flow|=2;if(p->returns[pc]==16)flow|=4;if(p->returns[pc]==32)flow=7;}
         else if(((p->returns[pc]==65 || p->returns[pc]==72) && (p->code[pc].op==IMOVW || p->code[pc].op==IMOVP) && p->code[pc].destination==32 && UDST(p->code[pc].mode)==(AFP|AIND)) || (p->returns[pc] && p->returns[pc]<=32) || ((p->returns[pc]==109 || (p->returns[pc]==111 && p->code[pc].op==IMOVP)) || p->returns[pc]==174 || p->returns[pc]==185 || p->returns[pc]==246 || p->returns[pc]==247 || (p->returns[pc]==158 && p->code[pc].destination==32 && UDST(p->code[pc].mode)==(AFP|AIND)) || ((p->returns[pc]==154 || (p->returns[pc]==153 && !(p->code[pc].middle&0xff0000) && p->code[pc].destination==32)) && UDST(p->code[pc].mode)==(AFP|AIND))))flow=3;
+        if(p->returns[pc]==Native64TypedRecordPair)flow|=2;
+        if(!p->resultaggregate&&!p->resultpair&&!p->resulttriple&&p->code[pc].destination==32&&
+           UDST(p->code[pc].mode)==(AFP|AIND)&&
+           (p->returns[pc]==Native64TypedRecordNew||(p->returns[pc]==Native64TypedRecord&&p->code[pc].op==IADDC)))flow=3;
         n=0;
 		if(p->code[pc].op==IRET || p->code[pc].op==IRAISE || p->code[pc].op==IEXIT) continue;
         if(p->code[pc].op==ICASE || p->code[pc].op==ICASEL || p->code[pc].op==IGOTO || p->code[pc].op==ICASEC){
@@ -723,7 +728,7 @@ dis64typedreport(Decl *globals, Decl **functions, int nfunctions, Inst *first, l
             if(p.nrecordtypes){
                 unsigned int side,n=0;
                 fprint(2,",\"record_types\":[");for(i=0;i<p.nrecordtypes;i++){if(i)fprint(2,",");typedrecordtree(p.recordtypes[i]);}fprint(2,"],\"record_owners\":[");
-                for(i=0;i<p.count;i++)for(side=0;side<2;side++)if(p.recordowners[2*i+side])fprint(2,"%s[%ud,%ud,%ud]",n++?",":"",i,side,(unsigned int)p.recordowners[2*i+side]-1);
+                for(i=0;i<p.count;i++)for(side=0;side<3;side++)if(p.recordowners[3*i+side])fprint(2,"%s[%ud,%ud,%ud]",n++?",":"",i,side,(unsigned int)p.recordowners[3*i+side]-1);
                 fprint(2,"]");
             }
 			fprint(2,",\"args\":");typedbindings(fn->ty->ids,1);

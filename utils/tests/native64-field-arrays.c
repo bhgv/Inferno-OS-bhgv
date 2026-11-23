@@ -6,6 +6,9 @@ static Module *services[nelem(full_tables)], *lexer_module;
 static Type *fdtype;
 static YYLEX *input;
 static WORD inputchar;
+static Sys_FD *filefd;
+static const uchar *fileinput;
+static int openfailure,opens,formats,seedblank;
 static int loads, reads, prints, fds, promptmode;
 static int indexes, uses, pending, stackgrowth, nestedindexes;
 static const WORD marker=0x12345678;
@@ -52,11 +55,37 @@ static void
 ctl_getc(void *fp)
 {
  void *value,*result;
+ WORD rune;
  memmove(&value,(uchar*)fp+64,8);
  memmove(&result,(uchar*)fp+32,8);
  check(input!=nil&&input->f==value,"Bufio method gets the original self reference");
- memmove(result,&inputchar,4);
+ rune=inputchar;
+ if(fileinput!=nil)rune=*fileinput?*fileinput++:-1;
+ memmove(result,&rune,4);
  reads++;
+}
+
+static void
+ctl_fopen(void *fp)
+{
+ Sys_FD *fd;
+ Bufio_Iobuf **result,*file=H;
+ WORD mode;
+ memmove(&fd,(uchar*)fp+64,8);
+ memmove(&mode,(uchar*)fp+72,4);
+ memmove(&result,(uchar*)fp+32,8);
+ check(fd==filefd&&fd!=nil&&fd!=H&&fd->fd==42&&mode==0&&*result==H,"original fopen arguments and heap result slot");
+ if(!openfailure){
+  uchar map[]={0xc0};
+  Type *t=dtype(freeheap,sizeof(Bufio_Iobuf),map,1);
+  require(t!=nil);
+  file=H2D(Bufio_Iobuf*,heapz(t));
+  freetype(t);
+  D2H(fd)->ref++;
+  file->fd=fd;
+ }
+ *result=file;
+ opens++;
 }
 
 static void
@@ -95,7 +124,23 @@ Sys_fprint64(const Native64SysWriteRequest *request)
  return 1;
 }
 
-int Sys_sprint64(const Native64SysFormatRequest *f){ USED(f);check(0,"unexpected sprint");return 0; }
+int
+Sys_sprint64(const Native64SysFormatRequest *f)
+{
+ String *path,*problem,**result;
+ LONG line;
+ const char *message="/fixture.sh:1: syntax error";
+ check(f->count==3&&textis(f->pattern,"%s:%d: %s"),"original parser diagnostic format");
+ memmove(&path,f->values,8);
+ memmove(&line,f->values+1,8);
+ memmove(&problem,f->values+2,8);
+ check(textis(path,"/fixture.sh")&&line==1&&textis(problem,"syntax error"),"parser diagnostic field arguments");
+ result=f->resolve(f->argument);
+ check(result!=nil&&*result==H,"parser diagnostic result slot");
+ *result=c2string((char*)message,strlen(message));
+ formats++;
+ return 1;
+}
 int Sys_aprint64(const Native64SysFormatRequest *f){ USED(f);check(0,"unexpected aprint");return 0; }
 int Sys_print64(const Native64SysWriteRequest *f){ USED(f);check(0,"unexpected print");return 0; }
 
@@ -103,9 +148,10 @@ static void (*
 servicefn(const char *name))(void*)
 {
  if(!strcmp(name,"Iobuf.getc"))return ctl_getc;
+ if(!strcmp(name,"fopen"))return ctl_fopen;
  if(!strcmp(name,"in"))return ctl_in;
  if(!strcmp(name,"fildes"))return ctl_fd;
- if(!strcmp(name,"fprint"))return Sys_programcall64;
+ if(!strcmp(name,"fprint")||!strcmp(name,"sprint"))return Sys_programcall64;
  check(0,"known source import");
  return nil;
 }
@@ -144,7 +190,8 @@ fullload(Module *m, WORD table, char *path)
  const char *name;
  check(m==lexer_module&&table>=0&&table<(int)nelem(services),"exact source LOAD owner");
  name=full_tables[table].imports[0].name;
- check(!strcmp(path,!strcmp(name,"in")?"/dis/lib/string.dis":!strcmp(name,"Iobuf.getc")?"/dis/lib/bufio.dis":"$Sys"),
+ check(!strcmp(path,!strcmp(name,"in")?"/dis/lib/string.dis":
+                   !strcmp(name,"Iobuf.getc")||!strcmp(name,"fopen")?"/dis/lib/bufio.dis":"$Sys"),
        "exact source LOAD path");
  loads++;
  target=services[table];
@@ -240,6 +287,12 @@ run_case(uint fn, void *arg, int jit, int quantum, WORD expected, const char *fa
  require(fdtype!=nil);
  check(native64sysmodule(&full_spec,full_variadics,nelem(full_variadics),jit,&owner),"checked lexer constructed");
  lexer_module=owner.module;
+ if(seedblank){
+  YYLEX *blank=(YYLEX*)((uchar*)lexer_module->origmp+lexer_mp_blanklex);
+  check(blank->lval.word==H&&!blank->lval.optype,"empty source descriptor before seeding");
+  blank->lval.word=c2string("seed",4);
+  blank->lval.optype=-73;
+ }
  for(i=0;i<nelem(specs);i++){
   request[i].name=(char*)specs[i]->name;
   memmove(&request[i].sig,&specs[i]->signature,4);
@@ -261,7 +314,7 @@ run_case(uint fn, void *arg, int jit, int quantum, WORD expected, const char *fa
  memmove(root+72,&link,8);
  memmove(root+80,&marker,4);
  memset(root+84,0x5a,44);
- loads=reads=prints=fds=indexes=uses=pending=stackgrowth=nestedindexes=0;
+ loads=reads=prints=fds=opens=formats=indexes=uses=pending=stackgrowth=nestedindexes=0;
  worker.env->errstr[0]=0;
  process->quanta=quantum;
  for(steps=0;steps<100000;steps++){
@@ -477,9 +530,83 @@ lexer_parse(int jit, int quantum)
 }
 
 static void
+lexer_construction(int jit, int quantum)
+{
+ static const char *source[]={"alpha beta\n","x )\n","one |[2=1] two\n","x )\n",""};
+ uchar storemap[]={0xed,0xe0};
+ uint test;
+ for(test=0;test<nelem(source);test++){
+  Type *t=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));
+  Store *r;
+  YYLEX *l;
+  int file=test>=2,invalid=test==1||test==3;
+  require(t!=nil);
+  r=H2D(Store*,heapz(t));
+  freetype(t);
+  if(file){
+   t=dtype(freeheap,sizeof(Sys_FD),nil,0);
+   require(t!=nil);
+   r->fd=H2D(Sys_FD*,heapz(t));
+   freetype(t);
+   r->fd->fd=42;
+   filefd=r->fd;
+   r->text=c2string("/fixture.sh",11);
+  }else r->text=c2string((char*)source[test],strlen(source[test]));
+  openfailure=test==4;
+  seedblank=test==0;
+  run_case(file?full_fn_buildfile:full_fn_buildstring,r,jit,quantum,0,"");
+  check(opens==file&&!reads&&!formats,"constructor invokes only its expected services");
+  l=r->lex;
+  check(l!=nil&&l!=H&&D2H(l)->t->size==sizeof(YYLEX)&&D2H(l)->t->np==2&&
+        D2H(l)->t->map[0]==0xea&&D2H(l)->t->map[1]==0x5a,"allocated actual YYLEX shape and GC map");
+  if(seedblank){
+   check(textis(l->lval.word,"seed")&&D2H(l->lval.word)->ref==1&&l->lval.optype==-73,
+         "record copy retained a mapped String and a signed Word after its source retired");
+   seedblank=0;
+  }else check(l->lval.word==H&&!l->lval.optype,"blank lexer value initialization");
+  check(l->lval.node==H&&l->lval.redir==H&&l->err==H&&
+        l->errline==0&&l->wasdollar==0&&l->atendword==0&&
+        l->eof==0&&l->ncbuf==0&&l->strpos==0&&l->linenum==file&&l->lastnl==0,"blank lexer copy preserves initialization");
+  if(file){
+   WORD cells[2];
+   check(l->path==r->text&&l->s==H&&l->cbuf!=H&&l->cbuf->len==2&&l->cbuf->t->size==4,
+         "file lexer shares the path and owns the two-Word ring buffer");
+   memmove(cells,l->cbuf->data,sizeof(cells));
+   check(!cells[0]&&!cells[1]&&(l->prompt==H||textis(l->prompt,"")),"file lexer buffer and default prompt");
+   check(openfailure?l->f==H:l->f!=H&&l->f->fd==r->fd,"file constructor preserves fopen outcome");
+  }else check(l->s==r->text&&textis(l->path,"internal")&&l->cbuf==H&&l->f==H,"string lexer shares its input");
+  r->n=file;
+  input=l;
+  fileinput=file&&!openfailure?(const uchar*)source[test]:nil;
+  run_case(full_fn_parse_result,r,jit,quantum,invalid,"");
+  check((reads>0)==(file&&!openfailure)&&formats==(file&&invalid)&&!prints,"original parser service dispatch");
+  if(invalid){
+   check(r->node==H&&textis(r->problem,file?"/fixture.sh:1: syntax error":"internal: parse error: syntax error"),
+         "original doparse diagnostic");
+  }else if(openfailure)check(r->node==H&&r->problem==H,"nil fopen yields empty parse");
+  else{
+   check(r->node!=H&&r->problem==H&&r->node==l->lval.node,"pair result transfers the command tree");
+   if(file){
+    check(r->node->ntype==9&&r->node->redir!=H&&r->node->redir->fd1==2&&r->node->redir->fd2==1,
+          "file lexer produces pipe descriptor");
+    expectword(r->node->left,"one");
+    expectword(r->node->right,"two");
+   }else{
+    check(r->node->ntype==10,"string lexer produces adjacent words");
+    expectword(r->node->left,"alpha");
+    expectword(r->node->right,"beta");
+   }
+  }
+  input=nil;fileinput=nil;filefd=nil;
+  destroy(r);
+  check(!live&&!nlinkpins,"constructor and parser retained no service or heap owner");
+ }
+}
+
+static void
 array_fields(int jit, int quantum)
 {
- static uchar map[]={0xec};
+ static uchar map[]={0xed,0xe0};
  Type *type=dtype(freeheap,sizeof(Store),map,nelem(map));
  Store *r;
  void *v;
@@ -551,6 +678,15 @@ metadata(void)
     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
           !owner.module&&allocations==before,"malformed parser stack operation refused before allocation");
     total++;
+   }else if(a->returned==Native64TypedRecordNew||a->returned==Native64TypedRecordCopy||
+            a->returned==Native64TypedRecordResult||a->returned==Native64TypedRecordPair){
+    memmove(code,base->code,base->count*sizeof(*code));
+    if(a->returned==Native64TypedRecordNew)code[j].m|=0x40000000UL;
+    else if(a->returned==Native64TypedRecordCopy)code[j].m&=~0xffffffUL;
+    else code[j].s++;
+    check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
+          !owner.module&&allocations==before,"malformed record construction or result refused before allocation");
+    total++;
    }else if(a->returned==154){
     for(k=0;k<base->nsites;k++){
      const Native64ModuleSite *site=base->sites+k;
@@ -591,9 +727,11 @@ main(void)
   for(i=0;i<9;i++)lexer_read(j,quanta[q],i);
   lexer_scan(j,quanta[q]);
   lexer_parse(j,quanta[q]);
+  lexer_construction(j,quanta[q]);
   array_fields(j,quanta[q]);
  }
  puts("PASS array fields and unchanged Sh lexer: 162 interpreter/JIT cases with exact operands, tokens, file prompt, scheduler boundaries and ownership");
  puts("PASS unchanged Sh yyparse: 54 interpreter/JIT cases with ASTs, recovery, stack growth and actual aggregate GC roles");
+ puts("PASS unchanged Sh YYLEX constructors and doparse: 30 interpreter/JIT cases with file and string inputs, exact shapes and diagnostics");
  return 0;
 }

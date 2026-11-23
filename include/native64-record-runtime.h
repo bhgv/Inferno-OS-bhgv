@@ -4,16 +4,57 @@
 /* The owner is a proved mapped FP/MP slot. Check the actual heap Type before
  * vmdecode forms a field address, including every byte's GC role. */
 static void*
-native64recordspan(VmFetch*f,unsigned int mode,Adr*a,unsigned int width,unsigned int rootbytes)
+native64recordpayload(VmFetch*f,unsigned int mode,Adr*a,unsigned int width,Type **type)
 {
- void*value;Type*t;Heap*h;unsigned int i,bit,off=a->i.s;int root;
+ void*value;Type*t;Heap*h;unsigned int off=a->i.s;
  value=native64rawarrayowner(f,mode&~AIND,a->i.f);
  if(value==H||value==nil)error(exNilref);
  if((uintptr)value<=sizeof(Heap)||(uintptr)value%8||(uintptr)value>(uintptr)-1-off-width)error(exBounds);
  h=D2H(value);t=h->t;
  if(h->ref<=0||t==nil||t==H||t->ref<=0||t->size<0||t->size>1024*1024||t->np<0||t->np>(t->size+63)/64||off>(unsigned int)t->size||width>(unsigned int)t->size-off)error(exBounds);
- for(i=off;i<off+width;i++){bit=i/8;root=i-off<rootbytes;if(!!(bit/8<(unsigned int)t->np&&(t->map[bit/8]&(128>>(bit%8))))!=root)error(exBounds);}
+ *type=t;
  return (uchar*)value+off;
+}
+static void*
+native64recordspan(VmFetch*f,unsigned int mode,Adr*a,unsigned int width,unsigned int rootbytes)
+{
+ Type *t;
+ void *payload=native64recordpayload(f,mode,a,width,&t);
+ unsigned int i,bit,off=a->i.s;int root;
+ for(i=off;i<off+width;i++){bit=i/8;root=i-off<rootbytes;if(!!(bit/8<(unsigned int)t->np&&(t->map[bit/8]&(128>>(bit%8))))!=root)error(exBounds);}
+ return payload;
+}
+
+static void
+native64recordcheckmap(Type *type, unsigned int offset, unsigned int bytes, unsigned int mask)
+{
+ unsigned int i,bit;
+ for(i=0;i<(bytes+7)/8;i++){
+  bit=offset/8+i;
+  if(!!(bit/8<(unsigned int)type->np&&(type->map[bit/8]&(128>>(bit%8))))!=!!(mask&(1U<<i)))
+   error(exBounds);
+ }
+}
+
+static void
+native64recordobjectcheck(VmFetch *f, Inst *in, unsigned int bytes, unsigned int mask)
+{
+ int copy=in->op==IMOVMP;
+ unsigned int id=copy?in->reg:in->s.imm,sm=USRC(in->add),dm=UDST(in->add);
+ Type *t;
+ if(id>=(unsigned int)f->module->ntype||f->module->type==nil||f->module->type==H||
+    (t=f->module->type[id])==nil||t==H||t->ref<=0||t->size!=(int)bytes||t->np!=(int)((bytes+63)/64))
+  error(exBounds);
+ native64recordcheckmap(t,0,bytes,mask);
+ if(!copy)return;
+ if(sm&AIND){
+  native64recordpayload(f,sm,&in->s,bytes,&t);
+  native64recordcheckmap(t,in->s.i.s,bytes,mask);
+ }
+ if(dm&AIND){
+  native64recordpayload(f,dm,&in->d,bytes,&t);
+  native64recordcheckmap(t,in->d.i.s,bytes,mask);
+ }
 }
 static void*
 native64recordfield(VmFetch*f,unsigned int mode,Adr*a,unsigned int width,unsigned int root)

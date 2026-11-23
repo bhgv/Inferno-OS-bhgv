@@ -19,6 +19,7 @@ typedbytearrayaddr(Addr *a)
 static int typedimagescreenarg(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
 static int typedlibraryarraystore(Inst*,Dis64TypedBody*,unsigned int);
 static int typedlibraryinst(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
+static int typedrecordresult(Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int*);
 static int typedlibraryslicearg(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
 static int typedlibrarymodule(Inst*,Dis64TypedBody*,long*,unsigned int*,int*);
 static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int,int);
@@ -212,7 +213,7 @@ typedclientcontext(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
  if(p->sourceroles && in->dm==Afpind){if(in->d.reg!=16 || in->d.offset || p->resultkind!=Tref)goto done;destination=32;dm=AFP|AIND;}
  else if(!typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&destination,&dm,&actual) || actual!=Tref || dm!=AFP)goto done;
  *out=(Dis64Instruction){in->op,SRC(AIMM)|DST(dm),0,1,destination};ok=1;
- done:dis64layoutfree(&layout);return ok?1:typedfail(p,"client-context-geometry");
+ done:dis64layoutfree(&layout);return ok;
 }
 
 static int typedwmcontextchannel(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*);
@@ -1350,6 +1351,8 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         }else if(c->loads&&contract==24&&!child->resultpair&&binding->sm==Afpind&&binding->s.offset==48&&typedlibraryrecord(typedfieldowner(&binding->s))==6&&typedwmref(c->functions[target]->ty->tof,"Draw","Wmcontext")){
             Addr a=binding->s;Type*t=typedfieldowner(&a);a.offset=0;a.native64type=t;if(!typedoperand(Afp,&a,TypedRoot,0,0,p,&source,&sm,&actual)||actual!=Tref)return typedfail(p,"client-context-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),24,source,32};p->returns[at-p->first]=93;
+        }else if(c->loads&&root&&!child->resultpair&&typedrecordresult(binding,p,c->functions[target]->ty->tof,at-p->first,&local)){
+            contract=24;
         }else if(binding->sm==Afp){
             if(child->resultgeometry){if(!typedgeometrybinding(binding,c->functions[target]->ty->tof,p,&local,&contract))return typedfail(p,"local-geometry-result");source=local;sm=AFP;}
             else if(child->resultpair>=3 || child->resulttriple==2){unsigned int k,next,n=child->resulttriple==2?3:2,oldstep=child->resultpair>=4?8:4;
@@ -1528,7 +1531,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             p->code[pc-p->first]=(Dis64Instruction){IMOVMP,SRC(AFP)|AXIMM|DST(AFP|AIND),0,base,32};p->returns[pc++-p->first]=171;
         }else if(c->loads && (in->op==IMOVP || in->op==ISLICEA) && typedreadreplyprep(c,in,p,pc,stop)){pc++;
         }else if(c->loads && in->op==IMOVMP){
-            if(!typedaltpaircopy(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+            if(!typedrecordcopy(in,p,pc-p->first)&&!typedaltpaircopy(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->external>=2 && in->op==IMOVP && in->dm==Afpind && in->d.reg==16 && in->d.offset==0){
             if(!typedinst(in,stop,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
 
@@ -1624,7 +1627,12 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(c->loads && in->s.decl && in->s.decl->sym && !strcmp(in->s.decl->sym->name,"Pointer")){
                 if(!typedpointernew(in,p,p->code+pc-p->first))goto fail;p->returns[pc-p->first]=242;pc++;continue;
             }
-            if(!typedclientcontext(in,p,p->code+pc-p->first))goto fail;
+            if(!typedclientcontext(in,p,p->code+pc-p->first)){
+                if(!c->loads||!typedrecordnew(in,p,pc-p->first)){
+                    typedfail(p,"client-context-geometry");goto fail;
+                }
+                pc++;continue;
+            }
             if(c->loads){p->code[pc-p->first].source=0;p->returns[pc-p->first]=UDST(p->code[pc-p->first].mode)==(AFP|AIND)?174:172;}pc++;
         }else if(c->loads && ((in->op==ICONSMP&&typedshellmappedpairlist(&in->d))||
                   ((in->op==IHEADMP||in->op==ITAIL)&&typedshellmappedpairlist(&in->s)))){

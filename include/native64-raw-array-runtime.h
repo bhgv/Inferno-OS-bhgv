@@ -7,7 +7,7 @@ typedef struct Native64RawIndex Native64RawIndex;
 typedef struct Native64RawArrays Native64RawArrays;
 enum { Native64ArrayStep, Native64RecordStep, Native64ArrayFieldIndex, Native64ArrayFieldUse,
        Native64RecordArgStep, Native64ArrayRecordStep, Native64ArrayRecordUse,
-       Native64ArrayNestedIndex };
+       Native64ArrayNestedIndex, Native64RecordObjectStep };
 struct Native64RawIndex {unsigned int pc,width,mapped,kind;Type *frame;Inst instruction;};
 struct Native64RawArrays {Native64RawArrays *self;Module *owner;unsigned int count;Native64RawIndex index[1];};
 static unsigned int native64rawarraywidth(unsigned int c){return native64arraywidth(c);}
@@ -128,6 +128,8 @@ native64rawarraystep(VmFetch *f)
   next=(VmFetch){f->module,f->pc+1,f->index+1,use->instruction.op,use->instruction.add};
  }
  if(proof->kind==Native64RecordStep)native64recordcheck(f,&proof->instruction);
+ else if(proof->kind==Native64RecordObjectStep)
+  native64recordobjectcheck(f,&proof->instruction,proof->width,proof->mapped);
  else if(proof->kind==Native64ArrayRecordStep)native64arrayrecordcheck(f,proof);
  else if(proof->kind==Native64RecordArgStep){
   Inst *in=&proof->instruction;

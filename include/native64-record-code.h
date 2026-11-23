@@ -74,4 +74,63 @@ native64recordargcode(Inst *out, const Native64TypedStep *s)
  out->d.i.f=40;
  out->d.i.s=s->d;
 }
+
+static int
+native64typedrecordnew(const Native64TypedStep *s, unsigned int fp, unsigned int mp)
+{
+ unsigned int dm=UDST(s->mode);
+ return s->returned==Native64TypedRecordNew&&s->op==INEWZ&&
+  s->mode==(SRC(AIMM)|DST(dm))&&!s->s&&native64recorddescriptor(s->m)&&
+  ((dm==(AFP|AIND)&&s->d==32)||native64typedrootoperand(dm,s->d,fp,mp));
+}
+
+static int
+native64recordcopyoperand(unsigned int mode, long value, unsigned int bytes,
+                         unsigned int fp, unsigned int mp)
+{
+ unsigned int limit=mode==AFP?fp:mp;
+ if(mode&AIND)return native64recordoperand(mode,value,8,1,fp,mp,0);
+ return native64typedrootoperand(mode,value,fp,mp)&&
+  (unsigned long)value<=limit&&bytes<=limit-value;
+}
+
+static int
+native64typedrecordcopy(const Native64TypedStep *s, unsigned int fp, unsigned int mp)
+{
+ unsigned int sm=USRC(s->mode),dm=UDST(s->mode),bytes;
+ if(s->returned!=Native64TypedRecordCopy||s->op!=IMOVMP||
+    s->mode!=(SRC(sm)|AXIMM|DST(dm))||
+    !native64recorddescriptor(s->m)||!native64recordmask(s->m))
+  return 0;
+ bytes=native64recordbytes(s->m);
+ return native64recordcopyoperand(sm,s->s,bytes,fp,mp)&&
+  native64recordcopyoperand(dm,s->d,bytes,fp,mp);
+}
+
+static int
+native64typedrecordresult(const Native64TypedStep *s, unsigned int fp)
+{
+ return s->returned==Native64TypedRecordResult&&s->op==ILEA&&
+  s->mode==(SRC(AFP|AIND)|DST(AFP|AIND))&&!s->m&&s->d==32&&
+  native64recordoperand(AFP|AIND,s->s,8,1,fp,0,0);
+}
+
+static int
+native64typedrecordpair(const Native64TypedStep *s, unsigned int fp, unsigned int mp)
+{
+ unsigned int sm=USRC(s->mode);
+ return s->returned==Native64TypedRecordPair&&s->op==IMOVP&&
+  s->mode==(SRC(sm)|DST(AFP|AIND))&&!s->m&&s->d==32&&(sm&AIND)&&
+  native64recordoperand(sm,s->s,8,1,fp,mp,0);
+}
+
+static void
+native64recordresultcode(Inst *out, const Native64TypedStep *s)
+{
+ out->reg=Native64RecordResultFlag|24;
+ out->s.i.f=s->s&65535;
+ out->s.i.s=(unsigned long)s->s>>16;
+ out->d.i.f=40;
+ out->d.i.s=32;
+}
 #endif

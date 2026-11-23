@@ -15,15 +15,28 @@ G, CMD, E = BASE['G'], BASE['CMD'], BASE['E']
 EXTRACT = CMD['NS']['S']['FILES']['FILES']['function']
 INTERFACES = 'include "sys.m";include "draw.m";include "bufio.m";include "string.m";include "sh.m";'
 LEXER_EXPORTS = ('read', 'scan', 'token', 'parse')
-ARRAY_EXPORTS = ('arrays', 'report')
+ARRAY_EXPORTS = ('arrays', 'report', 'buildstring', 'buildfile', 'parse_result')
 
 
 def source():
     sh = (ROOT / 'appl/cmd/sh/sh.b').read_text()
     records = ''.join(re.search(r'(?m)^' + n + r':\s*adt\s*\{.*?^\};', sh, re.S)[0]
                       for n in ('YYSTYPE', 'YYLEX'))
-    records = re.sub(r'(?m)^\s*init(?:string|file):\s*fn\([^;]+;', '', records)
-    records += 'Item:adt{text:string;value:int;};Store:adt{words:array of int;texts:array of string;items:array of Item;i,n:int;text:string;payload:Item;};'
+    records += '''
+Item:adt{text:string;value:int;};
+Store:adt{
+    words:array of int;
+    texts:array of string;
+    items:array of Item;
+    i,n:int;
+    text:string;
+    payload:Item;
+    lex:ref YYLEX;
+    fd:ref Sys->FD;
+    node:ref Node;
+    problem:string;
+};
+'''
     interface = INTERFACES + 'Node:type Sh->Node;Redir:type Sh->Redir;' + records + 'Lexer:module{'
     interface += ''.join(n + ':fn(l:ref YYLEX):int;' for n in LEXER_EXPORTS)
     interface += ''.join(n + ':fn(r:ref Store):int;' for n in ARRAY_EXPORTS) + 'setup:fn();};'
@@ -40,9 +53,11 @@ def source():
                                     'yypgo', 'yyr1', 'yyr2', 'yychk', 'yydef'))
     debug = re.search(r'(?m)^YYSys: module.*?^yystderr: ref YYSys->FD;', sh, re.S)[0]
     stack = re.search(r'(?m)^YYS:\s*adt\s*\{.*?^\};', sh, re.S)[0]
+    blank = re.search(r'(?m)^blanklex:.*$', sh)[0]
     methods = '\n'.join(re.search(r'(?m)^' + re.escape(n) + r'\([^\n]+\n\{.*?^\}', sh, re.S)[0] for n in (
         'YYLEX.getc', 'YYLEX.ungetc', 'YYLEX.error', 'YYLEX.lex', 'readnum',
-        'readfdassign', 'stderr', 'yytokname', 'yystatname', 'yylex1', 'mk', 'mkseq', 'yyparse'))
+        'readfdassign', 'stderr', 'yytokname', 'yystatname', 'yylex1', 'mk', 'mkseq', 'yyparse',
+        'YYLEX.initstring', 'YYLEX.initfile', 'doparse'))
     wrappers = '''
 sys:Sys;
 bufio:Bufio;
@@ -59,6 +74,16 @@ read(l:ref YYLEX):int { return l.getc(); }
 scan(l:ref YYLEX):int { return l.lex(); }
 token(l:ref YYLEX):int { return yylex1(l); }
 parse(l:ref YYLEX):int { return yyparse(l); }
+buildstring(r:ref Store):int { r.lex = YYLEX.initstring(r.text); return 0; }
+buildfile(r:ref Store):int { r.lex = YYLEX.initfile(r.fd, r.text); return 0; }
+parse_result(r:ref Store):int {
+    (node, problem) := doparse(r.lex, "", r.n);
+    r.node = node;
+    r.problem = problem;
+    if (problem != nil)
+        return 1;
+    return 0;
+}
 total(n:int, s:string):int {
     while (n < 0)
         n++;
@@ -87,7 +112,7 @@ arrays(r:ref Store):int {
 }
 report(r:ref Store):int { return sys->fprint(stderr(), "%s %d", r.text, r.n); }
 '''
-    return interface, 'implement Lexer;' + '\n'.join((interface, constants, tables, debug, stack, wrappers, methods))
+    return interface, 'implement Lexer;' + '\n'.join((interface, constants, tables, debug, stack, blank, wrappers, methods))
 
 
 def generate(limbo, work):
@@ -113,17 +138,20 @@ def generate(limbo, work):
                 frames[(name.replace('Iobuf_', 'Iobuf.'), int(sig[1], 16))] = (
                     int(size), [int(v, 0) for v in mapping[1].split(',') if v])
 
-    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (21, 4, 2, '~0U'),
+    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (27, 4, 3, '~0U'),
                          import_frames=frames, export_signatures=signatures,
-                         source_label='unchanged Sh lexer and yyparse with generic array field probes')
+                         source_label='unchanged Sh constructors, lexer and parser with generic ADT probes')
     code = {r['name']: r['code'] for r in rows}
     assert any(c[5] == 80 and (c[1] >> 3 & 7) in (4, 5) for c in code['getc'])
     assert {c[5] for c in code['arrays']} >= {33, 35, 65, 79, 80}
     assert sum(c[5] == 34 for c in code['report']) == 2
     assert {c[5] for c in code['yyparse']} >= {35, 36, 37, 65, 79, 80, 154}
+    assert {c[5] for c in code['initstring']} >= {38, 39}
+    assert {c[5] for c in code['initfile']} >= {38, 39, 41}
+    assert any(c[5] == 42 for c in code['doparse'])
     globals_ = dict((g[0], g[1]) for g in rows[0]['globals'])
     with (work / 'full.h').open('a') as stream:
-        for name in ('nil', 'sys', 'bufio', 'str', 'saved'):
+        for name in ('nil', 'sys', 'bufio', 'str', 'saved', 'blanklex'):
             stream.write(f'static const uint lexer_mp_{name} = {globals_[name]};\n')
     return rows
 
