@@ -1207,3 +1207,21 @@ identity and receiving into a discarded temporary.
 The unchanged `pipecmd`, `runsync` and `builtin_subsh` now pass the channel
 allocation and reach the `runasync` spawn setup. Inside `runasync`, the
 checked compiler still stops while resolving `Context.copy`.
+
+## Shell environment copying and spawn arguments
+
+The checked compiler reads a single-root array element through a declared
+record field, including the variable buckets in `Localenv`. It keeps the
+index and its consumer in the same scheduling quantum. A local call can
+receive a direct array length, and a spawn can receive a list tail in its
+mapped argument slot.
+
+A local call can also allocate a fresh record from a list head. The
+compiler checks the record layout and the call frame. The list head stays
+rooted until the mapped copy completes. The copy retains managed fields
+and gives the callee independent Word fields.
+
+The original `copylocalenv` and `Context.copy` now pass checked compilation.
+`runasync` reaches `doredirs`, which passes the redirection list nil check
+and stops at the first `Redirword` list-head copy. Classic Dis remains
+byte-identical for all 16 startup modules.

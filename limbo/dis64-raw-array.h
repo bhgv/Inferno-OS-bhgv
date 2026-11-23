@@ -44,7 +44,9 @@ typedfieldarray(Addr *addr, int mode)
  type=typedrecordvalue(addr,mode);
  if(!type||type->kind!=Tarray||!type->tof)return nil;
  if(typedrecordowner(addr,mode))return type;
- /* Closed record protocols keep their existing array encodings. */
+ /* Single-root elements share the checked field borrow even in library records. */
+ if(typedmanagedkind(type->tof->kind)&&typedlibraryrecord(typedfieldowner(addr)))return type;
+ /* Closed record protocols keep their existing aggregate array encodings. */
  cl=typedrawarray(type);
  return native64arrayroots(cl)>=2&&!native64arraywords(cl)?type:nil;
 }

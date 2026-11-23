@@ -505,6 +505,25 @@ def verify(data,r,imports,loads=False,rows=None):
                 if generic:record_storage(o,r['code'][at],at,maps,r,types)
                 else:library_step(o,r['code'][at],maps,r['first'],types)
                 temp=o['d'];check=r['code'][at][2];at+=1
+                if generic and r['code'][at][5]==175:
+                    assert arg[1]==12 and at+3<end
+                    head,copy,clear=original[at:at+3]
+                    sm=head['mode']>>3&7
+                    assert sm in (0,1) and head['op']==OPCODES['IHEADP'] and head['mode']&7==1
+                    assert head['m'] is None and head['d']!=temp
+                    space='frame' if sm else 'data'
+                    head_leaf=next(l for l in r[space]['leaves'] if l[0]==head['s'][0])
+                    assert head_leaf[2:]==[4,8,10]
+                    scratch=maps['frame'][head['d'][0]]
+                    assert r['code'][at]==[head['op'],head['mode'],head_leaf[1],0,scratch,175]
+                    assert copy['s']==head['d']+[0] and copy['d']==temp+[0]
+                    assert r['code'][at+1][3]==r['code'][at-1][3]
+                    record_storage(copy,r['code'][at+1],at+1,maps,r,types)
+                    assert clear==dict(op=41,mode=1,m=None,s=clear['s'],d=head['d'])
+                    nil_leaf=next(l for l in r['data']['leaves'] if l[0]==clear['s'][0])
+                    assert nil_leaf[2:]==[4,8,20]
+                    assert r['code'][at+2]==[41,1,nil_leaf[1],0,scratch,175]
+                    at+=3
                 while at<end and r['code'][at][5]==(51 if generic else 153):
                     o=original[at];c=r['code'][at]
                     assert o['op']in(OPCODES['IMOVW'],OPCODES['IMOVP']) and o['mode']>>3&7 in(0,1,2)

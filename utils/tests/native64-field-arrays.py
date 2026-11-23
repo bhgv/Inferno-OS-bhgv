@@ -18,7 +18,7 @@ LEXER_EXPORTS = ('read', 'scan', 'token', 'parse')
 ARRAY_EXPORTS = ('arrays', 'report', 'buildstring', 'buildfile', 'parse_result',
                  'fieldpath', 'rootarrays', 'listarg', 'lenarg', 'setlocal_probe', 'status_probe',
                  'comparisons', 'fopen_choice', 'envhead', 'redir_probe', 'record_probe', 'record_list_probe',
-                 'tail_pair', 'mask_copy')
+                 'tail_pair', 'mask_copy', 'direct_lenarg', 'envbucket', 'clone_probe')
 
 
 def source():
@@ -147,6 +147,7 @@ rootarrays(r:ref Store):int {
     return len value.text;
 }
 lenarg(r:ref Store):int { return total(len r.pairs, r.text); }
+direct_lenarg(r:ref Store):int { items := r.pairs; return total(len items, r.text); }
 listlen(items:list of string):int { return len items; }
 listarg(r:ref Store):int { text := r.text; return listlen(text :: nil); }
 setlocal_probe(r:ref Store):int { setlocal(r.context, r.text, nil); return 0; }
@@ -163,6 +164,17 @@ fopen_choice(r:ref Store):int {
     return 0;
 }
 envhead(r:ref Store):int { entries := r.variables; return total(2, (hd entries).name); }
+envbucket(r:ref Store):int {
+    localenv := r.context.env.localenv;
+    bucket := localenv.vars[r.i];
+    if (bucket == nil) return -1;
+    return len bucket;
+}
+clone_probe(r:ref Store):int { items := r.variables; return clone_entry(8, ref *(hd items)); }
+clone_entry(flags: int, v: ref Sh->Var):int {
+    v.flags |= flags;
+    return v.flags + len v.name;
+}
 redir_probe(r:ref Store):int { return no_redirections(r.text, ref Redirlist(nil), r.n); }
 no_redirections(label:string, redirs:ref Redirlist, n:int):int {
     if (redirs.r != nil) return -1;
@@ -225,7 +237,7 @@ def generate(limbo, work):
                 frames[(name.replace('Iobuf_', 'Iobuf.'), int(sig[1], 16))] = (
                     int(size), [int(v, 0) for v in mapping[1].split(',') if v])
 
-    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (53, 4, 3, '~0U'),
+    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (57, 4, 3, '~0U'),
                          import_frames=frames, export_signatures=signatures,
                          source_label='unchanged Sh constructors, lexer and parser with generic ADT probes')
     code = {r['name']: r['code'] for r in rows}
@@ -239,6 +251,7 @@ def generate(limbo, work):
     assert {c[5] for c in code['fieldpath']} >= {33, 41, 61, 66}
     assert any(c[5] == 79 and c[3] == 8 for c in code['rootarrays'])
     assert any(c[5] == 33 and c[0] == E['OPCODES']['ILENA'] for c in code['lenarg'])
+    assert any(c[5] == 64 and c[0] == E['OPCODES']['ILENA'] for c in code['direct_lenarg'])
     assert {c[5] for c in code['listarg']} >= {112, 182}
     assert {c[5] for c in code['setlocal']} >= {154, 155}
     assert sum(c[5] == 43 for c in code['setstatus']) == 4
@@ -246,6 +259,8 @@ def generate(limbo, work):
     assert {c[5] for c in code['parse_result']} >= {49, 252}
     assert any(c[5] == 49 for c in code['fopen_choice'])
     assert any(c[5] == 61 and c[0] == E['OPCODES']['IHEADP'] for c in code['envhead'])
+    assert any(c[5] == 80 and (c[1] >> 3 & 7) in (4, 5) for c in code['envbucket'])
+    assert {c[5] for c in code['clone_probe']} >= {38, 39, 175}
     assert {c[5] for c in code['redir_probe']} >= {38, 51, 64, 182}
     assert sum(c[5] == 51 for c in code['record_probe']) == 2
     assert {c[5] for c in code['record_list_probe']} >= {38, 43, 51, 64}

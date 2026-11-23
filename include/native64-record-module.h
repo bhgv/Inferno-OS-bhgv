@@ -31,7 +31,10 @@ native64modulerecordstorage(const Native64ModuleSpec *s, const Native64ModuleFun
   }
  }
  for(i=0;i<f->nsites;i++)if(f->sites[i].first<=pc&&pc<=f->sites[i].end){
-  if(v->returned!=Native64TypedRecordNew||pc==f->sites[i].first||pc==f->sites[i].end||mode!=AFP)return 0;
+  if(pc==f->sites[i].first||pc==f->sites[i].end)return 0;
+  if(v->returned==Native64TypedRecordCopy){
+   if(!pc||f->code[pc-1].returned!=Native64TypedRecordClone||f->code[pc-1].op!=IHEADP)return 0;
+  }else if(mode!=AFP)return 0;
  }
  return 1;
 }

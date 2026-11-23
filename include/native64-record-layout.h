@@ -5,7 +5,7 @@ enum { Native64TypedRecordArg=33, Native64TypedRecordVararg=34, Native64TypedRec
        Native64TypedRecordNew=38, Native64TypedRecordCopy=39, Native64TypedRecordResult=41,
        Native64TypedRecordPair=42, Native64TypedRecordList=43, Native64TypedWordChoice=49,
        Native64TypedRecordInit=51,
-       Native64TypedRecord=72, Native64TypedRecordMask=148 };
+       Native64TypedRecord=72, Native64TypedRecordClone=175, Native64TypedRecordMask=148 };
 /* Private descriptor: 24 native GC slots and a size in four-byte units. */
 enum { Native64RecordBytes=192, Native64RecordMapBits=24, Native64RecordResultFlag=16384,
        Native64RecordPath=6 };

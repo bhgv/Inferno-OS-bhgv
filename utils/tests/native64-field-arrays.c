@@ -717,6 +717,7 @@ record_calls(int jit, int quantum)
  run_case(full_fn_fieldpath,r,jit,quantum,3,"");
  check(r->fd==fd&&D2H(fd)->ref==2,"nested borrow and field result preserve their separate owners");
  run_case(full_fn_lenarg,r,jit,quantum,3,"");
+ run_case(full_fn_direct_lenarg,r,jit,quantum,3,"");
  run_case(full_fn_rootarrays,r,jit,quantum,3,"");
  check(r->pairs!=H&&r->pairs->len==3&&r->pairs->t->size==sizeof(pair)&&
        r->pairs->t->np==1&&r->pairs->t->map[0]==0xc0,"two-root element Type and extent");
@@ -724,6 +725,7 @@ record_calls(int jit, int quantum)
  check(pair.text==r->text&&pair.fd==fd&&D2H(fd)->ref==3&&D2H(r->text)->ref==2,
        "copied array owns both managed fields and retires the source");
  run_case(full_fn_lenarg,r,jit,quantum,6,"");
+ run_case(full_fn_direct_lenarg,r,jit,quantum,6,"");
  run_case(full_fn_listarg,r,jit,quantum,1,"");
  destroy(r->pairs);
  r->pairs=(Array*)c2string("wrong heap Type",15);
@@ -810,7 +812,7 @@ environment_calls(int jit, int quantum)
  VarFixture *entry,*original=nil;
  List *bucket,*localbucket=H;
  void **word;
- int i,n;
+ int i,n,bucketindex=-1;
 
  t=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));require(t!=nil);
  r=H2D(Store*,heapz(t));freetype(t);
@@ -838,9 +840,16 @@ environment_calls(int jit, int quantum)
   check(!original&&bucket->tail==H,"one new variable in the original hash table");
   memmove(&original,bucket->data,8);
   localbucket=bucket;
+  bucketindex=i;
  }
  check(original&&original!=H&&original->name==r->text&&original->value==H&&original->flags==1,
        "original setlocal installs the correct Var");
+ r->i=bucketindex;
+ run_case(full_fn_envbucket,r,jit,quantum,1,"");
+ r->i=(bucketindex+1)%envtable->len;
+ run_case(full_fn_envbucket,r,jit,quantum,-1,"");
+ r->i=envtable->len;
+ run_case(full_fn_envbucket,r,jit,quantum,marker,exBounds);
  run_case(full_fn_setlocal_probe,r,jit,quantum,0,"");
  check(varallocs==2&&D2H(r->text)->ref==2,"updating an existing Var preserves its ownership");
  run_case(full_fn_envhead,r,jit,quantum,marker,exNilref);
@@ -872,6 +881,12 @@ environment_calls(int jit, int quantum)
  }
  check(n==1&&statusconss==2&&varallocs==3&&D2H(r->text)->ref==3,"exact environment and list owners");
  envtable=nil;envcontext=nil;
+ run_case(full_fn_clone_probe,r,jit,quantum,14,"");
+ check(original->flags==1&&D2H(localbucket)->ref==2&&D2H(original)->ref==1&&D2H(r->text)->ref==3,
+       "editing the copied Var preserves the source record and retires pending owners");
+ destroy(r->variables);
+ r->variables=H;
+ run_case(full_fn_clone_probe,r,jit,quantum,marker,exNilref);
  destroy(r);
  check(!live&&!nlinkpins,"complete environment and pending frame retirement");
 }
@@ -1027,7 +1042,7 @@ metadata(void)
            !owner.module&&allocations==before,"malformed Boolean argument refused before allocation");
      total++;
     }
-   }else if(native64rootpathrecord(a)||(a->returned==61&&a->op==IHEADP)||a->returned==Native64TypedRecordList||
+   }else if(native64rootpathrecord(a)||(a->returned==61&&a->op==IHEADP)||a->returned==Native64TypedRecordList||a->returned==Native64TypedRecordClone||
             (a->returned==Native64TypedListPrep&&a->op==ICONSP)){
     memmove(code,base->code,base->count*sizeof(*code));
     if(a->returned==61)code[j].m|=1;
@@ -1099,6 +1114,8 @@ main(void)
  puts("PASS paired list tails: 12 interpreter/JIT cases with distinct tails and a nil fault");
  puts("PASS record mask and raw copy: 24 interpreter/JIT cases with nil and short owners");
  puts("PASS Sh environment setup: 42 interpreter/JIT cases including allocation faults and list head field arguments");
+ puts("PASS local array lengths and environment buckets: 30 interpreter/JIT cases with nil, populated and out-of-bounds inputs");
+ puts("PASS shallow Var copy during local calls: 12 interpreter/JIT cases with nil, independent Word fields and exact root ownership");
  puts("PASS Boolean call arguments: 30 interpreter/JIT cases with six comparisons and imported fopen mode");
  return 0;
 }

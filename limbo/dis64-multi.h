@@ -28,6 +28,7 @@ static int typedlibraryslicearg(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigne
 static int typedlibrarymodule(Inst*,Dis64TypedBody*,long*,unsigned int*,int*);
 static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int,int);
 static int typedrecordargument(Inst*,Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int,unsigned int,int);
+static int typedrecordcopy(Inst*,Dis64TypedBody*,unsigned int);
 static Type *typedloadvaluetype(Addr*);
 
 /* Canonical Dis spills large middle literals into RTemp. Read the record
@@ -1111,7 +1112,7 @@ typedloadrootcompare(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop,
  p->returns[pc]=231;return 1;
 }
 
-/* Checked native startup needs direct ref ADT, list-of-String and Module nil tests.
+/* A direct mapped list can be compared with nil regardless of its payload.
  * Nil is the compiler's readonly Tany MP root; no aggregate dereference or
  * comparison of unrelated reference classes is admitted by this route. */
 static int
@@ -1125,13 +1126,14 @@ typedloadcompare(Inst *in,Dis64TypedBody *p,unsigned int pc,unsigned int stop)
  if(typedloadvaluetype(value) && typedloadvaluetype(value)->kind==Tany){
   value=&in->m;empty=&in->s;vm=in->mm;nm=in->sm;
  }
- valuetype=value->decl?value->decl->ty:nil;
- if(value->native64type && value->decl && value->decl->store==Dlocal && value->decl->sym && value->decl->sym->name[0]=='.' && value->decl->sym->name[1]=='t' && value->reg==value->decl->offset && !value->offset)valuetype=value->native64type;
+ valuetype=typedloadvaluetype(value);
  if((in->op!=IBEQW && in->op!=IBNEW && in->op!=IBEQL && in->op!=IBNEL) ||
     !value->decl || !value->decl->ty ||
-    (!(value->decl->ty->kind==Tmodule && value->reg==value->decl->offset) && !typedloadlisttype(value) && !typedshellrootlist(value) && !typedintlisttype(value) && !typedpointerlisttype(value) && !typedwindowlisttype(value) && !typedrectlisttype(value) && !typedshellmappedpairlist(value) && !typedloadreftype(value) && !(value->decl->ty->kind==Tchan && value->reg==value->decl->offset && !value->offset)) ||
+    (!valuetype || (!typedloadreftype(value) &&
+     (value->reg!=value->decl->offset || value->offset ||
+      (valuetype->kind!=Tmodule && valuetype->kind!=Tchan && valuetype->kind!=Tlist)))) ||
     !empty->decl || !empty->decl->ty || empty->decl->ty->kind!=Tany || nm!=Amp ||
-    !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || (!valuetype || kind!=valuetype->kind) || (typedloadreftype(value) && sm!=AFP && !(sm==AMP && typedloadglobalclient(value,p))) ||
+    !typedoperand(vm,value,TypedRoot,0,0,p,&source,&sm,&kind) || kind!=valuetype->kind || (typedloadreftype(value) && sm!=AFP && !(sm==AMP && typedloadglobalclient(value,p))) ||
     !typedoperand(nm,empty,TypedRoot,0,1,p,&middle,&mm,&actual) || actual!=Tany || (kind==Tchan && middle>65535) ||
     in->dm!=Apc || !in->branch || in->branch->pc<(int)p->first || in->branch->pc>=(int)stop ||
     in->d.offset!=in->branch->pc)return typedfail(p,"load-nil-roles");
@@ -1268,6 +1270,40 @@ typedlocalrecordlist(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child,
  return 1;
 }
 
+/* Retain the list head in a mapped scratch cell until its shallow copy completes. */
+static int
+typedlocalrecordclone(TypedMulti *c, Dis64TypedBody *p, Inst *alloc, Type *reference,
+                      unsigned int end, unsigned int *at)
+{
+ Inst *head,*copy,clear;
+ Type *list,*owner;
+ long source,slot;
+ unsigned int sm,dm,start=*at,pc=start-p->first;
+ int actual;
+
+ if(end-start<4 || !(head=c->instructions[start]) || !(copy=c->instructions[start+1]))
+  return typedfail(p,"local-record-clone-length");
+ list=typedloadvaluetype(&head->s);
+ owner=typedfieldowner(&copy->s);
+ if(head->op!=IHEADP||head->mm!=Anone||head->dm!=Afp||head->branch||
+    head->d.offset||head->d.reg==alloc->d.reg||(head->sm==Afp&&head->s.reg==alloc->d.reg)||
+    !list||list->kind!=Tlist||!list->tof||
+    !tequal(list->tof,reference)||!owner||!tequal(owner,reference)||
+    copy->op!=IMOVMP||copy->sm!=Afpind||copy->s.reg!=head->d.reg||copy->s.decl!=head->d.decl||
+    copy->s.offset||copy->dm!=Afpind||copy->d.reg!=alloc->d.reg||copy->d.decl!=alloc->d.decl||copy->d.offset||
+    !typedoperand(head->sm,&head->s,Tlist,0,0,p,&source,&sm,&actual)||actual!=Tlist||
+    !typedoperand(Afp,&head->d,TypedRoot,0,0,p,&slot,&dm,&actual)||actual!=Tref||
+    !typedrecordcopy(copy,p,pc+1)||p->code[pc+1].middle!=p->code[pc-1].middle)
+  return typedfail(p,"local-record-clone-shape");
+ clear=*copy;clear.sm=Afp;clear.s=head->d;
+ *at=start+2;
+ if(!typedrootargclear(c,p,&clear,end,at)||*at!=start+3)
+  return typedfail(p,"local-record-clone-clear");
+ p->code[pc]=(Dis64Instruction){IHEADP,SRC(sm)|DST(dm),0,source,slot};
+ p->returns[pc]=p->returns[pc+2]=Native64TypedRecordClone;
+ return 1;
+}
+
 static int
 typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, Inst *frame, Decl *arg,
                      unsigned int first, unsigned int end, unsigned int *at)
@@ -1277,7 +1313,7 @@ typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, In
  Type *type=descriptor?descriptor->ty:nil;
  Type *reference=arg->ty->kind==Tlist?arg->ty->tof:arg->ty;
  unsigned int j,pc;
- int generic;
+ int generic,clone;
 
  if(!reference||reference->kind!=Tref||!type||!descriptor->desc||descriptor->desc->id!=alloc->s.offset||
     alloc->dm!=Afp||alloc->d.offset||!alloc->d.decl||
@@ -1290,10 +1326,13 @@ typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, In
    return typedfail(p,"local-record-after-argument");
  }
  pc=*at-p->first;
- generic=!typedlibraryrecord(type);
+ clone=arg->ty->kind==Tref&&*at+1<end&&c->instructions[*at+1]->op==IHEADP;
+ generic=clone||!typedlibraryrecord(type);
  if(generic?!typedrecordnew(alloc,p,pc):!typedlibraryinst(alloc,p,pc,end))
   return typedfail(p,"local-record-argument-allocation");
- for(++*at;*at<end;(*at)++){
+ ++*at;
+ if(clone&&!typedlocalrecordclone(c,p,alloc,reference,end,at))return 0;
+ for(;!clone&&*at<end;(*at)++){
   in=c->instructions[*at];
   if(in->dm!=Afpind||in->d.reg!=alloc->d.reg||in->d.decl!=alloc->d.decl)
    break;
@@ -1309,7 +1348,7 @@ typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, In
  }
  if(arg->ty->kind==Tlist)
   return typedlocalrecordlist(c,p,child,frame,alloc,arg,end,at);
- if(*at>=end||in->op!=IMOVP||in->sm!=Afp||in->s.reg!=alloc->d.reg||
+ if(*at>=end||!(in=c->instructions[*at])||in->op!=IMOVP||in->sm!=Afp||in->s.reg!=alloc->d.reg||
     in->s.decl!=alloc->d.decl||in->s.offset||in->dm!=Afpind||in->d.reg!=frame->d.reg||
     in->d.offset!=arg->offset)
   return typedfail(p,"local-record-argument-store");
@@ -1453,11 +1492,19 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         if(c->loads && !spawning && kind==Tint && typedwordargop(in->op)){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || !typedwordargument(in,frame,p,at-p->first,arg->offset,offset))return 0;at++;continue;
         }
+        if(c->loads && !spawning && kind==Tint && in->op==ILENA){
+            if(in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg ||
+               in->d.offset!=arg->offset || !dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) ||
+               offset>65535 || !typedoperand(in->sm,&in->s,Tarray,0,0,p,&source,&sm,&actual))
+                return typedfail(p,"local-array-length-argument");
+            p->code[at-p->first]=(Dis64Instruction){ILENA,SRC(sm)|DST(AFP|AIND),0,source,offset};
+            p->returns[at++-p->first]=64;continue;
+        }
         if(c->loads && !spawning && kind==Tint && (in->op==ITAIL || in->op==IHEADP)){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,0,&offset) || offset<64 || offset>65535 || !typedexternalinthead(c,p,frame,end,&at,arg->offset,offset))return typedfail(p,"local-int-head-argument");
             continue;
         }
-        if(c->loads&&!spawning&&in->dm==Afpind&&((root&&in->op==IHEADP)||(kind==Tlist&&in->op==ITAIL))){
+        if(c->loads&&in->dm==Afpind&&((!spawning&&root&&in->op==IHEADP)||(kind==Tlist&&in->op==ITAIL))){
             if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||
                !typedlistargument(in,frame,arg,p,at-p->first,offset))return 0;
             at++;continue;

@@ -181,7 +181,7 @@ static int
 native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *steps,unsigned int count,unsigned int fpbytes,unsigned int mpbytes,const Native64TypedCall *calls,unsigned int n)
 {
     const Native64TypedCall *c;const Native64TypedStep *s;Native64TypedStep checkstep;
-    Inst probe,*p;unsigned int i,j,k=0,stop,sm,width,list;
+    Inst probe,*p;unsigned int i,j,k=0,stop,sm,width,list,clone;
     if(!n)return native64typedcode(out,capacity,steps,count,fpbytes,mpbytes);
     if(!native64model() || out==nil || steps==nil || calls==nil || !count || count>65536 || capacity<count || n>count/2 ||
        fpbytes<64 || fpbytes>1024*1024 || fpbytes%8 || mpbytes>1024*1024 || mpbytes%8)return 0;
@@ -200,7 +200,7 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             if(s->op!=IMFRAME || s->mode!=(SRC(c->modulemode)|AXIMM|DST(AFP)) || s->s!=c->moduleoffset || s->m!=c->ordinal || s->d!=40 || s->returned)return 0;
         }else if(s->op!=IFRAME || s->mode!=(SRC(AIMM)|DST(AFP)) || s->m || s->d!=40 || s->returned)return 0;
         stop=c->end-(c->contract!=0);
-        list=0;
+        list=clone=0;
         for(j=c->first+1;j<stop;j++){
             s=steps+j;sm=USRC(s->mode);width=s->op==IMOVB?1:s->op==IMOVW?4:8;
             if(!s->returned){if(c->external || !native64typedargprep(s,fpbytes,mpbytes))return 0;continue;}
@@ -241,7 +241,11 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             if(s->returned==154||s->returned==Native64TypedRecordNew){
                 if(c->external||steps[c->end].op!=ICALL||
                    !native64recordprecall(steps,c->first,j,stop,fpbytes,mpbytes,
-                                          c->callee->size,c->callee->map,c->callee->np,&list))return 0;
+                                          c->callee->size,c->callee->map,c->callee->np,&list,&clone))return 0;
+                continue;
+            }
+            if(s->returned==Native64TypedRecordClone||s->returned==Native64TypedRecordCopy){
+                if(!clone||(s->returned==Native64TypedRecordCopy?j!=clone+1:(j!=clone&&j!=clone+2)))return 0;
                 continue;
             }
             if(s->returned==Native64TypedRecordList){
@@ -327,7 +331,8 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 continue;
             }
             if(s->op==ILENA || s->op==ICVTAC || s->op==ICVTCA || native64typedlistarg(s->op)){
-                if((native64typedlistarg(s->op)?(!c->external&&steps[c->end].op!=ICALL):(s->op==ILENA)!=c->external) ||
+                if((!c->external&&steps[c->end].op!=ICALL&&!(s->op==ITAIL&&steps[c->end].op==ISPAWN)) ||
+                   (c->external&&(s->op==ICVTAC||s->op==ICVTCA)) ||
                    c->callee->np<0 || !native64typedcomputedarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;
                 continue;
             }
@@ -411,9 +416,10 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 else if(s->returned==86){p->reg=s->m;p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==93){p->reg=512|24;p->s.i.f=s->s;p->s.i.s=88;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==153||s->returned==154){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
-                else if(s->returned==Native64TypedRecordNew||s->returned==Native64TypedRecordInit){
+                else if(s->returned==Native64TypedRecordNew||s->returned==Native64TypedRecordInit||s->returned==Native64TypedRecordCopy){
                     native64recordcode(p,s,nil);p->reg=0;
                 }
+                else if(s->returned==Native64TypedRecordClone){p->s.ind=s->s;p->d.ind=s->d;}
                 else if(s->returned==156){if(USRC(s->mode)&AIND){p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;}else p->s.imm=s->s;p->reg=native64librarymiddle(s);p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==Native64TypedRecordArg)native64recordargcode(p,s);
                 else if(s->returned==Native64TypedRecordResult)native64recordresultcode(p,s);

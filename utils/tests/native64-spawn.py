@@ -5,10 +5,13 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 TR=runpy.run_path(str(ROOT/'utils/tests/native64-channel-triples.py'));G=TR['G'];CMD=TR['CMD'];E=TR['E']
 ARGS='n:int,s:string,c:chan of string'
-SOURCE='implement Workers;Workers:module{launch:fn('+ARGS+');twice:fn('+ARGS+');chain:fn('+ARGS+');fresh:fn('+ARGS+');clear:fn();};count,total:int;saved:string;channel:chan of string;launch('+ARGS+'){spawn child(n,s,c);}twice('+ARGS+'){spawn child(n,s,c);spawn child(n,s,c);}chain('+ARGS+'){spawn relay(n,s,c);}fresh('+ARGS+'){t:=s+"!";spawn child(n,t,c);}child('+ARGS+'){count++;total+=n;saved=s;channel=c;if(n<0)raise "child fault";}relay('+ARGS+'){spawn child(n,s,c);}clear(){saved=nil;channel=nil;}'
+LIST_ARGS='n:int,items:list of string,c:chan of string'
+SOURCE='implement Workers;Workers:module{launch:fn('+ARGS+');twice:fn('+ARGS+');chain:fn('+ARGS+');fresh:fn('+ARGS+');tailspawn:fn('+LIST_ARGS+');clear:fn();};count,total:int;saved:string;channel:chan of string;launch('+ARGS+'){spawn child(n,s,c);}twice('+ARGS+'){spawn child(n,s,c);spawn child(n,s,c);}chain('+ARGS+'){spawn relay(n,s,c);}fresh('+ARGS+'){t:=s+"!";spawn child(n,t,c);}tailspawn('+LIST_ARGS+'){spawn listchild(n,tl items,c);}listchild('+LIST_ARGS+'){child(n,hd items,c);}child('+ARGS+'){count++;total+=n;saved=s;channel=c;if(n<0)raise "child fault";}relay('+ARGS+'){spawn child(n,s,c);}clear(){saved=nil;channel=nil;}'
 def generate(limbo,w):
- rows=G['generate'](limbo,w,SOURCE,'Workers',(7,0,0,'~0U'));p=w/'full.h';p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n',''));globals={g[0]:g[1]for g in rows[0]['globals']}
+ rows=G['generate'](limbo,w,SOURCE,'Workers',(9,0,0,'~0U'));p=w/'full.h';p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n',''));globals={g[0]:g[1]for g in rows[0]['globals']}
  with p.open('a')as out:out.write('static const uint spawn_globals[]={'+','.join(str(globals[n])for n in('count','total','saved','channel'))+'};\n')
+ tail=next(r for r in rows if r['name']=='tailspawn')
+ assert any(c[0]==E['OPCODES']['ITAIL'] and c[5]==64 for c in tail['code']),tail
  data,records=E['compile_source'](limbo,w,SOURCE,interface='',loads=True);imports=E['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];controls=0
  for r in records:
   for pc,c in enumerate(r['code']):
@@ -20,12 +23,14 @@ def generate(limbo,w):
     else:raise AssertionError(('spawn oracle missed',r['name'],pc,k))
  print('PASS spawn source:',controls,'corruptions detected; independent classic FRAME/arguments/SPAWN and unchanged bytes',flush=True)
 def boundaries(limbo,w):
+ recursive='implement Closed;Closed:module{run:fn(n:int);};run(n:int){if(n>0){next:=n-1;spawn run(next);}}'
+ _,rows=E['compile_source'](limbo,w,recursive,interface='',loads=True)
+ assert rows[0]['accepted'] and any(step[5]==186 for step in rows[0]['code']),rows
  for source in(
-  'implement Closed;Closed:module{run:fn();};run(){spawn run();}',
   'implement Closed;Closed:module{run:fn(c:chan of (int,int));};run(c:chan of (int,int)){spawn child(c);}child(c:chan of (int,int)){n:= <-c;}',
   'implement Closed;Service:module{child:fn();};Closed:module{run:fn(s:Service);};run(s:Service){spawn s->child();}'):
   _,rows=E['compile_source'](limbo,w,source,interface='',loads=True);assert not next(r for r in rows if r['name']=='run')['accepted'],rows
- print('PASS spawn boundary: recursive spawn, unsupported child and imported mspawn remain closed',flush=True)
+ print('PASS spawn boundary: checked recursion, unsupported child and imported mspawn',flush=True)
 def unit():
  src=TR['unit']().split('\n#line 1 "native64-channel-triples.c"')[0];extract=CMD['NS']['S']['FILES']['FILES']['function'];vm=(ROOT/'libinterp/xec.c').read_text();stack=(ROOT/'libinterp/stack.c').read_text();strings=(ROOT/'libinterp/string.c').read_text()
  src+='\nchar exSpawn[]="spawn a builtin module";\n'+extract(stack,'void\nunframe(')+'\n';start=vm.index('typedef struct SpawnProg');end=vm.index('/* Validate module ownership',start);src+='\n'+vm[start:end]+'\n'

@@ -62,13 +62,14 @@ native64librarylistclear(const Native64TypedStep *s, long nilslot, long target)
 static int
 native64recordprecall(const Native64TypedStep *steps, unsigned int first, unsigned int pc,
                       unsigned int end, unsigned int fp, unsigned int mp,
-                      unsigned int bytes, const uchar *map, unsigned int np, unsigned int *list)
+                      unsigned int bytes, const uchar *map, unsigned int np,
+                      unsigned int *list, unsigned int *clone)
 {
  const Native64TypedStep *alloc=steps+pc,*s;
  unsigned int j,bit,next=64,mode,field,role;
  long value=alloc->d;
  int root,generic=alloc->returned==Native64TypedRecordNew;
- *list=0;
+ *list=*clone=0;
  if(first>=pc||pc>=end||UDST(alloc->mode)!=AFP||
     !(generic?native64typedrecordnew(alloc,fp,mp):alloc->returned==154&&native64typedlibrary(alloc,fp,mp))||
     !map||map==H||np!=(bytes+63)/64)
@@ -110,7 +111,20 @@ native64recordprecall(const Native64TypedStep *steps, unsigned int first, unsign
   }else if(((s->m>>16)&255)!=alloc->s||!native64typedlibrary(s,fp,mp))return 0;
  }
  if(j==end)return 0;
- if(steps[j].returned==Native64TypedRecordList){
+ if(generic&&steps[j].returned==Native64TypedRecordClone){
+  const Native64TypedStep *head=steps+j,*copy=head+1,*clear=head+2;
+  mode=USRC(head->mode);
+  if(j!=pc+1||end-j<4||head->op!=IHEADP||head->mode!=(SRC(mode)|DST(AFP))||head->m||
+     !native64typedrootoperand(mode,head->s,fp,mp)||!native64typedrootoperand(AFP,head->d,fp,mp)||
+     head->d==value||(mode==AFP&&head->s==value)||
+     copy->op!=IMOVMP||copy->mode!=(SRC(AFP|AIND)|AXIMM|DST(AFP|AIND))||
+     !native64typedrecordcopy(copy,fp,mp)||copy->m!=alloc->m||copy->s!=head->d||copy->d!=value||
+     clear->returned!=Native64TypedRecordClone||clear->op!=IMOVP||clear->mode!=(SRC(AMP)|DST(AFP))||
+     clear->m||clear->d!=head->d||!native64typedrootoperand(AMP,clear->s,fp,mp))return 0;
+  *clone=j;
+  j+=3;
+ }
+ if(!*clone&&steps[j].returned==Native64TypedRecordList){
   const Native64TypedStep *init=steps+j,*cons=steps+j+1;
   long slot=init->d,nilslot=init->s;
   if(end-j<5||slot==value||!native64typedrootoperand(AFP,slot,fp,mp)||

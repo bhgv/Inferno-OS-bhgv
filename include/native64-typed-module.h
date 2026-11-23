@@ -152,7 +152,7 @@ native64modulelists(const Native64ModuleSpec *spec,const Native64ModuleFunction 
      (native64typedlistarg(step->op)&&step->returned==64))continue;
   if(step->returned==213 && !native64typedwindowlist(step,fn->bytes,spec->databytes))return 0;
   if(step->op!=ICONSP && step->op!=IHEADP && step->op!=ITAIL && step->op!=ICONSW && step->op!=IHEADW)continue;
-  copy=*step;if(copy.returned==44 || (copy.returned==61&&copy.op==IHEADP) || copy.returned==Native64TypedListPrep || copy.returned==Native64TypedRecordList || copy.returned==187 || copy.returned==213)copy.returned=0;
+  copy=*step;if(copy.returned==44 || (copy.returned==61&&copy.op==IHEADP) || copy.returned==Native64TypedListPrep || copy.returned==Native64TypedRecordList || copy.returned==Native64TypedRecordClone || copy.returned==187 || copy.returned==213)copy.returned=0;
   if(!native64typedcode(&probe,1,&copy,1,fn->bytes,spec->databytes))return 0;
   for(k=0;k<2;k++){
    if(k && step->returned && step->returned!=213)continue;
@@ -537,7 +537,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
         }
     }
     for(i=0;i<s->nfunctions;i++){
-        unsigned int recordlist=0;
+        unsigned int recordlist=0,recordclone=0;
         f=s->functions+i;
         if(!native64modulename(f->name) || f->exported>1 || !f->count || f->count>65536-code || f->code==nil || f->code==H ||
            !native64modulemap(f->bytes,f->map,f->mapbytes,1) || f->bytes>32*1024*1024-total ||
@@ -565,6 +565,10 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 if(!recordlist||j<recordlist||j-recordlist>=5)return 0;
                 continue;
             }
+            if(step->returned==Native64TypedRecordClone){
+                if(!recordclone||(j!=recordclone&&j!=recordclone+2))return 0;
+                continue;
+            }
             if(step->returned!=153&&step->returned!=154&&step->returned!=Native64TypedRecordNew)continue;
             if(step->returned!=Native64TypedRecordNew &&
                (!native64typedlibrary(step,f->bytes,s->databytes) || (native64typedbranch(step->op) && (unsigned long)step->d>=f->count)))return 0;
@@ -588,7 +592,7 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                     child=s->functions+site->target;
                     if(!native64modulemap(child->bytes,child->map,child->mapbytes,1)||
                        !native64recordprecall(f->code,site->first,j,site->end-(site->contract!=0),
-                                             f->bytes,s->databytes,child->bytes,child->map,child->mapbytes,&recordlist))return 0;
+                                             f->bytes,s->databytes,child->bytes,child->map,child->mapbytes,&recordlist,&recordclone))return 0;
                     if(step->returned==Native64TypedRecordNew)for(prep=0;prep<f->count;prep++){
                         const Native64TypedStep *branch=f->code+prep;
                         if(native64typedbranch(branch->op)&&branch->d>site->first&&branch->d<=site->end&&
@@ -602,6 +606,13 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                         const Native64TypedStep *init=f->code+recordlist;
                         if(!native64rawarraymap(s,f,AFP,init->d,1)||!native64rawarraymap(s,f,AMP,init->s,1)||
                            !native64modulereadonlynil(s,init->s))return 0;
+                    }
+                    if(recordclone){
+                        const Native64TypedStep *head=f->code+recordclone,*clear=head+2;
+                        if(!native64rawarraymap(s,f,USRC(head->mode),head->s,1)||
+                           !native64rawarraymap(s,f,AFP,head->d,1)||
+                           !native64rawarraymap(s,f,AMP,clear->s,1)||
+                           !native64modulereadonlynil(s,clear->s))return 0;
                     }
                 }else if(native64typedbranch(step->op)||((UDST(step->mode)&AIND)&&!(step->m&0xff0000)))return 0;
             }
@@ -628,8 +639,9 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
             for(k=0;k<f->nsites;k++){
                 site=f->sites+k;
                 if(site->first<j && j<site->end && (!site->contract || j<site->end-1)){
-                    if(found++ || (native64typedlistarg(step->op)?(!site->external&&(site->end>=f->count||f->code[site->end].op!=ICALL)):
-                                  (step->op==ILENA)!=site->external))return 0;
+                    if(found++ || (!site->external&&(site->end>=f->count||
+                       (f->code[site->end].op!=ICALL&&!(step->op==ITAIL&&f->code[site->end].op==ISPAWN)))) ||
+                       (site->external&&(step->op==ICVTAC||step->op==ICVTCA)))return 0;
                     if(site->external){
                         if(site->table>=s->ntables || site->target>=s->tables[site->table].count)return 0;
                         request=s->tables[site->table].imports+site->target;
@@ -1159,6 +1171,10 @@ native64modulecheck(const Native64ModuleSpec *s,unsigned int *instructions,unsig
                 unsigned int stringarg=0;
                 for(a=site->first+1;a<j;a++){
                     unsigned int width,root,mode,extent;body=f->code+a;if(body->returned==182)continue;
+                    if(body->returned==64&&body->op==ITAIL){
+                        if(!native64typedcomputedarg(body,f->bytes,s->databytes,child->bytes,child->map,child->mapbytes))return 0;
+                        continue;
+                    }
                     if(body->returned==155){if(body->op!=IMOVP||!native64typedlibraryarg(body,f->bytes,s->databytes,child->bytes,child->map,child->mapbytes))return 0;continue;}
                     if(body->returned==153){if(stringarg||body->op!=IMOVP||body->m!=(12L<<24)||((unsigned long)body->s>>16)!=24||UDST(body->mode)!=AFP||!native64typedlibrary(body,f->bytes,s->databytes))return 0;continue;}
                     if(body->returned==64&&body->op==IADDC){if(stringarg++||!native64typedconcatarg(body,f->bytes,s->databytes,child->bytes,child->map,child->mapbytes))return 0;continue;}
