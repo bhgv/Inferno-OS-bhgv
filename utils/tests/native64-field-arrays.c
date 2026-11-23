@@ -275,9 +275,36 @@ static void field_word(void){ field_use();actual_movw(); }
 static void field_root(void){ field_use();actual_movp(); }
 static void field_mapped(void){ field_use();actual_movmp(); }
 
+static String *tickettext;
+static unsigned int ticketbytes,ticketfault,ticketallocs,ticketcons,ticketlistslot;
+
+static uchar*
+ticketframe(uchar *fp)
+{
+ uchar *frame;
+ String *argument;
+ memmove(&frame,fp+40,8);
+ memmove(&argument,frame+64,8);
+ check(argument==tickettext&&D2H(argument)->ref>=2,"earlier String argument stays rooted");
+ return frame;
+}
+
 static void
 field_newrecord(void)
 {
+ if(tickettext!=nil&&R.M->m==lexer_module){
+  WORD id;
+  void *unwritten;
+  Type *type;
+  uchar *frame=ticketframe(R.FP);
+  memmove(&id,R.s,4);
+  type=R.M->m->type[id];
+  memmove(&unwritten,frame+72,8);
+  check(type->size==ticketbytes&&type->np==1&&type->map[0]==0x80&&unwritten==H,
+        "fresh record descriptor and unfilled pending root");
+  ticketallocs++;
+  if(ticketfault==1)failat=allocations+1;
+ }
  if(envtable!=nil&&R.M->m==lexer_module){
   WORD type;
   memmove(&type,R.s,sizeof(type));
@@ -299,6 +326,11 @@ check_status_cons(void *slot)
 {
  uchar *frame;
  void *context;
+ if(tickettext!=nil){
+  ticketframe((uchar*)slot-ticketlistslot);
+  ticketcons++;
+  if(ticketfault==2)failat=allocations+1;
+ }
  if(!statusprobe)return;
  statusprobe=0;
  memmove(&frame,(uchar*)slot-statuslistslot+40,8);
@@ -701,6 +733,46 @@ record_calls(int jit, int quantum)
 }
 
 static void
+fresh_arguments(int jit, int quantum)
+{
+ const uint functions[]={full_fn_redir_probe,full_fn_record_probe,full_fn_record_list_probe};
+ const WORD expected[]={13,14,14};
+ uchar fields[]={0xc0};
+ Type *type=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));
+ Store *r;
+ void *entry;
+ List *original;
+ unsigned int i;
+ require(type!=nil);
+ r=H2D(Store*,heapz(type));freetype(type);
+ r->n=7;r->text=c2string("packet",6);
+ tickettext=r->text;
+ for(i=0;i<nelem(functions);i++){
+  ticketbytes=i==0?8:16;
+  for(ticketfault=0;ticketfault<2+(i==2);ticketfault++){
+   ticketallocs=ticketcons=0;
+   run_case(functions[i],r,jit,quantum,ticketfault?marker:expected[i],ticketfault?exHeap:"");
+   check(ticketallocs==1&&ticketcons==(i==2&&ticketfault!=1)&&D2H(r->text)->ref==1,
+         "allocation and list faults retire every pending and temporary root");
+  }
+ }
+ tickettext=nil;
+ run_case(full_fn_tail_pair,r,jit,quantum,marker,exNilref);
+ type=dtype(freeheap,24,fields,1);require(type!=nil);
+ entry=H2D(void*,heapz(type));freetype(type);
+ for(i=0;i<3;i++){
+  R.s=&entry;R.d=&r->variables;actual_consp();
+ }
+ original=r->variables;
+ run_case(full_fn_tail_pair,r,jit,quantum,12,"");
+ check(r->variables==original&&original->tail->tail->tail==H&&
+       D2H(original)->ref==1&&D2H(entry)->ref==4,"two tail results leave the source list unchanged");
+ destroy(entry);
+ destroy(r);
+ check(!live&&!nlinkpins,"fresh argument preparation retires all owners");
+}
+
+static void
 environment_calls(int jit, int quantum)
 {
  typedef struct VarFixture VarFixture;
@@ -884,6 +956,17 @@ metadata(void)
     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
           !owner.module&&allocations==before,"malformed parser stack operation refused before allocation");
     total++;
+   }else if(a->returned==Native64TypedRecordInit){
+    for(k=0;k<4;k++){
+     memmove(code,base->code,base->count*sizeof(*code));
+     if(k==0)code[j].d|=32L<<16;
+     if(k==1)code[j].d^=8;
+     if(k==2)code[j].returned=Native64TypedRecord;
+     if(k==3)code[0]=(Native64TypedStep){IJMP,SRC(AXXX)|DST(AIMM),0,0,j,0};
+     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
+           !owner.module&&allocations==before,"misplaced record initializer refused before allocation");
+     total++;
+    }
    }else if(a->returned==Native64TypedRecordNew||a->returned==Native64TypedRecordCopy||
             a->returned==Native64TypedRecordResult||a->returned==Native64TypedRecordPair){
     memmove(code,base->code,base->count*sizeof(*code));
@@ -952,7 +1035,10 @@ main(void)
  optab[INEWZ]=field_newrecord;
  for(i=0;i<nelem(full_code_setstatus);i++)
   if(full_code_setstatus[i].op==ICONSP)statuslistslot=full_code_setstatus[i].d;
+ for(i=0;i<nelem(full_code_record_list_probe);i++)
+  if(full_code_record_list_probe[i].op==ICONSP)ticketlistslot=full_code_record_list_probe[i].d;
  check(statuslistslot>=64,"setstatus has a mapped list scratch slot");
+ check(ticketlistslot>=64,"record list argument has a mapped scratch slot");
  check(limbo_native64_Lexer_layout(),"generated natural C geometry");
  metadata();
  for(j=0;j<2;j++)for(q=0;q<nelem(quanta);q++){
@@ -961,6 +1047,7 @@ main(void)
   lexer_parse(j,quanta[q]);
   lexer_construction(j,quanta[q]);
   record_calls(j,quanta[q]);
+  fresh_arguments(j,quanta[q]);
   environment_calls(j,quanta[q]);
   word_choices(j,quanta[q]);
   array_fields(j,quanta[q]);
@@ -969,6 +1056,8 @@ main(void)
  puts("PASS unchanged Sh yyparse: 54 interpreter/JIT cases with ASTs, recovery, stack growth and actual aggregate GC roles");
  puts("PASS unchanged Sh YYLEX constructors and doparse: 30 interpreter/JIT cases with file and string inputs, exact shapes and diagnostics");
  puts("PASS record call setup and root-pair arrays: 42 interpreter/JIT cases with nil and wrong-Type controls");
+ puts("PASS fresh generic record arguments: 42 interpreter/JIT cases with Redirlist, scalar and root fields, and allocation failures");
+ puts("PASS paired list tails: 12 interpreter/JIT cases with distinct tails and a nil fault");
  puts("PASS Sh environment setup: 42 interpreter/JIT cases including allocation faults and list head field arguments");
  puts("PASS Boolean call arguments: 30 interpreter/JIT cases with six comparisons and imported fopen mode");
  return 0;

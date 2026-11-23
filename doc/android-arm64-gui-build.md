@@ -1166,3 +1166,19 @@ The unchanged Sh source now has 99 of 134 checked bodies, including
 record selector. `walkpipeline` passes `fds[1]` to itself and reaches `glom`.
 The allocation of a `Redirlist` while preparing a call in `glomoperation`
 remains a compiler barrier. Classic Dis is byte-identical for all 16 modules.
+
+## Generic records during local call setup
+
+After `FRAME`, a call can allocate a reference to a declared ADT in a mapped
+caller slot, initialize its Word and managed fields, and pass the reference
+or a singleton list of the reference. The checked layout and the pending
+callee map prove the temporary and argument slots. Earlier arguments stay
+rooted through allocation. Validation checks each initializer against the
+allocation and requires control to enter through the frame setup.
+
+The original `glomoperation` passes the `ref Redirlist(nil)` setup and
+reaches the call to `pipecmd`. Its large redirection mask still uses a
+reserved legacy temporary. The original `concat` is checked through both
+list tails in its pair assignment. Sh reaches 100 of 134 checked bodies,
+and the startup set reaches 337 of 385. Classic Dis remains byte-identical
+for all 16 modules.

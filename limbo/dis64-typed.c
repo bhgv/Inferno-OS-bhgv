@@ -317,7 +317,7 @@ typedresults(Dis64TypedBody *p)
         if(p->returns[pc]==Native64TypedRecordPair)flow|=2;
         if(!p->resultaggregate&&!p->resultpair&&!p->resulttriple&&p->code[pc].destination==32&&
            UDST(p->code[pc].mode)==(AFP|AIND)&&
-           (p->returns[pc]==Native64TypedRecordNew||(p->returns[pc]==Native64TypedRecord&&p->code[pc].op==IADDC)))flow=3;
+           (p->returns[pc]==Native64TypedRecordNew||p->returns[pc]==Native64TypedRecord))flow=3;
         n=0;
 		if(p->code[pc].op==IRET || p->code[pc].op==IRAISE || p->code[pc].op==IEXIT) continue;
         if(p->code[pc].op==ICASE || p->code[pc].op==ICASEL || p->code[pc].op==IGOTO || p->code[pc].op==ICASEC){

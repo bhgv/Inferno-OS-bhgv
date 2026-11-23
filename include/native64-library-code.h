@@ -60,17 +60,18 @@ native64librarylistclear(const Native64TypedStep *s, long nilslot, long target)
 }
 
 static int
-native64libraryprecall(const Native64TypedStep *steps, unsigned int first, unsigned int pc,
+native64recordprecall(const Native64TypedStep *steps, unsigned int first, unsigned int pc,
                       unsigned int end, unsigned int fp, unsigned int mp,
                       unsigned int bytes, const uchar *map, unsigned int np, unsigned int *list)
 {
  const Native64TypedStep *alloc=steps+pc,*s;
- unsigned int j,bit,next=64,mode;
+ unsigned int j,bit,next=64,mode,field,role;
  long value=alloc->d;
- int root;
+ int root,generic=alloc->returned==Native64TypedRecordNew;
  *list=0;
- if(first>=pc||pc>=end||alloc->returned!=154||UDST(alloc->mode)!=AFP||
-    !native64typedlibrary(alloc,fp,mp)||!map||map==H||np!=(bytes+63)/64)
+ if(first>=pc||pc>=end||UDST(alloc->mode)!=AFP||
+    !(generic?native64typedrecordnew(alloc,fp,mp):alloc->returned==154&&native64typedlibrary(alloc,fp,mp))||
+    !map||map==H||np!=(bytes+63)/64)
   return 0;
  /* FRAME initializes mapped cells before a later argument can allocate.
   * Prove each earlier store and keep the new reference's cell disjoint. */
@@ -93,13 +94,20 @@ native64libraryprecall(const Native64TypedStep *steps, unsigned int first, unsig
   }
   next=s->d+(root?8:4);
  }
- for(j=pc+1;j<end&&steps[j].returned==153;j++){
+ role=generic?Native64TypedRecordInit:153;
+ for(j=pc+1;j<end&&steps[j].returned==role;j++){
   s=steps+j;
-  if((s->op!=IMOVW&&s->op!=IMOVP)||
-     s->mode!=(SRC(USRC(s->mode))|DST(AFP|AIND))||
-     (USRC(s->mode)&AIND)||((s->m>>16)&255)!=alloc->s||
-     (s->d&65535)!=alloc->d||!native64typedlibrary(s,fp,mp))
+  mode=USRC(s->mode);
+  if((s->op!=IMOVW&&s->op!=IMOVP)||s->mode!=(SRC(mode)|DST(AFP|AIND))||
+     (mode&AIND)||(s->d&65535)!=value)
    return 0;
+  if(generic){
+   Native64TypedStep init=*s;
+   field=(unsigned long)s->d>>16;root=s->op==IMOVP;
+   init.returned=Native64TypedRecord;
+   if(!native64typedrecord(&init,fp,mp)||s->m||field>=native64recordbytes(alloc->m)||
+      !!(native64recordmask(alloc->m)&(1U<<(field/8)))!=root)return 0;
+  }else if(((s->m>>16)&255)!=alloc->s||!native64typedlibrary(s,fp,mp))return 0;
  }
  if(j==end)return 0;
  if(steps[j].returned==Native64TypedRecordList){

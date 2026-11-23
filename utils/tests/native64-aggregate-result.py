@@ -269,7 +269,7 @@ def generate(limbo,w):
    CMD['verify_nilbranches'](data,row,imports,rows=records)
  context=next(r for r in records if r.get('export_name')=='Context.new')
  assert context['accepted'],context
- for name in ('push','pop','concatwords','copybuiltins','addbuiltin','addsbuiltin','initbuiltin','sbuiltin_quote'):
+ for name in ('push','pop','concat','concatwords','copybuiltins','addbuiltin','addsbuiltin','initbuiltin','sbuiltin_quote'):
   row=next(r for r in records if r['name']==name)
   assert row['accepted'],row
   CMD['verify_nilbranches'](data,row,imports,rows=records)

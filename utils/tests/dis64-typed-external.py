@@ -491,7 +491,8 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert arg[1:]==[10,4,8] and at==first+1
                 at,listclear=list_constructor(original,r['code'],at,end,maps,r)
                 o=original[at]
-            if loads and r['code'][at][5]==154:
+            if loads and r['code'][at][5] in(38,154):
+                generic=r['code'][at][5]==38
                 assert arg[1] in (10,12) and arg[2:]==[4,8] and o['mode']&7==1
                 last=64
                 for op,mode,src,mid,dst,role in r['code'][first+1:at]:
@@ -499,13 +500,18 @@ def verify(data,r,imports,loads=False,rows=None):
                     assert last<=dst
                     last=dst+(8 if op==41 else 4)
                 assert last<=arg[0]
-                library_step(o,r['code'][at],maps,r['first'],types)
+                if generic:record_storage(o,r['code'][at],at,maps,r,types)
+                else:library_step(o,r['code'][at],maps,r['first'],types)
                 temp=o['d'];check=r['code'][at][2];at+=1
-                while at<end and r['code'][at][5]==153:
+                while at<end and r['code'][at][5]==(51 if generic else 153):
                     o=original[at];c=r['code'][at]
                     assert o['op']in(OPCODES['IMOVW'],OPCODES['IMOVP']) and o['mode']>>3&7 in(0,1,2)
-                    assert o['mode']&7==5 and o['d'][0]==temp[0] and (c[3]>>16)&255==check
-                    library_step(o,c,maps,r['first'],types);at+=1
+                    assert o['mode']&7==5 and o['d'][0]==temp[0]
+                    if generic:record_field(o,c[:5]+[72],at,maps,r)
+                    else:
+                        assert (c[3]>>16)&255==check
+                        library_step(o,c,maps,r['first'],types)
+                    at+=1
                 if arg[1]==10:
                     init,cons,store,clear_record,clear_list=original[at:at+5]
                     nil=init['s'];slot=init['d'];native_nil=maps['data'][nil[0]]
@@ -1413,9 +1419,14 @@ def verify(data,r,imports,loads=False,rows=None):
         if returned==213:
             assert loads and op==o['op']and op in(OPCODES['ICONSP'],OPCODES['IHEADP'],OPCODES['ITAIL'])and mode==o['mode']and o['m']is None and m==0
             sm=mode>>3&7;dm=mode&7;assert sm in(0,1)and dm in(0,1)
+            fresh_reference=False
+            if op==OPCODES['ICONSP'] and sm==1:
+                fresh_reference=any(last==pc-1 and result==s and contract==24 and not inherited and
+                                    any(callee['first']==target and callee['result'][0]==12 for callee in rows)
+                                    for _,last,target,_,result,contract,inherited in r.get('calls',[]))
             for address,old,new,kind in((sm,o['s'][0],s,12 if op==OPCODES['ICONSP']else 10),(dm,o['d'][0],d,12 if op==OPCODES['IHEADP']else 10)):
                 leaf=next(l for l in r['frame'if address else'data']['leaves']if l[0]==old)
-                assert leaf[1]==new and leaf[2:4]==[4,8]and (leaf[4]==kind or (kind==12 and leaf[4]==11) or (op==OPCODES['ICONSP']and address==sm and old==o['s'][0]and leaf[4]==20) or (op==OPCODES['ICONSP']and address==dm and old==o['d'][0]and leaf[4]==12))
+                assert leaf[1]==new and leaf[2:4]==[4,8]and (leaf[4]==kind or (kind==12 and leaf[4]==11) or (op==OPCODES['ICONSP']and address==sm and old==o['s'][0]and (leaf[4]==20 or fresh_reference and leaf[4] in ROOTS)) or (op==OPCODES['ICONSP']and address==dm and old==o['d'][0]and leaf[4]==12))
             continue
         if returned==214:
             assert loads and op==o['op']==OPCODES['IMOVP']and mode==o['mode']and o['m']is None

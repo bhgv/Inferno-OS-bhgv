@@ -21,6 +21,8 @@ static int typedlibraryarraystore(Inst*,Dis64TypedBody*,unsigned int);
 static int typedlibraryinst(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
 static int typedrecordresult(Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int*,int);
 static int typedrecordpath(Inst*,Dis64TypedBody*,unsigned int);
+static int typedrecordnew(Inst*,Dis64TypedBody*,unsigned int);
+static int typedrecordinst(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
 static int typedlibraryslicearg(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
 static int typedlibrarymodule(Inst*,Dis64TypedBody*,long*,unsigned int*,int*);
 static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int,int);
@@ -179,14 +181,16 @@ typedshelllistop(Inst *in,Dis64TypedBody *p,Dis64Instruction *out,uchar *returne
  Addr *entry=cons?&in->s:&in->d;
  Addr *list=cons?&in->d:&in->s;
  int vars=typedvarlist(list), modules=typedbuiltinlist(list);
+ int tupletail=in->op==ITAIL&&in->dm==Afp&&typedroottemporary(&in->d,Tlist)&&
+               typedloadvaluetype(&in->s)&&tequal(in->d.native64type,typedloadvaluetype(&in->s));
  int element=modules?Tmodule:Tref;
  Type *t=entry->native64type?entry->native64type:entry->decl?entry->decl->ty:nil;
  if(in->branch||in->mm!=Anone||
     ((head||cons)&&(modules?!typedshellbuiltin(t):!t||t->kind!=Tref||typedlibraryrecord(t)!=(vars?19:13)))||
-    (!head&&!(modules?typedbuiltinlist(&in->d):vars?typedvarlist(&in->d):typedlistnodetype(&in->d)))||
+    (!head&&!tupletail&&!(modules?typedbuiltinlist(&in->d):vars?typedvarlist(&in->d):typedlistnodetype(&in->d)))||
     !typedoperand(in->sm,&in->s,cons?TypedRoot:Tlist,0,0,p,&source,&sm,&actual)||actual!=(cons?element:Tlist)||
-    !typedoperand(in->dm,&in->d,head?TypedRoot:Tlist,0,0,p,&dest,&dm,&actual)||
-    actual!=(head?element:Tlist))return typedfail(p,"shell-list-operation");
+    !typedoperand(in->dm,&in->d,head||tupletail?TypedRoot:Tlist,0,0,p,&dest,&dm,&actual)||
+    (!tupletail&&actual!=(head?element:Tlist)))return typedfail(p,"shell-list-operation");
  *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,dest};*returned=213;return 1;
 }
 static int
@@ -1241,7 +1245,8 @@ typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, In
  Decl *descriptor=alloc->s.decl;
  Type *type=descriptor?descriptor->ty:nil;
  Type *reference=arg->ty->kind==Tlist?arg->ty->tof:arg->ty;
- unsigned int j;
+ unsigned int j,pc;
+ int generic;
 
  if(!reference||reference->kind!=Tref||!type||!descriptor->desc||descriptor->desc->id!=alloc->s.offset||
     alloc->dm!=Afp||alloc->d.offset||!alloc->d.decl||
@@ -1253,7 +1258,9 @@ typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, In
      !(op==IMOVP&&(role==155||role==Native64TypedRecordArg)))
    return typedfail(p,"local-record-after-argument");
  }
- if(!typedlibraryinst(alloc,p,*at-p->first,end)||p->returns[*at-p->first]!=154)
+ pc=*at-p->first;
+ generic=!typedlibraryrecord(type);
+ if(generic?!typedrecordnew(alloc,p,pc):!typedlibraryinst(alloc,p,pc,end))
   return typedfail(p,"local-record-argument-allocation");
  for(++*at;*at<end;(*at)++){
   in=c->instructions[*at];
@@ -1261,8 +1268,13 @@ typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, In
    break;
   if((in->op!=IMOVW&&in->op!=IMOVP)||in->branch||in->mm!=Anone||
      (in->sm!=Afp&&in->sm!=Amp&&in->sm!=Aimm)||
-     !typedlibraryinst(in,p,*at-p->first,end))
+     (generic?!typedrecordinst(in,p,*at-p->first,end):!typedlibraryinst(in,p,*at-p->first,end)))
    return typedfail(p,"local-record-initializer");
+  if(generic){
+   Type *owner=typedfieldowner(&in->d);
+   if(!owner||!tequal(owner,reference))return typedfail(p,"local-record-initializer-owner");
+   p->returns[*at-p->first]=Native64TypedRecordInit;
+  }
  }
  if(arg->ty->kind==Tlist)
   return typedlocalrecordlist(c,p,child,frame,alloc,arg,end,at);

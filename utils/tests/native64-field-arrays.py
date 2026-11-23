@@ -17,18 +17,20 @@ INTERFACES = 'include "sys.m";include "draw.m";include "bufio.m";include "string
 LEXER_EXPORTS = ('read', 'scan', 'token', 'parse')
 ARRAY_EXPORTS = ('arrays', 'report', 'buildstring', 'buildfile', 'parse_result',
                  'fieldpath', 'rootarrays', 'listarg', 'lenarg', 'setlocal_probe', 'status_probe',
-                 'comparisons', 'fopen_choice', 'envhead')
+                 'comparisons', 'fopen_choice', 'envhead', 'redir_probe', 'record_probe', 'record_list_probe',
+                 'tail_pair')
 
 
 def source():
     sh = (ROOT / 'appl/cmd/sh/sh.b').read_text()
     records = ''.join(re.search(r'(?m)^' + n + r':\s*adt\s*\{.*?^\};', sh, re.S)[0]
-                      for n in ('YYSTYPE', 'YYLEX'))
+                      for n in ('YYSTYPE', 'YYLEX', 'Redirword', 'Redirlist'))
     records += '''
 Item:adt{text:string;value:int;};
 Holder:adt{fd:ref Sys->FD;};
 Envelope:adt{box:ref Holder;};
 Pair:adt{text:string;fd:ref Sys->FD;};
+Ticket:adt{text:string;number:int;};
 Store:adt{
     words:array of int;
     texts:array of string;
@@ -161,6 +163,32 @@ fopen_choice(r:ref Store):int {
     return 0;
 }
 envhead(r:ref Store):int { entries := r.variables; return total(2, (hd entries).name); }
+redir_probe(r:ref Store):int { return no_redirections(r.text, ref Redirlist(nil), r.n); }
+no_redirections(label:string, redirs:ref Redirlist, n:int):int {
+    if (redirs.r != nil) return -1;
+    return len label + n;
+}
+record_probe(r:ref Store):int {
+    text := r.text;
+    n := r.n;
+    return ticket_value(text, ref Ticket(text, n), n);
+}
+ticket_value(label:string, t:ref Ticket, n:int):int {
+    if (t.text != label) return -1;
+    return t.number + n;
+}
+record_list_probe(r:ref Store):int {
+    text := r.text;
+    n := r.n;
+    return ticket_count(text, ref Ticket(text, n)::nil, n);
+}
+ticket_count(label:string, tickets:list of ref Ticket, n:int):int { return len label + len tickets + n; }
+tail_pair(r:ref Store):int {
+    left := r.variables;
+    right := tl left;
+    (left, right) = (tl right, tl left);
+    return 10 * len left + len right;
+}
 '''
     aliases = 'Context, Listnode, Var: import Sh;'
     return interface, 'implement Lexer;' + '\n'.join((interface, aliases, constants, tables, debug, stack, blank, wrappers, methods, environment))
@@ -189,7 +217,7 @@ def generate(limbo, work):
                 frames[(name.replace('Iobuf_', 'Iobuf.'), int(sig[1], 16))] = (
                     int(size), [int(v, 0) for v in mapping[1].split(',') if v])
 
-    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (45, 4, 3, '~0U'),
+    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (52, 4, 3, '~0U'),
                          import_frames=frames, export_signatures=signatures,
                          source_label='unchanged Sh constructors, lexer and parser with generic ADT probes')
     code = {r['name']: r['code'] for r in rows}
@@ -210,6 +238,10 @@ def generate(limbo, work):
     assert {c[5] for c in code['parse_result']} >= {49, 252}
     assert any(c[5] == 49 for c in code['fopen_choice'])
     assert any(c[5] == 61 and c[0] == E['OPCODES']['IHEADP'] for c in code['envhead'])
+    assert {c[5] for c in code['redir_probe']} >= {38, 51, 64, 182}
+    assert sum(c[5] == 51 for c in code['record_probe']) == 2
+    assert {c[5] for c in code['record_list_probe']} >= {38, 43, 51, 64}
+    assert sum(c[0] == E['OPCODES']['ITAIL'] and c[5] == 213 for c in code['tail_pair']) == 3
     globals_ = dict((g[0], g[1]) for g in rows[0]['globals'])
     with (work / 'full.h').open('a') as stream:
         for name in ('nil', 'sys', 'bufio', 'str', 'saved', 'blanklex'):

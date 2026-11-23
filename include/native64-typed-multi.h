@@ -233,9 +233,14 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
             }
             if(s->returned==86){if(!native64typedwindowwordarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;continue;}
             if(s->returned==153){if(native64typedbranch(s->op) || !native64typedlibrary(s,fpbytes,mpbytes) || ((UDST(s->mode)&AIND) && !(s->m&0xff0000)))return 0;continue;}
-            if(s->returned==154){
+            if(s->returned==Native64TypedRecordInit){
+                if(j==c->first+1 || (steps[j-1].returned!=Native64TypedRecordInit &&
+                                     steps[j-1].returned!=Native64TypedRecordNew))return 0;
+                continue;
+            }
+            if(s->returned==154||s->returned==Native64TypedRecordNew){
                 if(c->external||steps[c->end].op!=ICALL||
-                   !native64libraryprecall(steps,c->first,j,stop,fpbytes,mpbytes,
+                   !native64recordprecall(steps,c->first,j,stop,fpbytes,mpbytes,
                                           c->callee->size,c->callee->map,c->callee->np,&list))return 0;
                 continue;
             }
@@ -406,6 +411,9 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 else if(s->returned==86){p->reg=s->m;p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==93){p->reg=512|24;p->s.i.f=s->s;p->s.i.s=88;p->d.i.f=40;p->d.i.s=32;}
                 else if(s->returned==153||s->returned==154){native64typedcode(p,1,s,1,fpbytes,mpbytes);}
+                else if(s->returned==Native64TypedRecordNew||s->returned==Native64TypedRecordInit){
+                    native64recordcode(p,s,nil);p->reg=0;
+                }
                 else if(s->returned==156){if(USRC(s->mode)&AIND){p->s.i.f=s->s&65535;p->s.i.s=(unsigned long)s->s>>16;}else p->s.imm=s->s;p->reg=native64librarymiddle(s);p->d.i.f=40;p->d.i.s=s->d;}
                 else if(s->returned==Native64TypedRecordArg)native64recordargcode(p,s);
                 else if(s->returned==Native64TypedRecordResult)native64recordresultcode(p,s);

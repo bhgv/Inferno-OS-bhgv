@@ -29,7 +29,9 @@ native64modulerecordstorage(const Native64ModuleSpec *s, const Native64ModuleFun
    }
   }
  }
- for(i=0;i<f->nsites;i++)if(f->sites[i].first<=pc&&pc<=f->sites[i].end)return 0;
+ for(i=0;i<f->nsites;i++)if(f->sites[i].first<=pc&&pc<=f->sites[i].end){
+  if(v->returned!=Native64TypedRecordNew||pc==f->sites[i].first||pc==f->sites[i].end||mode!=AFP)return 0;
+ }
  return 1;
 }
 
@@ -51,7 +53,8 @@ native64modulerecordresult(const Native64ModuleSpec *s, const Native64ModuleFunc
 static int
 native64modulerecordfields(const Native64ModuleSpec*s,const Native64ModuleFunction*f)
 {
- unsigned int pc,k,j,w[2],r[2],mode,off,n,bit,root;const uchar*map;const Native64TypedStep*v;
+ unsigned int pc,k,j,w[2],r[2],mode,off,n,bit,root,init,sites;const uchar*map;const Native64TypedStep*v;
+ Native64TypedStep field;
  for(pc=0;pc<f->count;pc++){
   v=f->code+pc;
   if(v->returned==Native64TypedRecordNew||v->returned==Native64TypedRecordCopy){
@@ -68,7 +71,12 @@ native64modulerecordfields(const Native64ModuleSpec*s,const Native64ModuleFuncti
    for(j=0;j<f->nsites;j++)if(f->sites[j].first<=pc&&pc<=f->sites[j].end)return 0;
    continue;
   }
-  if(v->returned!=Native64TypedRecord)continue;
+  init=v->returned==Native64TypedRecordInit;
+  if(init){
+   if(!pc||(f->code[pc-1].returned!=Native64TypedRecordNew&&
+            f->code[pc-1].returned!=Native64TypedRecordInit))return 0;
+   field=*v;field.returned=Native64TypedRecord;v=&field;
+  }else if(v->returned!=Native64TypedRecord)continue;
   if(!native64typedrecord(v,f->bytes,s->databytes)||!native64recordshape(v->op,w,r)||(native64typedbranch(v->op)&&(unsigned long)v->d>=f->count))return 0;
   for(k=0;k<3;k++){
    if(k==1&&native64typedbranch(v->op))continue;if(k==2&&(v->mode&ARM)==AXNON)continue;
@@ -80,8 +88,13 @@ native64modulerecordfields(const Native64ModuleSpec*s,const Native64ModuleFuncti
    map=mode==AFP?f->map:s->datamap;
    for(j=0;j<n;j++){bit=(off+j)/8;if(!!(map[bit/8]&(128>>(bit%8)))!=root)return 0;}
   }
-  /* Arguments/results borrowed from a pending call use separate protocols. */
-  for(j=0;j<f->nsites;j++)if(f->sites[j].first<=pc&&pc<=f->sites[j].end)return 0;
+  /* Initializers have an owning call and a matching freshly allocated layout. */
+  sites=0;
+  for(j=0;j<f->nsites;j++)if(f->sites[j].first<=pc&&pc<=f->sites[j].end){
+   if(!init||pc==f->sites[j].first||pc==f->sites[j].end)return 0;
+   sites++;
+  }
+  if(init&&sites!=1)return 0;
  }return 1;
 }
 #endif
