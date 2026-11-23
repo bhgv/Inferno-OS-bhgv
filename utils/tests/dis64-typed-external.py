@@ -302,7 +302,7 @@ def record_field(o,c,pc,maps,row):
     owners={side:tree for at,side,tree in row['record_owners']if at==pc};assert owners and len(owners)==sum(at==pc for at,_,_ in row['record_owners'])
     rootops=(OPCODES['IMOVP'],OPCODES['IADDC'],OPCODES['IBEQL'],OPCODES['IBNEL'],OPCODES['IBEQC'],OPCODES['IBNEC'])
     sourceops=(OPCODES['IINDC'],OPCODES['ILENC'],OPCODES['ILENA'],OPCODES['ILENL'],OPCODES['ICVTCW'])
-    widths=[8,8]if op in rootops else[8,4]if op in sourceops else[4,8]if op==OPCODES['ICVTWC']else[4,4]
+    widths=[8,8]if op in rootops else[8,4]if op in sourceops else[4,8]if op in(OPCODES['ICVTWC'],OPCODES['ICONSW'])else[4,4]
     kinds=[]
     for side,wire,value,addr,width in((0,mode>>3&7,s,o['s'],widths[0]),(1,mode&7,d,o['d'],widths[1])):
         if side==1 and op in BRANCHES:
@@ -833,6 +833,16 @@ def verify(data,r,imports,loads=False,rows=None):
                 assert r['code'][at]==[41,a['mode'],source,0,native,222]
             elif r['code'][at][5]==34:
                 record_argument(a,r['code'][at],at,maps,r,pending,legacy,native,kind,True)
+            elif r['code'][at][5]==72:
+                load,word,clear=original[at:at+3]
+                assert kind==9 and j>=(1 if op!=3 else 2) and load['op']==41 and load['mode']&7==1
+                record_field(load,r['code'][at],at,maps,r)
+                assert word['s']==load['d']+[word['s'][1]]
+                record_argument(word,r['code'][at+1],at+1,maps,r,pending,legacy,native,kind,True)
+                assert clear==dict(op=41,mode=1,m=None,s=clear['s'],d=load['d'])
+                assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
+                assert r['code'][at+2]==[41,1,maps['data'][clear['s'][0]],0,maps['frame'][load['d'][0]],223]
+                at+=3;continue
             else:
                 assert a['op']==oldop and sm in((0,1)if kind in(4,7,12,13)else(0,1,2))and a['m']is None and a['d']==[pending,legacy]
                 source=a['s'][0]if sm==2 else maps['frame'if sm else'data'][a['s'][0]]
@@ -1492,15 +1502,37 @@ def verify(data,r,imports,loads=False,rows=None):
             continue
         if op in(OPCODES['ICONSMP'],OPCODES['IHEADMP']) and returned in(248,249):
             cons=op==OPCODES['ICONSMP'];sm=o['mode']>>3&7;dm=o['mode']&7
-            assert loads and op==o['op'] and mode==o['mode'] and sm in(0,1) and dm in(0,1)
-            assert returned==(248 if cons else 249) and m==16 and types[o['m']]==(8,b'\xc0')
-            assert s==maps['frame'if sm else'data'][o['s'][0]] and d==maps['frame'if dm else'data'][o['d'][0]]
+            assert loads and op==o['op'] and mode==o['mode']
+            assert returned==(248 if cons else 249)
+            for side,(vm,operand,native) in enumerate(((sm,o['s'],s),(dm,o['d'],d))):
+                if vm in(4,5):
+                    assert m!=16 and side==int(cons)
+                    assert record_address(r,maps,pc,side,vm,operand,native,8)==10
+                else:
+                    assert vm in(0,1) and native==maps['frame'if vm else'data'][operand[0]]
             where='frame' if (sm if cons else dm) else 'data';old=(o['s'] if cons else o['d'])[0];base=s if cons else d
-            for i in (0,1):
-                leaf=next(l for l in r[where]['leaves'] if l[0]==old+4*i)
-                assert leaf[1:4]==[base+8*i,4,8]
-                bit=(base+8*i)//8
-                assert r[where]['map'][bit//8]&(128>>(bit%8))
+            if m==16:
+                assert types[o['m']]==(8,b'\xc0')
+                for i in (0,1):
+                    leaf=next(l for l in r[where]['leaves'] if l[0]==old+4*i)
+                    assert leaf[1:4]==[base+8*i,4,8]
+                    bit=(base+8*i)//8
+                    assert r[where]['map'][bit//8]&(128>>(bit%8))
+            else:
+                witness=next(tree for at,side,tree in r['record_owners'] if at==pc and side==2)
+                tree=r['record_types'][witness]
+                size,_,leaves=record_geometry(tree)
+                oldbytes,oldmap=types[o['m']]
+                legacy_roots={a//4 for a,_,k,_,_ in leaves if k in ROOTS}
+                assert oldbytes==tree[1] and legacy_roots=={8*i+b for i,byte in enumerate(oldmap) for b in range(8) if byte&(128>>b)}
+                mask=sum(1<<(b//8) for _,b,k,_,_ in leaves if k in ROOTS)
+                assert m==((size//4)<<24)|mask
+                copied=[(o-old,v-base,k,w,n) for o,v,w,n,k in r[where]['leaves'] if base<=v<base+size]
+                mapped=[o for o in range(0,size,8) if r[where]['map'][(base+o)//64]&(128>>(((base+o)//8)%8))]
+                assert len(copied)==len(leaves)
+                for (a,b,k,w,n),(ca,cb,ck,cw,cn) in zip(leaves,copied):
+                    assert (a,b,w,n)==(ca,cb,cw,cn) and (k==ck or cons and ck==20 and k in ROOTS)
+                assert mapped==[b for _,b,k,_,_ in leaves if k in ROOTS]
             continue
         if returned in(248,249,250):
             sm=o['mode']>>3&7;dm=o['mode']&7;cons=returned==248;head=returned==249

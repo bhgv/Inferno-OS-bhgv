@@ -30,52 +30,111 @@ typedrectlist(Inst*in,Dis64TypedBody*p,Dis64Instruction*out,uchar*returned)
  done:dis64layoutfree(&l);return ok?1:typedfail(p,"rect-list-geometry");
 }
 
-static int
-typedshellmappedpair(Type *t)
+/* Aggregate list elements use the same natural layout as local records. */
+static Type*
+typedaggregatelistelement(Addr *a, int mode)
 {
- Decl *d;
- return t&&t->kind==Ttuple&&(d=t->ids)&&d->ty==tstring&&
-        d->next&&!d->next->next&&d->next->ty&&
-        (d->next->ty==tstring||typedshellbuiltin(d->next->ty));
-}
-
-static int
-typedshellmappedpairlist(Addr *a)
-{
- Type *t=typedloadvaluetype(a);
- return a->decl&&a->reg==a->decl->offset&&!a->offset&&
-        t&&t->kind==Tlist&&typedshellmappedpair(t->tof);
-}
-
-static int
-typedshellmappedpairlistop(Inst *in,Dis64TypedBody *p,Dis64Instruction *out,uchar *returned)
-{
- int cons=in->op==ICONSMP,tail=in->op==ITAIL,actual,vm;
- unsigned int sm,dm,base,next;
- long list,other;
- Addr *value=cons?&in->s:&in->d;
- Decl *d=in->m.decl;
- Dis64Layout *layout;
- if(in->branch||(!cons&&!typedshellmappedpairlist(&in->s))||
-    ((cons||tail)&&!typedshellmappedpairlist(&in->d)))goto bad;
- if(tail){
-  if(in->mm!=Anone||
-     !typedoperand(in->sm,&in->s,Tlist,0,0,p,&list,&sm,&actual)||
-     !typedoperand(in->dm,&in->d,Tlist,0,0,p,&other,&dm,&actual))goto bad;
-  *out=(Dis64Instruction){ITAIL,SRC(sm)|DST(dm),0,list,other};
-  *returned=250;return 1;
+ Type *t;
+ if(mode==Afpind||mode==Ampind)t=typedrecordvalue(a,mode);
+ else{
+  if(!a->decl||a->reg!=a->decl->offset||a->offset)return nil;
+  t=typedloadvaluetype(a);
  }
- if(in->mm!=Adesc||!d||!d->desc||d->desc->id!=in->m.offset||
-    d->desc->size!=8||d->desc->nmap!=1||!d->desc->map||d->desc->map[0]!=0xc0)goto bad;
- vm=cons?in->sm:in->dm;
- if((vm!=Afp&&vm!=Amp)||value->offset||value->reg<0)goto bad;
- layout=vm==Afp?&p->frame:&p->data;
- if(!dis64layoutaddress(layout,value->reg,4,1,&base)||
-    !dis64layoutaddress(layout,value->reg+4,4,1,&next)||next!=base+8)goto bad;
- if(!typedoperand(cons?in->dm:in->sm,cons?&in->d:&in->s,Tlist,0,0,p,&list,&sm,&actual))goto bad;
- dm=vm==Afp?AFP:AMP;
- *out=(Dis64Instruction){in->op,(cons?SRC(dm)|DST(sm):SRC(sm)|DST(dm))|AXIMM,16,
-                        cons?base:list,cons?list:base};
- *returned=cons?248:249;return 1;
- bad:return typedfail(p,"shell-pair-list-layout");
+ if(!t||t->kind!=Tlist||!(t=t->tof))return nil;
+ return t->kind==Tadt||t->kind==Ttuple?t:nil;
+}
+
+static int
+typedaggregatelistdescriptor(Inst *in, Type *element, Dis64Layout *part, long *shape)
+{
+ Decl *d=in->m.decl;
+ return in->mm==Adesc&&d&&d->desc&&d->desc->id==in->m.offset&&
+        typedrecordlayoutdescriptor(element,d->desc,part,shape)&&native64recordmask(*shape);
+}
+
+/* A nil initializer can occupy a compiler temporary whose declared kind is
+ * Tany. Its mapped slot still has the destination field's pointer geometry. */
+static int
+typedaggregatelistbind(Dis64Layout *storage, Dis64Layout *part, unsigned int old,
+                       int cons, int relocate, unsigned int *base)
+{
+ unsigned int i,first;
+ if(cons){
+  for(first=0;first<storage->count;first++)if(storage->leaves[first].legacy==old)break;
+  if(part->count>storage->count-first)return 0;
+  for(i=0;i<part->count;i++)
+   if(storage->leaves[first+i].kind==Tany&&typedmanagedkind(part->leaves[i].kind))
+    part->leaves[i].kind=Tany;
+ }
+ return dis64layoutbindresult(storage,part,old,8,relocate,base);
+}
+
+/* Reserve padding once before instruction lowering, so destructuring cannot
+ * leave the next Word in the list element's tail padding. */
+static int
+typedaggregatelistframe(TypedMulti *c, Decl *fn, Dis64TypedBody *p, unsigned int stop)
+{
+ unsigned int pc,base,last=32;
+ int cons,ok;
+ long shape;
+ Inst *in;
+ Addr *value;
+ Decl *arg;
+ for(arg=fn->ty->ids;arg;arg=arg->next)if(arg->offset+arg->ty->size>last)last=arg->offset+arg->ty->size;
+ for(pc=p->first;pc<stop;pc++){
+  Dis64Layout part={0};
+  in=c->instructions[pc];
+  if(!in||(in->op!=ICONSMP&&in->op!=IHEADMP))continue;
+  cons=in->op==ICONSMP;
+  value=cons?&in->s:&in->d;
+  if((cons?in->sm:in->dm)!=Afp||value->offset||value->reg<last)continue;
+  p->badpc=pc;
+  ok=typedaggregatelistdescriptor(in,typedaggregatelistelement(cons?&in->d:&in->s,cons?in->dm:in->sm),&part,&shape)&&
+     typedaggregatelistbind(&p->frame,&part,value->reg,cons,1,&base);
+  dis64layoutfree(&part);
+  if(!ok)return typedfail(p,"aggregate-list-frame");
+ }
+ return 1;
+}
+
+static int
+typedaggregatelist(Inst *in, Dis64TypedBody *p, unsigned int pc)
+{
+ int cons=in->op==ICONSMP,tail=in->op==ITAIL,actual,valuemode,ok=0;
+ int listform=cons?in->dm:in->sm,indirect=listform==Afpind||listform==Ampind;
+ unsigned int listmode,mode,base,i;
+ long list,other,shape;
+ Addr *value=cons?&in->s:&in->d;
+ Addr *listaddr=cons?&in->d:&in->s;
+ Type *element=typedaggregatelistelement(listaddr,listform),*dest;
+ Dis64Layout part={0},*storage;
+ if(in->branch||!element)goto done;
+ if(indirect){
+  if(tail||!typedrecordlayoutoperand(listform,listaddr,1,p,&list,&listmode)||
+     !typedrecordregister(p,pc,cons,typedfieldowner(listaddr)->tof))goto done;
+ }else if(!typedoperand(listform,listaddr,Tlist,0,0,p,&list,&listmode,&actual))goto done;
+ if(tail){
+  dest=typedaggregatelistelement(&in->d,in->dm);
+  if(in->mm!=Anone||!dest||!tequal(dest,element)||
+     !typedoperand(in->dm,&in->d,Tlist,0,0,p,&other,&mode,&actual))goto done;
+  p->code[pc]=(Dis64Instruction){ITAIL,SRC(listmode)|DST(mode),0,list,other};
+  p->returns[pc]=250;ok=1;goto done;
+ }
+ valuemode=cons?in->sm:in->dm;
+ if(!typedaggregatelistdescriptor(in,element,&part,&shape)||
+    (valuemode!=Afp&&valuemode!=Amp)||value->offset||value->reg<0)goto done;
+ storage=valuemode==Afp?&p->frame:&p->data;
+ if(!typedaggregatelistbind(storage,&part,value->reg,cons,0,&base))goto done;
+ for(i=0;i<storage->count;i++)
+  if(storage->leaves[i].legacy>=value->reg+part.legacybytes&&storage->leaves[i].native<base+part.bytes)
+   goto done;
+ if(!indirect&&part.bytes==16&&native64recordmask(shape)==3)shape=16;
+ else if(!typedrecordregister(p,pc,2,element))goto done;
+ mode=valuemode==Afp?AFP:AMP;
+ p->code[pc]=(Dis64Instruction){in->op,(cons?SRC(mode)|DST(listmode):SRC(listmode)|DST(mode))|AXIMM,shape,
+                                cons?base:list,cons?list:base};
+ p->returns[pc]=cons?248:249;ok=1;
+done:
+ dis64layoutfree(&part);
+ return ok?1:typedfail(p,"aggregate-list-layout");
 }

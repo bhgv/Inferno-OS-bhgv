@@ -29,6 +29,7 @@ static int typedlibrarymodule(Inst*,Dis64TypedBody*,long*,unsigned int*,int*);
 static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int,int);
 static int typedrecordargument(Inst*,Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int,unsigned int,int);
 static int typedrecordcopy(Inst*,Dis64TypedBody*,unsigned int);
+static int typedrecordlayoutdescriptor(Type*,Desc*,Dis64Layout*,long*);
 static Type *typedloadvaluetype(Addr*);
 
 /* Canonical Dis spills large middle literals into RTemp. Read the record
@@ -1696,7 +1697,7 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
     p->reason=nil;p->ntables=0;memset(p->code,0,p->count*sizeof(*p->code));memset(p->returns,0,p->count);
     if(c->loads){
         unsigned int before=p->frame.bytes;
-        if(!typedwmtupleframe(c,fn,p,stop)||!typedstatframe(c,fn,p,stop))goto fail;
+        if(!typedwmtupleframe(c,fn,p,stop)||!typedstatframe(c,fn,p,stop)||!typedaggregatelistframe(c,fn,p,stop))goto fail;
         if(p->frame.bytes-before>32*1024*1024-c->cost){typedfail(p,"multi-storage-budget");goto fail;}
         c->cost+=p->frame.bytes-before;
     }
@@ -1888,9 +1889,9 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
                 pc++;continue;
             }
             if(c->loads){p->code[pc-p->first].source=0;p->returns[pc-p->first]=UDST(p->code[pc-p->first].mode)==(AFP|AIND)?174:172;}pc++;
-        }else if(c->loads && ((in->op==ICONSMP&&typedshellmappedpairlist(&in->d))||
-                  ((in->op==IHEADMP||in->op==ITAIL)&&typedshellmappedpairlist(&in->s)))){
-            if(!typedshellmappedpairlistop(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+        }else if(c->loads && (in->op==ICONSMP||in->op==IHEADMP||
+                  (in->op==ITAIL&&(in->sm==Afp||in->sm==Amp)&&typedaggregatelistelement(&in->s,in->sm)))){
+            if(!typedaggregatelist(in,p,pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSM || in->op==IHEADM || (in->op==ITAIL && typedrectlisttype(&in->s)))){
             if(!typedrectlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && ((in->op==ICONSP && typedshellrootlist(&in->d)) || ((in->op==IHEADP || in->op==ITAIL) && typedshellrootlist(&in->s)))){
@@ -1898,7 +1899,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) && ((in->op!=ICONSP && typedpointerlisttype(&in->s)) || (in->op!=IHEADP && typedpointerlisttype(&in->d)))){
             if(!typedpointerlist(in,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
         }else if(c->loads && (in->op==ICONSW || in->op==IHEADW || (in->op==ITAIL && typedintlisttype(&in->s)))){
-            if(!typedclientintlist(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;pc++;
+            if(in->op==ICONSW&&(in->sm==Afpind||in->sm==Ampind)){
+                if(!typedrecordinst(in,p,pc-p->first,stop)){typedfail(p,"integer-list-field");goto fail;}
+            }else if(!typedclientintlist(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;
+            pc++;
         }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) &&
           ((in->op!=ICONSP && typedwindowlisttype(&in->s)) || (in->op!=IHEADP && typedwindowlisttype(&in->d)))){
             if(!typedwindowlist(in,p,p->code+pc-p->first,p->returns+pc-p->first,fn->ty->tof))goto fail;pc++;

@@ -1225,3 +1225,21 @@ The original `copylocalenv` and `Context.copy` now pass checked compilation.
 `runasync` reaches `doredirs`, which passes the redirection list nil check
 and stops at the first `Redirword` list-head copy. Classic Dis remains
 byte-identical for all 16 startup modules.
+
+## Managed aggregate lists and redirections
+
+The checked compiler uses the declared element layout for `ICONSMP` and
+`IHEADMP`, including nested Word fields and managed roots. It reserves
+native padding before lowering frame accesses. Direct list slots and list
+fields in records share the same descriptor and the VM checks a node's
+payload layout before reading it.
+
+A variadic Word argument can come from a record reached through an
+intermediate reference. The reference stays in a mapped cell through the
+Word read and is cleared before the formatter call. An integer list can
+also prepend a Word directly from a mapped record field.
+
+The unchanged Sh `dup` and `doredirs` pass checked compilation. In
+`runasync`, the next barrier is `Context.run`. The compound redirection
+argument during `pipecmd` spawn setup remains open. Sh reaches 106 of 134
+checked bodies, and all 16 classic Dis outputs remain byte-identical.

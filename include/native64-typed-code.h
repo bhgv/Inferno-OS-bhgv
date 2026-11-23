@@ -130,16 +130,28 @@ native64typedheadprep(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 }
 
 static int
+native64genericlist(const Native64TypedStep *s)
+{
+ return (s->op==ICONSMP||s->op==IHEADMP)&&s->m!=16;
+}
+
+static int
 native64typedrectlist(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {
  unsigned int sm=USRC(s->mode),dm=UDST(s->mode);long value;
  if(s->returned==250)return s->op==ITAIL && !s->m && s->mode==(SRC(sm)|DST(dm)) && native64typedrootoperand(sm,s->s,fp,mp) && native64typedrootoperand(dm,s->d,fp,mp);
  if(s->op==ICONSMP||s->op==IHEADMP){
-  unsigned int cons=s->op==ICONSMP,mode=cons?sm:dm;
+  unsigned int cons=s->op==ICONSMP,mode=cons?sm:dm,bytes;
   long payload=cons?s->s:s->d;
-  return s->returned==(cons?248:249)&&s->m==16&&s->mode==(SRC(sm)|AXIMM|DST(dm))&&
-         native64typedrootoperand(cons?dm:sm,cons?s->d:s->s,fp,mp)&&
-         native64typedrootoperand(mode,payload,fp,mp)&&native64typedrootoperand(mode,payload+8,fp,mp);
+  unsigned int listmode=cons?dm:sm;
+  if(s->returned!=(cons?248:249)||s->mode!=(SRC(sm)|AXIMM|DST(dm))||
+     !native64typedrootoperand(mode,payload,fp,mp))return 0;
+  if(!native64recordoperand(listmode,cons?s->d:s->s,8,1,fp,mp,0)||
+     (s->m==16&&(listmode&AIND)))return 0;
+  if(s->m==16)bytes=16;
+  else if(native64recorddescriptor(s->m)&&native64recordmask(s->m))bytes=native64recordbytes(s->m);
+  else return 0;
+  return bytes<=(mode==AFP?fp:mp)-payload;
  }
  if((s->returned!=248 && s->returned!=249) || s->op!=(s->returned==248?ICONSM:IHEADM) || s->mode!=(SRC(sm)|AXIMM|DST(dm)) || s->m!=16)return 0;
  if(s->returned==248){if(!native64typedrootoperand(dm,s->d,fp,mp))return 0;if(sm&AIND)return (sm==(AFP|AIND)||sm==(AMP|AIND)) && native64typedrootoperand(sm&~AIND,s->s,fp,mp);value=s->s;}
@@ -816,7 +828,11 @@ native64typedcode(Inst *out,unsigned int capacity,const Native64TypedStep *steps
         if(s->returned==255){if(s->op==IINDL || s->op==IINDX){p->s.ind=s->s;p->d.ind=s->d;}else if(USRC(s->mode)&AIND){p->s.i.f=48;p->s.i.s=0;p->d.ind=s->d;}else{p->s.ind=s->s;p->d.i.f=48;p->d.i.s=0;}continue;}
         if(s->returned==253){p->s.ind=s->s;p->d.ind=s->d;continue;}
         if(s->returned==252){p->s.ind=s->s;p->d.ind=s->d;continue;}
-        if(s->returned>=248 && s->returned<=250){p->d.ind=s->d;if(s->returned==248 && (USRC(s->mode)&AIND)){p->s.i.f=s->s;p->s.i.s=8;}else p->s.ind=s->s;continue;}
+        if(s->returned>=248 && s->returned<=250){
+            if(native64genericlist(s))native64recordcode(p,s,nil);
+            else{p->d.ind=s->d;if(s->returned==248 && (USRC(s->mode)&AIND)){p->s.i.f=s->s;p->s.i.s=8;}else p->s.ind=s->s;}
+            continue;
+        }
         if(s->returned==246 || s->returned==247){p->s.ind=s->s;p->d.i.f=32;p->d.i.s=0;continue;}
         if(s->returned==242){p->d.ind=s->d;continue;}
         if(s->returned==243 || s->returned==244){p->reg=0;p->d.i.f=s->d;p->d.i.s=s->m;continue;}

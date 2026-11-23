@@ -2,6 +2,36 @@ static int typedwindowowner(Addr*);
 static int typedwindowfield(Inst*,Dis64TypedBody*,unsigned int,int,unsigned int*);
 static int typedwmcontextaddress(Addr*,int,Dis64TypedBody*,long*,unsigned int*,long*);
 static int typedloadlisttype(Addr*);
+static Type *typedrecordvalue(Addr*,int);
+
+/* Retain a record field's owner for the adjacent Word read and release it
+ * before dispatching to the formatter. */
+static int
+typedvariadicrecordword(TypedMulti *c, Dis64TypedBody *p, Inst *frame, Decl *arg,
+                       unsigned int end, unsigned int *at, unsigned int native)
+{
+ Inst *read=c->instructions[*at],*word,clear;
+ Type *field=typedrecordvalue(&read->s,read->sm),*owner;
+ long source,temp;
+ unsigned int sm,dm,pc=*at-p->first,start=*at;
+ int actual;
+ if(end-start<3||read->mm!=Anone||read->branch||!field||field->kind!=Tref||read->d.offset)
+  return typedfail(p,"variadic-record-word-owner");
+ word=c->instructions[start+1];owner=typedfieldowner(&word->s);
+ if(word->sm!=Afpind||word->s.reg!=read->d.reg||word->s.decl!=read->d.decl||!owner||!tequal(owner,field)||
+    !typedrecordlayoutoperand(read->sm,&read->s,1,p,&source,&sm)||
+    !typedrecordregister(p,pc,0,typedfieldowner(&read->s)->tof)||
+    !typedoperand(Afp,&read->d,TypedRoot,0,0,p,&temp,&dm,&actual)||actual!=Tref||
+    !typedrecordargument(word,frame,p,arg->ty,pc+1,arg->offset,native,1))
+  return typedfail(p,"variadic-record-word-field");
+ p->code[pc]=(Dis64Instruction){IMOVP,SRC(sm)|DST(dm),0,source,temp};p->returns[pc]=Native64TypedRecord;
+ clear=*word;clear.sm=Afp;clear.s=read->d;
+ *at=start+2;
+ if(!typedrootargclear(c,p,&clear,end,at)||*at!=start+3)return typedfail(p,"variadic-record-word-clear");
+ p->returns[pc+2]=223;
+ return 1;
+}
+
 /* Trusted checked LOAD profile only. Actual instantiated arguments come from
  * the compiler FRAME annotation, never from format text or descriptor bits. */
 /* Only nominal Wmsrv.Window.tag in a typed String tail, not a format/FD. */
@@ -107,6 +137,10 @@ typedvariadicsite(TypedMulti*c,Dis64TypedBody*p,unsigned int pc,unsigned int sto
     if(arg->ty->kind==Tstring && i>=(op==3?2:1) && (in->sm==Afpind || in->sm==Ampind)){
         if(in->op!=IMOVP || in->mm!=Anone || in->branch || in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset || !typedvariadicwindowtag(in,p,at-p->first,64+8*i))return 0;
         at++;continue;
+    }
+    if(arg->ty->kind==Tint&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afpind||in->sm==Ampind)){
+        if(!typedvariadicrecordword(c,p,frame,arg,end,&at,64+8*i))return 0;
+        continue;
     }
     if(arg->ty->kind==Tint && i>=(op==3?2:1) && (in->sm==Afpind || in->sm==Ampind)){
         long field;int payload;

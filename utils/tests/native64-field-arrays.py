@@ -18,7 +18,7 @@ LEXER_EXPORTS = ('read', 'scan', 'token', 'parse')
 ARRAY_EXPORTS = ('arrays', 'report', 'buildstring', 'buildfile', 'parse_result',
                  'fieldpath', 'rootarrays', 'listarg', 'lenarg', 'setlocal_probe', 'status_probe',
                  'comparisons', 'fopen_choice', 'envhead', 'redir_probe', 'record_probe', 'record_list_probe',
-                 'tail_pair', 'mask_copy', 'direct_lenarg', 'envbucket', 'clone_probe')
+                 'tail_pair', 'mask_copy', 'direct_lenarg', 'envbucket', 'clone_probe', 'redirection_list', 'fdformat')
 
 
 def source():
@@ -51,7 +51,8 @@ Store:adt{
 '''
     interface = INTERFACES + 'Node:type Sh->Node;Redir:type Sh->Redir;' + records + 'Lexer:module{'
     interface += ''.join(n + ':fn(l:ref YYLEX):int;' for n in LEXER_EXPORTS)
-    interface += ''.join(n + ':fn(r:ref Store):int;' for n in ARRAY_EXPORTS) + 'setup:fn();};'
+    interface += ''.join(n + ':fn(r:ref Store):int;' for n in ARRAY_EXPORTS)
+    interface += 'redirection_head:fn(redirs:ref Redirlist):int;setup:fn();};'
     constants = ''.join(re.search(r'(?m)^' + n + r':\s*con[^;]+;', sh)[0]
                         for n in ('DUP', 'REDIR', 'WORD', 'OP', 'END', 'ERROR', 'ANDAND', 'OROR',
                                   'NOTOKEN', 'YYPRIVATE', 'yydebug', 'OAPPEND', 'YYFLAG', 'YYLAST',
@@ -209,6 +210,32 @@ mask_copy(r:ref Store):int {
     copy.fd1 = 7;
     return copy.rtype + copy.fd1 + copy.fd2;
 }
+redirection_list(r:ref Store):int {
+    fd := r.fd;
+    path := r.text;
+    mode := r.n;
+    from := r.i;
+    tail := Redirword(nil, nil, (mode, 19, 7)) :: nil;
+    owner := ref Redirlist(tail);
+    owner.r = Redirword(fd, path, (mode, from, -1)) :: owner.r;
+    first := redirection_head(owner);
+    redirs := owner.r;
+    rest := tl redirs;
+    return first - redirection_head(ref Redirlist(rest));
+}
+redirection_head(redirs:ref Redirlist):int {
+    (fd, path, (mode, from, fd2)) := hd redirs.r;
+    if (fd != nil) {
+        numbers := fd.fd :: nil;
+        from += 128 + hd numbers;
+    }
+    return mode + from - fd2 + len path;
+}
+fdformat(r:ref Store):int {
+    ctxt := r.context;
+    text := sys->sprint("fd=%d", ctxt.waitfd.fd);
+    return len text;
+}
 '''
     aliases = 'Context, Listnode, Var: import Sh;'
     return interface, 'implement Lexer;' + '\n'.join((interface, aliases, constants, tables, debug, stack, blank, wrappers, methods, environment))
@@ -237,7 +264,7 @@ def generate(limbo, work):
                 frames[(name.replace('Iobuf_', 'Iobuf.'), int(sig[1], 16))] = (
                     int(size), [int(v, 0) for v in mapping[1].split(',') if v])
 
-    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (57, 4, 3, '~0U'),
+    rows = G['generate'](limbo, work, limbo_source, 'Lexer', (60, 4, 4, '~0U'),
                          import_frames=frames, export_signatures=signatures,
                          source_label='unchanged Sh constructors, lexer and parser with generic ADT probes')
     code = {r['name']: r['code'] for r in rows}
@@ -266,6 +293,12 @@ def generate(limbo, work):
     assert {c[5] for c in code['record_list_probe']} >= {38, 43, 51, 64}
     assert sum(c[0] == E['OPCODES']['ITAIL'] and c[5] == 213 for c in code['tail_pair']) == 3
     assert {c[5] for c in code['mask_copy']} >= {39, 148}
+    expected = (8 << 24) | 3
+    assert sum(c[0] == E['OPCODES']['ICONSMP'] and c[3] == expected for c in code['redirection_list']) == 2
+    assert any(c[0] == E['OPCODES']['ICONSMP'] and c[1] & 7 == 5 for c in code['redirection_list'])
+    assert any(c[0] == E['OPCODES']['IHEADMP'] and c[3] == expected for c in code['redirection_head'])
+    assert any(c[0] == E['OPCODES']['ICONSW'] and c[5] == 72 for c in code['redirection_head'])
+    assert any(c[5] == 34 and c[0] == E['OPCODES']['ICVTWL'] for c in code['fdformat'])
     globals_ = dict((g[0], g[1]) for g in rows[0]['globals'])
     with (work / 'full.h').open('a') as stream:
         for name in ('nil', 'sys', 'bufio', 'str', 'saved', 'blanklex'):
@@ -275,7 +308,7 @@ def generate(limbo, work):
 
 def unit(rows):
     original = BASE['unit']()
-    vm = original.split('\n#line 1 "native64-record-fields.c"')[0]
+    vm = '#define TEST_REAL_MAPPED_CONS 1\n' + original.split('\n#line 1 "native64-record-fields.c"')[0]
     vm = vm.replace('#define RuntimeBlocks 256', '#define RuntimeBlocks 1024', 1)
     cons = 'cons(ulong size, void *slot)\n{'
     assert vm.count(cons) == 1
@@ -302,6 +335,8 @@ def unit(rows):
     start = vm.index(' optab[IMOVW]=countmovw;')
     handlers = vm[start:vm.index(' require(prepare64calls(', start)]
     xec = (ROOT / 'libinterp/xec.c').read_text()
+    vm += '\n' + xec[xec.index('typedef struct ConsMapped'):xec.index('/* Preserve the destination, tail')]
+    vm += '\n' + EXTRACT(xec, 'Type*\ncconsmappedtype(') + '\n'
     strings = (ROOT / 'libinterp/string.c').read_text()
     operations = {step[0] for row in rows for step in row['code']}
     for name, number in E['OPCODES'].items():

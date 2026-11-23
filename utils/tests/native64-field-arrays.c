@@ -135,6 +135,15 @@ Sys_sprint64(const Native64SysFormatRequest *f)
  String *path,*problem,**result;
  LONG line;
  const char *message="/fixture.sh:1: syntax error";
+ if(f->count==1){
+  check(textis(f->pattern,"fd=%d"),"exact nested FD format");
+  memmove(&line,f->values,8);
+  check(line==-912,"nested FD field sign-extends into the formatter slot");
+  result=f->resolve(f->argument);
+  check(result!=nil&&*result==H,"nested FD format result slot");
+  *result=c2string("fd=-912",7);
+  return 1;
+ }
  check(f->count==3&&textis(f->pattern,"%s:%d: %s"),"original parser diagnostic format");
  memmove(&path,f->values,8);
  memmove(&line,f->values+1,8);
@@ -775,6 +784,44 @@ fresh_arguments(int jit, int quantum)
 }
 
 static void
+redirection_lists(int jit, int quantum)
+{
+ uchar root[]={0x80}, wrongmap[]={0xa0};
+ Type *t=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));
+ Store *r=H2D(Store*,heapz(t));
+ Redirlist *empty;
+ List *wrong;
+
+ freetype(t);
+ r->n=-11;
+ r->i=5;
+ run_case(full_fn_redirection_list,r,jit,quantum,-6,"");
+ r->text=c2string("target",6);
+ t=dtype(freeheap,8,nil,0);
+ r->fd=H2D(Sys_FD*,heapz(t));
+ freetype(t);
+ run_case(full_fn_redirection_list,r,jit,quantum,128,"");
+ check(D2H(r->fd)->ref==1&&D2H(r->text)->ref==1,"list construction and read preserve only the original owners");
+ destroy(r);
+
+ t=dtype(freeheap,sizeof(Redirlist),root,1);
+ empty=H2D(Redirlist*,heapz(t));
+ freetype(t);
+ run_case(full_fn_redirection_head,empty,jit,quantum,marker,exNilref);
+ prepend_prompt(&empty->r,c2string("wrong width",11));
+ run_case(full_fn_redirection_head,empty,jit,quantum,marker,exType);
+ destroy(empty->r);
+ empty->r=H;
+ wrong=cons(32,&empty->r);
+ t=dtype(freeheap,32,wrongmap,1);
+ wrong->t=t;
+ initmem(t,wrong->data);
+ run_case(full_fn_redirection_head,empty,jit,quantum,marker,exBounds);
+ destroy(empty);
+ check(!live&&!nlinkpins,"mapped list payloads, descriptors and modules fully retire");
+}
+
+static void
 record_mask_copy(int jit, int quantum)
 {
  uchar roots[]={0x78};
@@ -820,6 +867,13 @@ environment_calls(int jit, int quantum)
  r->context=(void*)(context=H2D(void**,heapz(t)));env=H2D(void**,heapz(t));freetype(t);
  t=dtype(freeheap,24,two,1);require(t!=nil);
  context[0]=env;env[3]=local=H2D(void**,heapz(t));freetype(t);
+ run_case(full_fn_fdformat,r,jit,quantum,marker,exNilref);
+ t=dtype(freeheap,8,nil,0);
+ context[1]=H2D(Sys_FD*,heapz(t));
+ freetype(t);
+ ((Sys_FD*)context[1])->fd=-912;
+ run_case(full_fn_fdformat,r,jit,quantum,7,"");
+ check(D2H(context[1])->ref==1,"nested FD temporary retires after formatting");
  t=dtype(freeheap,8,one,1);require(t!=nil);
  envtable=H2D(Array*,heaparray(t,7));local[0]=envtable;freetype(t);
  envcontext=context;
@@ -980,6 +1034,12 @@ metadata(void)
            !owner.module&&allocations==before,"malformed field pair rejected before allocation");
      total++;
     }
+   }else if(native64genericlist(a)){
+    memmove(code,base->code,base->count*sizeof(*code));
+    code[j].m^=4;
+    check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
+          !owner.module&&allocations==before,"list descriptor disagrees with the flat root map");
+    total++;
    }else if(a->returned==Native64TypedRecordArg||a->returned==Native64TypedRecordVararg){
     memmove(code,base->code,base->count*sizeof(*code));
     code[j].d=32;
@@ -1101,6 +1161,7 @@ main(void)
   lexer_construction(j,quanta[q]);
   record_calls(j,quanta[q]);
   fresh_arguments(j,quanta[q]);
+  redirection_lists(j,quanta[q]);
   record_mask_copy(j,quanta[q]);
   environment_calls(j,quanta[q]);
   word_choices(j,quanta[q]);
@@ -1116,6 +1177,8 @@ main(void)
  puts("PASS Sh environment setup: 42 interpreter/JIT cases including allocation faults and list head field arguments");
  puts("PASS local array lengths and environment buckets: 30 interpreter/JIT cases with nil, populated and out-of-bounds inputs");
  puts("PASS shallow Var copy during local calls: 12 interpreter/JIT cases with nil, independent Word fields and exact root ownership");
+ puts("PASS mixed aggregate list construction and head: 30 interpreter/JIT cases with nil, retained roots, Words and descriptor controls");
+ puts("PASS nested Word formatting: 12 interpreter/JIT cases with a nil owner, signed value and scratch retirement");
  puts("PASS Boolean call arguments: 30 interpreter/JIT cases with six comparisons and imported fopen mode");
  return 0;
 }

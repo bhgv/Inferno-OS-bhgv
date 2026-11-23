@@ -186,8 +186,8 @@ def generate(limbo,w):
   assert any(step[0]==E['OPCODES'][op] and step[5]==72 for step in r['code']),r
  probe=next(r for r in rows if r['name']=='recursionprobe')
  assert [step[0] for step in probe['code'] if step[5]==127]==[E['OPCODES'][op] for op in ('IINDL','IMOVP')]
- cycle='''implement Cycle;Cycle:module{run:fn(n:int);}; Payload:adt{a:int;};
- run(n:int){back(n);c:=chan of (int,ref Payload);c <-= (n,nil);}
+ cycle='''implement Cycle;Cycle:module{run:fn(n:int);};
+ run(n:int){back(n);c:=chan of (int,int);c <-= (n,0);}
  back(n:int){if(n>0)run(n-1);}'''
  _,closed=E['compile_source'](limbo,w,cycle,interface='',loads=True)
  assert len(closed)==2 and all(not r['accepted'] for r in closed),closed

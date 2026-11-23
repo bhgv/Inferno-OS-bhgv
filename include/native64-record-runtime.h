@@ -37,10 +37,31 @@ native64recordcheckmap(Type *type, unsigned int offset, unsigned int bytes, unsi
 }
 
 static void
+native64recordlistcheck(VmFetch *f, Inst *in, unsigned int bytes, unsigned int mask)
+{
+ int head=in->op==IHEADMP;
+ unsigned int mode=head?USRC(in->add):UDST(in->add);
+ Adr *operand=head?&in->s:&in->d;
+ List *list;
+ Type *item;
+ if(mode&AIND)memmove(&list,native64recordspan(f,mode,operand,8,8),sizeof(list));
+ else list=(List*)native64rawarrayowner(f,mode,operand->ind);
+ if(list==H||list==nil)return;
+ if((uintptr)list<=sizeof(Heap)||(uintptr)list%sizeof(void*)||
+    (uintptr)list>(uintptr)-1-offsetof(List,data)-bytes||
+    D2H(list)->ref<=0||D2H(list)->t!=&Tlist)error(exType);
+ item=list->t;
+ if(item==nil||item==H||item->ref<=0||item->size!=(int)bytes||
+    item->np<0||item->np>(int)((bytes+63)/64))error(exType);
+ native64recordcheckmap(item,0,bytes,mask);
+}
+
+static void
 native64recordobjectcheck(VmFetch *f, Inst *in, unsigned int bytes, unsigned int mask)
 {
  int copy=in->op==IMOVMP;
- unsigned int id=copy?in->reg:in->s.imm,sm=USRC(in->add),dm=UDST(in->add);
+ int list=in->op==ICONSMP||in->op==IHEADMP;
+ unsigned int id=copy||list?in->reg:in->s.imm,sm=USRC(in->add),dm=UDST(in->add);
  Type *t;
  if(in->op==IMOVM){
   if(in->reg!=bytes||mask)error(exBounds);
@@ -52,6 +73,7 @@ native64recordobjectcheck(VmFetch *f, Inst *in, unsigned int bytes, unsigned int
     (t=f->module->type[id])==nil||t==H||t->ref<=0||t->size!=(int)bytes||t->np!=(int)((bytes+63)/64))
   error(exBounds);
  native64recordcheckmap(t,0,bytes,mask);
+ if(list){native64recordlistcheck(f,in,bytes,mask);return;}
  if(!copy)return;
  if(sm&AIND){
   native64recordpayload(f,sm,&in->s,bytes,&t);

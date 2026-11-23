@@ -57,6 +57,18 @@ native64sysmodulecheck(const Native64ModuleSpec*s,const Native64ModuleVariadic*v
         seen=0;fd=~0U;lastroot=~0U;
         for(at=p->first+1;at<p->end-1;at++){
             step=f->code+at;sm=USRC(step->mode);
+            if(step->returned==Native64TypedRecord){
+                const Native64TypedStep *word=step+1,*clear=step+2;
+                if(seen<fixed||seen>=fields||!p->tail||p->tail[seen-fixed].kind!=Native64TailInt||
+                   at+2>=p->end-1||step->op!=IMOVP||!(sm&AIND)||UDST(step->mode)!=AFP||
+                   !native64typedrecord(step,f->bytes,s->databytes)||
+                   word->op!=ICVTWL||USRC(word->mode)!=(AFP|AIND)||(word->s&65535)!=step->d||word->d!=64+8*seen||
+                   !native64recordarglayout(word,f->bytes,s->databytes,p->bytes,p->map,p->mapbytes)||
+                   clear->returned!=223||clear->op!=IMOVP||clear->mode!=(SRC(AMP)|DST(AFP))||clear->m||clear->d!=step->d||
+                   !native64typedrootoperand(AMP,clear->s,f->bytes,s->databytes)||
+                   !native64rawarraymap(s,f,AMP,clear->s,1)||!native64modulereadonlynil(s,clear->s))return 0;
+                at+=2;seen++;lastroot=~0U;continue;
+            }
             if(step->returned==Native64TypedRecordVararg){
                 if(seen>=fields||step->d!=64+8*seen||
                    !native64recordarglayout(step,f->bytes,s->databytes,p->bytes,p->map,p->mapbytes)||
@@ -202,6 +214,7 @@ native64sysmodulemake(void*argument)
             if(j==v->first){out->s.imm=ordinal+i;out->d.ind=40;}
             else if(j==v->end){out->reg=v->binding;out->s.ind=40;out->d.ind=v->moduleoffset;}
             else if(step->returned==Native64TypedRecordVararg){native64recordargcode(out,step);checked=1;}
+            else if(step->returned==Native64TypedRecord){native64recordcode(out,step,nil);checked=1;}
             else if(step->returned==153){if(!native64typedcode(out,1,step,1,f->bytes,b->spec->databytes))error(exInval);}
             else if(step->returned==57&&step->op==IADDC){out->s.imm=step->s;out->reg=step->m;out->d.i.f=40;out->d.i.s=step->d;}
             else if(step->returned==58){out->s.ind=step->s;out->d.i.f=40;out->d.i.s=step->d;}

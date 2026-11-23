@@ -50,15 +50,15 @@ typedrecordregister(Dis64TypedBody*p,unsigned int pc,unsigned int side,Type*t)
 }
 
 static int
-typedrecorddescriptor(Decl *d, Dis64Layout *layout, long *shape)
+typedrecordlayoutdescriptor(Type *type, Desc *desc, Dis64Layout *layout, long *shape)
 {
  unsigned int i,bits=0,legacy=0,n;
- if(!d||!d->ty||d->ty->kind!=Tadt||!d->desc||
-    !dis64layouttype(d->ty,layout)||layout->legacybytes!=(unsigned int)d->desc->size||
+ if(!type||(type->kind!=Tadt&&type->kind!=Ttuple)||!desc||
+    !dis64layouttype(type,layout)||layout->legacybytes!=(unsigned int)desc->size||
     !layout->bytes||layout->bytes>Native64RecordBytes||layout->bytes%4||
-    layout->legacybytes>Native64RecordBytes||d->desc->nmap<0||
-    (unsigned int)d->desc->nmap>(layout->legacybytes+31)/32||
-    (d->desc->nmap&&!d->desc->map))
+    layout->legacybytes>Native64RecordBytes||desc->nmap<0||
+    (unsigned int)desc->nmap>(layout->legacybytes+31)/32||
+    (desc->nmap&&!desc->map))
   return 0;
  for(i=0;i<layout->count;i++){
   Dis64LayoutLeaf *l=layout->leaves+i;
@@ -66,8 +66,8 @@ typedrecorddescriptor(Decl *d, Dis64Layout *layout, long *shape)
   if(l->legacy%4||l->native%8||l->oldbytes!=4||l->bytes!=8)return 0;
   bits|=1U<<(l->native/8);
  }
- for(i=0;i<(unsigned int)d->desc->nmap*8;i++){
-  if(!(d->desc->map[i/8]&(128>>(i%8))))continue;
+ for(i=0;i<(unsigned int)desc->nmap*8;i++){
+  if(!(desc->map[i/8]&(128>>(i%8))))continue;
   for(n=0;n<layout->count;n++)if(layout->leaves[n].legacy==i*4)break;
   if(n==layout->count||!typedmanagedkind(layout->leaves[n].kind))return 0;
   legacy|=1U<<(layout->leaves[n].native/8);
@@ -75,6 +75,12 @@ typedrecorddescriptor(Decl *d, Dis64Layout *layout, long *shape)
  if(bits!=legacy)return 0;
  *shape=(layout->bytes/4L<<Native64RecordMapBits)|bits;
  return native64recorddescriptor(*shape);
+}
+
+static int
+typedrecorddescriptor(Decl *d, Dis64Layout *layout, long *shape)
+{
+ return d&&typedrecordlayoutdescriptor(d->ty,d->desc,layout,shape);
 }
 
 static int
@@ -288,6 +294,8 @@ typedrecordinst(Inst*original,Dis64TypedBody*p,unsigned int pc,unsigned int stop
  if(op==IINDC||op==ILENC||op==ICVTCW){if(!a||a->kind!=Tstring)return 0;}
  if(op==ILENA&&(!a||a->kind!=Tarray))return 0;
  if(op==ILENL&&(!a||a->kind!=Tlist))return 0;
+ if(op==ICONSW&&(!a||a->kind!=Tint||!(sm&AIND)||in->mm!=Anone||
+    (in->dm!=Afp&&in->dm!=Amp)||!typedintlisttype(&in->d)))return 0;
  if(branch){
   if(in->dm!=Apc||!in->branch||in->d.offset!=in->branch->pc||in->d.offset<(int)p->first||in->d.offset>=(int)stop)return 0;
   dst=in->d.offset-p->first;dm=AIMM;
