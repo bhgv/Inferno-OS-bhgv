@@ -251,6 +251,17 @@ static void agcase(int jit,int quantum,WORD n){Native64ModuleOwner owner={0};Mod
  agcheck(got==97+(n==0?102:-3),"mutual recursion and both field selectors");
  memmove(&s,ml->MP+list_result,8);
  agcheck(!strcmp(string2c(s),"submenusubmenuparent"),"two list heads and tail in one pending frame");
+ memmove(&s,ml->MP+relay_result,8);
+ agcheck(n<0?s!=H&&!strcmp(string2c(s),n==-1?"named":"bare"):s==H,
+         "named and bare rethrows reached the enclosing catch");
+ {
+  char text[24];
+  snprint(text,sizeof(text),"%d",n);
+  memmove(&s,ml->MP+pid_result,8);
+  agcheck(s!=H&&!strcmp(string2c(s),text),"signed Word converted inside a Listnode initializer");
+  memmove(&s,ml->MP+generic_result,8);
+  agcheck(s!=H&&!strcmp(string2c(s),text),"signed Word converted inside a generic record initializer");
+ }
  require(m->ref==1);unload(m);ptrdel(D2H(ml));destroy(ml);agcheck(native64typedmoduleclear(&owner),"module retired");agcheck(!live&&!modules&&!nlinkpins&&!worker.nerr,"complete ownership retirement");memset(nativeobservations,0,sizeof(nativeobservations));}
 static void
 agcallandtablemetadata(void)

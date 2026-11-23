@@ -5,6 +5,9 @@
 
 enum { TypedRoot=-10, TypedInstructions=65536 };
 
+/* The checked compiler report can consult classic exception tables. */
+static Except *typedreportcatches;
+
 static int
 typedfail(Dis64TypedBody *p, char *reason)
 {
@@ -168,11 +171,31 @@ typedchanneltriple(Type*t)
 }
 
 static int
+typedcatchstringslot(Inst *in, Dis64TypedBody *p)
+{
+ Except *e;
+ Label *label;
+ Addr *a=&in->s;
+ if(in->sm!=Afp||!a->decl||a->decl->ty!=rtexception||a->offset||
+    a->reg!=a->decl->offset)return 0;
+ for(e=typedreportcatches;e;e=e->next){
+  if(e->d!=a->decl||e->ne||!e->c||e->c->nlab!=1||e->c->iwild||
+     (!e->p1->reach&&!e->p2->reach)||getpc(e->p1)<p->first||getpc(e->p2)>in->pc)
+   continue;
+  label=e->c->labs;
+  if(label->start&&label->start==label->stop&&label->start->ty==tstring&&
+     label->inst&&label->inst->pc>=getpc(e->p2)&&label->inst->pc<=in->pc)return 1;
+ }
+ return 0;
+}
+
+static int
 typedraise(Inst *in,Dis64TypedBody *p,Dis64Instruction *out)
 {
  unsigned int sm;long source;int actual;
  if(in->mm!=Anone || in->dm!=Anone || in->branch!=nil ||
-    !typedoperand(in->sm,&in->s,Tstring,0,0,p,&source,&sm,&actual) || actual!=Tstring)
+    !typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&source,&sm,&actual) ||
+    (actual!=Tstring&&!typedcatchstringslot(in,p)))
   return typedfail(p,"raise-string-roles");
  *out=(Dis64Instruction){IRAISE,SRC(sm)|DST(AXXX),0,source,0};return 1;
 }
@@ -350,9 +373,6 @@ typedresults(Dis64TypedBody *p)
 }
 
 
-
-/* Only the checked report and its C metadata generator carry catch tables. */
-static Except *typedreportcatches;
 
 static int
 typedlower(Decl *fn, Decl *globals, Inst *input, unsigned int count, unsigned int stop, Dis64TypedBody *p,int loads)

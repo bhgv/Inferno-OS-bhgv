@@ -622,7 +622,7 @@ def verify(data,r,imports,loads=False,rows=None):
                     at+=3
                 while at<end and r['code'][at][5]==(51 if generic else 153):
                     o=original[at];c=r['code'][at]
-                    assert o['op']in(OPCODES['IMOVW'],OPCODES['IMOVP']) and o['mode']>>3&7 in(0,1,2)
+                    assert o['op']in(OPCODES['IMOVW'],OPCODES['IMOVP'],OPCODES['ICVTWC']) and o['mode']>>3&7 in(0,1,2)
                     assert o['mode']&7==5 and o['d'][0]==temp[0]
                     if generic:record_field(o,c[:5]+[72],at,maps,r)
                     else:
@@ -2031,8 +2031,11 @@ def verify(data,r,imports,loads=False,rows=None):
             assert loads and mode in(3,11)and m==d==returned==0
             address=mode>>3&7;leaves=r['frame'if address else'data']['leaves']
             if not any(leaf[1]==s and leaf[3:]==[8,13]for leaf in leaves):
-                assert address==1 and pc>0 and original[pc-1]['op']==OPCODES['IADDC']and r['code'][pc-1][0]==OPCODES['IADDC']and r['code'][pc-1][1]&7==1 and r['code'][pc-1][4]==s
-                assert any(leaf[1]==s and leaf[3]==8 and leaf[4]in set(ROOTS)|{20}for leaf in leaves)and r['frame']['map'][s//64]&(128>>(s//8%8));inside.add(pc)
+                assert address==1 and any(leaf[1]==s and leaf[3]==8 and leaf[4]in set(ROOTS)|{20}for leaf in leaves)
+                assert r['frame']['map'][s//64]&(128>>(s//8%8))
+                if not any(catch['slot']==s and catch['target']<=pc for catch in r.get('catches',[])):
+                    assert pc>0 and original[pc-1]['op']==OPCODES['IADDC']and r['code'][pc-1][0]==OPCODES['IADDC']and r['code'][pc-1][1]&7==1 and r['code'][pc-1][4]==s
+                    inside.add(pc)
         if r.get('result_channels'):
             assert r['result_channels']==[6,6,6]and r['result']==[14,24]
             if o['op']==43:

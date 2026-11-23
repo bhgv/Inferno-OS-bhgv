@@ -35,7 +35,7 @@ native64recordshape(unsigned int op,unsigned int*w,unsigned int*r)
  switch(op){
  case IMOVP:case IADDC:case IBEQL:case IBNEL:case IBEQC:case IBNEC:w[0]=w[1]=8;r[0]=r[1]=1;return 1;
  case IINDC:case ILENC:case ILENA:case ILENL:case ICASEC:w[0]=8;r[0]=1;return 1;
- case ICONSW:w[1]=8;r[1]=1;return 1;
+ case ICONSW:case ICVTWC:w[1]=8;r[1]=1;return 1;
  case ICASE:case IGOTO:case IMOVW:case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:
  case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:
  case IBEQW:case IBNEW:case IBLTW:case IBLEW:case IBGTW:case IBGEW:return 1;

@@ -152,6 +152,11 @@ typedlibraryinst(Inst*in,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
  case INEWA:case INEWAZ:if(in->mm!=Adesc || !in->m.decl || !in->m.decl->ty || in->m.decl->ty->kind!=Tbyte)return 0;copy.op=INEWAZ;dk=TypedRoot;break;
  case IMOVW:break;case IMOVL:sk=dk=Tbig;break;case IMOVF:sk=dk=Treal;break;
  case ICVTWL:dk=Tbig;break;case ICVTLW:sk=Tbig;break;
+ case ICVTWC:
+  t=typedrecordvalue(&in->d,in->dm);
+  if((in->sm!=Afp&&in->sm!=Amp&&in->sm!=Aimm)||!t||t->kind!=Tstring||
+     (in->dm!=Afpind&&in->dm!=Ampind))return 0;
+  dk=TypedRoot;break;
  case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:binary=1;break;
  case IADDL:case ISUBL:case IMULL:case IDIVL:case IMODL:sk=dk=Tbig;binary=1;break;
  case IBEQC:case IBNEC:sk=TypedRoot;rootcompare=1;branch=binary=1;break;

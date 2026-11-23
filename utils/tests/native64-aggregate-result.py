@@ -156,8 +156,24 @@ shelllookup(){
 }
 envpairs(n:int){pairs:list of (string,string);if(n>=0){first:=("A","1");second:=("B","2");pairs=second::pairs;pairs=first::pairs;}for(;pairs!=nil;pairs=tl pairs){(key,value):=hd pairs;if(envcount==0){envfirst=key;envfirstvalue=value;}envtext=key;envvalue=value;envvar=ref Sh->Var(key,nil,envcount);envcount++;}}
 shellrecords(n:int){b:=ref Sh->Builtins(nil,n);vars:=array[7] of list of ref Sh->Var;prior:=ref Var("old",nil,n);hashadd(vars,3,prior);fresh:=ref Var("new",nil,n);hashadd(vars,3,fresh);hashfirst=hashfind(vars,3,"old");hashmiss=hashfind(vars,4,"old");l:=ref Sh->Localenv(vars,nil,n);e:=ref Sh->Environment(b,b,nil,l);c:=ref Sh->Context(e,nil,nil,nil);shellctx=c;env:=c.env;builtins:=env.builtins;localenv:=env.localenv;shellflags=builtins.n^localenv.flags;}
-catchprobe(n:int){{if(n<0)raise "fail:  fixture";}exception e {"fail:*"=>text:=failurestatus(e);catchtext=text;catchvalue=17;}}
+catchprobe(n:int){catchrelay(n);formatpid(n);{if(n<0)raise "fail:  fixture";}exception e {"fail:*"=>text:=failurestatus(e);catchtext=text;catchvalue=17;}}
 catchresult(n:int):string{{if(n<0)raise "fail: result";}exception e {"fail:*"=>return failurestatus(e);}return "normal";}
+relaytext,pidtext,generictext:string;
+PidLabel:adt{flag:int;label:string;};
+raiserelay(n:int){
+    {if(n == -1)raise "fail:named";if(n<0)raise "fail:bare";}
+    exception e {"fail:*"=>if(n == -1)raise e;raise;}
+}
+catchrelay(n:int){
+    {raiserelay(n);}
+    exception e {"fail:*"=>relaytext=failurestatus(e);}
+}
+formatpid(n:int){
+    savepid("apid",ref Sh->Listnode(nil,string n)::nil);
+    savegeneric(ref PidLabel(1,string n));
+}
+savepid(nil:string,items:list of ref Listnode){pidtext=(hd items).word;}
+savegeneric(item:ref PidLabel){generictext=item.label;}
 swappt(p:Point,n:int):Point{if(n<0)return p;return(p.y,p.x);}
 mixed(n:int):(string,int){if(n<0)return (text(n),n);return ("positive",n);}
 text(n:int):string{if(n<0)return "negative";return "positive";}firstword(r:(int,int)):int{return r.t0;}
@@ -176,9 +192,15 @@ SOURCE+=re.search(r'(?ms)^Context\.get\([^\n]*\n\{.*?^\}',(ROOT/'appl/cmd/sh/sh.
 
 def generate(limbo,w):
  m=w/'aggregate.m';m.write_text(DECL);h=subprocess.check_output([str(limbo),'-H','-M','Winplace',str(m)],text=True);sigs={n:int(v,16)for n,v in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_Winplace_(\w+) (0x[0-9a-f]+)U',h,re.M)}
- rows=G['generate'](limbo,w,SOURCE,'Winplace',(48,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
+ rows=G['generate'](limbo,w,SOURCE,'Winplace',(53,0,0,'~0U'),export_signatures=sigs,source_label='aggregate fixture with original Wmlib and Winplace bodies')
  p=w/'full.h';gl={x[0]:x[1]for x in rows[0]['globals']};p.write_text(p.read_text().replace('static const Native64ModuleVariadic full_variadics[]={};\n','')+'\nstatic const uint aggregate_globals[]={'+','.join(str(gl[n])for n in('out','word','a','b','c','d','e','ctx','image','last','parsed','position','quoted','nextq','left','middle','right','pointout','bytebuf','topout','eventout','nodes','menutext','catchvalue','converted','empty_nodes','shellctx','shellflags','envtext','envcount','envvalue','envfirst','envfirstvalue','envvar','hashfirst','hashmiss','lookupchild','lookupparent','lookuppos','lookupmiss','builtinmarker','builtinmatch','builtinmissing','builtintable','hit','miss','before','between','after','empty','syntaxtext','syntaxassign','syntaxword','syntaxkind','syntaxtype','syntaxnest','exportorder','catchtext','headerbytes','headerbad','headerempty','headok','headcut','headbad','headempty','headshort','headwords','emptywords'))+'};\n' +
-  f'static const uint recursive_result={gl["recursiveselection"]},list_result={gl["listarguments"]};\n')
+  f'static const uint recursive_result={gl["recursiveselection"]},list_result={gl["listarguments"]};\n'
+  f'static const uint relay_result={gl["relaytext"]},pid_result={gl["pidtext"]},generic_result={gl["generictext"]};\n')
+ reraising=next(r for r in rows if r['name']=='raiserelay')
+ slot=reraising['catches'][0]['slot']
+ assert sum(step[0]==E['OPCODES']['IRAISE'] and step[1]==11 and step[2]==slot for step in reraising['code'])==2
+ formatpid=next(r for r in rows if r['name']=='formatpid')
+ assert {step[5] for step in formatpid['code'] if step[0]==E['OPCODES']['ICVTWC']}=={51,153}
  recursors={r['name']:r for r in rows if r['name'] in ('leftselect','rightselect')}
  for name, other, op in (('leftselect','rightselect','ICASE'),('rightselect','leftselect','IGOTO')):
   r=recursors[name]

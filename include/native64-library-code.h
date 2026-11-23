@@ -11,7 +11,7 @@ native64libraryshape(const Native64TypedStep*s,unsigned int*w,unsigned int*r)
  case IBEQC:case IBNEC:if(!((id==6&&field==40)||(id==7&&field==0)))return 0;w[0]=w[1]=8;r[0]=r[1]=1;break;
  case ISLICELA:case IMOVP:case ICONSP:case IHEADP:case ITAIL:w[0]=w[1]=8;r[0]=r[1]=1;break;
  case ILENC:case ILENA:case ILENL:case IHEADW:w[0]=8;r[0]=1;break;
- case ICONSW:w[1]=8;r[1]=1;break;
+ case ICONSW:case ICVTWC:w[1]=8;r[1]=1;break;
  case ISLICEA:case INEWAZ:w[1]=8;r[1]=1;break;
  case IMOVW:case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:case IBEQW:case IBNEW:case IBLTW:case IBLEW:case IBGTW:case IBGEW:break;
  case IMOVL:case IADDL:case ISUBL:case IMULL:case IDIVL:case IMODL:case IMOVF:w[0]=w[1]=8;break;
@@ -45,6 +45,7 @@ native64typedlibrary(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
  if(s->mode>255 || s->m<0 || (unsigned long)s->m>((unsigned long)Native64LibraryRecords<<24|0xffffffUL))return 0;
  if(s->returned==154)return s->op==INEWZ&&s->mode==(SRC(AIMM)|DST(dm))&&s->s>=1&&s->s<=Native64LibraryRecords&&!s->m&&(((dm==AFP||dm==AMP)&&native64typedrootoperand(dm,s->d,fp,mp))||(dm==(AFP|AIND)&&s->d==32));
  if(s->returned!=153 || (!sid&&!did && !(s->op==ILENA && sm==AFP && dm==AFP)) || !native64libraryshape(s,w,r) || !native64libraryoperand(sm,s->s,sid,w[0],r[0],fp,mp,0))return 0;
+ if(s->op==ICVTWC&&(mm!=AXNON||sid||!did||!(dm&AIND)))return 0;
  if(native64typedbranch(s->op)){if(did||dm!=AIMM||s->d<0)return 0;}
  else if(!native64libraryoperand(dm,s->d,did,w[1],r[1],fp,mp,1) || dm==AIMM)return 0;
  if(mm==AXNON)return mid==0;
@@ -99,12 +100,12 @@ native64recordprecall(const Native64TypedStep *steps, unsigned int first, unsign
  for(j=pc+1;j<end&&steps[j].returned==role;j++){
   s=steps+j;
   mode=USRC(s->mode);
-  if((s->op!=IMOVW&&s->op!=IMOVP)||s->mode!=(SRC(mode)|DST(AFP|AIND))||
+  if((s->op!=IMOVW&&s->op!=IMOVP&&s->op!=ICVTWC)||s->mode!=(SRC(mode)|DST(AFP|AIND))||
      (mode&AIND)||(s->d&65535)!=value)
    return 0;
   if(generic){
    Native64TypedStep init=*s;
-   field=(unsigned long)s->d>>16;root=s->op==IMOVP;
+   field=(unsigned long)s->d>>16;root=s->op!=IMOVW;
    init.returned=Native64TypedRecord;
    if(!native64typedrecord(&init,fp,mp)||s->m||field>=native64recordbytes(alloc->m)||
       !!(native64recordmask(alloc->m)&(1U<<(field/8)))!=root)return 0;

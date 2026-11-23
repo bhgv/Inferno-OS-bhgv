@@ -1212,22 +1212,7 @@ typedlocalgeometryliteral(TypedMulti*c,Dis64TypedBody*p,Dis64TypedBody*child,Ins
 static int
 typedcaughtstring(Inst *in, Dis64TypedBody *p)
 {
- Except *e;
- Label *label;
- int i;
- Addr *a=&in->s;
- if(in->op!=IMOVP||in->sm!=Afp||!a->decl||a->decl->ty!=rtexception||
-    a->native64type!=tstring||a->offset||a->reg!=a->decl->offset)return 0;
- for(e=typedreportcatches;e;e=e->next){
-  if(e->d!=a->decl||e->ne||!e->c||getpc(e->p1)<p->first||
-     getpc(e->p2)>in->pc)continue;
-  for(i=0;i<e->c->nlab;i++){
-   label=e->c->labs+i;
-   if(label->start&&label->start==label->stop&&label->start->ty==tstring&&
-      label->inst&&label->inst->pc>=getpc(e->p2)&&label->inst->pc<=in->pc)return 1;
-  }
- }
- return 0;
+ return in->op==IMOVP&&in->s.native64type==tstring&&typedcatchstringslot(in,p);
 }
 
 static int
@@ -1339,7 +1324,7 @@ typedlocalrecordprep(TypedMulti *c, Dis64TypedBody *p, Dis64TypedBody *child, In
   in=c->instructions[*at];
   if(in->dm!=Afpind||in->d.reg!=alloc->d.reg||in->d.decl!=alloc->d.decl)
    break;
-  if((in->op!=IMOVW&&in->op!=IMOVP)||in->branch||in->mm!=Anone||
+  if((in->op!=IMOVW&&in->op!=IMOVP&&in->op!=ICVTWC)||in->branch||in->mm!=Anone||
      (in->sm!=Afp&&in->sm!=Amp&&in->sm!=Aimm)||
      (generic?!typedrecordinst(in,p,*at-p->first,end):!typedlibraryinst(in,p,*at-p->first,end)))
    return typedfail(p,"local-record-initializer");

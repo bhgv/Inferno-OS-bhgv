@@ -19,6 +19,7 @@ native64typedrecord(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
  if(s->returned!=Native64TypedRecord||s->mode>255||!native64recordshape(s->op,w,r)||
     (!(sm&AIND)&&!(dm&AIND))||!native64recordoperand(sm,s->s,w[0],r[0],fp,mp,0))return 0;
  if(s->op==ICONSW&&(mm!=AXNON||!(sm&AIND)||(dm!=AFP&&dm!=AMP)))return 0;
+ if(s->op==ICVTWC&&(mm!=AXNON||(sm&AIND)||!(dm&AIND)||(dm==(AFP|AIND)&&s->d==32)))return 0;
  if(s->op==ICASE||s->op==IGOTO||s->op==ICASEC)
   return (sm&AIND)&&dm==AMP&&mm==AXNON&&!s->m&&
    native64typedwordoperand(AMP,s->d,fp,mp)&&(s->op!=IGOTO||s->d>=4);

@@ -301,6 +301,10 @@ typedrecordinst(Inst*original,Dis64TypedBody*p,unsigned int pc,unsigned int stop
     !(typedrecordoperand(in->sm,&in->s,r[0],p,&src,&sm)||
       (op==IADDC&&typedrecordlayoutoperand(in->sm,&in->s,1,p,&src,&sm))))return 0;
  if(op==IADDC&&(!a||a->kind!=Tstring))return 0;
+ if(op==ICVTWC){
+  b=typedrecordvalue(&in->d,in->dm);
+  if((sm&AIND)||(in->dm!=Afpind&&in->dm!=Ampind)||!b||b->kind!=Tstring)return 0;
+ }
  if(op==IINDC||op==ILENC||op==ICVTCW){if(!a||a->kind!=Tstring)return 0;}
  if(op==ILENA&&(!a||a->kind!=Tarray))return 0;
  if(op==ILENL&&(!a||a->kind!=Tlist))return 0;
