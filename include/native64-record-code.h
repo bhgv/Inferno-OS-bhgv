@@ -39,14 +39,14 @@ static int
 native64recordargshape(const Native64TypedStep *s, unsigned int fp, unsigned int mp)
 {
  unsigned int sm=USRC(s->mode);
- int root=s->op==IMOVP;
+ int root=s->op==IMOVP, length=s->op==ILENA&&s->returned==Native64TypedRecordArg;
  unsigned int width=root||s->returned==Native64TypedRecordVararg?8:4;
 
  if(s->returned!=Native64TypedRecordArg&&s->returned!=Native64TypedRecordVararg)
   return 0;
- return (root||s->op==(width==8?ICVTWL:IMOVW))&&!s->m&&
+ return (root||length||s->op==(width==8?ICVTWL:IMOVW))&&!s->m&&
   s->mode==(SRC(sm)|DST(AFP|AIND))&&(sm&AIND)&&
-  native64recordoperand(sm,s->s,root?8:4,root,fp,mp,0)&&
+  native64recordoperand(sm,s->s,root||length?8:4,root||length,fp,mp,0)&&
   s->d>=64&&s->d<=65535&&s->d%width==0;
 }
 

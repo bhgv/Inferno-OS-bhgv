@@ -133,8 +133,15 @@ native64rawarraystep(VmFetch *f)
  else if(proof->kind==Native64ArrayRecordStep)native64arrayrecordcheck(f,proof);
  else if(proof->kind==Native64RecordArgStep){
   Inst *in=&proof->instruction;
-  int root=in->op==IMOVP;
-  native64recordfield(f,USRC(in->add),&in->s,root?8:4,root);
+  int root=in->op==IMOVP||in->op==ILENA;
+  void *field=native64recordfield(f,USRC(in->add),&in->s,root?8:4,root);
+  if(in->op==ILENA){
+   Array *array;
+   memmove(&array,field,sizeof(array));
+   if(array!=H&&array!=nil&&((uintptr)array<=sizeof(Heap)||(uintptr)array%8||
+      (uintptr)array>(uintptr)-1-sizeof(Array)||D2H(array)->ref<=0||D2H(array)->t!=&Tarray))
+    error(exBounds);
+  }
  }
  else native64arraycheckstep(f,proof);
  vmdecode(f);

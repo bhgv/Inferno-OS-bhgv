@@ -1084,3 +1084,27 @@ a nil `Bufio.fopen` result, and a record copy with a live String and a
 signed Word. Checked coverage rises to 85/134 Sh bodies and 322/385 bodies
 across the 16 startup modules. The preflight compares classic Dis output
 byte for byte.
+
+## Sh context setup and builtin tables
+
+Checked calls can load nested ADT references through a mapped temporary, pass
+the final field to the callee, and clear the temporary. The VM verifies the
+heap span and root slot of each field before dereferencing it. Local calls may
+also build their first list argument in a mapped temporary, and fixed calls
+can take the length of an array stored in a record field.
+
+The same array operations used for mixed records now support elements made of
+two or three managed fields. Allocation, element copies, slicing and bulk
+copies use the element's verified size and GC map. The two-root layout is
+used by Sh's builtin tables.
+
+The source preflight accepts `Context.push`, `concatwords`, `copybuiltins`,
+`addbuiltin`, `Context.addbuiltin`, `Context.addsbuiltin` and `initbuiltin`.
+Sh reaches 92/134 checked functions and the 16 startup modules reach 329/385.
+`runfile` advances to its first call to `Context.setlocal`, which constructs
+an argument after staging a managed reference in the pending frame. Classic
+Dis output is identical in the preflight comparison.
+
+The field-array fixture runs 42 additional interpreter/JIT cases covering
+nested call arguments and results, a two-root array copy, array lengths, a
+locally constructed list, nil references and a mismatched heap Type.

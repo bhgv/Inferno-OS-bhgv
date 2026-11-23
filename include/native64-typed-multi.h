@@ -276,7 +276,8 @@ native64typedmulticode(Inst *out,unsigned int capacity,const Native64TypedStep *
                 if(s->op!=IMOVP || !native64typedlistprep(&checkstep,fpbytes,mpbytes))return 0;continue;
             }
             if(s->returned==Native64TypedListPrep){
-                if(!c->external || !native64typedlistprep(s,fpbytes,mpbytes))return 0;continue;
+                if((!c->external&&steps[c->end].op!=ICALL)||!native64typedlistprep(s,fpbytes,mpbytes))return 0;
+                continue;
             }
             if(s->op==IMOVM||s->op==IHEADM){
                 if(((s->returned==227 || s->returned==230) && !c->external) || (!c->external && steps[c->end].op!=ICALL) || c->callee->np<0 || !native64typedgeometryarg(s,fpbytes,mpbytes,c->callee->size,c->callee->map,c->callee->np))return 0;

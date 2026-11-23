@@ -149,6 +149,30 @@ def stringarray_argument(original,code,at,maps,pending,oldoffset,new,role):
         assert code[at+1]==[b['op'],b['mode'],48,maps['frame'if mm else'data'][b['m']],new,76]
     return at+2
 
+def list_constructor(original,code,at,end,maps,row):
+    first=at;slot=original[at]['d'][0];temp=maps['frame'][slot]
+    nil=original[at]['s'][0]
+    assert original[at]['op']==41 and original[at]['mode']==1
+    assert next(l for l in row['data']['leaves']if l[0]==nil)[4]==20
+    cons=original[at+1]['op']
+    assert cons in (OPCODES['ICONSP'],OPCODES['ICONSW'])
+    while at<end and code[at][5]==112:
+        o=original[at];sm=o['mode']>>3&7
+        assert o['d']==[slot] and o['mode']==(sm<<3)|1 and o['m'] is None
+        assert next(l for l in row['frame']['leaves']if l[0]==slot)[2:4]==[4,8]
+        if at!=first:
+            assert o['op']==cons and sm in (0,1,2)
+            if sm==2:assert cons==OPCODES['ICONSW']
+            else:
+                kind=next(l for l in row['frame' if sm else 'data']['leaves']if l[0]==o['s'][0])[4]
+                assert kind in ((9,) if cons==OPCODES['ICONSW'] else (13,20))
+        source=o['s'][0] if sm==2 else maps['frame' if sm else 'data'][o['s'][0]]
+        assert code[at]==[o['op'],o['mode'],source,0,temp,112]
+        at+=1
+    assert 2<=at-first<=257 and original[at]['s']==[slot] and original[at]['mode']==13
+    return at,(temp,maps['data'][nil])
+
+
 def rootpath_argument(original,code,at,maps,pending,oldoffset,new,r):
     fields={1:{0:0,20:24,40:48,52:64,56:72,84:104},2:dict(zip(range(0,28,4),range(0,56,8))),3:{0:0,4:8,8:16},4:dict(zip(range(0,20,4),range(0,40,8))),5:{0:0,4:8,8:16,12:24}}
     slot=original[at]['d'][0];temp=maps['frame'][slot];n=0
@@ -156,10 +180,15 @@ def rootpath_argument(original,code,at,maps,pending,oldoffset,new,r):
         o=original[at];c=code[at];sm=o['mode']>>3&7;kind=c[3]>>16
         assert n<8 and o['op']==41 and o['mode']==(sm<<3)|1 and sm in(4,5)and o['m']is None and o['d']==[slot]
         if n:assert sm==5 and o['s'][0]==slot
-        assert c==[41,o['mode'],maps['frame'if sm==5 else'data'][o['s'][0]],(kind<<16)|fields[kind][o['s'][1]],temp,61]
+        if kind==6:
+            assert c==[41,o['mode'],maps['frame'if sm==5 else'data'][o['s'][0]],c[3],temp,61]
+            assert record_address(r,maps,at,0,sm,o['s'],c[2]|((c[3]&65535)<<16),8)==12
+        else:assert c==[41,o['mode'],maps['frame'if sm==5 else'data'][o['s'][0]],(kind<<16)|fields[kind][o['s'][1]],temp,61]
         at+=1;n+=1
     o=original[at];assert o['s'][0]==slot and o['mode']==45
     if code[at][5]==155:library_argument(o,code[at],maps,pending,oldoffset,new)
+    elif code[at][5]==33:record_argument(o,code[at],at,maps,r,pending,oldoffset,new,
+                                       record_address(r,maps,at,0,5,o['s'],code[at][2],8))
     else:field_argument(o,code[at],new,maps);assert o['d']==[pending,oldoffset]
     at+=1;o=original[at];assert o['op']==41 and o['mode']==1 and o['m']is None and o['d']==[slot]and next(l for l in r['data']['leaves']if l[0]==o['s'][0])[4]==20
     assert code[at]==[41,1,maps['data'][o['s'][0]],0,temp,66]
@@ -171,7 +200,7 @@ def array_layout(c):
     mixed={20:(1,1,False),21:(1,2,False),24:(2,1,False),25:(2,2,False),28:(3,1,False),29:(3,2,False),53:(1,2,True),57:(2,2,True),61:(3,2,True)}
     if c in (1,2,3):
         n={1:4,2:12,3:16}[c];return n,n,[(i,i,4,False)for i in range(0,n,4)]
-    if c==4:return 8,4,[(0,0,8,True)]
+    if c in (4,8,12):return 2*c,c,[(i,2*i,8,True)for i in range(0,c,4)]
     roots,words,gap=mixed[c]
     fields=[(4*i,8*i,8,True)for i in range(roots)]+[(4*(roots+i),8*roots+4*i+(4 if i and gap else 0),4,False)for i in range(words)]
     return (fields[-1][1]+11)//8*8,4*(roots+words),fields
@@ -205,6 +234,10 @@ def record_argument(o, c, pc, maps, row, pending, old, new, kind, variadic=False
     sm=o['mode']>>3&7
     assert o['mode']==(sm<<3)|5 and o['d']==[pending,old] and o['m'] is None
     assert kind in (*ROOTS,9)
+    if kind==9 and not variadic and o['op']==OPCODES['ILENA']:
+        assert c==[o['op'],o['mode'],c[2],0,new,33]
+        assert record_address(row,maps,pc,0,sm,o['s'],c[2],8)==3
+        return
     op=OPCODES['IMOVW'] if kind==9 else OPCODES['IMOVP']
     assert o['op']==op
     if kind==9 and variadic:op=OPCODES['ICVTWL']
@@ -411,6 +444,11 @@ def verify(data,r,imports,loads=False,rows=None):
         assert r['code'][first]==[5,17,descriptor,0,40,0]
         for arg in callee['args']:
             prep=False;screenprep=None;idprep=None;o=original[at]
+            listclear=None
+            if loads and r['code'][at][5]==112:
+                assert arg[1:]==[10,4,8] and at==first+1
+                at,listclear=list_constructor(original,r['code'],at,end,maps,r)
+                o=original[at]
             if loads and r['code'][at][5]==154:
                 assert arg[1:]==[12,4,8] and o['mode']&7==1
                 assert all(c[0]==OPCODES['IMOVW'] and c[5]==64 for c in r['code'][first+1:at])
@@ -602,6 +640,8 @@ def verify(data,r,imports,loads=False,rows=None):
                 clear=original[at];assert arg[1]in ROOTS and o['op']==41 and sm==1 and clear['op']==41 and clear['mode']==1 and clear['m']is None and clear['d']==o['s']
                 assert next(l for l in r['data']['leaves']if l[0]==clear['s'][0])[4]==20
                 assert r['code'][at]==[41,1,maps['data'][clear['s'][0]],0,maps['frame'][clear['d'][0]],182];at+=1
+            if listclear is not None:
+                assert r['code'][at-1]==[41,1,listclear[1],0,listclear[0],182]
         assert at+bool(contract)==end
         if contract:
             binding=original[end-1];assert binding['op']==39 and binding['d']==[pending,16]and binding['m']is None
@@ -794,24 +834,7 @@ def verify(data,r,imports,loads=False,rows=None):
             listclear=None
             if at<end and r['code'][at][5]==112:
                 assert loads and kind==10 and oldbytes==4 and width==8
-                temp=None;count=0;cons=None
-                while at<end and r['code'][at][5]==112:
-                    a=original[at];sm=a['mode']>>3&7
-                    assert a['m']is None and a['mode']&7==1 and sm in(0,1,2)
-                    target=maps['frame'][a['d'][0]]
-                    assert next(l for l in r['frame']['leaves']if l[0]==a['d'][0])[2:4]==[4,8]
-                    if temp is None:
-                        assert a['op']==41 and sm==0 and next(l for l in r['data']['leaves']if l[0]==a['s'][0])[4]==20
-                        temp=target;listclear=(temp,maps['data'][a['s'][0]])
-                    else:
-                        assert a['op']in(OPCODES['ICONSP'],OPCODES['ICONSW'])and target==temp
-                        if cons is None:cons=a['op']
-                        assert cons==a['op']
-                        if sm!=2:assert next(l for l in r['frame'if sm else'data']['leaves']if l[0]==a['s'][0])[4]in((9,)if cons==OPCODES['ICONSW']else(13,20))
-                        else:assert cons==OPCODES['ICONSW']
-                        count+=1
-                    assert r['code'][at]==[a['op'],a['mode'],a['s'][0]if sm==2 else maps['frame'if sm else'data'][a['s'][0]],0,target,112];at+=1
-                assert 0<count<=256 and original[at]['s']==[next(old for old,v in maps['frame'].items()if v==temp)]and original[at]['mode']==13
+                at,listclear=list_constructor(original,r['code'],at,end,maps,r)
             if at<end and r['code'][at][5]==187:
                 assert loads and kind==10;temp=None;count=0
                 while at<end and r['code'][at][5]==187:

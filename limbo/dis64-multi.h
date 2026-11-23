@@ -19,7 +19,8 @@ typedbytearrayaddr(Addr *a)
 static int typedimagescreenarg(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
 static int typedlibraryarraystore(Inst*,Dis64TypedBody*,unsigned int);
 static int typedlibraryinst(Inst*,Dis64TypedBody*,unsigned int,unsigned int);
-static int typedrecordresult(Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int*);
+static int typedrecordresult(Inst*,Dis64TypedBody*,Type*,unsigned int,unsigned int*,int);
+static int typedrecordpath(Inst*,Dis64TypedBody*,unsigned int);
 static int typedlibraryslicearg(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int);
 static int typedlibrarymodule(Inst*,Dis64TypedBody*,long*,unsigned int*,int*);
 static int typedlibraryargument(Inst*,Inst*,Dis64TypedBody*,unsigned int,unsigned int,unsigned int,int);
@@ -865,7 +866,7 @@ typedrootfieldcopy(Inst*in,Dis64TypedBody*p,unsigned int pc)
 
 /* Every nested owner is retained in one compiler scratch root until handoff. */
 static int
-typedexternalrootpath(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,unsigned int*at,unsigned int old,unsigned int native,int kind)
+typedexternalrootpath(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,unsigned int*at,unsigned int old,unsigned int native,Type *type)
 {Inst*in,*first=nil;long temp=0;unsigned int n=0,id,pc;Inst field;
  while(*at<end&&(in=c->instructions[*at])&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afpind||in->sm==Ampind)){
   pc=*at-p->first;if(n++==8||in->mm!=Anone||in->branch||!in->d.decl||in->d.decl->store!=Dlocal||!in->d.decl->sym||in->d.decl->sym->name[0]!='.'||in->d.decl->sym->name[1]!='t'||in->d.offset||!in->s.native64type||in->s.native64type->kind!=Tref)return typedfail(p,"root-path-owner");
@@ -873,10 +874,14 @@ typedexternalrootpath(TypedMulti*c,Dis64TypedBody*p,Inst*frame,unsigned int end,
   if(typedwindowowner(&in->s)){if(!typedwindowfield(in,p,pc,0,nil))return 0;id=1;p->code[pc].middle=(id<<16)|p->contextfields[pc];}
   else if(typedlibraryrecord(typedfieldowner(&in->s))==8||typedlibraryrecord(typedfieldowner(&in->s))==10){id=typedlibraryrecord(typedfieldowner(&in->s))==8?2:5;if(!typedlibraryinst(in,p,pc,end))return typedfail(p,"root-path-record");p->code[pc].middle=(id<<16)|((unsigned long)p->code[pc].source>>16);p->code[pc].source&=65535;}
   else if(typeddrawowner(&in->s)==3){if(!typeddrawfield(in,p,pc,0,nil))return 0;id=4;p->code[pc].middle=(id<<16)|p->contextfields[pc];}
-  else{if(!typedwmref(typedfieldowner(&in->s),"Draw","Context")||!typedclientfield(in,p,pc,0))return typedfail(p,"root-path-context");id=3;p->code[pc].middle=(id<<16)|p->contextfields[pc];}
+  else if(typedwmref(typedfieldowner(&in->s),"Draw","Context")){if(!typedclientfield(in,p,pc,0))return 0;id=3;p->code[pc].middle=(id<<16)|p->contextfields[pc];}
+  else if(!typedrecordpath(in,p,pc))return typedfail(p,"root-path-context");
   temp=p->code[pc].destination;p->returns[pc]=61;if(!first)first=in;(*at)++;
  }
- if(!first||*at>=end||!(in=c->instructions[*at])||in->op!=IMOVP||in->sm!=Afpind||in->s.reg!=first->d.reg||in->s.decl!=first->d.decl||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=old||!(typedlibraryargument(in,frame,p,*at-p->first,old,native,kind)||typedselectedfieldarg(in,p,*at-p->first,native,kind)))return typedfail(p,"root-path-argument");
+ if(!first||*at>=end||!(in=c->instructions[*at])||in->op!=IMOVP||in->sm!=Afpind||in->s.reg!=first->d.reg||in->s.decl!=first->d.decl||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=old||
+    !(typedlibraryargument(in,frame,p,*at-p->first,old,native,type->kind)||
+      typedrecordargument(in,frame,p,type,*at-p->first,old,native,0)||
+      typedselectedfieldarg(in,p,*at-p->first,native,type->kind)))return typedfail(p,"root-path-argument");
  (*at)++;field=*in;field.sm=Afp;field.s=first->d;{unsigned int before=*at;if(!typedrootargclear(c,p,&field,end,at)||*at!=before+1)return typedfail(p,"root-path-clear");p->returns[before-p->first]=66;}return 1;}
 
 /* Pointer comparisons use the complete native reference, including fused
@@ -1145,7 +1150,8 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
     if(frame->sm!=Adesc || frame->mm!=Anone || frame->dm!=Afp || frame->branch!=nil || frame->d.reg<32 ||
        frame->d.reg>(int)p->frame.legacybytes-4)return typedfail(p,"multi-frame");
     while(end<stop && c->instructions[end]!=nil && (c->instructions[end]->dm==Afpind ||
-      (c->loads && (((c->instructions[end]->op==IMOVP || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL) && c->instructions[end]->dm==Afp) || c->instructions[end]->op==IINDW || c->instructions[end]->op==IINDX || c->instructions[end]->op==ISLICEA || (c->instructions[end]->op==IADDW&&c->instructions[end]->dm==Afp) || (c->instructions[end]->op==ICVTWC && c->instructions[end]->dm==Afp) ||
+      (c->loads && (((c->instructions[end]->op==IMOVP || c->instructions[end]->op==IHEADP || c->instructions[end]->op==ITAIL ||
+                     c->instructions[end]->op==ICONSP || c->instructions[end]->op==ICONSW) && c->instructions[end]->dm==Afp) || c->instructions[end]->op==IINDW || c->instructions[end]->op==IINDX || c->instructions[end]->op==ISLICEA || (c->instructions[end]->op==IADDW&&c->instructions[end]->dm==Afp) || (c->instructions[end]->op==ICVTWC && c->instructions[end]->dm==Afp) ||
         ((c->instructions[end]->op==INEW||c->instructions[end]->op==INEWZ)&&c->instructions[end]->dm==Afp) ||
         (end+1<stop&&typedrawindexprep(c->instructions[end],c->instructions[end+1]))))))end++;
     if(end>=stop || (call=c->instructions[end])==nil || (call->op!=ICALL && !(c->loads && call->op==ISPAWN)) || call->sm!=Afp || call->s.reg!=frame->d.reg ||
@@ -1188,6 +1194,14 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         }
         if(c->loads&&(in->op==IINDX||in->op==IINDW||in->op==IINDL)&&typedrawclass(&in->s)){if(!typedrawindex(c,p,in,at,end)||++at>=end||!(in=c->instructions[at]))return typedfail(p,"local-raw-index");}
         kind=arg->ty->kind;root=kind==Tstring || kind==Tref || kind==Tarray || kind==Tlist || kind==Tchan || kind==Tmodule;
+        if(c->loads&&!spawning&&at==pc+1&&kind==Tlist&&arg->ty->tof&&
+           (arg->ty->tof->kind==Tstring||arg->ty->tof->kind==Tint)&&in->op==IMOVP&&in->dm==Afp){
+            Type *list=typedloadvaluetype(&in->d);
+            if(!list||!tequal(arg->ty,list)||
+               !typedexternalstringlist(c,p,frame,end,&at))
+                return typedfail(p,"local-list-argument");
+            in=c->instructions[at];
+        }
         width=kind==Tbyte?1:kind==Tbig || kind==Treal?8:4;
         op=root?IMOVP:kind==Tbyte?IMOVB:kind==Tbig?IMOVL:kind==Treal?IMOVF:IMOVW;
         if(c->loads && !spawning && (in->sm==Afpind) && typedrawborrow(p,&in->s,in->sm,at)>=0){
@@ -1322,7 +1336,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
             p->code[at-p->first]=(Dis64Instruction){IADDC,SRC(sm)|(mm==AFP?AXINF:AXINM)|DST(AFP|AIND),middle,source,offset};
             p->returns[at++-p->first]=64;continue;
         }
-        if(c->loads&&root&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afpind||in->sm==Ampind)){if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||!typedexternalrootpath(c,p,frame,end,&at,arg->offset,offset,kind))return typedfail(p,"local-root-path");continue;}
+        if(c->loads&&root&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afpind||in->sm==Ampind)){if(!dis64layoutaddress(&child->frame,arg->offset,4,1,&offset)||!typedexternalrootpath(c,p,frame,end,&at,arg->offset,offset,arg->ty))return typedfail(p,"local-root-path");continue;}
         if(c->loads && root && (in->sm==Afpind || in->sm==Ampind)){
             if(in->dm!=Afpind || in->d.reg!=frame->d.reg || in->d.offset!=arg->offset ||
                !dis64layoutaddress(&child->frame,arg->offset,4,1,&offset) || offset>65535 || !typedselectedfieldarg(in,p,at-p->first,offset,kind) || p->returns[at-p->first]==233)return typedfail(p,"multi-field-argument");
@@ -1351,7 +1365,7 @@ typedmultisite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int stop
         }else if(c->loads&&contract==24&&!child->resultpair&&binding->sm==Afpind&&binding->s.offset==48&&typedlibraryrecord(typedfieldowner(&binding->s))==6&&typedwmref(c->functions[target]->ty->tof,"Draw","Wmcontext")){
             Addr a=binding->s;Type*t=typedfieldowner(&a);a.offset=0;a.native64type=t;if(!typedoperand(Afp,&a,TypedRoot,0,0,p,&source,&sm,&actual)||actual!=Tref)return typedfail(p,"client-context-result");
             local=source;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),24,source,32};p->returns[at-p->first]=93;
-        }else if(c->loads&&root&&!child->resultpair&&typedrecordresult(binding,p,c->functions[target]->ty->tof,at-p->first,&local)){
+        }else if(c->loads&&root&&!child->resultpair&&typedrecordresult(binding,p,c->functions[target]->ty->tof,at-p->first,&local,1)){
             contract=24;
         }else if(binding->sm==Afp){
             if(child->resultgeometry){if(!typedgeometrybinding(binding,c->functions[target]->ty->tof,p,&local,&contract))return typedfail(p,"local-geometry-result");source=local;sm=AFP;}
@@ -1473,7 +1487,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
             if(!typedrawfieldindex(c,p,in,pc,stop))goto fail;
             inside[pc+1-p->first]=1;pc+=2;
         }
-        else if(c->loads && (in->op==IINDX||in->op==IINDW||in->op==IINDL) && typedrawclass(&in->s)){if(!typedrawindex(c,p,in,pc,stop))goto fail;pc++;}
+        else if(c->loads && (in->op==IINDX||in->op==IINDW||in->op==IINDL) &&
+                !(in->sm==Afp&&typedbuiltinarray(&in->s))&&typedrawclass(&in->s)){
+            if(!typedrawindex(c,p,in,pc,stop))goto fail;pc++;
+        }
         else if(c->loads && (typedrawborrow(p,&in->s,in->sm,pc)>=0 || typedrawborrow(p,&in->d,in->dm,pc)>=0)){if(!typedrawuse(p,in,pc,stop,-1))goto fail;pc++;}
         else if(c->loads&&p->resultaggregate&&in->dm==Afpind&&in->d.reg==16&&(in->op==IMOVP||in->op==IMOVW||in->op==IMOVM||in->op==IMOVMP)){if(!typedaggregatereturn(in,p,pc-p->first))goto fail;pc++;}
         else if(c->loads && in->op==IINDB){

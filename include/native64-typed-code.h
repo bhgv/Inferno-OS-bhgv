@@ -394,8 +394,21 @@ native64typedrootcopy(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {unsigned int sm=USRC(s->mode),dm=UDST(s->mode);unsigned long m=s->m;
  return s->returned==73&&s->op==IMOVP&&s->m>=0&&s->mode==(SRC(sm)|DST(dm))&&(sm==(AFP|AIND)||sm==(AMP|AIND))&&(dm==(AFP|AIND)||dm==(AMP|AIND))&&native64rootpathfield(m>>24,(m>>8)&4095)&&native64rootpathfield((m>>20)&15,m&255)&&native64typedrootoperand(sm&~AIND,s->s,fp,mp)&&native64typedrootoperand(dm&~AIND,s->d,fp,mp);}
 static int
+native64rootpathrecord(const Native64TypedStep *s)
+{
+ return s->returned==61&&s->m>=0&&(unsigned long)s->m>>16==Native64RecordPath;
+}
+static int
 native64typedrootpath(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
-{unsigned int sm=USRC(s->mode);if(s->op!=IMOVP)return 0;if(s->returned==66)return s->mode==(SRC(AMP)|DST(AFP))&&!s->m&&native64typedrootoperand(AMP,s->s,fp,mp)&&native64typedrootoperand(AFP,s->d,fp,mp);return s->returned==61&&s->m>=0&&native64rootpathfield((unsigned long)s->m>>16,s->m&65535)&&(sm==(AFP|AIND)||sm==(AMP|AIND))&&s->mode==(SRC(sm)|DST(AFP))&&native64typedrootoperand(sm&~AIND,s->s,fp,mp)&&native64typedrootoperand(AFP,s->d,fp,mp);}
+{
+ unsigned int sm=USRC(s->mode),field=s->m&65535;
+ if(s->op!=IMOVP)return 0;
+ if(s->returned==66)return s->mode==(SRC(AMP)|DST(AFP))&&!s->m&&native64typedrootoperand(AMP,s->s,fp,mp)&&native64typedrootoperand(AFP,s->d,fp,mp);
+ return s->returned==61&&s->m>=0&&
+  (native64rootpathrecord(s)?field<=4096&&field%8==0:native64rootpathfield((unsigned long)s->m>>16,field))&&
+  (sm==(AFP|AIND)||sm==(AMP|AIND))&&s->mode==(SRC(sm)|DST(AFP))&&
+  native64typedrootoperand(sm&~AIND,s->s,fp,mp)&&native64typedrootoperand(AFP,s->d,fp,mp);
+}
 static int
 native64typedheapgeometry(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {unsigned int sm=USRC(s->mode),dm=UDST(s->mode),n=s->m&255,sf=(s->m>>16)&255,df=(s->m>>8)&255,w=(unsigned long)s->m>>24;if(s->returned!=62||s->op!=IMOVM||s->m<0||w>1||!native64windowgeometryfield(df,n)||s->mode!=(SRC(sm)|AXIMM|DST(dm))||(sm!=(AFP|AIND)&&sm!=(AMP|AIND))||(dm!=(AFP|AIND)&&dm!=(AMP|AIND))||!native64typedrootoperand(sm&~AIND,s->s,fp,mp)||!native64typedrootoperand(dm&~AIND,s->d,fp,mp))return 0;return w?native64windowgeometryfield(sf,n):n==16?(sf==0||sf==16):n==8&&sf<=24&&sf%8==0;}

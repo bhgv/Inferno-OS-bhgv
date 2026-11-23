@@ -7,8 +7,9 @@ typedmixedarray(Type*t,Dis64Layout*l)
  unsigned int r=0,w=0,i,c,gap=0;
  if(!t||(t->kind!=Tadt&&t->kind!=Ttuple)||!dis64layouttype(t,l))return 0;
  for(i=0;i<l->count&&typedmanagedkind(l->leaves[i].kind);i++)r++;
- w=l->count-r;if(!r||r>3||!w||w>2||l->legacybytes!=4*l->count||l->alignment!=8)return 0;
+ w=l->count-r;if(!r||r>3||w>2||l->legacybytes!=4*l->count||l->alignment!=8)return 0;
  for(i=0;i<r;i++)if(l->leaves[i].legacy!=4*i||l->leaves[i].native!=8*i||l->leaves[i].oldbytes!=4||l->leaves[i].bytes!=8)return 0;
+ if(!w)return r>=2&&l->bytes==8*r?r*4:0;
  if(w==2){if(l->leaves[r+1].native==8*r+8)gap=32;else if(l->leaves[r+1].native!=8*r+4)return 0;}
  c=16|(r<<2)|(w-1)|gap;
  for(i=0;i<w;i++)if(l->leaves[r+i].kind!=Tint||l->leaves[r+i].legacy!=4*(r+i)||l->leaves[r+i].native!=native64arraywordoffset(c,i)||l->leaves[r+i].oldbytes!=4||l->leaves[r+i].bytes!=4)return 0;
@@ -39,10 +40,15 @@ static Type*
 typedfieldarray(Addr *addr, int mode)
 {
  Type *type;
- if(!typedrecordowner(addr,mode))
+ unsigned int cl;
+ if(mode!=Afpind&&mode!=Ampind)
   return nil;
  type=typedrecordvalue(addr,mode);
- return type&&type->kind==Tarray&&type->tof?type:nil;
+ if(!type||type->kind!=Tarray||!type->tof)return nil;
+ if(typedrecordowner(addr,mode))return type;
+ /* Closed record protocols keep their existing array encodings. */
+ cl=typedrawarray(type);
+ return native64arrayroots(cl)>=2&&!native64arraywords(cl)?type:nil;
 }
 
 static unsigned int
@@ -67,7 +73,7 @@ typedrawoperand(Dis64TypedBody *p, unsigned int pc, unsigned int side,
  if(mode!=Afpind&&mode!=Ampind)
   return typedoperand(mode,addr,root?Tarray:Tint,!root,0,p,value,wire,&actual);
  if((root&&!typedfieldarray(addr,mode))||
-    !typedrecordoperand(mode,addr,root,p,value,wire))
+    !typedrecordlayoutoperand(mode,addr,root,p,value,wire))
   return 0;
  return typedrecordregister(p,pc,side,typedfieldowner(addr)->tof);
 }

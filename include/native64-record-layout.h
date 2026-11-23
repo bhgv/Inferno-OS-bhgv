@@ -6,7 +6,8 @@ enum { Native64TypedRecordArg=33, Native64TypedRecordVararg=34, Native64TypedRec
        Native64TypedRecordPair=42,
        Native64TypedRecord=72 };
 /* Private descriptor: 24 native GC slots and a size in four-byte units. */
-enum { Native64RecordBytes=192, Native64RecordMapBits=24, Native64RecordResultFlag=16384 };
+enum { Native64RecordBytes=192, Native64RecordMapBits=24, Native64RecordResultFlag=16384,
+       Native64RecordPath=6 };
 static unsigned int
 native64recordbytes(unsigned long shape)
 {

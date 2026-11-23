@@ -173,19 +173,37 @@ done:
 }
 
 static int
-typedrecordresult(Inst *in, Dis64TypedBody *p, Type *result, unsigned int pc, unsigned int *base)
+typedrecordresult(Inst *in, Dis64TypedBody *p, Type *result, unsigned int pc,
+                  unsigned int *base, int local)
 {
  Type *field;
  long source;
  unsigned int mode;
- if(in->sm!=Afpind||!typedrecordowner(&in->s,in->sm)||
+ if(in->sm!=Afpind||(!local&&!typedrecordowner(&in->s,in->sm))||
     !(field=typedrecordvalue(&in->s,in->sm))||!tequal(result,field)||
-    !typedrecordoperand(in->sm,&in->s,1,p,&source,&mode)||
+    !typedrecordlayoutoperand(in->sm,&in->s,1,p,&source,&mode)||
     !typedrecordregister(p,pc,0,typedfieldowner(&in->s)->tof))
   return 0;
  *base=source&65535;
  p->code[pc]=(Dis64Instruction){ILEA,SRC(mode)|DST(AFP|AIND),0,source,32};
  p->returns[pc]=Native64TypedRecordResult;
+ return 1;
+}
+
+static int
+typedrecordpath(Inst *in, Dis64TypedBody *p, unsigned int pc)
+{
+ long source,dest;
+ unsigned int sm,dm;
+ int actual;
+ Type *field=typedrecordvalue(&in->s,in->sm),*target=typedrecordvalue(&in->d,in->dm);
+ if(!field||field->kind!=Tref||!target||!tequal(field,target)||
+    !typedrecordlayoutoperand(in->sm,&in->s,1,p,&source,&sm)||
+    !typedoperand(Afp,&in->d,TypedRoot,0,0,p,&dest,&dm,&actual)||actual!=Tref||
+    !typedrecordregister(p,pc,0,typedfieldowner(&in->s)->tof))
+  return 0;
+ p->code[pc]=(Dis64Instruction){IMOVP,SRC(sm)|DST(dm),
+  (Native64RecordPath<<16)|((unsigned long)source>>16),source&65535,dest};
  return 1;
 }
 
@@ -196,14 +214,15 @@ typedrecordargument(Inst *in, Inst *frame, Dis64TypedBody *p, Type *type,
  Type *value;
  long source;
  unsigned int mode,op;
- int root=typedmanagedkind(type->kind);
+ int root=typedmanagedkind(type->kind),length=in->op==ILENA&&type->kind==Tint&&!variadic;
 
- if((!root&&type->kind!=Tint)||in->op!=(root?IMOVP:IMOVW)||in->branch||
+ if((!root&&type->kind!=Tint)||(!length&&in->op!=(root?IMOVP:IMOVW))||in->branch||
     in->mm!=Anone||in->dm!=Afpind||in->d.reg!=frame->d.reg||in->d.offset!=old||
-    offset>65535||!typedrecordowner(&in->s,in->sm))
+    offset>65535||(!length&&!typedrecordowner(&in->s,in->sm)))
   return 0;
  value=typedrecordvalue(&in->s,in->sm);
- if(!value||!tequal(value,type)||!typedrecordoperand(in->sm,&in->s,root,p,&source,&mode)||
+ if(!value||(length?value->kind!=Tarray:!tequal(value,type))||
+    !typedrecordlayoutoperand(in->sm,&in->s,root||length,p,&source,&mode)||
     !typedrecordregister(p,pc,0,typedfieldowner(&in->s)->tof))
   return 0;
  op=variadic&&!root?ICVTWL:in->op;
@@ -224,7 +243,7 @@ static int
 typedrecordinst(Inst*original,Dis64TypedBody*p,unsigned int pc,unsigned int stop)
 {
  Inst copy=*original,*in=&copy;unsigned int w[2],r[2],op=in->op,sm,dm,mm=AXNON,wire;long src,dst,mid=0;int branch;Type*a,*b;
- if(!typedrecordowner(&in->s,in->sm)&&!typedrecordowner(&in->d,in->dm)&&!typedrecordowner(&in->m,in->mm))return 0;
+ if(op!=IADDC&&!typedrecordowner(&in->s,in->sm)&&!typedrecordowner(&in->d,in->dm)&&!typedrecordowner(&in->m,in->mm))return 0;
  branch=op==IBEQW||op==IBNEW||op==IBLTW||op==IBLEW||op==IBGTW||op==IBGEW||op==IBEQC||op==IBNEC||op==IBEQL||op==IBNEL;
  if(branch&&typedrecordowner(&in->m,in->mm)){
   Addr swap=in->s;int mode=in->sm;in->s=in->m;in->sm=in->mm;in->m=swap;in->mm=mode;
@@ -232,7 +251,9 @@ typedrecordinst(Inst*original,Dis64TypedBody*p,unsigned int pc,unsigned int stop
  }
  a=typedrecordvalue(&in->s,in->sm);
  if(branch&&(op==IBEQW||op==IBNEW)&&a&&typedmanagedkind(a->kind))op=a->kind==Tstring?(op==IBEQW?IBEQC:IBNEC):(op==IBEQW?IBEQL:IBNEL);
- if(!native64recordshape(op,w,r)||!typedrecordoperand(in->sm,&in->s,r[0],p,&src,&sm))return 0;
+ if(!native64recordshape(op,w,r)||
+    !(typedrecordoperand(in->sm,&in->s,r[0],p,&src,&sm)||
+      (op==IADDC&&typedrecordlayoutoperand(in->sm,&in->s,1,p,&src,&sm))))return 0;
  if(op==IADDC&&(!a||a->kind!=Tstring))return 0;
  if(op==IINDC||op==ILENC||op==ICVTCW){if(!a||a->kind!=Tstring)return 0;}
  if(op==ILENA&&(!a||a->kind!=Tarray))return 0;
@@ -251,16 +272,17 @@ typedrecordinst(Inst*original,Dis64TypedBody*p,unsigned int pc,unsigned int stop
   }
   if(p->resultaggregate||p->resultpair||p->resulttriple||(r[1]?!a||!tequal(a,p->resulttype):p->resultkind!=Tint))return 0;
   dst=32;dm=AFP|AIND;
- }else if(in->branch||!typedrecordoperand(in->dm,&in->d,r[1],p,&dst,&dm))return 0;
+ }else if(in->branch||!(typedrecordoperand(in->dm,&in->d,r[1],p,&dst,&dm)||
+                       (op==IADDC&&typedrecordlayoutoperand(in->dm,&in->d,1,p,&dst,&dm))))return 0;
  if(op==IMOVP){b=typedrecordvalue(&in->d,in->dm);if(dst==32&&dm==(AFP|AIND))b=p->resulttype;if(!a||!b||(!tequal(a,b)&&a->kind!=Tany))return 0;}
- if(op==IADDC){b=typedrecordvalue(&in->d,in->dm);if(dst==32&&dm==(AFP|AIND))b=p->resulttype;if(!b||b->kind!=Tstring)return 0;}
+ if(op==IADDC){int result=dst==32&&dm==(AFP|AIND);b=result?p->resulttype:typedrecordvalue(&in->d,in->dm);if(!b||b->kind!=Tstring||(!(sm&AIND)&&(!(dm&AIND)||result)))return 0;}
  if(in->mm!=Anone){int actual;
   if(op==IMOVP||op==IMOVW||op==ILENC||op==ILENA||op==ILENL||op==ICVTCW||op==ICVTWC)return 0;
   if(!typedoperand(in->mm,&in->m,r[0]&&op!=IINDC?TypedRoot:Tint,!r[0]||op==IINDC,1,p,&mid,&wire,&actual))return 0;
   if(r[0]&&op!=IINDC){b=typedrecordvalue(&in->m,in->mm);if(!a||!b||(b->kind!=Tany&&!tequal(a,b))||((op==IBEQC||op==IBNEC)&&a->kind!=Tstring))return 0;}
   mm=wire==AIMM?AXIMM:wire==AFP?AXINF:AXINM;
  }else if(branch||op==IINDC)return 0;
- if(typedrecordowner(&in->s,in->sm)&&!typedrecordregister(p,pc,0,typedfieldowner(&in->s)->tof))return 0;
- if(!branch&&typedrecordowner(&in->d,in->dm)&&!typedrecordregister(p,pc,1,typedfieldowner(&in->d)->tof))return 0;
+ if((sm&AIND)&&!typedrecordregister(p,pc,0,typedfieldowner(&in->s)->tof))return 0;
+ if(!branch&&(dm&AIND)&&!(dm==(AFP|AIND)&&dst==32)&&!typedrecordregister(p,pc,1,typedfieldowner(&in->d)->tof))return 0;
  p->code[pc]=(Dis64Instruction){op,SRC(sm)|mm|DST(dm),mid,src,dst};p->returns[pc]=Native64TypedRecord;return 1;
 }

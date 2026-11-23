@@ -298,7 +298,7 @@ typedexternalgeometry(TypedMulti*c,Dis64TypedBody*p,Decl*arg,Inst*frame,unsigned
 static int typedbytearrayaddr(Addr*);
 static int typedexternalstringarray(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
 static int typedexternalbytestring(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int);
-static int typedexternalrootpath(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int,int);
+static int typedexternalrootpath(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int,unsigned int*,unsigned int,unsigned int,Type*);
 static int typedexternalheadarg(TypedMulti*,Dis64TypedBody*,Inst*,Decl*,unsigned int,unsigned int*,unsigned int);
 static int typedexternalstringexpr(TypedMulti*,Dis64TypedBody*,Inst*,Decl*,unsigned int,unsigned int*,unsigned int);
 static int typedselectedfieldarg(Inst*,Dis64TypedBody*,unsigned int,unsigned int,int);
@@ -350,7 +350,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
         if(c->loads&&kind==Tstring&&in->op==IINDW){if(!typedexternalstringarray(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afp||in->sm==Amp)&&typedbytearrayaddr(&in->s)){if(!typedexternalbytestring(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads&&kind==Tstring&&in->op==IMOVP&&in->dm==Afp&&typedlibraryrecord(typedfieldowner(&in->s))==12&&in->s.offset==16){if(!typedexternalstringexpr(c,p,frame,arg,end,&at,offset))return 0;offset+=8;continue;}
-        if(c->loads&&root&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afpind||in->sm==Ampind)){if(!typedexternalrootpath(c,p,frame,end,&at,arg->offset,offset,kind))return 0;offset+=8;continue;}
+        if(c->loads&&root&&in->op==IMOVP&&in->dm==Afp&&(in->sm==Afpind||in->sm==Ampind)){if(!typedexternalrootpath(c,p,frame,end,&at,arg->offset,offset,arg->ty))return 0;offset+=8;continue;}
         if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Screen") && in->op==IINDW){if(!typedimagescreenarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads && kind==Tref && typedwmref(arg->ty,"Draw","Image") && in->op==IINDW){if(!typedimagearrayarg(c,p,frame,end,&at,arg->offset,offset))return 0;offset+=8;continue;}
         if(c->loads&&kind==Tint&&in->op==IMOVW&&(in->sm==Afpind||in->sm==Ampind)&&typedimagewordargument(in,frame,p,at-p->first,arg->offset,offset)){at++;offset+=4;continue;}
@@ -450,7 +450,7 @@ typedexternalsite(TypedMulti *c,Dis64TypedBody *p,unsigned int pc,unsigned int s
             Addr a=binding->s;unsigned int wire;long base;if(!typedwmref(fn->ty->tof,"Sys","FD")||!typedwmref(a.native64type,"Sys","FD"))return typedfail(p,"client-fd-result-type");a.native64type=typedfieldowner(&a);a.offset=0;if(!typedoperand(Afp,&a,TypedRoot,0,0,p,&base,&wire,&actual)||actual!=Tref||wire!=AFP)return typedfail(p,"client-fd-result-owner");local=base;contract=24;p->code[at-p->first]=(Dis64Instruction){ILEA,SRC(AFP|AIND)|DST(AFP|AIND),256+(binding->s.offset==20?32:40),base,32};p->returns[at-p->first]=60;
         }else if(c->loads&&root&&binding->sm==Afpind&&typedwindowrootbinding(binding,fn->ty->tof,p,at-p->first,&local)){
             contract=24;
-        }else if(c->loads&&root&&typedrecordresult(binding,p,fn->ty->tof,at-p->first,&local)){
+        }else if(c->loads&&root&&typedrecordresult(binding,p,fn->ty->tof,at-p->first,&local,0)){
             contract=24;
         }else if(c->loads && root && binding->sm==Afpind && binding->s.reg!=16){
             unsigned int wire;long base;

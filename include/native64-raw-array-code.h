@@ -30,10 +30,11 @@ static int
 native64typedrawuse(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {unsigned int sm=USRC(s->mode),dm=UDST(s->mode),arm=s->mode&ARM,n=native64rawusewidth(s),so=(s->m>>24)&255,d=(s->m>>16)&255,mid=s->m&65535,branch=native64rawbranch(s->op),i;long value[2]={s->s,s->d};unsigned int mode[2]={sm,dm};
  if(s->returned!=65||s->m<0||(unsigned long)s->m>0xffffffffUL||s->mode>255||!n||(s->op!=IMOVMP&&n!=4&&n!=8&&n!=12&&n!=16)||so%4||d%4||so>40||d>40)return 0;
- switch(s->op){case IMOVMP:if(arm!=AXIMM||!native64arraywords(mid))return 0;break;case IMOVP:if(arm||mid)return 0;break;case IMOVM:case IHEADM:if(arm!=AXIMM)return 0;break;case IMOVW:if(arm||mid)return 0;break;case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:break;default:if(!branch)return 0;}
+ switch(s->op){case IMOVMP:if(arm!=AXIMM||!native64arrayrecord(mid))return 0;break;case IMOVP:if(arm||mid)return 0;break;case IMOVM:case IHEADM:if(arm!=AXIMM)return 0;break;case IMOVW:if(arm||mid)return 0;break;case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:break;default:if(!branch)return 0;}
  if(s->op==IHEADM&&(n!=16||sm==(AFP|AIND)||!native64typedrootoperand(sm,s->s,fp,mp)))return 0;
  if(!(sm==(AFP|AIND)&&native64rawslot(s->s))&&!(dm==(AFP|AIND)&&native64rawslot(s->d)))return 0;
  for(i=0;i<2;i++){if(branch&&i){if(dm!=AIMM||s->d<0)return 0;continue;}if(mode[i]==(AFP|AIND)){if(!native64rawslot(value[i]) && !(i&&value[i]==32&&(s->op==IMOVW||s->op==IMOVP)&&sm==(AFP|AIND)) && (!i||value[i]<64||value[i]>65535||value[i]%4))return 0;}
+  else if(s->op==IMOVMP&&value[i]%8)return 0;
   else if(s->op==IHEADM&&!i)continue;
   else if(s->op==IMOVP){if(!native64typedrootoperand(mode[i],value[i],fp,mp))return 0;}
   else if(n==4){if(!native64typedwordoperand(mode[i],value[i],fp,mp)||(i&&mode[i]==AIMM))return 0;}
@@ -102,7 +103,7 @@ native64typedrawrecord(const Native64TypedStep *s, unsigned int fp, unsigned int
     !(mode&AIND)||!native64recordoperand(mode,field,8,1,fp,mp,0))
   return 0;
  return s->op==IMOVP?mm==AXNON&&!cl:
-  s->op==IMOVMP&&mm==AXIMM&&native64arraywords(cl);
+  s->op==IMOVMP&&mm==AXIMM&&native64arrayrecord(cl);
 }
 
 static void

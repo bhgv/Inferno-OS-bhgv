@@ -12,6 +12,7 @@ static int openfailure,opens,formats,seedblank;
 static int loads, reads, prints, fds, promptmode;
 static int indexes, uses, pending, stackgrowth, nestedindexes;
 static const WORD marker=0x12345678;
+static uchar storemap[]={0xed,0xf8};
 
 static void
 check(int ok, const char *message)
@@ -533,7 +534,6 @@ static void
 lexer_construction(int jit, int quantum)
 {
  static const char *source[]={"alpha beta\n","x )\n","one |[2=1] two\n","x )\n",""};
- uchar storemap[]={0xed,0xe0};
  uint test;
  for(test=0;test<nelem(source);test++){
   Type *t=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));
@@ -604,10 +604,56 @@ lexer_construction(int jit, int quantum)
 }
 
 static void
+record_calls(int jit, int quantum)
+{
+ uchar rootmap[]={0x80};
+ Type *t=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));
+ Store *r;
+ Sys_FD *fd;
+ struct {String *text;Sys_FD *fd;} pair;
+ require(t!=nil);
+ r=H2D(Store*,heapz(t));
+ freetype(t);
+ t=dtype(freeheap,sizeof(Envelope),rootmap,nelem(rootmap));
+ require(t!=nil);
+ r->envelope=H2D(Envelope*,heapz(t));
+ freetype(t);
+ run_case(full_fn_fieldpath,r,jit,quantum,marker,exNilref);
+ t=dtype(freeheap,sizeof(Holder),rootmap,nelem(rootmap));
+ require(t!=nil);
+ r->envelope->box=H2D(Holder*,heapz(t));
+ freetype(t);
+ t=dtype(freeheap,sizeof(Sys_FD),nil,0);
+ require(t!=nil);
+ fd=H2D(Sys_FD*,heapz(t));
+ freetype(t);
+ fd->fd=42;
+ r->envelope->box->fd=fd;
+ r->text=c2string("abc",3);
+ r->n=3;
+ r->i=1;
+ run_case(full_fn_fieldpath,r,jit,quantum,3,"");
+ check(r->fd==fd&&D2H(fd)->ref==2,"nested borrow and field result preserve their separate owners");
+ run_case(full_fn_lenarg,r,jit,quantum,3,"");
+ run_case(full_fn_rootarrays,r,jit,quantum,3,"");
+ check(r->pairs!=H&&r->pairs->len==3&&r->pairs->t->size==sizeof(pair)&&
+       r->pairs->t->np==1&&r->pairs->t->map[0]==0xc0,"two-root element Type and extent");
+ memmove(&pair,r->pairs->data+sizeof(pair),sizeof(pair));
+ check(pair.text==r->text&&pair.fd==fd&&D2H(fd)->ref==3&&D2H(r->text)->ref==2,
+       "copied array owns both managed fields and retires the source");
+ run_case(full_fn_lenarg,r,jit,quantum,6,"");
+ run_case(full_fn_listarg,r,jit,quantum,1,"");
+ destroy(r->pairs);
+ r->pairs=(Array*)c2string("wrong heap Type",15);
+ run_case(full_fn_lenarg,r,jit,quantum,marker,exBounds);
+ destroy(r);
+ check(!live&&!nlinkpins,"complete nested record, list and array retirement");
+}
+
+static void
 array_fields(int jit, int quantum)
 {
- static uchar map[]={0xed,0xe0};
- Type *type=dtype(freeheap,sizeof(Store),map,nelem(map));
+ Type *type=dtype(freeheap,sizeof(Store),storemap,nelem(storemap));
  Store *r;
  void *v;
  WORD n;
@@ -687,6 +733,13 @@ metadata(void)
     check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
           !owner.module&&allocations==before,"malformed record construction or result refused before allocation");
     total++;
+   }else if(native64rootpathrecord(a)||(a->returned==Native64TypedListPrep&&a->op==ICONSP)){
+    memmove(code,base->code,base->count*sizeof(*code));
+    if(native64rootpathrecord(a))code[j].m|=1;
+    else code[j].d+=8;
+    check(!native64sysmodule(&spec,full_variadics,nelem(full_variadics),0,&owner)&&
+          !owner.module&&allocations==before,"malformed nested field or list preparation refused before allocation");
+    total++;
    }else if(a->returned==154){
     for(k=0;k<base->nsites;k++){
      const Native64ModuleSite *site=base->sites+k;
@@ -728,10 +781,12 @@ main(void)
   lexer_scan(j,quanta[q]);
   lexer_parse(j,quanta[q]);
   lexer_construction(j,quanta[q]);
+  record_calls(j,quanta[q]);
   array_fields(j,quanta[q]);
  }
  puts("PASS array fields and unchanged Sh lexer: 162 interpreter/JIT cases with exact operands, tokens, file prompt, scheduler boundaries and ownership");
  puts("PASS unchanged Sh yyparse: 54 interpreter/JIT cases with ASTs, recovery, stack growth and actual aggregate GC roles");
  puts("PASS unchanged Sh YYLEX constructors and doparse: 30 interpreter/JIT cases with file and string inputs, exact shapes and diagnostics");
+ puts("PASS record call setup and root-pair arrays: 42 interpreter/JIT cases with nil and wrong-Type controls");
  return 0;
 }
