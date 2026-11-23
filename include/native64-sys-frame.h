@@ -10,7 +10,7 @@ struct Native64SysFrameCall {
     const LimboNative64Entry *fixed;
     uvlong epoch; // Detect guarded activation invalidation without claiming a scheduler lifetime lease.
     Modlink *module; // Exact current module; native only after MCALL.
-    void *extent; // This first bridge accepts caller and callee in one current extent.
+    void *extent; // Current callee extent, stable while resolving this activation.
     REG *live;
     int pid;
     int entered; // Pending FRAME binding or entered MCALL result resolution.
@@ -55,6 +55,91 @@ native64sysframemap(Type *type, const LimboNative64Entry *fixed,
     return 1;
 }
 
+enum { Native64SysStackDepth = 64 };
+
+typedef struct Native64SysStack Native64SysStack;
+struct Native64SysStack {
+    const Stkext *extent;
+    uintptr stop, top;
+    unsigned int depth;
+};
+
+/* Locate an exact frame boundary using only the live stack and saved extents.
+ * The cursor never searches a younger extent after starting from an ancestor. */
+static int
+native64sysstackframe(Native64SysStack *stack, uintptr address, Frame *frame, Type **type)
+{
+    const Stkext *extent;
+    uintptr base, first, cursor, end;
+    Frame item;
+    Type *t;
+    int found;
+
+    for(; stack->depth<Native64SysStackDepth; stack->depth++){
+        extent=stack->extent;
+        base=(uintptr)extent;
+        if(extent==nil || extent==H || base%sizeof(void*) ||
+           base>(uintptr)-1-OA(Stkext,reg.tos.fu))return 0;
+        first=base+OA(Stkext,reg.tos.fu);
+        if(stack->stop<first || stack->top<stack->stop || stack->top-base>Native64BindFrame)return 0;
+        if(address>=first && address<stack->stop){
+            found=0;
+            for(cursor=first;cursor<stack->stop;cursor=end){
+                if(stack->stop-cursor<sizeof(item))return 0;
+                memmove(&item,(void*)cursor,sizeof(item));
+                t=item.t;
+                if(t==nil && cursor==first)t=extent->reg.TR;
+                if(!native64sysframetype(t) || (unsigned int)t->size>stack->stop-cursor)return 0;
+                end=cursor+t->size;
+                if(cursor==address){
+                    *frame=item;
+                    *type=t;
+                    found=1;
+                }
+            }
+            return found;
+        }
+        stack->stop=(uintptr)extent->reg.SP;
+        stack->top=(uintptr)extent->reg.TS;
+        stack->extent=(const Stkext*)extent->reg.EX;
+        if(stack->extent==extent)return 0;
+    }
+    return 0;
+}
+
+/* The return cell must belong to the active caller chain, including when
+ * FRAME grew a new extent between the result owner and this Sys call. */
+static int
+native64sysancestor(Native64SysStack stack, uintptr caller, const Frame *frame,
+    uintptr base, unsigned int span, unsigned int bias, unsigned int contract,
+    unsigned int width, int reference)
+{
+    Frame parent=*frame;
+    Type *type;
+    uintptr ancestor, end;
+    unsigned int depth, previous, slot, k;
+
+    if(base%width)return 0;
+    for(depth=0;depth<Native64SysStackDepth;depth++){
+        ancestor=(uintptr)parent.fp;
+        previous=stack.depth;
+        if(!native64sysstackframe(&stack,ancestor,&parent,&type) ||
+           (stack.depth==previous && ancestor>=caller))return 0;
+        end=ancestor+type->size;
+        if(base>=ancestor+64 && base<=end && span<=end-base){
+            if(contract)
+                for(k=0;k<span;k+=8){
+                    slot=(base+k-ancestor)/8;
+                    if(!!(type->map[slot/8]&(128>>(slot%8)))!=(contract!=80||!k))return 0;
+                }
+            slot=(base+bias-ancestor)/8;
+            return !!(type->map[slot/8]&(128>>(slot%8)))==reference;
+        }
+        caller=ancestor;
+    }
+    return 0;
+}
+
 /* Re-find both exact frame boundaries and the declared result cell after every allocating callback.
  * REG/extent/Type storage is trusted live VM memory; numeric bounds do not authenticate C pointers.
  * The call-site recipe owns its Type and slot identities through this synchronous native activation. */
@@ -63,13 +148,12 @@ native64sysframecell(void *argument)
 {
     Native64SysFrameCall *call = argument;
     Native64SysFrameRequest *request = &call->request;
-    uintptr first, stop, top, cursor, end, callee, caller, result;
+    uintptr callee, caller, result, base;
     Frame frame, active;
-    Stkext *extent;
+    Native64SysStack stack;
     Type *type;
     void *address;
-    unsigned int bytes, slot;
-    int foundcallee = 0, foundcaller = 0;
+    unsigned int bytes, slot, span, bias;
 
     if(request->prog != currun() || request->prog->state != Pready || request->prog->kill != nil ||
        request->prog->pid <= 0 || request->prog->pid != call->pid ||
@@ -78,67 +162,25 @@ native64sysframecell(void *argument)
        (call->entered && (call->module->prog != nil || R.FP != request->frame)) ||
        R.EX != call->extent || R.EX == nil || R.EX == H || R.SP == nil || R.TS == nil)
         return nil;
-    extent = (Stkext*)R.EX;
-    first = (uintptr)R.EX;
-    if(first%sizeof(void*) != 0 || first > (uintptr)-1-OA(Stkext, reg.tos.fu)) return nil;
-    first += OA(Stkext, reg.tos.fu);
-    stop = (uintptr)R.SP; top = (uintptr)R.TS; callee = (uintptr)request->frame;
-    if(stop < first || top < stop || top-(uintptr)R.EX > Native64BindFrame ||
-       callee < first || callee > stop || stop-callee < sizeof(Frame)) return nil;
-    memmove(&active, (void*)callee, sizeof(active));
+    stack=(Native64SysStack){(Stkext*)R.EX,(uintptr)R.SP,(uintptr)R.TS,0};
+    callee=(uintptr)request->frame;
+    if(!native64sysstackframe(&stack,callee,&active,&type) || stack.depth!=0 ||
+       type!=request->type || type->size!=stack.stop-callee)return nil;
     caller = call->entered ? (uintptr)active.fp : (uintptr)R.FP;
-    if(caller < first || caller >= callee ||
-       (call->entered ? active.mr == nil || active.mr == H : active.mr != nil)) return nil;
-    for(cursor=first; cursor<stop; cursor=end) {
-        if(stop-cursor < sizeof(Frame)) return nil;
-        memmove(&frame, (void*)cursor, sizeof(frame));
-        type = frame.t == nil ? extent->reg.TR : frame.t;
-        if(!native64sysframetype(type) || (unsigned int)type->size > stop-cursor) return nil;
-        end = cursor+type->size;
-        if(cursor == callee) {
-            if(type != request->type || end != stop) return nil;
-            foundcallee = 1;
-        }
-        if(cursor == caller) {
-            if(type != request->caller_type) return nil;
-            foundcaller = 1;
-        }
-    }
+    if((call->entered ? active.mr==nil || active.mr==H : active.mr!=nil) ||
+       !native64sysstackframe(&stack,caller,&frame,&type) || type!=request->caller_type ||
+       (!stack.depth && caller>=callee))return nil;
     if(!native64sysframemap(request->type, call->fixed, request->slots, &call->plan)) return nil;
     bytes = call->operation >= 2 ? sizeof(WORD) : sizeof(void*);
-    if(!foundcallee || !foundcaller)return nil;
     if(request->inherited){
-        uintptr owner=0,ancestor,next,scan;unsigned int depth;Frame parent;
-        unsigned int span=request->result_contract==124?24:request->result_contract?16:bytes,bias=request->result_offset-32,k;
-        uintptr base;
+        span=request->result_contract==124?24:request->result_contract?16:bytes;
+        bias=request->result_offset-32;
         if(!native64sysresultshape(request->result_contract,request->result_offset,call->operation,1))return nil;
         memmove(&address,(void*)(caller+32),sizeof(address));base=(uintptr)address;
         if(base>(uintptr)-1-bias)return nil;result=base+bias;
-        address=(void*)result;
-        if(call->borrowed && address!=call->borrowed)return nil;
-        /* Find one complete older frame containing the correctly mapped cell. */
-        for(cursor=first;cursor<caller;cursor=end){
-            memmove(&parent,(void*)cursor,sizeof(parent));type=parent.t==nil?extent->reg.TR:parent.t;end=cursor+type->size;
-            if(base>=cursor+64 && base<=end && span<=end-base && base%bytes==0){
-                if(request->result_contract)for(k=0;k<span;k+=8){slot=(base+k-cursor)/8;if(!!(type->map[slot/8]&(128>>(slot%8)))!=(request->result_contract!=80||!k))return nil;}
-                slot=(result-cursor)/8;
-                if(!!(type->map[slot/8]&(128>>(slot%8)))!=(call->operation<2))return nil;
-                owner=cursor;break;
-            }
-        }
-        if(!owner)return nil;
-        /* Prepared but unentered frames are not result owners. Follow the
-         * actual caller chain, bounded and strictly decreasing in this extent. */
-        memmove(&parent,(void*)caller,sizeof(parent));ancestor=(uintptr)parent.fp;
-        for(depth=0;depth<64;depth++){
-            if(ancestor==owner)break;
-            if(ancestor<first || ancestor>=caller)return nil;
-            for(scan=first;scan<ancestor;scan+=type->size){memmove(&parent,(void*)scan,sizeof(parent));type=parent.t==nil?extent->reg.TR:parent.t;}
-            if(scan!=ancestor)return nil;
-            memmove(&parent,(void*)ancestor,sizeof(parent));next=(uintptr)parent.fp;
-            if(next>=ancestor)return nil;ancestor=next;
-        }
-        if(depth==64)return nil;
+        if((call->borrowed && (void*)result!=call->borrowed) ||
+           !native64sysancestor(stack,caller,&frame,base,span,bias,request->result_contract,
+                                bytes,call->operation<2))return nil;
     }else{
         if(request->result_offset<64 || request->result_offset%bytes ||
            request->result_offset>(unsigned int)request->caller_type->size || bytes>(unsigned int)request->caller_type->size-request->result_offset)return nil;

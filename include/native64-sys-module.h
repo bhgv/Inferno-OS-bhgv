@@ -186,9 +186,8 @@ native64sysmodulemake(void*argument)
     spec.functions=b->functions;
     if(!native64typedmodule(&spec,0,&b->owner))error(exInval);
     m=b->owner.module;ordinal=m->ntype;
-    /* Program gateways require caller/callee in one current extent. Reserve
-     * the distinct-function source path plus its largest native callee before
-     * publishing the entry, instead of growing at the first variadic FRAME. */
+    /* Reserve the distinct-function source path plus its largest native callee
+     * to avoid unnecessary extent growth in the module's ordinary startup. */
     total=0;pc=0;
     for(i=0;i<b->spec->nfunctions;i++)total+=b->spec->functions[i].bytes;
     for(i=0;i<b->count;i++)if(pc<b->variadic[i].bytes)pc=b->variadic[i].bytes;

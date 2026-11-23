@@ -1,6 +1,6 @@
 static Modlink*graphload(Module*,WORD,char*);
 typedef struct GraphSpec GraphSpec;
-struct GraphSpec {const Native64ModuleSpec*spec;const Native64ModuleVariadic*variadic;uint count;};
+struct GraphSpec {const Native64ModuleSpec*spec;const Native64ModuleVariadic*variadic;uint count;const char *path;};
 #include "graph-boot.h"
 #include "graph-arg.h"
 #include "graph-awm.h"
@@ -13,6 +13,7 @@ struct GraphSpec {const Native64ModuleSpec*spec;const Native64ModuleVariadic*var
 #include "graph-specs.h"
 #ifdef TEST_AWM_PANEL_METADATA
 #include "graph-tkclient.h"
+#include "graph-awmpanel.h"
 #include "graph-atoolbar.h"
 #endif
 
@@ -145,16 +146,18 @@ panelself(Module *toolbar)
 static void
 panelconstruction(void)
 {
- Native64ModuleOwner tkclient={0},toolbar={0},wmlib={0};
+ Native64ModuleOwner tkclient={0},toolbar={0},wmlib={0},panel={0};
  ck(native64sysmodule(&wmlib_spec,wmlib_variadics,nelem(wmlib_variadics),0,&wmlib),"Wmlib module construction for panel");
  ck(native64sysmodule(&tkclient_spec,tkclient_variadics,nelem(tkclient_variadics),0,&tkclient),"Tkclient module construction");
  ck(native64sysmodule(&atoolbar_spec,atoolbar_variadics,nelem(atoolbar_variadics),0,&toolbar),"Toolbar module construction");
  ck(toolbar.module->htab && toolbar.module->htab[0].etab &&
     !strcmp(toolbar.module->htab[0].etab[0].s,"fail:*"),"Toolbar catch installed");
+ ck(native64typedmodule(&awmpanel_spec,0,&panel),"native64 Android panel module construction");
  panelself(toolbar.module);
+ panellink(panel.module,&awmpanel_spec,tkclient.module,"toplevel");
  panellink(toolbar.module,&atoolbar_spec,tkclient.module,"toplevel");
  panellink(tkclient.module,&tkclient_spec,wmlib.module,"splitqword");
- ck(native64typedmoduleclear(&toolbar)&&native64typedmoduleclear(&tkclient)&&
+ ck(native64typedmoduleclear(&panel)&&native64typedmoduleclear(&toolbar)&&native64typedmoduleclear(&tkclient)&&
     native64typedmoduleclear(&wmlib)&&!live,"panel module retirement");
  puts("PASS original Toolbar -> Tkclient -> Wmlib construction, imports, self and retirement");
 }

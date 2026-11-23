@@ -6,22 +6,11 @@ struct GraphSpec {
 	const Native64ModuleSpec *spec;
 	const Native64ModuleVariadic *variadic;
 	uint count;
+	const char *path;
 };
 
 static Modlink *graphload(Module*, WORD, char*);
 #include "awm-native64.h"
-
-static const char *const graphpaths[] = {
-	"/dis/emuinit.dis",
-	"/dis/lib/arg.dis",
-	"/dis/wm/awm.dis",
-	"/dis/lib/string.dis",
-	"/dis/lib/wmsrv.dis",
-	"/dis/lib/wmclient.dis",
-	"/dis/lib/winplace.dis",
-	"/dis/lib/wmlib.dis",
-	"/dis/lib/titlebar.dis",
-};
 
 static int
 graphframe(const Native64ModuleImport *request, const Type *frame)
@@ -198,10 +187,10 @@ graphload(Module *caller, WORD index, char *path)
 		}
 		target->ref++;
 	}else{
-		for(i = 1; i < nelem(graphpaths); i++)
-			if(strcmp(path, graphpaths[i]) == 0)
+		for(i = 1; i < nelem(graph_specs); i++)
+			if(strcmp(path, graph_specs[i].path) == 0)
 				break;
-		if(i == nelem(graphpaths)){
+		if(i == nelem(graph_specs)){
 			kwerrstr("unavailable in native64 AWM: %s", path);
 			return H;
 		}

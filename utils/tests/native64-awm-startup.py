@@ -5,16 +5,22 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 ALT=runpy.run_path(str(ROOT/'utils/tests/native64-aprint-alt.py'));G,CMD=ALT['G'],ALT['CMD'];E=G['E']
 MODULES=(('boot','Emuinit','appl/cmd/emuinit.b',4),('arg','Arg','appl/lib/arg.b',8),('awm','Wm','appl/wm/awm.b',20),('string','String','appl/lib/string.b',21),('wmsrv','Wmsrv','appl/lib/wmsrv.b',34),('wmclient','Wmclient','appl/lib/wmclient.b',21),('winplace','Winplace','appl/lib/winplace.b',21),('wmlib','Wmlib','appl/lib/wmlib.b',25),('titlebar','Titlebar','appl/lib/titlebar.b',7))
-PANEL_MODULES=(('tkclient','Tkclient','appl/lib/tkclient.b',16),('atoolbar','Toolbar','appl/wm/atoolbar.b',26))
+PANEL_MODULES=(('tkclient','Tkclient','appl/lib/tkclient.b',16),('awmpanel','Awmpanel','appl/wm/awmpanel.b',4))
+TOOLBAR=('atoolbar','Toolbar','appl/wm/atoolbar.b',26)
 def generate(limbo,w,metadata=None,panel=False):
  selected=MODULES+PANEL_MODULES if panel else MODULES
+ if panel and metadata is None:
+  selected+=(TOOLBAR,)
  interface=w/'graph.m';interface.write_text(''.join('include "'+n+'.m";'for n in(('sys','draw','tk','string','wmsrv','wmlib','titlebar','wmclient','winplace','arg','sh')+('tkclient',)*panel))+'Wm:module{init:fn(ctxt:ref Draw->Context,argv:list of string);};Emuinit:module{init:fn();};')
  if panel:
-  source=(ROOT/'appl/wm/atoolbar.b').read_text()
-  declaration=re.search(r'(?ms)^Toolbar: module\s*\n\{.*?^\};',source)[0]
-  interface.write_text(interface.read_text()+'shell: Sh;Listnode, Context: import shell;'+declaration)
+  interface.write_text(interface.read_text()+'Awmpanel:module{init:fn(ctxt:ref Draw->Context,argv:list of string);};')
+  if metadata is None:
+   source=(ROOT/TOOLBAR[2]).read_text()
+   declaration=re.search(r'(?ms)^Toolbar: module\s*\n\{.*?^\};',source)[0]
+   interface.write_text(interface.read_text()+'shell: Sh;Listnode, Context: import shell;'+declaration)
  frames={};signatures={};headers={}
- for name in('Sys','Draw','Tk','String','Wmsrv','Wmlib','Titlebar','Wmclient','Winplace','Arg','Sh','Wm','Emuinit')+(('Tkclient','Toolbar') if panel else ()):
+ names=('Sys','Draw','Tk','String','Wmsrv','Wmlib','Titlebar','Wmclient','Winplace','Arg','Sh','Wm','Emuinit')
+ for name in names+(('Tkclient','Awmpanel') if panel else ())+(('Toolbar',) if panel and metadata is None else ()):
   h=headers[name]=subprocess.check_output([str(limbo),'-H','-M',name,'-I',str(ROOT/'module'),str(interface)],text=True);signatures[name]={}
   for fn,sig in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_'+name+r'_(\w+) (0x[0-9a-f]+)U',h,re.M):
    public=fn.replace('_','.',1)if '_'in fn else fn;signatures[name][public]=int(sig,16)
@@ -36,18 +42,21 @@ def generate(limbo,w,metadata=None,panel=False):
     else:raise AssertionError(('unchecked LOAD namespace',path,row['name'],pc))
   print('PASS startup LOAD namespace oracle:',path,controls,'wrong table ordinals refused',flush=True)
   text=(w/'full.h').read_text().replace('fullload','graphload').replace('full_',prefix+'_').replace('fullarray',prefix+'_array');(w/('graph-'+prefix+'.h')).write_text(text)
-  modules.append('{&'+prefix+'_spec,'+prefix+'_variadics,'+str(nv)+'}')
+  if prefix!='atoolbar':
+   dispath='/dis/emuinit.dis' if prefix=='boot' else '/dis/'+str(Path(path).relative_to('appl').with_suffix('.dis'))
+   modules.append('{&'+prefix+'_spec,'+prefix+'_variadics,'+str(nv)+',"'+dispath+'"}')
   summaries.append((prefix,count,len(imports),nv))
-  if prefix not in ('tkclient','atoolbar'):
+  if (prefix,name,path,count) in MODULES:
    ops.update(c[0]for r in rows for c in r['code'])
    alltables[prefix]=imports
   if prefix=='awm':awmglobals={x[0]:x[1]for x in rows[0]['globals']}
  (w/'full.h').unlink()
- body='static const GraphSpec graph_specs[]={'+','.join(modules[:len(MODULES)])+'};\n'
  if metadata is not None:
   headers=[(w/('graph-'+prefix+'.h')).read_text() for prefix,_,_,_ in selected]
+  body='static const GraphSpec graph_specs[]={'+','.join(modules)+'};\n'
   metadata.write_text('/* Generated from the checked native64 AWM sources. */\n'+'\n'.join(headers)+body)
   return
+ body='static const GraphSpec graph_specs[]={'+','.join(modules[:len(MODULES)])+'};\n'
  body+='static const uint awm_screen_offset='+str(awmglobals['screen'])+';\n'
  for name in ('Sys','Draw','Tk'):
   refs={}
@@ -96,7 +105,7 @@ def main():
  p=argparse.ArgumentParser(description=__doc__)
  p.add_argument('--limbo',required=True,type=Path)
  p.add_argument('--android-ndk',type=Path,help='build the ARM64/Bionic fixture with NDK clang')
- p.add_argument('--panel',action='store_true',help='include checked Tkclient and Toolbar metadata')
+ p.add_argument('--panel',action='store_true',help='include Tkclient and the AWM desktop panel')
  p.add_argument('--metadata',type=Path,help='generate trusted startup metadata instead of running the fixture')
  a=p.parse_args()
  if not __debug__:p.error('source oracles require assertions')

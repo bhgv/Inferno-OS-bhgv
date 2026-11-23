@@ -330,7 +330,7 @@ amain(void)
 	}
 
 #ifdef DIS_NATIVE64_AWM_BOOT
-	opt = smprint("-r%q -g%dx%d wm/awm -nopanel", rootdir, Xsize, Ysize);
+	opt = smprint("-r%q -g%dx%d wm/awm /dis/wm/awmpanel.dis", rootdir, Xsize, Ysize);
 #else
 	opt = loadcmdstr(rootdir);
 	if(opt == nil || opt[0] == '\0'){
@@ -364,7 +364,7 @@ amain(void)
 		is_run = 0;
 		return;
 	}
-	LOGI("Starting Android ARM64 native64 AWM");
+	LOGI("Starting Android ARM64 native64 AWM with panel");
 #else
 	if(!legacynativeabi()){
 		LOGE("Installed legacy builtin tables require int32/ref32; native64 registration is not enabled");

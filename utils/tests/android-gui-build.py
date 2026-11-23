@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the Android ARM64 GUI and optionally package the panel-free AWM test."""
+"""Build the Android ARM64 GUI and optionally package the AWM desktop and panel."""
 import argparse
 import hashlib
 import json
@@ -14,11 +14,12 @@ from zipfile import ZipFile, ZIP_STORED
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def run(command, cwd, env, log):
+def run(command, cwd, env, log, timeout=None):
     """Keep complete build evidence and expose the failing command's diagnostic tail."""
     print('RUN', log.name, flush=True)
     with log.open('w') as stream:
-        result = subprocess.run(command, cwd=cwd, env=env, stdout=stream, stderr=subprocess.STDOUT)
+        result = subprocess.run(command, cwd=cwd, env=env, stdout=stream,
+                                stderr=subprocess.STDOUT, timeout=timeout)
     if result.returncode:
         print('\n'.join(log.read_text(errors='replace').splitlines()[-35:]), file=sys.stderr)
         raise RuntimeError('Failed '+str(log))
@@ -34,7 +35,23 @@ def stage_awm_runtime(core, app, build, mk, env, logs):
     assets = build/'assets'
     run([sys.executable, str(app/'tools/stage-inferno.py'), '--source', str(core),
          '--output', str(assets/'inferno')], app, env, logs/'stage-runtime.log')
+    if not (assets/'inferno/dis/wm/awmpanel.dis').is_file():
+        raise RuntimeError('Missing staged AWM panel')
     return assets
+
+
+def test_awm_framebuffer(llvm, runner, archives, assets, build, env, logs):
+    # Select platform libm first in the static test link. The APK uses shared libm.
+    libraries = ('emu', 'libinterp', 'liblodepng', 'libbio', 'libdraw', 'libdynld',
+                 'libkeyring', 'libmath', 'libmemlayer', 'libmemdraw', 'libsec',
+                 'libtk', 'libfreetype', 'libmp', 'lib9')
+    executable = build/'awm-framebuffer'
+    run([str(llvm/'aarch64-linux-android29-clang'), '-O2', '-g', '-static',
+         str(ROOT/'utils/tests/android-awm-framebuffer.c'), '-Wl,--start-group', '-lm',
+         *(str(archives/(name+'.a')) for name in libraries), '-Wl,--end-group',
+         '-o', str(executable)], build, env, logs/'framebuffer-link.log')
+    run([runner, str(executable), str(assets/'inferno')], logs, env,
+        logs/'framebuffer-run.log', timeout=45)
 
 
 def package_awm(apk_tools, platform, app, build, assets, library, revisions, env, logs):
@@ -107,8 +124,9 @@ def main():
     parser.add_argument('--native64-sys-fixed', action='store_true', help='register all 39 fixed Sys exports; variadic and AWM startup remain unavailable')
     parser.add_argument('--native64-draw', action='store_true', help='select native64 Draw C frames/registration; full GUI startup stays guarded')
     parser.add_argument('--native64-tk', action='store_true', help='select native64 Tk C frames/registration; full GUI startup stays guarded')
-    parser.add_argument('--native64-awm', action='store_true', help='select the compiled-in native64 AWM startup without the panel')
+    parser.add_argument('--native64-awm', action='store_true', help='select the compiled-in native64 AWM desktop and panel')
     parser.add_argument('--apk-sdk', type=Path, help='package the AWM test using Android platform and build-tools 35')
+    parser.add_argument('--awm-runner', help='run the real Bionic framebuffer smoke test with this qemu-aarch64 executable')
     parser.add_argument('--cmake', default='cmake')
     parser.add_argument('--ninja', default='ninja')
     args = parser.parse_args()
@@ -122,6 +140,10 @@ def main():
         parser.error("Native64 AWM startup requires --native64-formatter")
     if args.apk_sdk and not args.native64_awm:
         parser.error("--apk-sdk requires --native64-awm")
+    if args.awm_runner:
+        runner = shutil.which(args.awm_runner)
+        if not runner or not args.native64_awm:
+            parser.error("--awm-runner requires an executable runner and --native64-awm")
     if args.apk_sdk:
         apk_tools = args.apk_sdk.resolve()/'build-tools/35.0.0'
         platform = args.apk_sdk.resolve()/'platforms/android-35/android.jar'
@@ -234,12 +256,18 @@ def main():
                   core_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                   app_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=app, text=True).strip(),
                   library_sha256=hashlib.sha256(library.read_bytes()).hexdigest(),
-                  gui_native_linked=True, awm_boot_selected=args.native64_awm, awm_started=False)
+                  gui_native_linked=True, awm_boot_selected=args.native64_awm,
+                  awm_panel_selected=args.native64_awm, awm_started=False)
     result = build/'result.json'
     result.write_text(json.dumps(report, indent=2)+'\n')
     print('PASS complete Android ARM64 GUI native link', flush=True)
-    if args.apk_sdk:
+    if args.apk_sdk or args.awm_runner:
         assets = stage_awm_runtime(core, app, build, tools/'mk', env, logs)
+    if args.awm_runner:
+        test_awm_framebuffer(llvm, runner, archives, assets, build, env, logs)
+        report.update(awm_started=True, awm_panel_interaction_verified=True)
+        result.write_text(json.dumps(report, indent=2)+'\n')
+    if args.apk_sdk:
         report.update(package_awm(apk_tools, platform, app, build, assets, library,
                                   (report['core_revision'], report['app_revision']), env, logs))
         result.write_text(json.dumps(report, indent=2)+'\n')
