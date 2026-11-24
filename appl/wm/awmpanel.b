@@ -2,6 +2,9 @@ implement Awmpanel;
 
 include "sys.m";
 include "draw.m";
+include "sh.m";
+include "string.m";
+	str: String;
 include "tk.m";
 	tk: Tk;
 include "tkclient.m";
@@ -16,19 +19,18 @@ init(ctxt: ref Draw->Context, nil: list of string)
 {
 	tk = load Tk Tk->PATH;
 	tkclient = load Tkclient Tkclient->PATH;
-	if(ctxt == nil || tk == nil || tkclient == nil)
+	str = load String String->PATH;
+	if(ctxt == nil || tk == nil || tkclient == nil || str == nil)
 		raise "fail:cannot start AWM panel";
 	tkclient->init();
 	(top, nil) := tkclient->toplevel(ctxt, "-bg #212b38", "", Tkclient->Plain);
 
 	action := chan of string;
 	tk->namechan(top, action, "panel");
-	cmd(top, "button .about -text {About Inferno} -bg #dce8f5 -fg #172331 " +
-		"-activebackground #ffffff -command {send panel about} -takefocus 0");
-	cmd(top, "pack .about -side left -fill y -padx 6 -pady 4");
-	cmd(top, "pack propagate . 0");
-	tkclient->startinput(top, "ptr"::nil);
-	layout(top);
+	widgets(top);
+	tkclient->startinput(top, "ptr"::"control"::nil);
+	opened := 0;
+	layout(top, opened);
 
 	for(;;){
 		wm := top.ctxt;
@@ -41,25 +43,132 @@ init(ctxt: ref Draw->Context, nil: list of string)
 		s = <-wreq =>
 			if(s == "exit")
 				return;
+			if(s == nil || control(top, s))
+				break;
 			tkclient->wmctl(top, s);
 			if(len s >= 5 && s[0:5] == "rect ")
-				layout(top);
+				layout(top, opened);
 		s := <-action =>
-			if(s == "about")
-				spawn about(ctxt);
+			if(s == "apps"){
+				opened = !opened;
+				showmenu(top, opened);
+			}else if(s == "about" || s == "calculator"){
+				opened = 0;
+				showmenu(top, opened);
+				if(s == "about")
+					spawn about(ctxt);
+				else
+					spawn calculator(ctxt);
+			}else if(len s >= 8 && s[0:8] == "restore "){
+				id := s[8:];
+				restore(top, id);
+			}
 		}
 	}
 }
 
-layout(top: ref Tk->Toplevel)
+widgets(top: ref Tk->Toplevel)
+{
+	cmd(top, "frame .bar -height 40 -bg #212b38; pack propagate .bar 0");
+	cmd(top, "button .bar.apps -text Apps -bg #dce8f5 -fg #172331 " +
+		"-activebackground #ffffff -takefocus 0 -command {send panel apps}");
+	cmd(top, "pack .bar.apps -side left -fill y -ipadx 10 -padx 6 -pady 4");
+	cmd(top, "pack .bar -side top -fill x");
+	cmd(top, "frame .launch -height 48 -bg #2c3c51; pack propagate .launch 0");
+	cmd(top, "button .launch.calc -text Calculator -width 114 -bg #dce8f5 -fg #172331 " +
+		"-activebackground #ffffff -command {send panel calculator}");
+	cmd(top, "button .launch.about -text {About Inferno} -width 114 -bg #dce8f5 -fg #172331 " +
+		"-activebackground #ffffff -command {send panel about}");
+	cmd(top, "pack .launch.calc .launch.about -side left -fill y -padx 6 -pady 5");
+	cmd(top, "pack propagate . 0");
+}
+
+showmenu(top: ref Tk->Toplevel, opened: int)
+{
+	if(opened)
+		cmd(top, "pack .launch -side top -fill x");
+	else
+		cmd(top, "pack forget .launch");
+	layout(top, opened);
+}
+
+calculator(ctxt: ref Draw->Context)
+{
+	app := load Command "/dis/wm/awmcalc.dis";
+	if(app == nil)
+		raise "fail:cannot load Calculator";
+	app->init(ctxt, nil);
+}
+
+control(top: ref Tk->Toplevel, message: string): int
+{
+	args := str->unquoted(message);
+	if(len args < 2)
+		return 0;
+	kind := hd args;
+	args = tl args;
+	id := hd args;
+	client := int id;
+	if(client < 0 || string client != id)
+		return 0;
+	if(kind == "newclient")
+		return 1;
+	if(kind == "delclient"){
+		removetask(top, id);
+		return 1;
+	}
+	if(kind != "request")
+		return 0;
+	args = tl args;
+	if(len args == 2 && hd args == "task"){
+		label := hd tl args;
+		addtask(top, id, label);
+	}else if(args != nil && (hd args == "untask" || hd args == "unhide"))
+		removetask(top, id);
+	return 1;
+}
+
+addtask(top: ref Tk->Toplevel, id, name: string)
+{
+	removetask(top, id);
+	label := "Window " + id;
+	if(name == "Calculator")
+		label = name;
+	widget := ".bar.task" + id;
+	button := "button " + widget + " -text {" + label + "} -bg #dce8f5 -fg #172331 " +
+		"-activebackground #ffffff -command {send panel restore " + id + "} -takefocus 0";
+	cmd(top, button);
+	pack := "pack " + widget + " -side left -fill y -padx 4 -pady 4";
+	cmd(top, pack);
+	# Reattach the panel image after changing the packed task buttons.
+	tkclient->onscreen(top, "exact");
+	cmd(top, "update");
+}
+
+removetask(top: ref Tk->Toplevel, id: string)
+{
+	destroy := "destroy .bar.task" + id;
+	if(tk->cmd(top, destroy) == nil)
+		cmd(top, "update");
+}
+
+restore(top: ref Tk->Toplevel, id: string)
+{
+	removetask(top, id);
+	request := "ctl " + id + " untask";
+	tkclient->wmctl(top, request);
+}
+
+layout(top: ref Tk->Toplevel, opened: int)
 {
 	r := top.screenr;
 	w := r.max.x - r.min.x;
 	h := r.max.y - r.min.y;
 	if(w <= 0 || h <= 0)
 		return;
-	if(h >= 40)
-		h = 40;
+	size := 40+48*opened;
+	if(h > size)
+		h = size;
 	config := ". configure -x " + string r.min.x + " -y " + string r.min.y +
 		" -width " + string w + " -height " + string h;
 	cmd(top, config);

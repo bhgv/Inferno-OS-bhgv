@@ -10,7 +10,8 @@
 #include <string.h>
 #include <unistd.h>
 
-enum { Width = 640, Height = 480, Panel = 0x212b38, Desktop = 0x777777 };
+enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Desktop = 0x777777 };
+enum View { Vdesktop, Vmenu, Vcalc, Vtask, Vabout };
 int Xsize = Width, Ysize = Height;
 unsigned char *xscreendata;
 static const char *runtime;
@@ -63,17 +64,33 @@ pixel(int x, int y)
 	return (uint32_t)p[2] << 16 | (uint32_t)p[1] << 8 | p[0];
 }
 
+static int
+visible(enum View view)
+{
+	if(pixel(600, 15) != Panel)
+		return 0;
+	if(view == Vmenu)
+		return pixel(600, 65) == Menu;
+	if(pixel(600, 65) != Desktop)
+		return 0;
+	if(view == Vcalc)
+		return pixel(195, 78) == 0xffffff;
+	if(view == Vabout)
+		return pixel(100, 65) != Desktop && pixel(195, 78) == Desktop;
+	return pixel(100, 65) == Desktop &&
+		(pixel(110, 11) != Panel) == (view == Vtask);
+}
+
 /* Save the actual Draw framebuffer after each visible transition. */
 static int
-capture(const char *path, int about, unsigned int after)
+capture(const char *path, enum View view, unsigned int after)
 {
 	unsigned int i, painted;
 	FILE *stream;
 	for(i = 0; i < 240; i++){
 		pthread_mutex_lock(&frame_lock);
 		painted = flushes;
-		if(painted > after && pixel(600, 15) == Panel &&
-		   pixel(600, 65) == Desktop && (pixel(100, 65) != Desktop) == about){
+		if(painted > after && visible(view)){
 			stream = fopen(path, "wb");
 			if(stream == NULL)
 				exit(2);
@@ -105,16 +122,75 @@ tap(int x, int y)
 	xmouse_btn(x, y, 0);
 }
 
+/* Compare rendered digits independently of the bitmap font used by the runtime. */
+static uint64_t
+wait_value(uint64_t reference, int equal)
+{
+	uint64_t hash;
+	int x,y,ink;
+	for(int attempt = 0; attempt < 120; attempt++){
+		pthread_mutex_lock(&frame_lock);
+		hash = UINT64_C(14695981039346656037);
+		ink = 0;
+		for(y = 79; y < 99; y++)
+			for(x = 120; x < 208; x++){
+				uint32_t color = pixel(x, y);
+				ink |= color != 0xffffff;
+				hash = (hash ^ color) * UINT64_C(1099511628211);
+			}
+		int matched = visible(Vcalc) && ink && (hash == reference) == equal;
+		pthread_mutex_unlock(&frame_lock);
+		if(matched)
+			return hash;
+		usleep(50000);
+	}
+	fputs("Calculator display did not reach the expected value\n", stderr);
+	exit(1);
+}
+
 static void*
 observe(void *unused)
 {
 	unsigned int painted;
+	uint64_t zero, five, two, three;
 	(void)unused;
-	painted = capture("awm-desktop.ppm", 0, 0);
-	tap(45, 18);
-	painted = capture("awm-about.ppm", 1, painted);
+	painted = capture("awm-desktop.ppm", Vdesktop, 0);
+	tap(27, 19);
+	painted = capture("awm-menu.ppm", Vmenu, painted);
+	tap(53, 61);
+	painted = capture("awm-calculator.ppm", Vcalc, painted);
+	zero = wait_value(0, 0);
+	tap(84, 171);                    /* Render a directly entered 5 as an oracle. */
+	five = wait_value(zero, 0);
+	tap(33, 248);
+	wait_value(zero, 1);
+	tap(84, 210);
+	two = wait_value(zero, 0);
+	tap(184, 248);
+	tap(135, 209);
+	three = wait_value(two, 0);
+	if(three == five){
+		fputs("Calculator displayed the result before equals\n", stderr);
+		exit(1);
+	}
+	tap(134, 248);
+	wait_value(five, 1);
+	puts("PASS Calculator 2 + 3 equals the directly entered 5");
+
+	tap(185, 52);
+	painted = capture("awm-minimized.ppm", Vtask, painted);
+	tap(120, 19);
+	painted = capture("awm-restored.ppm", Vcalc, painted);
+	wait_value(five, 1);
+	puts("PASS Calculator retained its value when restored from the taskbar");
+	tap(110, 283);
+	painted = capture("awm-calculator-closed.ppm", Vdesktop, painted);
+	tap(27, 19);
+	painted = capture("awm-menu.ppm", Vmenu, painted);
+	tap(186, 61);
+	painted = capture("awm-about.ppm", Vabout, painted);
 	tap(65, 125);
-	capture("awm-closed.ppm", 0, painted);
+	capture("awm-closed.ppm", Vdesktop, painted);
 	exit(0);
 }
 

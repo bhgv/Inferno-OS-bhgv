@@ -83,15 +83,20 @@ NATIVE64_RUNNER=qemu-aarch64 python3 utils/tests/native64-awm-startup.py \
 
 Профиль `android-gui-build.py --native64-tk --native64-draw
 --native64-sys-fixed --native64-formatter --native64-awm` встраивает
-граф AWM с Tkclient и `/dis/wm/awmpanel.dis`. Android `amain`
-запускает этот вариант панели с кнопкой **About Inferno**. Штатный
-`atoolbar` использует Sh и остаётся отдельным путём запуска.
+граф AWM с Tkclient, `/dis/wm/awmpanel.dis` и `/dis/wm/awmcalc.dis`.
+Android `amain` запускает панель с меню **Apps**. Из него открываются
+**Calculator** и **About Inferno**. Свёрнутое окно калькулятора
+восстанавливается кнопкой на панели. Штатный `atoolbar` использует Sh
+и остаётся отдельным путём запуска.
 
 С `--awm-runner qemu-aarch64` сборка запускает Android `amain` под
 Bionic/QEMU. Стенд предоставляет буфер 640×480, путь к установленным
 ресурсам и адаптеры Android-аудио и логов. Настоящие AWM, Sys, Draw и Tk
-рисуют панель, открывают и закрывают окно About через Android-драйвер
-указателя. Перед упаковкой APK проверяются все три состояния буфера.
+рисуют панель, открывают оба окна и выполняют вычисление в калькуляторе.
+Перед упаковкой APK стенд проверяет буфер после открытия меню,
+сворачивания и восстановления окна с сохранённым результатом, а также
+после закрытия окон. Все нажатия передаются через Android-драйвер
+указателя.
 
 При регрессии Emuinit обновлена устаревшая raw-IR фикстура variadic test:
 она явно предоставляет nil implementation-module и запрещающий неожиданные

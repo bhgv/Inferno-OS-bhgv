@@ -51,13 +51,15 @@ enum {
 };
 
 static struct {
+    Lock lock;
     int rd;
     int wr;
     Pointer clicks[Nevent];
     Rendez r;
     int full;
-    int put;
-    int get;
+    uint put;
+    uint get;
+    uint lastclick;
 } ptrq;
 
 
@@ -561,29 +563,29 @@ void
 mousetrack(int b, int x, int y, int isdelta)
 {
     int lastb;
-    ulong msec;
-    Pointer e;
+    ulong msec = osmillisec();
 
+    lock(&ptrq.lock);
     if(isdelta){
         x += mouse.v.x;
         y += mouse.v.y;
     }
-    msec = osmillisec();
     lastb = mouse.v.b;
     mouse.v.x = x;
     mouse.v.y = y;
     mouse.v.b = b;
     mouse.v.msec = msec;
+    ptrq.put++;
     if(!ptrq.full && lastb != b){
-        e = mouse.v;
-        ptrq.clicks[ptrq.wr] = e;
+        ptrq.clicks[ptrq.wr] = mouse.v;
+        ptrq.lastclick = ptrq.put;
         if(++ptrq.wr >= Nevent)
             ptrq.wr = 0;
         if(ptrq.wr == ptrq.rd)
             ptrq.full = 1;
     }
     mouse.modify = 1;
-    ptrq.put++;
+    unlock(&ptrq.lock);
     Wakeup(&ptrq.r);
 /*  drawactive(1);  */
 /*  setpointer(x, y); */
@@ -592,8 +594,12 @@ mousetrack(int b, int x, int y, int isdelta)
 static int
 ptrqnotempty(void *x)
 {
+    int ready;
     USED(x);
-    return ptrq.full || ptrq.put != ptrq.get;
+    lock(&ptrq.lock);
+    ready = ptrq.full || ptrq.rd != ptrq.wr || ptrq.put != ptrq.get;
+    unlock(&ptrq.lock);
+    return ready;
 }
 
 static Pointer
@@ -602,21 +608,31 @@ mouseconsume(void)
     Pointer e;
 
     Sleep(&ptrq.r, ptrqnotempty, 0);
-    ptrq.full = 0;
-    ptrq.get = ptrq.put;
-    if(ptrq.rd != ptrq.wr){
+    lock(&ptrq.lock);
+    if(ptrq.full || ptrq.rd != ptrq.wr){
         e = ptrq.clicks[ptrq.rd];
+        ptrq.full = 0;
         if(++ptrq.rd >= Nevent)
             ptrq.rd = 0;
-    }else
+        /* A newer position or a transition lost to overflow is still unread. */
+        if(ptrq.rd == ptrq.wr)
+            ptrq.get = ptrq.lastclick;
+    }else{
         e = mouse.v;
+        ptrq.get = ptrq.put;
+    }
+    unlock(&ptrq.lock);
     return e;
 }
 
 Point
 mousexy(void)
 {
-    return Pt(mouse.v.x, mouse.v.y);
+    Point p;
+    lock(&ptrq.lock);
+    p = Pt(mouse.v.x, mouse.v.y);
+    unlock(&ptrq.lock);
+    return p;
 }
 
 
@@ -734,8 +750,11 @@ pointerwrite(Chan* c, void* va, long n, vlong off)
         y = strtoul(a, &a, 0);
         if(*a != 0)
             b = strtoul(a, 0, 0);
-        else
+        else{
+            lock(&ptrq.lock);
             b = mouse.v.b;
+            unlock(&ptrq.lock);
+        }
         /*mousetrack(b, x, y, msec);*/
         setpointer(x, y);
         USED(b);

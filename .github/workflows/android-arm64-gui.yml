@@ -16,6 +16,7 @@ on:
       - 'appl/lib/**'
       - 'appl/wm/awm.b'
       - 'appl/wm/awmpanel.b'
+      - 'appl/wm/awmcalc.b'
       - 'module/**'
       - 'libinterp/tests/dis64-runtime.*'
       - 'emu/Android/**'
@@ -62,6 +63,7 @@ jobs:
       - name: Check real Android objects and GUI ownership
         run: |
           python3 utils/tests/host64-android.py --ndk "$RUNNER_TEMP/android-ndk-r27c"
+          python3 emu/port/tests/pointer-queue.py
           python3 libdraw/tests/screen-channel.py
           python3 utils/tests/native64-tk-register.py --limbo "$RUNNER_TEMP/host-tools/limbo"
           python3 utils/tests/native64-draw-register.py --limbo "$RUNNER_TEMP/host-tools/limbo"
