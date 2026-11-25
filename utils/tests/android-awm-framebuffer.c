@@ -1,6 +1,8 @@
 /* Run Android amain and real Tk/Draw against a headless Bionic framebuffer. */
+#include <android/asset_manager.h>
 #include <android/log.h>
 #include <dlfcn.h>
+#include <errno.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -9,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "inferno_storage.h"
 
 enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Desktop = 0x777777 };
 enum View { Vdesktop, Vmenu, Vcalc, Vtask, Vabout, Vfiles };
@@ -19,7 +22,6 @@ static const Area file_preview = { 8, 260, 340, 324 };
 static const Area file_list = { 8, 122, 340, 160 };
 int Xsize = Width, Ysize = Height;
 unsigned char *xscreendata;
-static const char *runtime;
 static unsigned char snapshot[Width * Height * 4];
 static pthread_mutex_t frame_lock = PTHREAD_MUTEX_INITIALIZER;
 static unsigned int flushes;
@@ -27,11 +29,59 @@ static unsigned int flushes;
 extern void amain(void);
 extern void xmouse_btn(int, int, int);
 
-int
-inferno_android_root(char *out, size_t size)
+/* Supply the bundle bytes to the production installer without Android's Java framework. */
+struct AAssetManager { const char *directory; };
+struct AAsset { FILE *file; };
+
+AAsset *
+AAssetManager_open(AAssetManager *manager, const char *name, int mode)
 {
-	int n = snprintf(out, size, "%s", runtime);
-	return n < 0 || (size_t)n >= size ? -1 : 0;
+	char path[4096];
+	(void)mode;
+	int n = snprintf(path, sizeof(path), "%s/%s", manager->directory, name);
+	if(n < 0 || (size_t)n >= sizeof(path))
+		return NULL;
+	AAsset *asset = malloc(sizeof(*asset));
+	if(asset == NULL)
+		return NULL;
+	asset->file = fopen(path, "rb");
+	if(asset->file == NULL){
+		free(asset);
+		return NULL;
+	}
+	return asset;
+}
+
+int
+AAsset_read(AAsset *asset, void *buffer, size_t count)
+{
+	size_t bytes = fread(buffer, 1, count, asset->file);
+	return ferror(asset->file) ? -1 : (int)bytes;
+}
+
+off_t
+AAsset_getLength(AAsset *asset)
+{
+	if(fseeko(asset->file, 0, SEEK_END) != 0)
+		return -1;
+	off_t length = ftello(asset->file);
+	return fseeko(asset->file, 0, SEEK_SET) == 0 ? length : -1;
+}
+
+void
+AAsset_close(AAsset *asset)
+{
+	fclose(asset->file);
+	free(asset);
+}
+
+static int
+cancel_install(unsigned int done, unsigned int total, const char *path, void *argument)
+{
+	(void)total;
+	(void)path;
+	(void)argument;
+	return done == 0;
 }
 
 int
@@ -263,9 +313,21 @@ int
 main(int argc, char **argv)
 {
 	pthread_t worker;
-	if(argc != 2)
+	if(argc != 3)
 		return 2;
-	runtime = argv[1];
+	AAssetManager manager = {argv[1]};
+	const char *files = argv[2];
+	if(ioa_prepare_private_storage(files, &manager, cancel_install, NULL) != -1 ||
+	   errno != ECANCELED || ioa_prepare_private_storage(files, NULL, NULL, NULL) != -1){
+		fputs("Interrupted extraction was accepted as a complete runtime\n", stderr);
+		return 2;
+	}
+	if(ioa_prepare_private_storage(files, &manager, NULL, NULL) != 0 ||
+	   ioa_prepare_private_storage(files, NULL, NULL, NULL) != 0){
+		perror("Bundled Inferno runtime");
+		return 2;
+	}
+	puts("PASS app-private extraction, interrupted retry and reuse without assets");
 	xscreendata = calloc((size_t)Width * Height, 4);
 	if(xscreendata == NULL || pthread_create(&worker, NULL, observe, NULL) != 0)
 		return 2;

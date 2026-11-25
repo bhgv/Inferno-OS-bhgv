@@ -314,9 +314,9 @@ amain(void)
 	quotefmtinstall();
 //	savestartup(argc, argv);
 
-	/* The runtime tree belongs in shared storage and is never installed by the launcher. */
+	/* The selected Android launcher supplies the prepared runtime root. */
 	if(inferno_android_root(rootdir, sizeof(rootdir)) != 0){
-		LOGE("Cannot access /sdcard/Inferno; check shared-storage permissions");
+		LOGE("Cannot access the Inferno runtime (errno=%d)", errno);
 		is_run = 0;
 		return;
 	}

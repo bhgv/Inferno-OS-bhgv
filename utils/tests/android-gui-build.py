@@ -41,19 +41,22 @@ def stage_awm_runtime(core, app, build, mk, env, logs):
     return assets
 
 
-def test_awm_framebuffer(llvm, runner, archives, assets, build, env, logs):
+def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
     # Select platform libm first in the static test link. The APK uses shared libm.
     libraries = ('emu', 'libinterp', 'liblodepng', 'libbio', 'libdraw', 'libdynld',
                  'libkeyring', 'libmath', 'libmemlayer', 'libmemdraw', 'libsec',
                  'libtk', 'libfreetype', 'libmp', 'lib9')
     executable = build/'awm-framebuffer'
+    launcher = app/'app/src/main/cpp'
     run([str(llvm/'aarch64-linux-android29-clang'), '-O2', '-g', '-static',
-         str(ROOT/'utils/tests/android-awm-framebuffer.c'), '-Wl,--start-group', '-lm',
+         '-DINFERNO_BUNDLE_RUNTIME=1', '-DINFERNO_PRIVATE_RUNTIME=1', '-I'+str(launcher),
+         str(ROOT/'utils/tests/android-awm-framebuffer.c'), str(launcher/'inferno_storage.c'),
+         '-Wl,--wrap=inferno_android_root', '-Wl,--start-group', '-lm',
          *(str(archives/(name+'.a')) for name in libraries), '-Wl,--end-group',
          '-o', str(executable)], build, env, logs/'framebuffer-link.log')
-    runtime = build/'framebuffer-runtime'
-    shutil.copytree(assets/'inferno', runtime)
-    home = runtime/'usr/inferno'
+    bundle = build/'framebuffer-assets'
+    shutil.copytree(assets/'inferno', bundle/'inferno')
+    home = bundle/'inferno/usr/inferno'
     shutil.rmtree(home)
     documents = home/'Documents'
     documents.mkdir(parents=True)
@@ -61,7 +64,16 @@ def test_awm_framebuffer(llvm, runner, archives, assets, build, env, logs):
     (documents/'notes;[later].txt').write_text(
         'Safe text with ; braces { } and [brackets].\n' + 'Long preview line.\n'*300,
         encoding='utf-8')
-    run([runner, str(executable), str(runtime)], logs, env,
+    manifest = bundle/'inferno/manifest.txt'
+    entries = [line for line in manifest.read_text().splitlines()
+               if not line.split('\t', 1)[1].startswith('usr/inferno/')]
+    entries += [f'D\t{documents.relative_to(bundle/"inferno").as_posix()}']
+    entries += [f'F\t{file.relative_to(bundle/"inferno").as_posix()}'
+                for file in sorted(documents.iterdir())]
+    manifest.write_text('\n'.join(entries)+'\n')
+    files = build/'app-files'
+    files.mkdir()
+    run([runner, str(executable), str(bundle), str(files)], logs, env,
         logs/'framebuffer-run.log', timeout=60)
 
 
@@ -74,6 +86,10 @@ def package_awm(apk_tools, platform, app, build, assets, library, revisions, env
     core, launcher = revisions
     root.set('package', f'bhgv.vitanuova.inferno_os.awm64.c{core[:12]}.a{launcher[:12]}')
     root.set(android+'versionName', core[:12])
+    storage_permissions = {'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'MANAGE_EXTERNAL_STORAGE'}
+    for permission in root.findall('uses-permission'):
+        if permission.get(android+'name', '').removeprefix('android.permission.') in storage_permissions:
+            root.remove(permission)
     application = root.find('application')
     application.set(android+'extractNativeLibs', 'false')
     application.set(android+'label', 'Inferno AWM ARM64 test')
@@ -110,6 +126,10 @@ def package_awm(apk_tools, platform, app, build, assets, library, revisions, env
         logs/'apk-verify-align.log')
     run([sys.executable, str(app/'tools/verify-apk-abi.py'), str(signed), '--abi', 'arm64-v8a'],
         app, env, logs/'apk-abi.log')
+    permissions = subprocess.check_output(
+        [str(apk_tools/'aapt'), 'dump', 'permissions', str(signed)], text=True)
+    if any('android.permission.'+name in permissions for name in storage_permissions):
+        raise RuntimeError('App-private AWM APK requests shared-storage permissions')
     with ZipFile(signed) as archive:
         if archive.testzip() is not None or any(name.endswith('.dex') for name in archive.namelist()):
             raise RuntimeError('Invalid native-only AWM APK')
@@ -234,6 +254,7 @@ def main():
          '-DANDROID_PLATFORM=android-21', '-DANDROID_STL=c++_static',
          '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON', '-DINFERNO_ROOT='+str(core),
          '-DINFERNO_BUNDLE_RUNTIME='+('ON' if args.native64_awm else 'OFF'),
+         '-DINFERNO_PRIVATE_RUNTIME='+('ON' if args.native64_awm else 'OFF'),
          '-DCMAKE_BUILD_TYPE=Debug'], app, env, logs/'cmake.log')
     run([args.cmake, '--build', str(build/'native'), '--parallel', '2'], app, env, logs/'native-link.log')
     library = build/'native/libinferno_os_app.so'
@@ -248,7 +269,7 @@ def main():
     (logs/'symbols.txt').write_text(symbols)
     required = ['ANativeActivity_onCreate', 'android_main', 'amain']
     if args.native64_awm:
-        required.append('native64awmboot')
+        required += ['native64awmboot', '__wrap_inferno_android_root', 'ioa_prepare_private_storage']
     if args.native64_formatter:
         required += ['Sys_'+name+'64' for name in ('print', 'fprint', 'sprint', 'aprint')]
         required += ['Sys_bindframe64', 'Sys_setframes64', 'Sys_clearframes64', 'Sys_bindsite64', 'Sys_callsite64']
@@ -275,9 +296,9 @@ def main():
     if args.apk_sdk or args.awm_runner:
         assets = stage_awm_runtime(core, app, build, tools/'mk', env, logs)
     if args.awm_runner:
-        test_awm_framebuffer(llvm, runner, archives, assets, build, env, logs)
+        test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs)
         report.update(awm_started=True, awm_panel_interaction_verified=True,
-                      awm_files_interaction_verified=True)
+                      awm_files_interaction_verified=True, awm_private_storage_verified=True)
         result.write_text(json.dumps(report, indent=2)+'\n')
     if args.apk_sdk:
         report.update(package_awm(apk_tools, platform, app, build, assets, library,

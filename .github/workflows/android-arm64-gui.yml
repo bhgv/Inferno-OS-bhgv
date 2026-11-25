@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bhgv/Inferno-OS_Android
-          ref: ed8b80ecb64524c86ca1bd2b21e1abbfb494473f
+          ref: 8fd857952eeebf97866893741a041c5f32a47018
           path: android-app
       - name: Prepare pinned NDK and native build tools
         run: |
@@ -73,6 +73,7 @@ jobs:
           python3 android-app/tests/framebuffer-lifecycle.py
           python3 android-app/tests/framebuffer-startup.py
           python3 android-app/tests/framebuffer-pixels.py
+          python3 android-app/tests/native-storage.py
           python3 android-app/tests/cmake-abis.py
       - name: Execute ARM64 Bionic managed C and JIT with collection
         run: |
