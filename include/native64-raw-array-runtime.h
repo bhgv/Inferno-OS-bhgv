@@ -12,8 +12,22 @@ struct Native64RawIndex {unsigned int pc,width,mapped,kind;Type *frame;Inst inst
 struct Native64RawArrays {Native64RawArrays *self;Module *owner;unsigned int count;Native64RawIndex index[1];};
 static unsigned int native64rawarraywidth(unsigned int c){return native64arraywidth(c);}
 static void native64rawarrayfree(Module*m){Native64RawArrays*p=m->native64rawarrays;m->native64rawarrays=nil;m->native64rawarraysfree=nil;if(p!=nil)free(p);}
-static void native64rawarraycheck(Array*a,unsigned int width,unsigned int mapped)
-{Type*t;unsigned int i;if(a==H||a==nil)return;if((uintptr)a<=sizeof(Heap)||(uintptr)a%8||(uintptr)a>(uintptr)-1-sizeof(Array)||D2H(a)->ref<=0||D2H(a)->t!=&Tarray)error(exBounds);t=a->t;if(t==nil||t==H||t->ref<=0||t->size!=(int)width||t->np<0||t->np>(t->size+63)/64)error(exBounds);if(mapped){if(t->np!=1||t->map[0]!=(mapped==1?0xc0:mapped))error(exBounds);return;}for(i=0;i<(unsigned int)t->np;i++)if(t->map[i])error(exBounds);}
+static void
+native64rawarraycheck(Array *a, unsigned int width, unsigned int mapped)
+{
+ Type *t;
+ unsigned int i=0;
+ if(a==H||a==nil)return;
+ if((uintptr)a<=sizeof(Heap)||(uintptr)a%8||(uintptr)a>(uintptr)-1-sizeof(Array)||
+    D2H(a)->ref<=0||D2H(a)->t!=&Tarray)error(exBounds);
+ t=a->t;
+ if(t==nil||t==H||t->ref<=0||t->size!=(int)width||t->np<0||t->np>(t->size+63)/64)error(exBounds);
+ if(mapped){
+  if(!t->np||t->map[0]!=(mapped==1?0xc0:mapped))error(exBounds);
+  i=1;
+ }
+ for(;i<(unsigned int)t->np;i++)if(t->map[i])error(exBounds);
+}
 /* Read the owner from its proved frame or module-data root before decoding. */
 static Array*
 native64rawarrayowner(VmFetch*f,unsigned int mode,long offset)

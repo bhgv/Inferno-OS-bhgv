@@ -1,6 +1,35 @@
 static unsigned int typedlibraryrecord(Type*);
 static int typedwmref(Type*,char*,char*);
 static int typedchannelbinding(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int*);
+
+static int
+typedsysdir(Type *t)
+{
+ Decl *decl=t?t->decl:nil;
+ return t&&t->kind==Tadt&&decl&&decl->sym&&!strcmp(decl->sym->name,"Dir")&&
+  decl->dot&&decl->dot->sym&&!strcmp(decl->dot->sym->name,"Sys");
+}
+
+/* Check Sys.Dir alone or at its aligned offset in the stat result tuple. */
+static int
+typeddirleaves(const Dis64Layout *layout, unsigned int first, unsigned int base)
+{
+ static const unsigned int old[]={0,4,8,12,16,24,28,32,36,40,48,56,60};
+ static const unsigned int native[]={0,8,16,24,32,40,44,48,52,56,64,72,76};
+ static const int kinds[]={Tstring,Tstring,Tstring,Tstring,Tbig,Tint,Tint,Tint,Tint,Tint,Tbig,Tint,Tint};
+ unsigned int i;
+ if(layout->count!=first+nelem(old)||layout->legacybytes!=base+64||
+    layout->bytes!=base+80||layout->alignment!=8)
+  return 0;
+ for(i=0;i<nelem(old);i++){
+  const Dis64LayoutLeaf *leaf=layout->leaves+first+i;
+  if(leaf->legacy!=base+old[i]||leaf->native!=base+native[i]||leaf->kind!=kinds[i]||
+     leaf->oldbytes!=(kinds[i]==Tbig?8:4)||leaf->bytes!=(kinds[i]==Tint?4:8))
+   return 0;
+ }
+ return 1;
+}
+
 /* Fixed-arity imported calls in trusted final compiler IR. No load/file admission. */
 /* Closed native-only mixed results: Sys.stat/fstat -> (int, Sys.Dir).
  * Prove every scalar/root leaf against both the declaration and caller frame.
@@ -8,24 +37,14 @@ static int typedchannelbinding(TypedMulti*,Dis64TypedBody*,Inst*,unsigned int*);
 static int
 typedstatlayout(Type *t, Dis64Layout *layout)
 {
- static const unsigned int old[]={0,8,12,16,20,24,32,36,40,44,48,56,64,68};
- static const unsigned int native[]={0,8,16,24,32,40,48,52,56,60,64,72,80,84};
- static const int kinds[]={Tint,Tstring,Tstring,Tstring,Tstring,Tbig,Tint,Tint,Tint,Tint,Tint,Tbig,Tint,Tint};
  Decl *status,*field;
- unsigned int i;
+ const Dis64LayoutLeaf *leaf;
  if(!t||t->kind!=Ttuple||!(status=t->ids)||!status->ty||status->ty->kind!=Tint||
-    !(field=status->next)||field->next||!field->ty||field->ty->kind!=Tadt||
-    !field->ty->decl||!field->ty->decl->sym||strcmp(field->ty->decl->sym->name,"Dir")||
-    !field->ty->decl->dot||!field->ty->decl->dot->sym||strcmp(field->ty->decl->dot->sym->name,"Sys")||
-    !dis64layouttype(t,layout)||layout->count!=nelem(old)||layout->bytes!=88||layout->legacybytes!=72)
+    !(field=status->next)||field->next||!typedsysdir(field->ty)||
+    !dis64layouttype(t,layout)||!typeddirleaves(layout,1,8))
   return 0;
- for(i=0;i<nelem(old);i++){
-  Dis64LayoutLeaf *leaf=layout->leaves+i;
-  if(leaf->legacy!=old[i]||leaf->native!=native[i]||leaf->kind!=kinds[i]||
-     leaf->oldbytes!=(kinds[i]==Tbig?8:4)||leaf->bytes!=(kinds[i]==Tint?4:8))
-   return 0;
- }
- return 1;
+ leaf=layout->leaves;
+ return !leaf->legacy&&!leaf->native&&leaf->kind==Tint&&leaf->oldbytes==4&&leaf->bytes==4;
 }
 
 static int

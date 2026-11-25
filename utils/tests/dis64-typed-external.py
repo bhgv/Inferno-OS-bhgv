@@ -205,6 +205,11 @@ def array_layout(c):
     if c in (1,2,3):
         n={1:4,2:12,3:16}[c];return n,n,[(i,i,4,False)for i in range(0,n,4)]
     if c in (4,8,12):return 2*c,c,[(i,2*i,8,True)for i in range(0,c,4)]
+    if c==5:
+        return 80,64,[(0,0,8,True),(4,8,8,True),(8,16,8,True),(12,24,8,True),
+                      (16,32,8,False),(24,40,4,False),(28,44,4,False),
+                      (32,48,4,False),(36,52,4,False),(40,56,4,False),
+                      (48,64,8,False),(56,72,4,False),(60,76,4,False)]
     roots,words,gap=mixed[c]
     fields=[(4*i,8*i,8,True)for i in range(roots)]+[(4*(roots+i),8*roots+4*i+(4 if i and gap else 0),4,False)for i in range(words)]
     return (fields[-1][1]+11)//8*8,4*(roots+words),fields

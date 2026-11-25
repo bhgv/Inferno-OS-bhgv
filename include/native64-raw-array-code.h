@@ -17,7 +17,7 @@ native64typedrawindex(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
     s->mode!=(SRC(sm)|AXINF|DST(dm))||!native64recordoperand(sm,s->s,8,1,fp,mp,0))
   return 0;
  if(s->returned==Native64TypedBorrowIndex)
-  return !(sm&AIND)&&dm==(AFP|AIND)&&native64rawslot(s->d)&&(s->m>>16)<=40&&(s->m>>16)%4==0;
+  return !(sm&AIND)&&dm==(AFP|AIND)&&native64rawslot(s->d)&&(s->m>>16)<=Native64ArrayFieldLimit&&(s->m>>16)%4==0;
  return s->returned==80&&(s->m>>16)==0&&native64recordoperand(dm,s->d,4,0,fp,mp,0);
 }
 static int
@@ -29,7 +29,7 @@ static unsigned int native64rawusewidth(const Native64TypedStep*s){return s->op=
 static int
 native64typedrawuse(const Native64TypedStep*s,unsigned int fp,unsigned int mp)
 {unsigned int sm=USRC(s->mode),dm=UDST(s->mode),arm=s->mode&ARM,n=native64rawusewidth(s),so=(s->m>>24)&255,d=(s->m>>16)&255,mid=s->m&65535,branch=native64rawbranch(s->op),i;long value[2]={s->s,s->d};unsigned int mode[2]={sm,dm};
- if(s->returned!=65||s->m<0||(unsigned long)s->m>0xffffffffUL||s->mode>255||!n||(s->op!=IMOVMP&&n!=4&&n!=8&&n!=12&&n!=16)||so%4||d%4||so>40||d>40)return 0;
+ if(s->returned!=65||s->m<0||(unsigned long)s->m>0xffffffffUL||s->mode>255||!n||(s->op!=IMOVMP&&n!=4&&n!=8&&n!=12&&n!=16)||so%4||d%4||so>Native64ArrayFieldLimit||d>Native64ArrayFieldLimit)return 0;
  switch(s->op){case IMOVMP:if(arm!=AXIMM||!native64arrayrecord(mid))return 0;break;case IMOVP:if(arm||mid)return 0;break;case IMOVM:case IHEADM:if(arm!=AXIMM)return 0;break;case IMOVW:if(arm||mid)return 0;break;case IADDW:case ISUBW:case IMULW:case IDIVW:case IMODW:case IANDW:case IORW:case IXORW:case ISHLW:case ISHRW:break;default:if(!branch)return 0;}
  if(s->op==IHEADM&&(n!=16||sm==(AFP|AIND)||!native64typedrootoperand(sm,s->s,fp,mp)))return 0;
  if(!(sm==(AFP|AIND)&&native64rawslot(s->s))&&!(dm==(AFP|AIND)&&native64rawslot(s->d)))return 0;

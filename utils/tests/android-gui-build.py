@@ -35,7 +35,7 @@ def stage_awm_runtime(core, app, build, mk, env, logs):
     assets = build/'assets'
     run([sys.executable, str(app/'tools/stage-inferno.py'), '--source', str(core),
          '--output', str(assets/'inferno')], app, env, logs/'stage-runtime.log')
-    for module in ('awmpanel', 'awmcalc'):
+    for module in ('awmpanel', 'awmcalc', 'awmfiles'):
         if not (assets/f'inferno/dis/wm/{module}.dis').is_file():
             raise RuntimeError(f'Missing staged AWM module {module}')
     return assets
@@ -51,8 +51,18 @@ def test_awm_framebuffer(llvm, runner, archives, assets, build, env, logs):
          str(ROOT/'utils/tests/android-awm-framebuffer.c'), '-Wl,--start-group', '-lm',
          *(str(archives/(name+'.a')) for name in libraries), '-Wl,--end-group',
          '-o', str(executable)], build, env, logs/'framebuffer-link.log')
-    run([runner, str(executable), str(assets/'inferno')], logs, env,
-        logs/'framebuffer-run.log', timeout=45)
+    runtime = build/'framebuffer-runtime'
+    shutil.copytree(assets/'inferno', runtime)
+    home = runtime/'usr/inferno'
+    shutil.rmtree(home)
+    documents = home/'Documents'
+    documents.mkdir(parents=True)
+    (documents/'alpha.txt').write_text('Inferno file preview alpha\n', encoding='utf-8')
+    (documents/'notes;[later].txt').write_text(
+        'Safe text with ; braces { } and [brackets].\n' + 'Long preview line.\n'*300,
+        encoding='utf-8')
+    run([runner, str(executable), str(runtime)], logs, env,
+        logs/'framebuffer-run.log', timeout=60)
 
 
 def package_awm(apk_tools, platform, app, build, assets, library, revisions, env, logs):
@@ -266,7 +276,8 @@ def main():
         assets = stage_awm_runtime(core, app, build, tools/'mk', env, logs)
     if args.awm_runner:
         test_awm_framebuffer(llvm, runner, archives, assets, build, env, logs)
-        report.update(awm_started=True, awm_panel_interaction_verified=True)
+        report.update(awm_started=True, awm_panel_interaction_verified=True,
+                      awm_files_interaction_verified=True)
         result.write_text(json.dumps(report, indent=2)+'\n')
     if args.apk_sdk:
         report.update(package_awm(apk_tools, platform, app, build, assets, library,

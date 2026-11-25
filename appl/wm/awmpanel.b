@@ -52,13 +52,15 @@ init(ctxt: ref Draw->Context, nil: list of string)
 			if(s == "apps"){
 				opened = !opened;
 				showmenu(top, opened);
-			}else if(s == "about" || s == "calculator"){
+			}else if(s == "about" || s == "calculator" || s == "files"){
 				opened = 0;
 				showmenu(top, opened);
 				if(s == "about")
 					spawn about(ctxt);
-				else
+				else if(s == "calculator")
 					spawn calculator(ctxt);
+				else
+					spawn files(ctxt);
 			}else if(len s >= 8 && s[0:8] == "restore "){
 				id := s[8:];
 				restore(top, id);
@@ -79,7 +81,9 @@ widgets(top: ref Tk->Toplevel)
 		"-activebackground #ffffff -command {send panel calculator}");
 	cmd(top, "button .launch.about -text {About Inferno} -width 114 -bg #dce8f5 -fg #172331 " +
 		"-activebackground #ffffff -command {send panel about}");
-	cmd(top, "pack .launch.calc .launch.about -side left -fill y -padx 6 -pady 5");
+	cmd(top, "button .launch.files -text Files -width 84 -bg #dce8f5 -fg #172331 " +
+		"-activebackground #ffffff -command {send panel files}");
+	cmd(top, "pack .launch.calc .launch.about .launch.files -side left -fill y -padx 6 -pady 5");
 	cmd(top, "pack propagate . 0");
 }
 
@@ -97,6 +101,14 @@ calculator(ctxt: ref Draw->Context)
 	app := load Command "/dis/wm/awmcalc.dis";
 	if(app == nil)
 		raise "fail:cannot load Calculator";
+	app->init(ctxt, nil);
+}
+
+files(ctxt: ref Draw->Context)
+{
+	app := load Command "/dis/wm/awmfiles.dis";
+	if(app == nil)
+		raise "fail:cannot load Files";
 	app->init(ctxt, nil);
 }
 
@@ -132,7 +144,7 @@ addtask(top: ref Tk->Toplevel, id, name: string)
 {
 	removetask(top, id);
 	label := "Window " + id;
-	if(name == "Calculator")
+	if(name == "Calculator" || name == "Files")
 		label = name;
 	widget := ".bar.task" + id;
 	button := "button " + widget + " -text {" + label + "} -bg #dce8f5 -fg #172331 " +

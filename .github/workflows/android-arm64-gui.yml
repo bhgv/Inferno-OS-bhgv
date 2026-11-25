@@ -17,6 +17,7 @@ on:
       - 'appl/wm/awm.b'
       - 'appl/wm/awmpanel.b'
       - 'appl/wm/awmcalc.b'
+      - 'appl/wm/awmfiles.b'
       - 'module/**'
       - 'libinterp/tests/dis64-runtime.*'
       - 'emu/Android/**'
@@ -110,7 +111,8 @@ jobs:
           python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
             --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
             --build-root "$RUNNER_TEMP/android-awm" --native64-tk --native64-draw \
-            --native64-sys-fixed --native64-formatter --native64-awm --apk-sdk "$ANDROID_HOME" +            --awm-runner qemu-aarch64
+            --native64-sys-fixed --native64-formatter --native64-awm --apk-sdk "$ANDROID_HOME" \
+            --awm-runner qemu-aarch64
       - uses: actions/upload-artifact@v4
         if: always()
         with:

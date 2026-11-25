@@ -11,7 +11,12 @@
 #include <unistd.h>
 
 enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Desktop = 0x777777 };
-enum View { Vdesktop, Vmenu, Vcalc, Vtask, Vabout };
+enum View { Vdesktop, Vmenu, Vcalc, Vtask, Vabout, Vfiles };
+typedef struct Area Area;
+struct Area { int x0, y0, x1, y1; };
+static const Area file_path = { 8, 65, 340, 80 };
+static const Area file_preview = { 8, 260, 340, 324 };
+static const Area file_list = { 8, 122, 340, 160 };
 int Xsize = Width, Ysize = Height;
 unsigned char *xscreendata;
 static const char *runtime;
@@ -77,6 +82,8 @@ visible(enum View view)
 		return pixel(195, 78) == 0xffffff;
 	if(view == Vabout)
 		return pixel(100, 65) != Desktop && pixel(195, 78) == Desktop;
+	if(view == Vfiles)
+		return pixel(380, 70) == 0xdce8f5 && pixel(330, 355) == 0xffffff;
 	return pixel(100, 65) == Desktop &&
 		(pixel(110, 11) != Panel) == (view == Vtask);
 }
@@ -148,6 +155,63 @@ wait_value(uint64_t reference, int equal)
 	exit(1);
 }
 
+/* Wait for a specific widget to repaint, independently of the font bitmap. */
+static uint64_t
+wait_files(Area area, uint64_t reference, int equal, const char *action)
+{
+	for(int attempt = 0; attempt < 120; attempt++){
+		uint64_t hash = UINT64_C(14695981039346656037);
+		pthread_mutex_lock(&frame_lock);
+		for(int y = area.y0; y < area.y1; y++)
+			for(int x = area.x0; x < area.x1; x++)
+				hash = (hash ^ pixel(x, y)) * UINT64_C(1099511628211);
+		int matched = visible(Vfiles) && (hash == reference) == equal;
+		pthread_mutex_unlock(&frame_lock);
+		if(matched)
+			return hash;
+		usleep(50000);
+	}
+	fprintf(stderr, "Files did not repaint as expected after %s\n", action);
+	exit(1);
+}
+
+static void
+test_files(unsigned int painted)
+{
+	uint64_t home, empty, list, first, second;
+	tap(27, 19);
+	painted = capture("awm-menu.ppm", Vmenu, painted);
+	tap(303, 62);
+	painted = capture("awm-files.ppm", Vfiles, painted);
+	home = wait_files(file_path, 0, 0, "opening Home");
+	empty = wait_files(file_preview, 0, 0, "opening Files");
+	list = wait_files(file_list, 0, 0, "listing Home");
+	tap(40, 131);
+	wait_files(file_list, list, 0, "selecting Documents");
+	tap(158, 103);
+	wait_files(file_path, home, 0, "opening Documents");
+	list = wait_files(file_list, 0, 0, "listing Documents");
+	tap(40, 131);
+	list = wait_files(file_list, list, 0, "selecting the first file");
+	tap(158, 103);
+	first = wait_files(file_preview, empty, 0, "previewing the first file");
+	tap(40, 148);
+	wait_files(file_list, list, 0, "selecting the second file");
+	tap(158, 103);
+	second = wait_files(file_preview, first, 0, "previewing the second file");
+	if(second == empty){
+		fputs("Files cleared the preview instead of showing a second file\n", stderr);
+		exit(1);
+	}
+	painted = capture("awm-files-preview.ppm", Vfiles, painted);
+	tap(22, 102);
+	wait_files(file_path, home, 1, "going up to Home");
+	wait_files(file_preview, empty, 1, "clearing the preview");
+	tap(283, 103);
+	capture("awm-files-closed.ppm", Vdesktop, painted);
+	puts("PASS Files opened Documents, previewed two files and returned to Home");
+}
+
 static void*
 observe(void *unused)
 {
@@ -190,7 +254,8 @@ observe(void *unused)
 	tap(186, 61);
 	painted = capture("awm-about.ppm", Vabout, painted);
 	tap(65, 125);
-	capture("awm-closed.ppm", Vdesktop, painted);
+	painted = capture("awm-closed.ppm", Vdesktop, painted);
+	test_files(painted);
 	exit(0);
 }
 

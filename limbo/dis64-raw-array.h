@@ -19,6 +19,11 @@ typedmixedarray(Type*t,Dis64Layout*l)
 static unsigned int
 typedrawarray(Type*t)
 {Dis64Layout l={0};Decl*d,*v;unsigned int i,c=0;if(!t||t->kind!=Tarray||!(t=t->tof))return 0;if(t->kind==Tint)return 1;
+ if(typedsysdir(t)){
+  c=dis64layouttype(t,&l)&&typeddirleaves(&l,0,0)?Native64ArrayDir:0;
+  dis64layoutfree(&l);
+  return c;
+ }
  c=typedmixedarray(t,&l);dis64layoutfree(&l);if(c)return c;
  if(typedwordgeometry(t,&l)&&l.bytes==16)c=3;dis64layoutfree(&l);if(c)return c;d=t->decl;
  if(t->kind!=Tadt||!d||!d->sym||strcmp(d->sym->name,"Delta")||!((d->dot&&d->dot->sym&&!strcmp(d->dot->sym->name,"Winplace"))||(!d->dot&&impdecl&&impdecl->sym&&!strcmp(impdecl->sym->name,"Winplace"))))return 0;
@@ -175,8 +180,11 @@ typedarrayfield(unsigned int c,unsigned int old,unsigned int n,int root,unsigned
  unsigned int r=native64arrayroots(c),word;
  if(old%4)return 0;
  if(!r){if(root||old>native64arraywidth(c)||n>native64arraywidth(c)-old)return 0;*off=old;return 1;}
- if(old%4)return 0;
  if(root){if(n!=8||old/4>=r)return 0;*off=8*(old/4);return 1;}
+ if(c==Native64ArrayDir){
+  *off=old+16;
+  return n==4&&native64arrayword(c,*off);
+ }
  if(n!=4||old/4<r||(word=old/4-r)>=native64arraywords(c))return 0;
  *off=native64arraywordoffset(c,word);return 1;
 }
