@@ -34,9 +34,10 @@ init(ctxt: ref Draw->Context, nil: list of string)
 	names := array[Maxentries] of string;
 	modes := array[Maxentries] of int;
 	count := listdir(top, path, names, modes);
-	tkclient->startinput(top, "ptr"::nil);
+	tkclient->startinput(top, "ptr"::"kbd"::nil);
 	tkclient->onscreen(top, "place");
-	cmd(top, "update");
+	tkclient->wmctl(top, "kbdfocus 1");
+	cmd(top, "focus .entries.list; .entries.list activate 0; update");
 
 	for(;;){
 		wm := top.ctxt;
@@ -45,13 +46,19 @@ init(ctxt: ref Draw->Context, nil: list of string)
 		p := <-wm.ptr =>
 			if(p != nil)
 				tk->pointer(top, *p);
+		c := <-wm.kbd =>
+			tk->keyboard(top, c);
 		s := <-wm.ctl or
 		s = <-wreq or
 		s = <-title =>
 			if(s == "exit")
 				return;
+			if(s == "task")
+				tkclient->wmctl(top, "kbdfocus 0");
 			if(s != nil)
 				tkclient->wmctl(top, s);
+			if(s == "untask")
+				tkclient->wmctl(top, "kbdfocus 1");
 		action := <-actions =>
 			reload := 1;
 			case action {
@@ -65,9 +72,12 @@ init(ctxt: ref Draw->Context, nil: list of string)
 				path = Home;
 			"refresh" =>
 				;
-			"open" =>
+			"open" or "openactive" =>
 				reload = 0;
-				selected := tk->cmd(top, ".entries.list curselection");
+				query := ".entries.list curselection";
+				if(action == "openactive")
+					query = ".entries.list index active";
+				selected := tk->cmd(top, query);
 				if(selected == nil || selected[0] == '!')
 					break;
 				i := int selected;
@@ -90,8 +100,10 @@ init(ctxt: ref Draw->Context, nil: list of string)
 			* =>
 				reload = 0;
 			}
-			if(reload)
+			if(reload){
 				count = listdir(top, path, names, modes);
+				cmd(top, ".entries.list activate 0; update");
+			}
 		}
 	}
 }
@@ -100,12 +112,12 @@ widgets(top: ref Tk->Toplevel)
 {
 	cmd(top, "label .path -anchor w -bg #dce8f5; pack .path -fill x -padx 6 -pady 3");
 	cmd(top, "frame .nav; pack .nav -fill x -padx 6 -pady 4");
-	cmd(top, "button .nav.up -text Up -command {send files up}");
-	cmd(top, "button .nav.root -text Root -command {send files root}");
-	cmd(top, "button .nav.home -text Home -command {send files home}");
-	cmd(top, "button .nav.open -text Open -command {send files open}");
-	cmd(top, "button .nav.refresh -text Refresh -command {send files refresh}");
-	cmd(top, "button .nav.close -text Close -command {send files close}");
+	cmd(top, "button .nav.up -text Up -takefocus 0 -command {send files up}");
+	cmd(top, "button .nav.root -text Root -takefocus 0 -command {send files root}");
+	cmd(top, "button .nav.home -text Home -takefocus 0 -command {send files home}");
+	cmd(top, "button .nav.open -text Open -takefocus 0 -command {send files open}");
+	cmd(top, "button .nav.refresh -text Refresh -takefocus 0 -command {send files refresh}");
+	cmd(top, "button .nav.close -text Close -takefocus 0 -command {send files close}");
 	cmd(top, "pack .nav.up .nav.root .nav.home .nav.open .nav.refresh .nav.close -side left -padx 3 -ipady 6");
 
 	cmd(top, "frame .entries; pack .entries -fill x -padx 6");
@@ -115,10 +127,12 @@ widgets(top: ref Tk->Toplevel)
 	cmd(top, "pack .entries.scroll -side right -fill y");
 	cmd(top, "pack .entries.list -side left -expand 1 -fill both");
 	cmd(top, "bind .entries.list <Double-Button-1> {send files open}");
+	cmd(top, "bind .entries.list <Key-\n> {send files openactive}");
+	cmd(top, "bind .entries.list <Key-\b> {send files up}");
 
 	cmd(top, "frame .document; pack .document -fill x -padx 6 -pady 6");
 	cmd(top, "text .document.preview -width 340 -height 100 -wrap word -state disabled " +
-		"-bg #ffffff -yscrollcommand {.document.scroll set}");
+		"-takefocus 0 -bg #ffffff -yscrollcommand {.document.scroll set}");
 	cmd(top, "scrollbar .document.scroll -command {.document.preview yview}");
 	cmd(top, "pack .document.scroll -side right -fill y");
 	cmd(top, "pack .document.preview -side left -expand 1 -fill both");

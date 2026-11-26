@@ -26,9 +26,10 @@ init(ctxt: ref Draw->Context, nil: list of string)
 	keys := chan of string;
 	tk->namechan(top, keys, "calc");
 	keypad(top);
-	tkclient->startinput(top, "ptr"::nil);
+	tkclient->startinput(top, "ptr"::"kbd"::nil);
 	tkclient->onscreen(top, "place");
-	cmd(top, "update");
+	tkclient->wmctl(top, "kbdfocus 1");
+	cmd(top, "focus .; update");
 
 	a := 0;
 	b := 0;
@@ -42,12 +43,18 @@ init(ctxt: ref Draw->Context, nil: list of string)
 		p := <-wm.ptr =>
 			if(p != nil)
 				tk->pointer(top, *p);
+		c := <-wm.kbd =>
+			tk->keyboard(top, c);
 		s := <-wm.ctl or
 		s = <-wreq or
 		s = <-title =>
 			if(s == "exit")
 				return;
+			if(s == "task")
+				tkclient->wmctl(top, "kbdfocus 0");
 			tkclient->wmctl(top, s);
+			if(s == "untask")
+				tkclient->wmctl(top, "kbdfocus 1");
 		key := <-keys =>
 			if(key == "close")
 				return;
@@ -119,7 +126,9 @@ keypad(top: ref Tk->Toplevel)
 	row(top, ".b", "4", "5", "6", "*");
 	row(top, ".c", "1", "2", "3", "-");
 	row(top, ".d", "C", "0", "=", "+");
-	cmd(top, "button .close -text Close -command {send calc close}; pack .close -pady 6");
+	cmd(top, "button .close -text Close -takefocus 0 -command {send calc close}; pack .close -pady 6");
+	cmd(top, "bind . <Key-c> {send calc C}");
+	cmd(top, "bind . <Key-\n> {send calc =}");
 }
 
 row(top: ref Tk->Toplevel, name, a, b, c, d: string)
@@ -140,8 +149,12 @@ row(top: ref Tk->Toplevel, name, a, b, c, d: string)
 
 button(top: ref Tk->Toplevel, name, key: string)
 {
-	make := "button " + name + " -text {" + key + "} -width 44 -height 32 -command {send calc " + key + "}";
+	make := "button " + name + " -text {" + key + "} -width 44 -height 32 -takefocus 0 -command {send calc " + key + "}";
 	cmd(top, make);
+	binding := "bind . <Key-" + key + "> {send calc " + key + "}";
+	if(key == "-")
+		binding = "bind . <Key-\\-> {send calc -}";
+	cmd(top, binding);
 	pack := "pack " + name + " -side left -expand 1 -fill both -padx 2 -pady 2";
 	cmd(top, pack);
 }

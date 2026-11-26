@@ -1,5 +1,6 @@
 /* Run Android amain and real Tk/Draw against a headless Bionic framebuffer. */
 #include <android/asset_manager.h>
+#include <android/keycodes.h>
 #include <android/log.h>
 #include <dlfcn.h>
 #include <errno.h>
@@ -14,6 +15,7 @@
 #include <unistd.h>
 #include "inferno_storage.h"
 #include "inferno_touch.h"
+#include "../../include/keyboard.h"
 
 enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Desktop = 0x777777 };
 enum View { Vdesktop, Vmenu, Vcalc, Vcalcmoved, Vtask, Vabout, Vfiles };
@@ -33,6 +35,48 @@ static int deny_storage;
 
 extern void amain(void);
 extern void xmouse_btn(int, int, int);
+extern int xkbd_key(int, int, int);
+extern int android_key_rune(int, int);
+
+static void
+test_keymap(void)
+{
+	const struct { int code, meta, rune; } keys[] = {
+		{AKEYCODE_A, 0, 'a'}, {AKEYCODE_Z, AMETA_SHIFT_LEFT_ON, 'Z'},
+		{AKEYCODE_A, AMETA_CAPS_LOCK_ON, 'A'},
+		{AKEYCODE_A, AMETA_CAPS_LOCK_ON|AMETA_SHIFT_ON, 'a'},
+		{AKEYCODE_C, AMETA_CTRL_RIGHT_ON, 3},
+		{AKEYCODE_9, AMETA_SHIFT_ON, '('}, {AKEYCODE_0, 0, '0'},
+		{AKEYCODE_EQUALS, AMETA_SHIFT_ON, '+'},
+		{AKEYCODE_NUMPAD_5, AMETA_NUM_LOCK_ON, '5'},
+		{AKEYCODE_NUMPAD_DIVIDE, 0, '/'}, {AKEYCODE_NUMPAD_ENTER, 0, '\n'},
+		{AKEYCODE_DPAD_UP, 0, Up}, {AKEYCODE_DPAD_DOWN, 0, Down},
+		{AKEYCODE_DPAD_LEFT, 0, Left}, {AKEYCODE_DPAD_RIGHT, 0, Right},
+		{AKEYCODE_MOVE_HOME, 0, Home}, {AKEYCODE_PAGE_DOWN, 0, Pgdown},
+		{AKEYCODE_TAB, AMETA_SHIFT_ON, BackTab}, {AKEYCODE_DEL, 0, '\b'},
+		{AKEYCODE_BACK, 0, No}, {AKEYCODE_VOLUME_UP, 0, No},
+		{AKEYCODE_Z, AMETA_ALT_ON, No}, {AKEYCODE_Z, AMETA_META_ON, No}
+	};
+	for(size_t i = 0; i < sizeof(keys)/sizeof(keys[0]); i++){
+		int actual = android_key_rune(keys[i].code, keys[i].meta);
+		if(actual != keys[i].rune){
+			fprintf(stderr, "Android key %d meta %#x mapped to %d, expected %d\n",
+			        keys[i].code, keys[i].meta, actual, keys[i].rune);
+			exit(2);
+		}
+	}
+	puts("PASS native Android US keyboard, modifiers, keypad and navigation runes");
+}
+
+static void
+key(int code, int meta)
+{
+	if(!xkbd_key(code, meta, 1) || !xkbd_key(code, meta, 0)){
+		fprintf(stderr, "AWM did not accept Android key %d\n", code);
+		exit(2);
+	}
+	usleep(100000);
+}
 
 /* Model the NDK accessors while running the real motion translator on Bionic. */
 typedef struct { int id; float x, y; } Contact;
@@ -516,6 +560,18 @@ test_files(unsigned int painted)
 	tap(22, 102);
 	wait_files(file_path, home, 1, "going up to Home");
 	wait_files(file_preview, empty, 1, "clearing the preview");
+	key(AKEYCODE_ENTER, 0);
+	wait_files(file_path, home, 0, "opening Documents with Enter");
+	key(AKEYCODE_DPAD_DOWN, 0);
+	key(AKEYCODE_NUMPAD_ENTER, 0);
+	wait_files(file_preview, second, 1, "opening the second entry with keyboard");
+	key(AKEYCODE_DPAD_UP, 0);
+	key(AKEYCODE_ENTER, 0);
+	wait_files(file_preview, first, 1, "opening the first entry with keyboard");
+	key(AKEYCODE_DEL, 0);
+	wait_files(file_path, home, 1, "going up with Backspace");
+	wait_files(file_preview, empty, 1, "clearing the preview from keyboard");
+	puts("PASS keyboard navigated Files, opened both entries and returned to Home");
 	tap(283, 103);
 	capture("awm-files-closed.ppm", Vdesktop, painted);
 	puts("PASS Files opened Documents and previewed a file by double tap, then returned to Home");
@@ -535,27 +591,35 @@ observe(void *unused)
 	zero = wait_value(0, 0);
 	tap(84, 171);                    /* Render a directly entered 5 as an oracle. */
 	five = wait_value(zero, 0);
-	tap(33, 248);
+	key(AKEYCODE_C, 0);
 	wait_value(zero, 1);
-	tap(84, 210);
+	key(AKEYCODE_NUMPAD_2, 0);
 	two = wait_value(zero, 0);
-	tap(184, 248);
-	tap(135, 209);
+	key(AKEYCODE_EQUALS, AMETA_SHIFT_ON);
+	key(AKEYCODE_3, 0);
 	three = wait_value(two, 0);
 	if(three == five){
 		fputs("Calculator displayed the result before equals\n", stderr);
 		exit(1);
 	}
-	tap(134, 248);
+	key(AKEYCODE_ENTER, 0);
 	wait_value(five, 1);
-	puts("PASS Calculator 2 + 3 equals the directly entered 5");
+	puts("PASS keyboard Calculator 2 + 3 equals the directly entered 5");
 
 	tap(185, 52);
 	painted = capture("awm-minimized.ppm", Vtask, painted);
+	key(AKEYCODE_C, 0);
 	tap(120, 19);
 	painted = capture("awm-restored.ppm", Vcalc, painted);
 	wait_value(five, 1);
-	puts("PASS Calculator retained its value when restored from the taskbar");
+	key(AKEYCODE_C, 0);
+	wait_value(zero, 1);
+	key(AKEYCODE_NUMPAD_8, 0);
+	key(AKEYCODE_NUMPAD_SUBTRACT, 0);
+	key(AKEYCODE_NUMPAD_3, 0);
+	key(AKEYCODE_NUMPAD_ENTER, 0);
+	wait_value(five, 1);
+	puts("PASS minimized Calculator ignored keys and calculated 8 - 3 after restoring focus");
 	drag(40, 51, 260, 151);
 	painted = capture("awm-calculator-dragged.ppm", Vcalcmoved, painted);
 	drag(260, 151, 40, 51);
@@ -582,6 +646,7 @@ main(int argc, char **argv)
 		return 2;
 	test_touch();
 	test_mouse();
+	test_keymap();
 	AAssetManager manager = {argv[1]};
 	sdcard = argv[2];
 	deny_storage = 1;

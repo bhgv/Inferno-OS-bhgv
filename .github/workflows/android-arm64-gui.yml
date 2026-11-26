@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bhgv/Inferno-OS_Android
-          ref: 06d5546cc030c830ada9d5378b22f64f1303fec3
+          ref: e87479a7e1d2da42f394366d1d7794723c062125
           path: android-app
       - name: Prepare pinned NDK and native build tools
         run: |

@@ -22,7 +22,7 @@ def main():
         work = Path(directory)
         env = dict(os.environ, TMPDIR=str(work))
         for arch, target, guard in targets:
-            for source in ('amain.c', 'calltrace.c', 'getdtablesize.c', 'devfs.c'):
+            for source in ('amain.c', 'calltrace.c', 'getdtablesize.c', 'devfs.c', 'key-andr.c'):
                 command = [str(toolchain/(target+'-clang')), '-c', '-O2', '-fPIC',
                            '-fno-strict-aliasing', '-DANDROID', '-DEMU', '-DROOT="/sdcard/Inferno"']
                 command += ['-I'+str(ROOT/path) for path in
