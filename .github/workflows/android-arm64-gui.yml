@@ -18,6 +18,7 @@ on:
       - 'appl/wm/awmpanel.b'
       - 'appl/wm/awmcalc.b'
       - 'appl/wm/awmfiles.b'
+      - 'appl/wm/awmkeys.b'
       - 'module/**'
       - 'libinterp/tests/dis64-runtime.*'
       - 'emu/Android/**'
@@ -47,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bhgv/Inferno-OS_Android
-          ref: e87479a7e1d2da42f394366d1d7794723c062125
+          ref: a77e1fcfa58b83734e40673d2a6886d1cc5641f0
           path: android-app
       - name: Prepare pinned NDK and native build tools
         run: |

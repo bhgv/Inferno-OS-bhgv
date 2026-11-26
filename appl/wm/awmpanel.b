@@ -26,6 +26,8 @@ init(ctxt: ref Draw->Context, nil: list of string)
 	(top, nil) := tkclient->toplevel(ctxt, "-bg #212b38", "", Tkclient->Plain);
 
 	action := chan of string;
+	keyboardclosed := chan[1] of int;
+	keyboardopen := 0;
 	tk->namechan(top, action, "panel");
 	widgets(top);
 	tkclient->startinput(top, "ptr"::"control"::nil);
@@ -48,19 +50,25 @@ init(ctxt: ref Draw->Context, nil: list of string)
 			tkclient->wmctl(top, s);
 			if(len s >= 5 && s[0:5] == "rect ")
 				layout(top, opened);
+		<-keyboardclosed =>
+			keyboardopen = 0;
 		s := <-action =>
 			if(s == "apps"){
 				opened = !opened;
 				showmenu(top, opened);
-			}else if(s == "about" || s == "calculator" || s == "files"){
+			}else if(s == "about" || s == "calculator" || s == "files" || s == "keyboard"){
 				opened = 0;
 				showmenu(top, opened);
 				if(s == "about")
 					spawn about(ctxt);
 				else if(s == "calculator")
 					spawn calculator(ctxt);
-				else
+				else if(s == "files")
 					spawn files(ctxt);
+				else if(!keyboardopen){
+					keyboardopen = 1;
+					spawn keyboard(ctxt, keyboardclosed);
+				}
 			}else if(len s >= 8 && s[0:8] == "restore "){
 				id := s[8:];
 				restore(top, id);
@@ -75,6 +83,9 @@ widgets(top: ref Tk->Toplevel)
 	cmd(top, "button .bar.apps -text Apps -bg #dce8f5 -fg #172331 " +
 		"-activebackground #ffffff -takefocus 0 -command {send panel apps}");
 	cmd(top, "pack .bar.apps -side left -fill y -ipadx 10 -padx 6 -pady 4");
+	cmd(top, "button .bar.keyboard -text Keyboard -bg #dce8f5 -fg #172331 " +
+		"-activebackground #ffffff -takefocus 0 -command {send panel keyboard}");
+	cmd(top, "pack .bar.keyboard -side right -fill y -ipadx 8 -padx 6 -pady 4");
 	cmd(top, "pack .bar -side top -fill x");
 	cmd(top, "frame .launch -height 48 -bg #2c3c51; pack propagate .launch 0");
 	cmd(top, "button .launch.calc -text Calculator -width 114 -bg #dce8f5 -fg #172331 " +
@@ -110,6 +121,21 @@ files(ctxt: ref Draw->Context)
 	if(app == nil)
 		raise "fail:cannot load Files";
 	app->init(ctxt, nil);
+}
+
+keyboard(ctxt: ref Draw->Context, closed: chan of int)
+{
+	{
+		app := load Command "/dis/wm/awmkeys.dis";
+		if(app == nil)
+			raise "fail:cannot load Keyboard";
+		app->init(ctxt, nil);
+	} exception {
+		"*" =>
+			closed <-= 1;
+			raise;
+	}
+	closed <-= 1;
 }
 
 control(top: ref Tk->Toplevel, message: string): int

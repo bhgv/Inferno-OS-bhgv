@@ -18,7 +18,8 @@
 #include "../../include/keyboard.h"
 
 enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Desktop = 0x777777 };
-enum View { Vdesktop, Vmenu, Vcalc, Vcalcmoved, Vtask, Vabout, Vfiles };
+enum View { Vdesktop, Vmenu, Vcalc, VcalcKeysClosed, Vcalcmoved, Vtask, Vabout,
+            Vfiles, VfilesKeysClosed, Vkeys };
 typedef struct Area Area;
 struct Area { int x0, y0, x1, y1; };
 static const Area file_path = { 8, 65, 340, 80 };
@@ -374,7 +375,7 @@ pixel(int x, int y)
 static int
 visible(enum View view)
 {
-	if(pixel(600, 15) != Panel)
+	if(pixel(500, 15) != Panel)
 		return 0;
 	if(view == Vmenu)
 		return pixel(600, 65) == Menu;
@@ -382,13 +383,20 @@ visible(enum View view)
 		return 0;
 	if(view == Vcalc)
 		return pixel(195, 78) == 0xffffff;
+	if(view == VcalcKeysClosed)
+		return visible(Vcalc) && pixel(300, 465) == Desktop;
 	if(view == Vcalcmoved)
 		return pixel(195, 78) == Desktop && pixel(415, 178) == 0xffffff;
 	if(view == Vabout)
 		return pixel(100, 65) != Desktop && pixel(195, 78) == Desktop;
 	if(view == Vfiles)
-		return pixel(380, 70) == 0xdce8f5 && pixel(330, 355) == 0xffffff;
+		return pixel(380, 70) == 0xdce8f5 && pixel(330, 275) == 0xffffff;
+	if(view == VfilesKeysClosed)
+		return visible(Vfiles) && pixel(300, 465) == Desktop;
+	if(view == Vkeys)
+		return pixel(300, 303) != Desktop && pixel(300, 465) != Desktop;
 	return pixel(100, 65) == Desktop &&
+		pixel(300, 465) == Desktop &&
 		(pixel(110, 11) != Panel) == (view == Vtask);
 }
 
@@ -406,9 +414,14 @@ capture(const char *path, enum View view, unsigned int after)
 			if(stream == NULL)
 				exit(2);
 			fprintf(stream, "P6\n%d %d\n255\n", Width, Height);
-			for(unsigned int j = 0; j < Width * Height; j++){
-				const unsigned char *p = snapshot + j * 4;
-				unsigned char rgb[] = {p[2], p[1], p[0]};
+			for(unsigned int y = 0; y < Height; y++){
+				unsigned char rgb[Width * 3];
+				for(unsigned int x = 0; x < Width; x++){
+					const unsigned char *p = snapshot + (y * Width + x) * 4;
+					rgb[3*x] = p[2];
+					rgb[3*x+1] = p[1];
+					rgb[3*x+2] = p[0];
+				}
 				if(fwrite(rgb, 1, sizeof(rgb), stream) != sizeof(rgb))
 					exit(2);
 			}
@@ -572,6 +585,23 @@ test_files(unsigned int painted)
 	wait_files(file_path, home, 1, "going up with Backspace");
 	wait_files(file_preview, empty, 1, "clearing the preview from keyboard");
 	puts("PASS keyboard navigated Files, opened both entries and returned to Home");
+	tap(600, 19);
+	painted = capture("awm-files-screen-keyboard.ppm", Vkeys, painted);
+	tap(451, 464);                    /* Enter opens the active Documents row. */
+	wait_files(file_path, home, 0, "opening Documents with the screen keyboard");
+	tap(320, 464);
+	tap(451, 464);                    /* Down + Enter opens the second file. */
+	tap(516, 464);
+	painted = capture("awm-files-screen-keyboard-closed.ppm", VfilesKeysClosed, painted);
+	wait_files(file_preview, second, 1, "previewing from the screen keyboard");
+	tap(600, 19);
+	painted = capture("awm-files-screen-keyboard.ppm", Vkeys, painted);
+	tap(385, 464);
+	wait_files(file_path, home, 1, "going up with the screen keyboard");
+	tap(516, 464);
+	painted = capture("awm-files-screen-keyboard-closed.ppm", VfilesKeysClosed, painted);
+	wait_files(file_preview, empty, 1, "clearing the preview after virtual Back");
+	puts("PASS screen keyboard navigated Files and remained reusable after closing");
 	tap(283, 103);
 	capture("awm-files-closed.ppm", Vdesktop, painted);
 	puts("PASS Files opened Documents and previewed a file by double tap, then returned to Home");
@@ -626,6 +656,21 @@ observe(void *unused)
 	painted = capture("awm-calculator-dragged-back.ppm", Vcalc, painted);
 	wait_value(five, 1);
 	puts("PASS touch moved the Calculator window and kept its value");
+	tap(600, 19);
+	painted = capture("awm-screen-keyboard.ppm", Vkeys, painted);
+	tap(600, 19);                     /* Opening again must keep one window. */
+	tap(253, 399);                    /* c */
+	wait_value(zero, 1);
+	tap(159, 304);                    /* 2 */
+	wait_value(two, 1);
+	tap(118, 430);                    /* + */
+	tap(205, 304);                    /* 3 */
+	wait_value(three, 1);
+	tap(451, 464);                    /* Enter */
+	wait_value(five, 1);
+	tap(516, 464);
+	painted = capture("awm-screen-keyboard-closed.ppm", VcalcKeysClosed, painted);
+	puts("PASS screen keyboard computed 2 + 3 in the focused Calculator and opened only once");
 	tap(110, 283);
 	painted = capture("awm-calculator-closed.ppm", Vdesktop, painted);
 	tap(27, 19);
@@ -666,12 +711,22 @@ main(int argc, char **argv)
 	}
 	puts("PASS shared storage denial, interrupted extraction and ready-tree reuse without assets");
 	const char *document = "/sdcard/Inferno/usr/inferno/Documents/alpha.txt";
-	const char *panel = "/sdcard/Inferno/dis/wm/awmpanel.dis";
+	const char *panel = "/sdcard/Inferno/dis/wm/awmpanel-keyboard.dis";
+	const char *oldpanel = "/sdcard/Inferno/dis/wm/awmpanel.dis";
+	const char *keys = "/sdcard/Inferno/dis/wm/awmkeys.dis";
+	const char marker[] = "Previous AWM panel";
 	const char local[] = "Local document preserved by AWM\n"
 		"01 local line\n02 local line\n03 local line\n04 local line\n"
 		"05 local line\n06 local line\n07 local line\n08 local line\n"
 		"09 local line\n10 local line\n11 local line\n12 local line\n";
-	FILE *file = fopen(document, "w");
+	FILE *file = fopen(oldpanel, "w");
+	if(file == NULL || fputs(marker, file) < 0 || fclose(file) != 0 ||
+	   unlink(keys) != 0 || ioa_prepare_storage(NULL) != -1 ||
+	   ioa_prepare_storage(&manager) != 0 || ioa_prepare_storage(NULL) != 0){
+		perror("Restore missing screen keyboard");
+		return 2;
+	}
+	file = fopen(document, "w");
 	if(file == NULL || fputs(local, file) < 0 || fclose(file) != 0 ||
 	   unlink(panel) != 0 || ioa_prepare_storage(NULL) != -1 ||
 	   ioa_prepare_storage(&manager) != 0 || ioa_prepare_storage(NULL) != 0){
@@ -686,6 +741,14 @@ main(int argc, char **argv)
 		return 2;
 	}
 	puts("PASS shared AWM panel repair preserved the user's document");
+	char previous[sizeof(marker)-1];
+	file = fopen(oldpanel, "r");
+	if(file == NULL || fread(previous, 1, sizeof(previous), file) != sizeof(previous) ||
+	   memcmp(previous, marker, sizeof(previous)) != 0 || fgetc(file) != EOF || fclose(file) != 0){
+		fputs("Screen keyboard installation overwrote the previous AWM panel\n", stderr);
+		return 2;
+	}
+	puts("PASS keyboard and new AWM panel installed beside the previous panel");
 	xscreendata = calloc((size_t)Width * Height, 4);
 	if(xscreendata == NULL || pthread_create(&worker, NULL, observe, NULL) != 0)
 		return 2;

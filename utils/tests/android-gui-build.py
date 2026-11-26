@@ -35,7 +35,7 @@ def stage_awm_runtime(core, app, build, mk, env, logs):
     assets = build/'assets'
     run([sys.executable, str(app/'tools/stage-inferno.py'), '--source', str(core),
          '--output', str(assets/'inferno')], app, env, logs/'stage-runtime.log')
-    for module in ('awmpanel', 'awmcalc', 'awmfiles'):
+    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'awmkeys'):
         if not (assets/f'inferno/dis/wm/{module}.dis').is_file():
             raise RuntimeError(f'Missing staged AWM module {module}')
     return assets
@@ -316,7 +316,7 @@ def main():
         report.update(awm_started=True, awm_panel_interaction_verified=True,
                       awm_files_interaction_verified=True, awm_shared_storage_verified=True,
                       awm_android_touch_verified=True, awm_android_mouse_verified=True,
-                      awm_android_keyboard_verified=True)
+                      awm_android_keyboard_verified=True, awm_screen_keyboard_verified=True)
         result.write_text(json.dumps(report, indent=2)+'\n')
     if args.apk_sdk:
         report.update(package_awm(apk_tools, platform, signing_tools, app, build, assets, library,
