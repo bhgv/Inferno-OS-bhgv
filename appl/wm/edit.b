@@ -321,7 +321,8 @@ do_limbo()
 setlimbo(on: int)
 {
 	is_limbo = on;
-	cmd(ed, "variable limbo " + string on);
+	command := "variable limbo " + string on;
+	cmd(ed, command);
 	if(on)
 		paint();
 	else{
@@ -651,9 +652,13 @@ paintlater(c: chan of int)
 
 cleartags()
 {
-	for(i := 0; i < len limbotags; i++)
-		if(limbotags[i] != "")
-			cmd(ed, ".b.t tag remove " + limbotags[i] + " 1.0 end");
+	for(i := 0; i < len limbotags; i++){
+		tag := limbotags[i];
+		if(tag != ""){
+			command := ".b.t tag remove " + tag + " 1.0 end";
+			cmd(ed, command);
+		}
+	}
 }
 
 # Read text directly so a leading exclamation mark stays part of the buffer.
@@ -773,8 +778,10 @@ showcompletions()
 	}
 	choice_source = d.source;
 	complete_cursor = len tk->cmd(ed, ".b.t get 1.0 insert");
-	words: list of string;
-	(complete_start, complete_stop, words) = limboedit->complete(d, complete_cursor);
+	completion := limboedit->complete(d, complete_cursor);
+	complete_start = completion.start;
+	complete_stop = completion.stop;
+	words := completion.words;
 	if(words == nil){
 		showchoices("No completions", "Insert", nil);
 		return;

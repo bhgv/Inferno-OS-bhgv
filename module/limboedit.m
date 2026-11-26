@@ -16,7 +16,12 @@ Limboedit: module {
 		functions: list of ref Symbol;
 	};
 
+	Completion: adt {
+		start, stop: int;
+		words: list of string;
+	};
+
 	keyword: fn(s: string): int;
 	scan: fn(source: string): ref Document;
-	complete: fn(doc: ref Document, cursor: int): (int, int, list of string);
+	complete: fn(doc: ref Document, cursor: int): ref Completion;
 };

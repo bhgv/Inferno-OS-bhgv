@@ -50,8 +50,8 @@ init()
 			literals++;
 		Limboedit->Comment =>
 			comments++;
-			(a, b, words) := le->complete(doc, t.stop);
-			if(words != nil || a > b)
+			completion := le->complete(doc, t.stop);
+			if(completion.words != nil || completion.start > completion.stop)
 				raise "limboedit: suggestion in a comment";
 		Limboedit->Number =>
 			if(v == "16rFF.8" || v == "1.5e-2" || v == ".25")
@@ -63,17 +63,20 @@ init()
 
 	end := find(s, "repeTAIL;");
 	start := end - len "repeTAIL;";
-	(a, b, words) := le->complete(doc, start+4);
-	if(a != start || b != start+8 || len words != 1 || hd words != "repeated")
+	completion := le->complete(doc, start+4);
+	words := completion.words;
+	if(completion.start != start || completion.stop != start+8 || len words != 1 || hd words != "repeated")
 		raise "limboedit: completion replaces the entire identifier and deduplicates";
-	(a, b, words) = le->complete(doc, find(s, " ret"));
+	completion = le->complete(doc, find(s, " ret"));
+	words = completion.words;
 	if(len words != 1 || hd words != "return")
 		raise "limboedit: reserved word completion";
-	(a, b, words) = le->complete(doc, find(s, "; rai"));
+	completion = le->complete(doc, find(s, "; rai"));
+	words = completion.words;
 	if(len words != 2 || hd words != "raise" || hd tl words != "raises")
 		raise "limboedit: ambiguous completion or comment leakage";
-	(a, b, words) = le->complete(doc, find(s, "quoted"));
-	if(words != nil)
+	completion = le->complete(doc, find(s, "quoted"));
+	if(completion.words != nil)
 		raise "limboedit: completion inside a string";
 
 	sys->print("LIMBOEDIT_OK\n");

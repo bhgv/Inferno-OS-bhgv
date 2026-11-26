@@ -35,7 +35,7 @@ def stage_awm_runtime(core, app, build, mk, env, logs):
     assets = build/'assets'
     run([sys.executable, str(app/'tools/stage-inferno.py'), '--source', str(core),
          '--output', str(assets/'inferno')], app, env, logs/'stage-runtime.log')
-    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'awmkeys'):
+    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'awmkeys', 'limboedit'):
         if not (assets/f'inferno/dis/wm/{module}.dis').is_file():
             raise RuntimeError(f'Missing staged AWM module {module}')
     return assets

@@ -5,13 +5,13 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 ALT=runpy.run_path(str(ROOT/'utils/tests/native64-aprint-alt.py'));G,CMD=ALT['G'],ALT['CMD'];E=G['E']
 MODULES=(('boot','Emuinit','appl/cmd/emuinit.b',4),('arg','Arg','appl/lib/arg.b',8),('awm','Wm','appl/wm/awm.b',20),('string','String','appl/lib/string.b',21),('wmsrv','Wmsrv','appl/lib/wmsrv.b',34),('wmclient','Wmclient','appl/lib/wmclient.b',21),('winplace','Winplace','appl/lib/winplace.b',21),('wmlib','Wmlib','appl/lib/wmlib.b',25),('titlebar','Titlebar','appl/lib/titlebar.b',7))
-PANEL_MODULES=(('tkclient','Tkclient','appl/lib/tkclient.b',16),('awmpanel','Awmpanel','appl/wm/awmpanel.b',13),('awmcalc','Awmcalc','appl/wm/awmcalc.b',6),('awmfiles','Awmfiles','appl/wm/awmfiles.b',7),('awmkeys','Awmkeys','appl/wm/awmkeys.b',6))
+PANEL_MODULES=(('tkclient','Tkclient','appl/lib/tkclient.b',16),('awmpanel','Awmpanel','appl/wm/awmpanel.b',13),('awmcalc','Awmcalc','appl/wm/awmcalc.b',6),('awmfiles','Awmfiles','appl/wm/awmfiles.b',7),('awmkeys','Awmkeys','appl/wm/awmkeys.b',6),('limboedit','Limboedit','appl/wm/limboedit.b',15))
 TOOLBAR=('atoolbar','Toolbar','appl/wm/atoolbar.b',26)
 def generate(limbo,w,metadata=None,panel=False):
  selected=MODULES+PANEL_MODULES if panel else MODULES
  if panel and metadata is None:
   selected+=(TOOLBAR,)
- interface=w/'graph.m';interface.write_text(''.join('include "'+n+'.m";'for n in(('sys','draw','tk','string','wmsrv','wmlib','titlebar','wmclient','winplace','arg','sh')+('tkclient',)*panel))+'Wm:module{init:fn(ctxt:ref Draw->Context,argv:list of string);};Emuinit:module{init:fn();};')
+ interface=w/'graph.m';interface.write_text(''.join('include "'+n+'.m";'for n in(('sys','draw','tk','string','wmsrv','wmlib','titlebar','wmclient','winplace','arg','sh')+('tkclient','limboedit')*panel))+'Wm:module{init:fn(ctxt:ref Draw->Context,argv:list of string);};Emuinit:module{init:fn();};')
  if panel:
   for name in ('Awmpanel','Awmcalc','Awmfiles','Awmkeys'):
    interface.write_text(interface.read_text()+name+':module{init:fn(ctxt:ref Draw->Context,argv:list of string);};')
@@ -21,7 +21,7 @@ def generate(limbo,w,metadata=None,panel=False):
    interface.write_text(interface.read_text()+'shell: Sh;Listnode, Context: import shell;'+declaration)
  frames={};signatures={};headers={}
  names=('Sys','Draw','Tk','String','Wmsrv','Wmlib','Titlebar','Wmclient','Winplace','Arg','Sh','Wm','Emuinit')
- for name in names+(('Tkclient','Awmpanel','Awmcalc','Awmfiles','Awmkeys') if panel else ())+(('Toolbar',) if panel and metadata is None else ()):
+ for name in names+(('Tkclient','Awmpanel','Awmcalc','Awmfiles','Awmkeys','Limboedit') if panel else ())+(('Toolbar',) if panel and metadata is None else ()):
   h=headers[name]=subprocess.check_output([str(limbo),'-H','-M',name,'-I',str(ROOT/'module'),str(interface)],text=True);signatures[name]={}
   for fn,sig in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_'+name+r'_(\w+) (0x[0-9a-f]+)U',h,re.M):
    public=fn.replace('_','.',1)if '_'in fn else fn;signatures[name][public]=int(sig,16)
@@ -48,7 +48,7 @@ def generate(limbo,w,metadata=None,panel=False):
    if prefix=='awmpanel':dispath='/dis/wm/awmpanel-keyboard.dis'
    modules.append('{&'+prefix+'_spec,'+prefix+'_variadics,'+str(nv)+',"'+dispath+'"}')
   summaries.append((prefix,count,len(imports),nv))
-  if (prefix,name,path,count) in MODULES:
+  if (prefix,name,path,count) in MODULES or prefix=='limboedit':
    ops.update(c[0]for r in rows for c in r['code'])
    alltables[prefix]=imports
   if prefix=='awm':awmglobals={x[0]:x[1]for x in rows[0]['globals']}
@@ -58,6 +58,8 @@ def generate(limbo,w,metadata=None,panel=False):
   body='static const GraphSpec graph_specs[]={'+','.join(modules)+'};\n'
   metadata.write_text('/* Generated from the checked native64 AWM sources. */\n'+'\n'.join(headers)+body)
   return
+ if panel:
+  (w/'limboedit-native.h').write_text(headers['Limboedit'])
  body='static const GraphSpec graph_specs[]={'+','.join(modules[:len(MODULES)])+'};\n'
  body+='static const uint awm_screen_offset='+str(awmglobals['screen'])+';\n'
  for name in ('Sys','Draw','Tk'):

@@ -15,6 +15,8 @@ struct GraphSpec {const Native64ModuleSpec*spec;const Native64ModuleVariadic*var
 #include "graph-tkclient.h"
 #include "graph-awmpanel.h"
 #include "graph-atoolbar.h"
+#include "graph-limboedit.h"
+#include "limboedit-native.h"
 #endif
 
 static void ck(int ok,const char*why){if(!ok){fprintf(stderr,"AWM startup predicate: %s\n",why);exit(10);}}
@@ -143,6 +145,154 @@ panelself(Module *toolbar)
     self->MP!=other->MP,"Toolbar self shares only the calling instance's globals");
  destroy(self);destroy(other);destroy(current);destroy(path);
 }
+/* Parent frame slots carry the source, the two result owners and the link. */
+static Module*
+editorcaller(void)
+{
+	Module *m;
+	uchar map[]={0, 0xf0};
+	Inst *p;
+	uint i, pc=0;
+
+	m=mallocz(sizeof(*m),1);
+	require(m!=nil);
+	m->ref=1;
+	m->origmp=H;
+	m->rt=DONTCOMPILE;
+	m->ss=4096;
+	m->name=strdup("Limbo editor test");
+	m->path=strdup("Limbo editor test");
+	m->ntype=2;
+	m->type=mallocz(2*sizeof(Type*),1);
+	require(m->name && m->path && m->type);
+	m->type[0]=dtype(freeheap,0,nil,0);
+	m->entryt=m->type[1]=dtype(freeheap,104,map,sizeof(map));
+	m->entry=m->prog=p=mallocz(10*sizeof(Inst),1);
+	require(m->type[0] && m->type[1] && p);
+	m->cstep=native64typedlea8step;
+	for(i=0;i<2;i++){
+		p[pc].op=IMFRAME; p[pc].add=SRC(AFP)|AXIMM|DST(AFP);
+		p[pc].reg=i; p[pc].s.ind=88; p[pc++].d.ind=40;
+		p[pc].op=IMOVP; p[pc].add=SRC(AFP)|DST(AFP|AIND);
+		p[pc].s.ind=64+8*i; p[pc].d.i.f=40; p[pc++].d.i.s=64;
+		if(i){
+			p[pc].op=IMOVW; p[pc].add=SRC(AFP)|DST(AFP|AIND);
+			p[pc].s.ind=96; p[pc].d.i.f=40; p[pc++].d.i.s=72;
+		}
+		p[pc].op=ILEA; p[pc].reg=24; p[pc].add=SRC(AFP)|DST(AFP|AIND);
+		p[pc].s.ind=72+8*i; p[pc].d.i.f=40; p[pc++].d.i.s=32;
+		p[pc].op=IMCALL; p[pc].add=SRC(AFP)|AXIMM|DST(AFP);
+		p[pc].reg=i; p[pc].s.ind=40; p[pc++].d.ind=88;
+	}
+	p[pc].op=IEXIT; p[pc++].add=SRC(AXXX)|DST(AXXX);
+	m->nprog=pc;
+	return m;
+}
+
+static void*
+editorhead(List *list)
+{
+	void *entry;
+
+	ck(list!=H && list->t==&Tptr,"mapped editor list element");
+	memmove(&entry,list->data,sizeof(entry));
+	ck(entry!=H,"non-nil editor list element");
+	return entry;
+}
+
+static int
+editortext(String *actual, char *expected)
+{
+	String *value;
+	int same;
+
+	value=c2string(expected,strlen(expected));
+	same=stringcmp(actual,value)==0;
+	destroy(value);
+	return same;
+}
+
+static void
+editor(int jit)
+{
+	static const char source[]=
+		"\xce\x94.start() {\n\tword := 16rFF;\n\ttext := \"# literal\";\n}\n"
+		"repeatword() {\n\trepeTAIL;\n\t# comment\n}\n";
+	Native64ModuleOwner owner={0};
+	Import request[]={
+		{.name="scan", .sig=(WORD)LIMBO_NATIVE64_SIGNATURE_Limboedit_scan},
+		{.name="complete", .sig=(WORD)LIMBO_NATIVE64_SIGNATURE_Limboedit_complete},
+		{0},
+	};
+	Module *caller;
+	Modlink *link;
+	Prog *p;
+	String *input;
+	Limboedit_Document *doc;
+	Limboedit_Completion *completion;
+	Limboedit_Symbol *first, *second;
+	Limboedit_Token *token;
+	List *list;
+	uchar *frame;
+	WORD cursor, offset;
+	uint steps, colours=0;
+
+	ck(native64typedmodule(&limboedit_spec,jit,&owner),"construct editor language module");
+	owner.module->ref++;
+	link=linkmod(owner.module,request,1);
+	ck(link!=H && link!=nil,"link source-proved scan and complete exports");
+	caller=editorcaller();
+	if(jit)
+		ck(compile(caller,caller->nprog,nil),"compile editor test caller");
+	caller->ref++;
+	starting=caller;
+	started=nil;
+	worker.env->errstr[0]=0;
+	ck(kprotect(start,nil),"start editor test thread");
+	p=started;
+	rootenvironment(p);
+	frame=p->R.FP;
+	input=c2string((char*)source,sizeof(source)-1);
+	offset=strstr(source,"repeTAIL")-source-1; /* One extra UTF-8 byte before the caret. */
+	cursor=offset+4;
+	memmove(frame+64,&input,sizeof(input));
+	memmove(frame+88,&link,sizeof(link));
+	memmove(frame+96,&cursor,sizeof(cursor));
+	p->quanta=3;
+	for(steps=0;steps<10000;steps++)
+		if(!kprotect(executeprocess,p))
+			break;
+	ck(steps<10000 && !worker.env->errstr[0],"editor Dis completed without error");
+
+	doc=argptr(frame,72);
+	completion=argptr(frame,80);
+	ck(doc!=H && completion!=H && doc->source==input,"native editor result owners");
+	first=editorhead(doc->functions);
+	second=editorhead(doc->functions->tail);
+	ck(first->pos==0 && editortext(first->name,"\xce\x94.start"),
+	   "Unicode qualified function name and offset");
+	ck(editortext(second->name,"repeatword") && doc->functions->tail->tail==H,
+	   "ordinary function name in source order");
+	for(list=doc->tokens;list!=H;list=list->tail){
+		token=editorhead(list);
+		ck(token->kind>=0 && token->kind<=Limboedit_Function &&
+		   token->start>=0 && token->stop>token->start,"editor token span geometry");
+		colours|=1U<<token->kind;
+	}
+	ck((colours&0x78)==0x78,"comments, literals, numbers and functions all highlighted");
+	ck(completion->start==offset && completion->stop==offset+8 &&
+	   editortext(editorhead(completion->words),"repeatword") && completion->words->tail==H,
+	   "completion replaces the full Unicode-aware identifier span");
+	observed=p;
+	progexit();
+	emptyqueues();
+	ck(caller->ref==1,"editor caller lease");
+	unload(caller);
+	ck(native64typedmoduleclear(&owner) && !live && !modules && !nlinkpins && !worker.nerr,
+	   "complete editor heap and module retirement");
+	printf("PASS native64 Limbo editor jit=%d: token colours, function index and completion\n",jit);
+}
+
 static void
 panelconstruction(void)
 {
@@ -168,5 +318,6 @@ int main(void){int jit,q;int quanta[]={1,3,1000};rootpgrp.r.ref=rootfgrp.r.ref=r
  for(jit=0;jit<2;jit++)for(q=0;q<3;q++)run(jit,quanta[q]);
 #ifdef TEST_AWM_PANEL_METADATA
  panelconstruction();
+ for(jit=0;jit<2;jit++)editor(jit);
 #endif
  return 0;}

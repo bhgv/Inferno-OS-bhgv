@@ -19,6 +19,7 @@ on:
       - 'appl/wm/awmcalc.b'
       - 'appl/wm/awmfiles.b'
       - 'appl/wm/awmkeys.b'
+      - 'appl/wm/limboedit.b'
       - 'module/**'
       - 'libinterp/tests/dis64-runtime.*'
       - 'emu/Android/**'

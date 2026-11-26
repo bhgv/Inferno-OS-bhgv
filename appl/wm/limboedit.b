@@ -33,9 +33,10 @@ keyword(s: string): int
 	hi := len keywords;
 	while(lo < hi){
 		mid := (lo+hi)/2;
-		if(s == keywords[mid])
+		word := keywords[mid];
+		if(s == word)
 			return 1;
-		if(s < keywords[mid])
+		if(s < word)
 			hi = mid;
 		else
 			lo = mid+1;
@@ -115,7 +116,8 @@ lex(s: string): list of ref Token
 				while(i < n && ident(s[i]))
 					i++;
 				kind = Ident;
-				if(keyword(s[start:i]))
+				word := s[start:i];
+				if(keyword(word))
 					kind = Keyword;
 			}
 		}
@@ -139,7 +141,11 @@ isat(s: string, ts: list of ref Token, word: string): int
 	if(ts == nil)
 		return 0;
 	t := hd ts;
-	return t.kind != Comment && t.kind != Literal && s[t.start:t.stop] == word;
+	if(t.kind == Comment || t.kind == Literal)
+		return 0;
+	start := t.start;
+	stop := t.stop;
+	return s[start:stop] == word;
 }
 
 # Return the first significant token after a balanced group.
@@ -220,10 +226,13 @@ functions(s: string, ts: list of ref Token): list of ref Symbol
 					t := hd names;
 					if(name != "")
 						name = "." + name;
-					name = s[t.start:t.stop] + name;
+					start := t.start;
+					stop := t.stop;
+					name = s[start:stop] + name;
 					t.kind = Function;
 				}
-				found = ref Symbol(name, (hd ts).start) :: found;
+				first := hd ts;
+				found = ref Symbol(name, first.start) :: found;
 				ts = aftergroup(s, body, "{", "}");
 				continue;
 			}
@@ -247,7 +256,8 @@ functions(s: string, ts: list of ref Token): list of ref Symbol
 scan(source: string): ref Document
 {
 	tokens := lex(source);
-	return ref Document(source, tokens, functions(source, tokens));
+	symbols := functions(source, tokens);
+	return ref Document(source, tokens, symbols);
 }
 
 match(word, prefix: string): int
@@ -264,37 +274,52 @@ candidate(words: list of string, word: string): list of string
 	return word :: words;
 }
 
-complete(doc: ref Document, cursor: int): (int, int, list of string)
+complete(doc: ref Document, cursor: int): ref Completion
 {
 	s := doc.source;
 	if(cursor <= 0 || cursor > len s)
-		return (cursor, cursor, nil);
+		return ref Completion(cursor, cursor, nil);
 	start := cursor;
-	while(start > 0 && ident(s[start-1]))
+	while(start > 0){
+		c := s[start-1];
+		if(!ident(c))
+			break;
 		start--;
-	if(start == cursor || !letter(s[start]))
-		return (cursor, cursor, nil);
+	}
+	if(start == cursor)
+		return ref Completion(cursor, cursor, nil);
+	first := s[start];
+	if(!letter(first))
+		return ref Completion(cursor, cursor, nil);
 	stop := cursor;
-	while(stop < len s && ident(s[stop]))
+	while(stop < len s){
+		c := s[stop];
+		if(!ident(c))
+			break;
 		stop++;
+	}
 	prefix := s[start:cursor];
 	words: list of string;
 	for(ts := doc.tokens; ts != nil; ts = tl ts){
 		t := hd ts;
 		if(t.start <= start && t.stop >= cursor &&
 				t.kind != Ident && t.kind != Function && t.kind != Keyword)
-			return (start, stop, nil);
+			return ref Completion(start, stop, nil);
 		if(t.start == start || t.kind != Ident && t.kind != Function)
 			continue;
-		word := s[t.start:t.stop];
+		a := t.start;
+		b := t.stop;
+		word := s[a:b];
 		if(match(word, prefix))
 			words = candidate(words, word);
 	}
-	for(i := 0; i < len keywords; i++)
-		if(match(keywords[i], prefix))
-			words = candidate(words, keywords[i]);
+	for(i := 0; i < len keywords; i++){
+		word := keywords[i];
+		if(match(word, prefix))
+			words = candidate(words, word);
+	}
 	result: list of string;
 	for(; words != nil; words = tl words)
 		result = hd words :: result;
-	return (start, stop, result);
+	return ref Completion(start, stop, result);
 }

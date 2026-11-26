@@ -223,6 +223,54 @@ typedshelllistop(Inst *in,Dis64TypedBody *p,Dis64Instruction *out,uchar *returne
     (!tupletail&&actual!=(head?element:Tlist)))return typedfail(p,"shell-list-operation");
  *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,dest};*returned=213;return 1;
 }
+/* Direct lists of ref ADT have the same one-root cells as the existing
+ * Pointer/Window lists. Check the exact element type before using that path. */
+static Type*
+typedreflisttype(Addr *a)
+{
+ Type *list=typedloadvaluetype(a);
+ if(!a->decl || a->reg!=a->decl->offset || a->offset ||
+    !list || list->kind!=Tlist || !list->tof || list->tof->kind!=Tref ||
+    !list->tof->tof || list->tof->tof->kind!=Tadt)
+  return nil;
+ /* Keep native Draw and window objects on their layout-specific paths. */
+ if(typedwmref(list->tof,"Draw","Image") || typedwmref(list->tof,"Draw","Pointer") ||
+    typedwmref(list->tof,"Wmsrv","Client") || typedwmref(list->tof,"Wmsrv","Window"))
+  return nil;
+ return list;
+}
+
+static int
+typedreflist(Inst *in, Decl *fn, Dis64TypedBody *p, Dis64Instruction *out, uchar *returned)
+{
+ unsigned int sm,dm;
+ long source,dest;
+ int cons=in->op==ICONSP,head=in->op==IHEADP,actual;
+ Type *list=typedreflisttype(cons?&in->d:&in->s);
+ Type *result=head?list->tof:list;
+ Type *sourcevalue=typedloadvaluetype(&in->s);
+
+ if(in->branch || in->mm!=Anone ||
+    !sourcevalue || !tequal(sourcevalue,cons?list->tof:list) ||
+    !typedoperand(in->sm,&in->s,TypedRoot,0,0,p,&source,&sm,&actual) ||
+    actual!=(cons?Tref:Tlist) || (sm!=AFP && sm!=AMP))
+  return typedfail(p,"reference-list-source");
+ if(in->dm==Afpind){
+  if(cons || in->d.reg!=16 || in->d.offset || !tequal(fn->ty->tof,result))
+   return typedfail(p,"reference-list-result");
+  dest=32;dm=AFP|AIND;*returned=1;
+ }else{
+  Type *destvalue=typedloadvaluetype(&in->d);
+  if(!destvalue || !tequal(destvalue,result) ||
+     !typedoperand(in->dm,&in->d,TypedRoot,0,0,p,&dest,&dm,&actual) ||
+     actual!=(head?Tref:Tlist) || (dm!=AFP && dm!=AMP))
+   return typedfail(p,"reference-list-destination");
+  *returned=213;
+ }
+ *out=(Dis64Instruction){in->op,SRC(sm)|DST(dm),0,source,dest};
+ return 1;
+}
+
 static int
 typedloadlist(Inst *in,Decl *fn,Dis64TypedBody *p,Dis64Instruction *out)
 {
@@ -2092,6 +2140,10 @@ typedmultibody(TypedMulti *c,unsigned int index,unsigned int depth)
         }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) &&
           ((in->op!=ICONSP && typedwindowlisttype(&in->s)) || (in->op!=IHEADP && typedwindowlisttype(&in->d)))){
             if(!typedwindowlist(in,p,p->code+pc-p->first,p->returns+pc-p->first,fn->ty->tof))goto fail;pc++;
+        }else if(c->loads && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL) &&
+                  typedreflisttype(in->op==ICONSP?&in->d:&in->s)){
+            if(!typedreflist(in,fn,p,p->code+pc-p->first,p->returns+pc-p->first))goto fail;
+            pc++;
         }else if((c->external>=2 || c->loads) && (in->op==ICONSP || in->op==IHEADP || in->op==ITAIL)){
             if(!(c->loads?typedloadlist(in,fn,p,p->code+pc-p->first):typedclientlist(in,p,p->code+pc-p->first)))goto fail;
             if(UDST(p->code[pc-p->first].mode)==(AFP|AIND))p->returns[pc-p->first]=1;pc++;
