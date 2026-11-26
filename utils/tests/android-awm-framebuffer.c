@@ -20,7 +20,8 @@
 enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Desktop = 0x777777 };
 enum View { Vdesktop, Vmenu, Vcalc, VcalcKeysClosed, Vcalcmoved, Vtask, Vabout,
             Vfiles, VfilesKeysClosed, Vkeys, Veditor, VeditFileMenu,
-            VeditPath, VeditSource, VeditFunctions, VeditJump };
+            VeditPath, VeditSource, VeditFunctions, VeditJump,
+            VfilesEditor, VfilesEditorSave };
 typedef struct Area Area;
 struct Area { int x0, y0, x1, y1; };
 static const Area file_path = { 8, 65, 340, 80 };
@@ -404,6 +405,12 @@ visible(enum View view)
 		return pixel(380, 70) == 0xdce8f5 && pixel(330, 275) == 0xffffff;
 	if(view == VfilesKeysClosed)
 		return visible(Vfiles) && pixel(300, 465) == Desktop;
+	if(view == VfilesEditor)
+		return pixel(40, 102) == 0x009f9f && pixel(280, 182) == 0xffffff &&
+			editor_has_color(0x046782);
+	if(view == VfilesEditorSave)
+		return pixel(50, 146) == 0xdddddd && editor_has_color(0x046782);
+
 	if(view >= Veditor){
 		if(view != VeditFileMenu && view != VeditPath && pixel(40, 82) != 0x009f9f)
 			return 0;
@@ -664,11 +671,11 @@ type_path(const char *path)
 }
 
 static void
-wait_editor_save(void)
+wait_editor_save(const char *path)
 {
 	for(int attempt = 0; attempt < 120; attempt++){
 		char line[256];
-		FILE *file = fopen("/sdcard/Inferno/usr/inferno/Documents/zsample.b", "r");
+		FILE *file = fopen(path, "r");
 		if(file != NULL){
 			int complete = 0;
 			while(fgets(line, sizeof(line), file) != NULL)
@@ -722,10 +729,52 @@ test_editor(void)
 	tap(20, 71);
 	painted = capture("awm-editor-save-menu.ppm", VeditFileMenu, painted);
 	tap(27, 129);
-	wait_editor_save();
+	wait_editor_save("/sdcard/Inferno/usr/inferno/Documents/zsample.b");
 	tap(350, 52);
 	capture("awm-editor-closed.ppm", Vdesktop, painted);
 	puts("PASS native Edit opened a Limbo file, highlighted it, jumped to a function, completed an identifier and saved it");
+}
+
+static void
+test_files_editor(void)
+{
+	unsigned int painted;
+	uint64_t home, directory, selection, before;
+	const Area source_preview = { 8, 260, 340, 359 };
+
+	tap(27, 19);
+	painted = capture("awm-files-editor-menu.ppm", Vmenu, 0);
+	tap(300, 61);
+	painted = capture("awm-files-editor-home.ppm", Vfiles, painted);
+	home = wait_files(file_path, 0, 0, "opening Home for Edit");
+	tap(62, 148);				/* Limbo is the second directory. */
+	tap(332, 103);				/* Edit should leave the directory selected. */
+	wait_files(file_path, home, 1, "using Edit on a directory");
+	tap(160, 103);
+	directory = wait_files(file_path, home, 0, "opening the Limbo directory");
+	tap(62, 131);
+	selection = wait_files(file_list, 0, 0, "selecting the Limbo source");
+	before = wait_files(source_preview, 0, 0, "reading the empty preview");
+	tap(332, 103);
+	painted = capture("awm-files-editor-open.ppm", VfilesEditor, painted);
+	before = wait_files(source_preview, before, 0, "previewing the file launched in Edit");
+
+	tap(123, 192);				/* The prefix on line 7 in the child editor. */
+	key(AKEYCODE_MOVE_END, 0);
+	key(AKEYCODE_DPAD_LEFT, 0);
+	key(AKEYCODE_T, AMETA_CTRL_ON);
+	tap(20, 91);
+	painted = capture("awm-files-editor-save.ppm", VfilesEditorSave, painted);
+	tap(27, 149);
+	wait_editor_save("/sdcard/Inferno/usr/inferno/Limbo/example ;[one].b");
+	tap(350, 72);
+	wait_files(source_preview, before, 0, "refreshing the preview after closing Edit");
+	painted = capture("awm-files-editor-return.ppm", Vfiles, painted);
+	wait_files(file_path, directory, 1, "preserving the selected directory");
+	wait_files(file_list, selection, 1, "preserving the selected file");
+	tap(283, 103);
+	capture("awm-files-editor-closed.ppm", Vdesktop, painted);
+	puts("PASS Files opened the selected source in Edit and refreshed its preview after save and close");
 }
 
 static void*
@@ -801,6 +850,7 @@ observe(void *unused)
 	tap(65, 125);
 	painted = capture("awm-closed.ppm", Vdesktop, painted);
 	test_files(painted);
+	test_files_editor();
 	test_editor();
 	exit(0);
 }

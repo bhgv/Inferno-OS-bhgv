@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 ALT=runpy.run_path(str(ROOT/'utils/tests/native64-aprint-alt.py'));G,CMD=ALT['G'],ALT['CMD'];E=G['E']
 MODULES=(('boot','Emuinit','appl/cmd/emuinit.b',4),('arg','Arg','appl/lib/arg.b',8),('awm','Wm','appl/wm/awm.b',20),('string','String','appl/lib/string.b',21),('wmsrv','Wmsrv','appl/lib/wmsrv.b',34),('wmclient','Wmclient','appl/lib/wmclient.b',21),('winplace','Winplace','appl/lib/winplace.b',21),('wmlib','Wmlib','appl/lib/wmlib.b',25),('titlebar','Titlebar','appl/lib/titlebar.b',7))
-PANEL_MODULES=(('tkclient','Tkclient','appl/lib/tkclient.b',16),('awmpanel','Awmpanel','appl/wm/awmpanel.b',14),('awmcalc','Awmcalc','appl/wm/awmcalc.b',6),('awmfiles','Awmfiles','appl/wm/awmfiles.b',7),('awmkeys','Awmkeys','appl/wm/awmkeys.b',6),('limboedit','Limboedit','appl/wm/limboedit.b',15),('dialog','Dialog','appl/lib/dialog.b',6),('edit','WmEdit','appl/wm/edit.b',40))
+PANEL_MODULES=(('tkclient','Tkclient','appl/lib/tkclient.b',16),('awmpanel','Awmpanel','appl/wm/awmpanel.b',14),('awmcalc','Awmcalc','appl/wm/awmcalc.b',6),('awmfiles','Awmfiles','appl/wm/awmfiles.b',9),('awmkeys','Awmkeys','appl/wm/awmkeys.b',6),('limboedit','Limboedit','appl/wm/limboedit.b',15),('dialog','Dialog','appl/lib/dialog.b',6),('edit','WmEdit','appl/wm/edit.b',40))
 TOOLBAR=('atoolbar','Toolbar','appl/wm/atoolbar.b',26)
 def generate(limbo,w,metadata=None,panel=False):
  selected=MODULES+PANEL_MODULES if panel else MODULES

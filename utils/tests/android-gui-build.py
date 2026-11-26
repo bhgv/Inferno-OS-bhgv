@@ -78,17 +78,30 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
         '\tcomple;\n}\n'
         + '# Padding for the function jump.\n'*35
         + 'completion_target() { }\n', encoding='utf-8')
+    limbo = home/'Limbo'
+    limbo.mkdir()
+    edit_fixture = limbo/'example ;[one].b'
+    edit_fixture.write_text(
+        'implement Example;\nExample: module { init: fn(); };\n'
+        'init() {\n\t# open from Files\n\tvalue := 16rAA;\n\ttext := "# literal";\n'
+        '\tcomple;\n}\ncompletion_target() { }\n', encoding='utf-8')
     manifest = bundle/'inferno/manifest.txt'
     entries = [line for line in manifest.read_text().splitlines()
                if not line.split('\t', 1)[1].startswith('usr/inferno/')]
-    entries += [f'D\t{documents.relative_to(bundle/"inferno").as_posix()}']
-    entries += [f'F\t{file.relative_to(bundle/"inferno").as_posix()}'
-                for file in sorted(documents.iterdir())]
+    for directory in (documents, limbo):
+        entries.append(f'D\t{directory.relative_to(bundle/"inferno").as_posix()}')
+        entries.extend(f'F\t{file.relative_to(bundle/"inferno").as_posix()}'
+                       for file in sorted(directory.iterdir()))
     manifest.write_text('\n'.join(entries)+'\n')
     files = build/'sdcard'
     files.mkdir()
     run([runner, str(executable), str(bundle), str(files)], logs, env,
         logs/'framebuffer-run.log', timeout=60)
+    edited = files/'Inferno'/edit_fixture.relative_to(bundle/'inferno')
+    expected = edit_fixture.read_bytes().replace(b'\tcomple;\n', b'\tcompletion_target;\n')
+    if edited.read_bytes() != expected:
+        raise RuntimeError('Files → Edit modified source bytes outside the completed identifier')
+
 
 
 def package_awm(apk_tools, platform, signing_tools, app, build, assets, library, revisions, env, logs):
@@ -325,7 +338,7 @@ def main():
                       awm_files_interaction_verified=True, awm_shared_storage_verified=True,
                       awm_android_touch_verified=True, awm_android_mouse_verified=True,
                       awm_android_keyboard_verified=True, awm_screen_keyboard_verified=True,
-                      awm_editor_verified=True)
+                      awm_editor_verified=True, awm_files_editor_verified=True)
         result.write_text(json.dumps(report, indent=2)+'\n')
     if args.apk_sdk:
         report.update(package_awm(apk_tools, platform, signing_tools, app, build, assets, library,

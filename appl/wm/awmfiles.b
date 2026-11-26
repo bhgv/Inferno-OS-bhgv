@@ -3,6 +3,7 @@ implement Awmfiles;
 include "sys.m";
 	sys: Sys;
 include "draw.m";
+include "sh.m";
 include "tk.m";
 	tk: Tk;
 include "tkclient.m";
@@ -27,10 +28,13 @@ init(ctxt: ref Draw->Context, nil: list of string)
 	tkclient->init();
 	(top, title) := tkclient->toplevel(ctxt, "", "Files", Tkclient->Hide);
 	actions := chan of string;
+	# The editor can finish after this Files window closes.
+	edited := chan[1] of string;
 	tk->namechan(top, actions, "files");
 	widgets(top);
 
 	path := Home;
+	previewed, editing: string;
 	names := array[Maxentries] of string;
 	modes := array[Maxentries] of int;
 	count := listdir(top, path, names, modes);
@@ -59,6 +63,18 @@ init(ctxt: ref Draw->Context, nil: list of string)
 				tkclient->wmctl(top, s);
 			if(s == "untask")
 				tkclient->wmctl(top, "kbdfocus 1");
+		result := <-edited =>
+			if(editing == previewed){
+				content := preview(editing);
+				setpreview(top, content);
+			}
+			editing = nil;
+			cmd(top, ".nav.edit configure -state normal");
+			if(result != nil){
+				message := ".status configure -text '" + result;
+				cmd(top, message);
+			}
+			cmd(top, "update");
 		action := <-actions =>
 			reload := 1;
 			case action {
@@ -72,8 +88,10 @@ init(ctxt: ref Draw->Context, nil: list of string)
 				path = Home;
 			"refresh" =>
 				;
-			"open" or "openactive" =>
+			"open" or "openactive" or "edit" =>
 				reload = 0;
+				if(action == "edit" && editing != nil)
+					break;
 				query := ".entries.list curselection";
 				if(action == "openactive")
 					query = ".entries.list index active";
@@ -90,9 +108,19 @@ init(ctxt: ref Draw->Context, nil: list of string)
 					child += "/";
 				child += name;
 				if(!(mode & Sys->DMDIR)){
+					if(action == "edit"){
+						editing = child;
+						cmd(top, ".nav.edit configure -state disabled");
+						spawn edit(ctxt, child, edited);
+					}
+					previewed = child;
 					content := preview(child);
 					setpreview(top, content);
 					cmd(top, "update");
+					break;
+				}
+				if(action == "edit"){
+					cmd(top, ".status configure -text {Select a file to edit}; update");
 					break;
 				}
 				path = child;
@@ -101,11 +129,30 @@ init(ctxt: ref Draw->Context, nil: list of string)
 				reload = 0;
 			}
 			if(reload){
+				previewed = nil;
 				count = listdir(top, path, names, modes);
 				cmd(top, ".entries.list activate 0; update");
 			}
 		}
 	}
+}
+
+edit(ctxt: ref Draw->Context, path: string, done: chan of string)
+{
+	result := "";
+	{
+		app := load Command "/dis/wm/edit.dis";
+		if(app == nil)
+			result = "Cannot load Edit";
+		else{
+			args := "edit" :: path :: nil;
+			app->init(ctxt, args);
+		}
+	} exception {
+		"*" =>
+			result = "Edit was interrupted";
+	}
+	done <-= result;
 }
 
 widgets(top: ref Tk->Toplevel)
@@ -118,7 +165,8 @@ widgets(top: ref Tk->Toplevel)
 	cmd(top, "button .nav.open -text Open -takefocus 0 -command {send files open}");
 	cmd(top, "button .nav.refresh -text Refresh -takefocus 0 -command {send files refresh}");
 	cmd(top, "button .nav.close -text Close -takefocus 0 -command {send files close}");
-	cmd(top, "pack .nav.up .nav.root .nav.home .nav.open .nav.refresh .nav.close -side left -padx 3 -ipady 6");
+	cmd(top, "button .nav.edit -text Edit -takefocus 0 -command {send files edit}");
+	cmd(top, "pack .nav.up .nav.root .nav.home .nav.open .nav.refresh .nav.close .nav.edit -side left -padx 3 -ipady 6");
 
 	cmd(top, "frame .entries; pack .entries -fill x -padx 6");
 	cmd(top, "listbox .entries.list -width 340 -height 130 -selectmode single " +
@@ -152,11 +200,12 @@ listdir(top: ref Tk->Toplevel, path: string, names: array of string, modes: arra
 	}
 
 	used := 0;
-	for(;;){
+	status := "";
+	while(used < Maxentries){
 		(n, rows) := sys->dirread(fd);
 		if(n < 0){
-			cmd(top, ".status configure -text {Cannot read directory}; update");
-			return used;
+			status = "Cannot read directory";
+			break;
 		}
 		if(n == 0)
 			break;
@@ -166,20 +215,48 @@ listdir(top: ref Tk->Toplevel, path: string, names: array of string, modes: arra
 			names[used] = name;
 			modes[used] = mode;
 			used++;
-			if(mode & Sys->DMDIR)
-				name += "/";
-			# A leading single quote makes the rest of this Tk command literal.
-			entry := ".entries.list insert end '" + name;
-			cmd(top, entry);
-		}
-		if(used == Maxentries){
-			cmd(top, ".status configure -text {Showing up to 256 entries}; update");
-			return used;
 		}
 	}
-	msg := ".status configure -text {" + string used + " entries}; update";
+	sortentries(names, modes, used);
+	for(i := 0; i < used; i++){
+		name := names[i];
+		mode := modes[i];
+		if(mode & Sys->DMDIR)
+			name += "/";
+		# A leading single quote makes the rest of this Tk command literal.
+		entry := ".entries.list insert end '" + name;
+		cmd(top, entry);
+	}
+	if(used == Maxentries)
+		status = "Showing up to 256 entries";
+	if(status == nil)
+		status = string used + " entries";
+	msg := ".status configure -text '" + status;
 	cmd(top, msg);
+	cmd(top, "update");
 	return used;
+}
+
+# Keep the names and cached mode bits in the same order.
+sortentries(names: array of string, modes: array of int, used: int)
+{
+	for(i := 1; i < used; i++){
+		name := names[i];
+		mode := modes[i];
+		j := i;
+		while(j > 0){
+			previous := j - 1;
+			other := names[previous];
+			if(other <= name)
+				break;
+			othermode := modes[previous];
+			names[j] = other;
+			modes[j] = othermode;
+			j = previous;
+		}
+		names[j] = name;
+		modes[j] = mode;
+	}
 }
 
 parent(path: string): string
