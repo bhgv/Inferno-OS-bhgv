@@ -51,6 +51,7 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
     run([str(llvm/'aarch64-linux-android29-clang'), '-O2', '-g', '-static',
          '-DINFERNO_BUNDLE_RUNTIME=1', '-DINFERNO_AWM_RUNTIME=1', '-I'+str(launcher),
          str(ROOT/'utils/tests/android-awm-framebuffer.c'), str(launcher/'inferno_storage.c'),
+         str(launcher/'inferno_touch.c'),
          *(f'-Wl,--wrap={symbol}' for symbol in
            ('inferno_android_root', 'stat', 'access', 'mkdir', 'fopen', 'rename', 'unlink')),
          '-Wl,--start-group', '-lm',
@@ -279,7 +280,7 @@ def main():
         raise RuntimeError('The GUI shared library lacks 16KiB LOAD alignment')
     symbols = subprocess.check_output([str(llvm/'llvm-nm'), '-D', '--defined-only', str(library)], text=True)
     (logs/'symbols.txt').write_text(symbols)
-    required = ['ANativeActivity_onCreate', 'android_main', 'amain']
+    required = ['ANativeActivity_onCreate', 'android_main', 'amain', 'ioa_touch_motion']
     if args.native64_awm:
         required += ['native64awmboot', 'inferno_android_root', 'ioa_prepare_storage_progress']
     if args.native64_formatter:
@@ -310,7 +311,8 @@ def main():
     if args.awm_runner:
         test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs)
         report.update(awm_started=True, awm_panel_interaction_verified=True,
-                      awm_files_interaction_verified=True, awm_shared_storage_verified=True)
+                      awm_files_interaction_verified=True, awm_shared_storage_verified=True,
+                      awm_android_touch_verified=True)
         result.write_text(json.dumps(report, indent=2)+'\n')
     if args.apk_sdk:
         report.update(package_awm(apk_tools, platform, signing_tools, app, build, assets, library,

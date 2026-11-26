@@ -13,9 +13,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "inferno_storage.h"
+#include "inferno_touch.h"
 
 enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Desktop = 0x777777 };
-enum View { Vdesktop, Vmenu, Vcalc, Vtask, Vabout, Vfiles };
+enum View { Vdesktop, Vmenu, Vcalc, Vcalcmoved, Vtask, Vabout, Vfiles };
 typedef struct Area Area;
 struct Area { int x0, y0, x1, y1; };
 static const Area file_path = { 8, 65, 340, 80 };
@@ -32,6 +33,81 @@ static int deny_storage;
 
 extern void amain(void);
 extern void xmouse_btn(int, int, int);
+
+/* Model the NDK accessors while running the real motion translator on Bionic. */
+typedef struct { int id; float x, y; } Contact;
+struct AInputEvent {
+	int32_t action;
+	int64_t time;
+	size_t count;
+	Contact contact[3];
+};
+
+int32_t AMotionEvent_getAction(const AInputEvent *e) { return e->action; }
+int64_t AMotionEvent_getEventTime(const AInputEvent *e) { return e->time; }
+size_t AMotionEvent_getPointerCount(const AInputEvent *e) { return e->count; }
+int32_t AMotionEvent_getPointerId(const AInputEvent *e, size_t i) { return e->contact[i].id; }
+float AMotionEvent_getX(const AInputEvent *e, size_t i) { return e->contact[i].x; }
+float AMotionEvent_getY(const AInputEvent *e, size_t i) { return e->contact[i].y; }
+
+typedef struct { int x, y, buttons; } PointerEvent;
+static const PointerEvent touch_expected[] = {
+	{100,120,1}, {103,122,0}, {103,122,2}, {105,126,2},
+	{106,129,0}, {106,129,4}, {107,130,0},
+	{0,479,1}, {0,479,0},
+	{30,60,1}, {30,60,0}, {33,63,257}, {33,63,0},
+	{44,50,1}, {200,50,1}, {44,50,0}, {44,50,1}, {44,50,0}
+};
+static size_t touch_received;
+
+static void
+expect_touch(int x, int y, int buttons)
+{
+	if(touch_received >= sizeof(touch_expected)/sizeof(touch_expected[0]))
+		exit(2);
+	PointerEvent want = touch_expected[touch_received++];
+	if(want.x != x || want.y != y || want.buttons != buttons){
+		fprintf(stderr, "Unexpected touch output #%zu: %d %d %d\n", touch_received, x, y, buttons);
+		exit(2);
+	}
+}
+
+static void
+test_touch(void)
+{
+	const AInputEvent samples[] = {
+		{AMOTION_EVENT_ACTION_DOWN, 0, 1, {{5,100,120}}},
+		{AMOTION_EVENT_ACTION_POINTER_DOWN, 0, 2, {{7,200,240},{5,103,122}}},
+		{AMOTION_EVENT_ACTION_MOVE, 0, 2, {{5,105,126},{7,220,280}}},
+		{AMOTION_EVENT_ACTION_POINTER_DOWN, 0, 3, {{9,300,330},{7,220,280},{5,106,129}}},
+		{AMOTION_EVENT_ACTION_POINTER_UP | (1 << AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT), 0, 3,
+			{{9,321,333},{5,107,130},{7,220,282}}},
+		{AMOTION_EVENT_ACTION_MOVE, 0, 2, {{7,225,290},{9,324,339}}},
+		{AMOTION_EVENT_ACTION_UP, 0, 1, {{7,226,290}}},
+		{AMOTION_EVENT_ACTION_DOWN, 0, 1, {{6,-12,800}}},
+		{AMOTION_EVENT_ACTION_CANCEL, 0, 0, {{0,0,0}}},
+		{AMOTION_EVENT_ACTION_DOWN, 0, 1, {{8,30,60}}},
+		{AMOTION_EVENT_ACTION_UP, 0, 1, {{8,30,60}}},
+		{AMOTION_EVENT_ACTION_DOWN, 0, 1, {{2,33,63}}},
+		{AMOTION_EVENT_ACTION_UP, 0, 1, {{2,33,63}}},
+		{AMOTION_EVENT_ACTION_DOWN, 0, 1, {{3,44,50}}},
+		{AMOTION_EVENT_ACTION_MOVE, 0, 1, {{3,200,50}}},
+		{AMOTION_EVENT_ACTION_UP, 0, 1, {{3,44,50}}},
+		{AMOTION_EVENT_ACTION_DOWN, 0, 1, {{4,44,50}}},
+	};
+	IoaTouch touch = {0};
+	for(size_t i = 0; i < sizeof(samples)/sizeof(samples[0]); i++){
+		AInputEvent event = samples[i];
+		event.time = (i+1)*INT64_C(50000000);
+		if(!ioa_touch_motion(&touch, &event, Width, Height, expect_touch))
+			exit(2);
+	}
+	ioa_touch_reset(&touch, expect_touch);
+	ioa_touch_reset(&touch, expect_touch);
+	if(touch_received != sizeof(touch_expected)/sizeof(touch_expected[0]))
+		exit(2);
+	puts("PASS motion pointer IDs, button masks, chord release, cancellation, drag and double tap");
+}
 
 /* Map the shared Android mount onto the test's writable directory. */
 static const char *
@@ -191,6 +267,8 @@ visible(enum View view)
 		return 0;
 	if(view == Vcalc)
 		return pixel(195, 78) == 0xffffff;
+	if(view == Vcalcmoved)
+		return pixel(195, 78) == Desktop && pixel(415, 178) == 0xffffff;
 	if(view == Vabout)
 		return pixel(100, 65) != Desktop && pixel(195, 78) == Desktop;
 	if(view == Vfiles)
@@ -233,11 +311,30 @@ capture(const char *path, enum View view, unsigned int after)
 }
 
 static void
+motion(int32_t action, int x, int y)
+{
+	static IoaTouch touch;
+	static int64_t time;
+	AInputEvent event = {action, time += 100000000, 1, {{0,x,y}}};
+	ioa_touch_motion(&touch, &event, Width, Height, xmouse_btn);
+}
+
+static void
 tap(int x, int y)
 {
-	xmouse_btn(x, y, 1);
+	motion(AMOTION_EVENT_ACTION_DOWN, x, y);
 	usleep(100000);
-	xmouse_btn(x, y, 0);
+	motion(AMOTION_EVENT_ACTION_UP, x, y);
+}
+
+static void
+drag(int x, int y, int tox, int toy)
+{
+	motion(AMOTION_EVENT_ACTION_DOWN, x, y);
+	usleep(100000);
+	motion(AMOTION_EVENT_ACTION_MOVE, tox, toy);
+	usleep(100000);
+	motion(AMOTION_EVENT_ACTION_UP, tox, toy);
 }
 
 /* Compare rendered digits independently of the bitmap font used by the runtime. */
@@ -299,13 +396,13 @@ test_files(unsigned int painted)
 	list = wait_files(file_list, 0, 0, "listing Home");
 	tap(40, 131);
 	wait_files(file_list, list, 0, "selecting Documents");
-	tap(158, 103);
-	wait_files(file_path, home, 0, "opening Documents");
+	tap(40, 131);
+	wait_files(file_path, home, 0, "opening Documents with a double tap");
 	list = wait_files(file_list, 0, 0, "listing Documents");
 	tap(40, 131);
 	list = wait_files(file_list, list, 0, "selecting the first file");
-	tap(158, 103);
-	first = wait_files(file_preview, empty, 0, "previewing the first file");
+	tap(40, 131);
+	first = wait_files(file_preview, empty, 0, "previewing the first file with a double tap");
 	tap(40, 148);
 	wait_files(file_list, list, 0, "selecting the second file");
 	tap(158, 103);
@@ -320,7 +417,7 @@ test_files(unsigned int painted)
 	wait_files(file_preview, empty, 1, "clearing the preview");
 	tap(283, 103);
 	capture("awm-files-closed.ppm", Vdesktop, painted);
-	puts("PASS Files opened Documents, previewed two files and returned to Home");
+	puts("PASS Files opened Documents and previewed a file by double tap, then returned to Home");
 }
 
 static void*
@@ -358,6 +455,12 @@ observe(void *unused)
 	painted = capture("awm-restored.ppm", Vcalc, painted);
 	wait_value(five, 1);
 	puts("PASS Calculator retained its value when restored from the taskbar");
+	drag(40, 51, 260, 151);
+	painted = capture("awm-calculator-dragged.ppm", Vcalcmoved, painted);
+	drag(260, 151, 40, 51);
+	painted = capture("awm-calculator-dragged-back.ppm", Vcalc, painted);
+	wait_value(five, 1);
+	puts("PASS touch moved the Calculator window and kept its value");
 	tap(110, 283);
 	painted = capture("awm-calculator-closed.ppm", Vdesktop, painted);
 	tap(27, 19);
@@ -376,6 +479,7 @@ main(int argc, char **argv)
 	pthread_t worker;
 	if(argc != 3)
 		return 2;
+	test_touch();
 	AAssetManager manager = {argv[1]};
 	sdcard = argv[2];
 	deny_storage = 1;
