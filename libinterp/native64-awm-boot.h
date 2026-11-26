@@ -48,6 +48,8 @@ graphprefix(const char *name)
 		return &limbo_native64_Sys_aprint_prefix.fixed;
 	if(strcmp(name, "fprint") == 0)
 		return &limbo_native64_Sys_fprint_prefix.fixed;
+	if(strcmp(name, "print") == 0)
+		return &limbo_native64_Sys_print_prefix.fixed;
 	return nil;
 }
 

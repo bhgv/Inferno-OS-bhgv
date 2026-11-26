@@ -10,8 +10,6 @@ include "sys.m";
 	sys: Sys;
 
 include "draw.m";
-	draw: Draw;
-	Rect, Screen: import draw;
 
 include "tk.m";
 	tk: Tk;
@@ -149,7 +147,6 @@ init(ctxt: ref Draw->Context, argv: list of string)
 	wmctl: chan of string;
 
 	sys = load Sys Sys->PATH;
-	draw = load Draw Draw->PATH;
 	tk = load Tk Tk->PATH;
 	tkclient = load Tkclient Tkclient->PATH;
 	selectfile = load Selectfile Selectfile->PATH;
@@ -159,7 +156,8 @@ init(ctxt: ref Draw->Context, argv: list of string)
 
 	sys->pctl(Sys->NEWPGRP, nil);
 	tkclient->init();
-	selectfile->init();
+	if(selectfile != nil && selectfile->init() != nil)
+		selectfile = nil;
 	dialog->init();
 
 	context = ctxt;
@@ -191,17 +189,22 @@ init(ctxt: ref Draw->Context, argv: list of string)
 	}
 
 	cmdloop: for(;;) {
+		wm := ed.ctxt;
+		keys := wm.kbd;
+		pointer := wm.ptr;
+		control := wm.ctl;
+		requests := ed.wreq;
 		alt {
-		key := <-ed.ctxt.kbd =>
+		key := <-keys =>
 			tk->keyboard(ed, key);
 			schedulepaint();
 		<-repaint =>
 			repainting = 0;
 			paint();
-		m := <-ed.ctxt.ptr =>
+		m := <-pointer =>
 			tk->pointer(ed, *m);
-		s := <-ed.ctxt.ctl or
-		s = <-ed.wreq or
+		s := <-control or
+		s = <-requests or
 		s = <-wmctl =>
 			if(s == "exit") {
 				if (check_dirty())
@@ -281,7 +284,8 @@ set_dirty()
 {
 	if(!dirty){
 		dirty = 1;
-		tkclient->settitle(ed, "Edit " + curfile + " (dirty)");
+		title := "Edit " + curfile + " (dirty)";
+		tkclient->settitle(ed, title);
 		cmd(ed, "update");
 	}
 #	We want to just remove the binding, but Inferno's tk does not
@@ -365,9 +369,10 @@ do_limbo_check(char: int)
 	# If the line is just indentation plus '}', rewrite it
 	# to have one less indent.
 		if ( first_char ) {
-			current := int cmd(ed, ".b.t index insert");
-			cmd(ed, ".b.t delete " +
-						string current + ".0 insert");
+			index := cmd(ed, ".b.t index insert");
+			current := int index;
+			command := ".b.t delete " + string current + ".0 insert";
+			cmd(ed, command);
 			add_indent();
 			cmd(ed, ".b.t insert insert '}");
 		}
@@ -382,8 +387,11 @@ do_limbo_check(char: int)
 	    '#' =>
 		in_comment = 1;
 	    'A' to 'Z' or 'a' to 'z' or '0' to '9' or '_' =>
-		if ( ! in_comment )
-			this_word[len this_word] = char;
+		if ( ! in_comment ){
+			word := this_word;
+			word[len word] = char;
+			this_word = word;
+		}
 	    * =>
 		if ( ! in_comment )
 			look_keyword(this_word);
@@ -411,10 +419,21 @@ do_new()
 	tkclient->settitle(ed, "Edit " + curfile);
 }
 
+filename(): string
+{
+	image := ed.image;
+	if(selectfile != nil)
+		return selectfile->filename(context, image, "", nil, path);
+	file := dialog->getstring(context, image, "Open file (path)");
+	if(len file > 0 && file[0] != '/' && path != "")
+		file = path + "/" + file;
+	return file;
+}
+
 do_open(): int
 {
 	for(;;) {
-		fname := selectfile->filename(context, ed.image, "", nil, path);
+		fname := filename();
 		if(fname == "")
 			break;
 		e := loadtfile(fname);
@@ -499,13 +518,16 @@ do_search(prompt: int) : int
 	if(searchfor == "")
 		return 0;
 	cmd(ed, "cursor -bitmap cursor.wait");
-	ix := cmd(ed, ".b.t search -- " + tk->quote(searchfor) + " insert+1c");
+	pattern := tk->quote(searchfor);
+	command := ".b.t search -- " + pattern + " insert+1c";
+	ix := cmd(ed, command);
 	if(ix != "" && len ix > 1 && ix[0] != '!') {
 		cmd(ed, ".b.t tag remove sel 0.0 end");
 		cmd(ed, ".b.t mark set anchor " + ix);
 		cmd(ed, ".b.t mark set insert " + ix);
-		cmd(ed, ".b.t tag add sel " + ix + " " + ix + "+" +
-						string(len searchfor) + "c");
+		length := string(len searchfor);
+		command = ".b.t tag add sel " + ix + " " + ix + "+" + length + "c";
+		cmd(ed, command);
 		if ( prompt != NOSEE )
 			cmd(ed, ".b.t see " + ix);
 		cmd(ed, "cursor -default");
@@ -537,7 +559,9 @@ do_replace(prompt : int)
 			return;
 	}
 	cmd(ed, ".b.t delete sel.first sel.last");
-	cmd(ed, ".b.t insert insert " + tk->quote(replacewith));
+	replacement := tk->quote(replacewith);
+	command := ".b.t insert insert " + replacement;
+	cmd(ed, command);
 }
 
 do_replaceall()
@@ -553,15 +577,19 @@ do_replaceall()
 	srch := tk->quote(searchfor);
 	repl := tk->quote(replacewith);
 	for ( ix := "1.0"; len ix > 0 && ix[0] != '!'; ) {
-		ix = cmd(ed, ".b.t search -- " + srch + " " + ix + " end");
+		command := ".b.t search -- " + srch + " " + ix + " end";
+		ix = cmd(ed, command);
 		if ( ix == "" || len ix <= 1 || ix[0] == '!')
 			break;
-		cmd(ed, ".b.t delete " + ix + " " + ix + "+" +
-						string(len searchfor) + "c");
+		length := string(len searchfor);
+		command = ".b.t delete " + ix + " " + ix + "+" + length + "c";
+		cmd(ed, command);
 		if ( replacewith != "" ) {
-			cmd(ed, ".b.t insert " + ix + " " + repl);
-			ix = cmd(ed, ".b.t index " + ix + "+" +
-					string(len replacewith) + "c");
+			command = ".b.t insert " + ix + " " + repl;
+			cmd(ed, command);
+			length = string(len replacewith);
+			command = ".b.t index " + ix + "+" + length + "c";
+			ix = cmd(ed, command);
 		}
 		dirt++;
 	}
@@ -607,7 +635,10 @@ loadtfile(path: string): string
 	suffix := "";
 	if(len path >= 2)
 		suffix = path[len path-2:];
-	setlimbo(suffix == ".b" || suffix == ".m");
+	limbo := 0;
+	if(suffix == ".b" || suffix == ".m")
+		limbo = 1;
+	setlimbo(limbo);
 	cmd(ed, ".b.t mark set insert 1.0");
 	re_indent();
 	tkclient->settitle(ed, "Edit " + curfile);
@@ -671,8 +702,9 @@ analyse(source: string): ref Limboedit->Document
 {
 	if(limboedit == nil)
 		return nil;
-	if(document != nil && document.source == source)
-		return document;
+	cached := document;
+	if(cached != nil && cached.source == source)
+		return cached;
 	d := limboedit->scan(source);
 	if(is_limbo){
 		document = d;
@@ -684,8 +716,10 @@ analyse(source: string): ref Limboedit->Document
 
 paint()
 {
-	if(is_limbo && limboedit != nil)
-		analyse(readsource());
+	if(is_limbo && limboedit != nil){
+		source := readsource();
+		analyse(source);
+	}
 }
 
 highlight(d: ref Limboedit->Document)
@@ -697,10 +731,13 @@ highlight(d: ref Limboedit->Document)
 	s := d.source;
 	for(ts := d.tokens; ts != nil; ts = tl ts){
 		t := hd ts;
-		tag := limbotags[t.kind];
+		kind := t.kind;
+		tag := limbotags[kind];
 		if(tag == "")
 			continue;
-		for(; pos < t.start; pos++){
+		begin := t.start;
+		end := t.stop;
+		for(; pos < begin; pos++){
 			if(s[pos] == '\n'){
 				line++;
 				column = 0;
@@ -708,22 +745,30 @@ highlight(d: ref Limboedit->Document)
 				column++;
 		}
 		start := string line + "." + string column;
-		for(; pos < t.stop; pos++){
+		for(; pos < end; pos++){
 			if(s[pos] == '\n'){
 				line++;
 				column = 0;
 			}else
 				column++;
 		}
-		ranges[t.kind] += " " + start + " " + string line + "." + string column;
-		if(len ranges[t.kind] >= 2048){
-			cmd(ed, ".b.t tag add " + tag + ranges[t.kind]);
-			ranges[t.kind] = "";
+		range := ranges[kind];
+		range += " " + start + " " + string line + "." + string column;
+		if(len range >= 2048){
+			command := ".b.t tag add " + tag + range;
+			cmd(ed, command);
+			range = "";
+		}
+		ranges[kind] = range;
+	}
+	for(i := 0; i < len ranges; i++){
+		range := ranges[i];
+		if(range != ""){
+			tag := limbotags[i];
+			command := ".b.t tag add " + tag + range;
+			cmd(ed, command);
 		}
 	}
-	for(i := 0; i < len ranges; i++)
-		if(ranges[i] != "")
-			cmd(ed, ".b.t tag add " + limbotags[i] + ranges[i]);
 }
 
 hidecode()
@@ -737,15 +782,23 @@ hidecode()
 showchoices(title, action: string, items: list of ref Limboedit->Symbol)
 {
 	choices = array[len items] of ref Limboedit->Symbol;
-	cmd(ed, ".b.code.title configure -text " + tk->quote(title));
+	label := tk->quote(title);
+	command := ".b.code.title configure -text " + label;
+	cmd(ed, command);
 	cmd(ed, ".b.code.list delete 0 end");
 	state := "disabled";
 	if(items != nil)
 		state = "normal";
-	cmd(ed, ".b.code.actions.choose configure -text " + action + " -state " + state);
+	command = ".b.code.actions.choose configure -text " + action + " -state " + state;
+	cmd(ed, command);
 	for(i := 0; items != nil; items = tl items){
-		choices[i++] = hd items;
-		cmd(ed, ".b.code.list insert end " + tk->quote((hd items).name));
+		symbol := hd items;
+		choices[i] = symbol;
+		i++;
+		name := symbol.name;
+		label = tk->quote(name);
+		command = ".b.code.list insert end " + label;
+		cmd(ed, command);
 	}
 	if(len choices > 0)
 		cmd(ed, ".b.code.list activate 0");
@@ -756,21 +809,24 @@ showchoices(title, action: string, items: list of ref Limboedit->Symbol)
 showfunctions()
 {
 	completing = 0;
-	d := analyse(readsource());
+	source := readsource();
+	d := analyse(source);
 	if(d == nil){
 		showchoices("Limbo tools unavailable", "Jump", nil);
 		return;
 	}
 	choice_source = d.source;
-	if(d.functions == nil)
+	symbols := d.functions;
+	if(symbols == nil)
 		showchoices("No functions", "Jump", nil);
 	else
-		showchoices("Functions", "Jump", d.functions);
+		showchoices("Functions", "Jump", symbols);
 }
 
 showcompletions()
 {
-	d := analyse(readsource());
+	source := readsource();
+	d := analyse(source);
 	completing = 1;
 	if(d == nil){
 		showchoices("Limbo tools unavailable", "Insert", nil);
@@ -786,16 +842,23 @@ showcompletions()
 		showchoices("No completions", "Insert", nil);
 		return;
 	}
-	if(tl words == nil){
-		insertcompletion(hd words);
+	tail := tl words;
+	if(tail == nil){
+		word := hd words;
+		insertcompletion(word);
 		return;
 	}
 	items: list of ref Limboedit->Symbol;
-	for(; words != nil; words = tl words)
-		items = ref Limboedit->Symbol(hd words, 0) :: items;
+	for(; words != nil; words = tl words){
+		word := hd words;
+		symbol := ref Limboedit->Symbol(word, 0);
+		items = symbol :: items;
+	}
 	ordered: list of ref Limboedit->Symbol;
-	for(; items != nil; items = tl items)
-		ordered = hd items :: ordered;
+	for(; items != nil; items = tl items){
+		symbol := hd items;
+		ordered = symbol :: ordered;
+	}
 	showchoices("Completions", "Insert", ordered);
 }
 
@@ -816,23 +879,28 @@ choose(query: string)
 			hidecode();
 			return;
 		}
-		insertcompletion(chosen.name);
+		word := chosen.name;
+		insertcompletion(word);
 		return;
 	}
 	if(source != choice_source){
 		d := analyse(source);
+		name := chosen.name;
 		chosen = nil;
-		for(fs := d.functions; fs != nil; fs = tl fs)
-			if((hd fs).name == choices[i].name){
-				chosen = hd fs;
+		for(fs := d.functions; fs != nil; fs = tl fs){
+			symbol := hd fs;
+			if(symbol.name == name){
+				chosen = symbol;
 				break;
 			}
+		}
 		if(chosen == nil){
 			showfunctions();
 			return;
 		}
 	}
-	movecaret(chosen.pos);
+	pos := chosen.pos;
+	movecaret(pos);
 }
 
 textindex(pos: int): string
@@ -853,38 +921,50 @@ movecaret(pos: int)
 insertcompletion(word: string)
 {
 	start := textindex(complete_start);
-	cmd(ed, ".b.t delete " + start + " " + textindex(complete_stop));
-	cmd(ed, ".b.t insert " + start + " " + tk->quote(word));
-	movecaret(complete_start + len word);
+	stop := textindex(complete_stop);
+	command := ".b.t delete " + start + " " + stop;
+	cmd(ed, command);
+	quoted := tk->quote(word);
+	command = ".b.t insert " + start + " " + quoted;
+	cmd(ed, command);
+	pos := complete_start + len word;
+	movecaret(pos);
 	set_dirty();
 }
 
 do_indent()
 {
-	for ( ; ; ) {
-		tab = dialog->getstring(context, ed.image, "single indent");
-		break;
-	}
+	tab = dialog->getstring(context, ed.image, "single indent");
 	for ( i := 1; i <= 8; i++ ) {
 		s := "";
 		for ( j := i; j > 0; j-- )
 			s += tab;
-		tabs[i] = collapse(s);
+		padding := collapse(s);
+		tabs[i] = padding;
 	}	
 }
 
-collapse(s : string) : string
+collapse(s: string): string
 {
-	if ( len s >= 8 && s[0:8] == "        " )
-		return "\t" + collapse(s[8:]);
-	return s;
+	prefix := "";
+	while(len s >= 8 && s[0:8] == "        "){
+		prefix += "\t";
+		s = s[8:];
+	}
+	return prefix + s;
 }
 
 add_indent()
 {
-	for ( i := len indent; i >= 8; i -= 8 )
-		cmd(ed, ".b.t insert insert '" + tabs[8]);
-	cmd(ed, ".b.t insert insert '" + tabs[i]);
+	amount := len indent;
+	for(; amount >= 8; amount -= 8){
+		padding := tabs[8];
+		command := ".b.t insert insert '" + padding;
+		cmd(ed, command);
+	}
+	padding := tabs[amount];
+	command := ".b.t insert insert '" + padding;
+	cmd(ed, command);
 }
 #
 #	We should also look at the previous line, maybe.
@@ -896,21 +976,19 @@ add_indent()
 #
 re_indent()
 {
-	pos := cmd(ed, ".b.t index insert");
-	(n, lc) := sys->tokenize(pos, ".");
-	if ( n < 2 )
-		return;
-	init := tk->cmd(ed, ".b.t get " + hd lc + ".0 insert");
+	init := tk->cmd(ed, ".b.t get {insert linestart} insert");
 	l := len init;
 	for ( i := 8; i > 0; i-- ) {
-		lt := len tabs[i];
-		if ( l >= lt && init[:lt] == tabs[i] )
+		padding := tabs[i];
+		lt := len padding;
+		if ( l >= lt && init[:lt] == padding )
 			break;
 	}
 	for ( indent = nil; len indent < i; indent = 0 :: indent) ;
 	
 	in_comment = 0;		# Are we in a comment?
-	for ( i = len tabs[i]; i < l; i++ )
+	padding := tabs[i];
+	for ( i = len padding; i < l; i++ )
 		if ( init[i] == '#' ) {
 			in_comment = 1;
 			break;

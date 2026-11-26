@@ -35,9 +35,11 @@ def stage_awm_runtime(core, app, build, mk, env, logs):
     assets = build/'assets'
     run([sys.executable, str(app/'tools/stage-inferno.py'), '--source', str(core),
          '--output', str(assets/'inferno')], app, env, logs/'stage-runtime.log')
-    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'awmkeys', 'limboedit'):
+    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'awmkeys', 'limboedit', 'edit'):
         if not (assets/f'inferno/dis/wm/{module}.dis').is_file():
             raise RuntimeError(f'Missing staged AWM module {module}')
+    if not (assets/'inferno/dis/lib/dialog.dis').is_file():
+        raise RuntimeError('Missing staged Dialog module')
     return assets
 
 
@@ -70,6 +72,12 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
     for index in range(12):
         (documents/f'z{index:02d}.txt').write_text(
             f'Wheel fixture {index}\n' + f'Content from fixture {index}.\n'*20, encoding='utf-8')
+    (documents/'zsample.b').write_text(
+        'implement Sample;\nSample: module { init: fn(); };\n'
+        'init() {\n\t# marker\n\tvalue := 16rAA;\n\ttext := "# literal";\n'
+        '\tcomple;\n}\n'
+        + '# Padding for the function jump.\n'*35
+        + 'completion_target() { }\n', encoding='utf-8')
     manifest = bundle/'inferno/manifest.txt'
     entries = [line for line in manifest.read_text().splitlines()
                if not line.split('\t', 1)[1].startswith('usr/inferno/')]
@@ -316,7 +324,8 @@ def main():
         report.update(awm_started=True, awm_panel_interaction_verified=True,
                       awm_files_interaction_verified=True, awm_shared_storage_verified=True,
                       awm_android_touch_verified=True, awm_android_mouse_verified=True,
-                      awm_android_keyboard_verified=True, awm_screen_keyboard_verified=True)
+                      awm_android_keyboard_verified=True, awm_screen_keyboard_verified=True,
+                      awm_editor_verified=True)
         result.write_text(json.dumps(report, indent=2)+'\n')
     if args.apk_sdk:
         report.update(package_awm(apk_tools, platform, signing_tools, app, build, assets, library,

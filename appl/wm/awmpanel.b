@@ -56,7 +56,7 @@ init(ctxt: ref Draw->Context, nil: list of string)
 			if(s == "apps"){
 				opened = !opened;
 				showmenu(top, opened);
-			}else if(s == "about" || s == "calculator" || s == "files" || s == "keyboard"){
+			}else if(s == "about" || s == "calculator" || s == "files" || s == "edit" || s == "keyboard"){
 				opened = 0;
 				showmenu(top, opened);
 				if(s == "about")
@@ -65,6 +65,8 @@ init(ctxt: ref Draw->Context, nil: list of string)
 					spawn calculator(ctxt);
 				else if(s == "files")
 					spawn files(ctxt);
+				else if(s == "edit")
+					spawn editor(ctxt);
 				else if(!keyboardopen){
 					keyboardopen = 1;
 					spawn keyboard(ctxt, keyboardclosed);
@@ -94,7 +96,9 @@ widgets(top: ref Tk->Toplevel)
 		"-activebackground #ffffff -command {send panel about}");
 	cmd(top, "button .launch.files -text Files -width 84 -bg #dce8f5 -fg #172331 " +
 		"-activebackground #ffffff -command {send panel files}");
-	cmd(top, "pack .launch.calc .launch.about .launch.files -side left -fill y -padx 6 -pady 5");
+	cmd(top, "button .launch.edit -text Edit -width 84 -bg #dce8f5 -fg #172331 " +
+		"-activebackground #ffffff -command {send panel edit}");
+	cmd(top, "pack .launch.calc .launch.about .launch.files .launch.edit -side left -fill y -padx 6 -pady 5");
 	cmd(top, "pack propagate . 0");
 }
 
@@ -121,6 +125,15 @@ files(ctxt: ref Draw->Context)
 	if(app == nil)
 		raise "fail:cannot load Files";
 	app->init(ctxt, nil);
+}
+
+editor(ctxt: ref Draw->Context)
+{
+	app := load Command "/dis/wm/edit.dis";
+	if(app == nil)
+		raise "fail:cannot load Edit";
+	args := "edit" :: nil;
+	app->init(ctxt, args);
 }
 
 keyboard(ctxt: ref Draw->Context, closed: chan of int)

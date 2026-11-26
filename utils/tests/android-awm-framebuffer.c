@@ -19,7 +19,8 @@
 
 enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Desktop = 0x777777 };
 enum View { Vdesktop, Vmenu, Vcalc, VcalcKeysClosed, Vcalcmoved, Vtask, Vabout,
-            Vfiles, VfilesKeysClosed, Vkeys };
+            Vfiles, VfilesKeysClosed, Vkeys, Veditor, VeditFileMenu,
+            VeditPath, VeditSource, VeditFunctions, VeditJump };
 typedef struct Area Area;
 struct Area { int x0, y0, x1, y1; };
 static const Area file_path = { 8, 65, 340, 80 };
@@ -373,6 +374,16 @@ pixel(int x, int y)
 }
 
 static int
+editor_has_color(uint32_t color)
+{
+	for(int y = 83; y < 222; y++)
+		for(int x = 41; x < 361; x++)
+			if(pixel(x, y) == color)
+				return 1;
+	return 0;
+}
+
+static int
 visible(enum View view)
 {
 	if(pixel(500, 15) != Panel)
@@ -393,6 +404,31 @@ visible(enum View view)
 		return pixel(380, 70) == 0xdce8f5 && pixel(330, 275) == 0xffffff;
 	if(view == VfilesKeysClosed)
 		return visible(Vfiles) && pixel(300, 465) == Desktop;
+	if(view >= Veditor){
+		if(view != VeditFileMenu && view != VeditPath && pixel(40, 82) != 0x009f9f)
+			return 0;
+		switch(view){
+		case Veditor:
+			return pixel(280, 160) == 0xffffff;
+		case VeditFileMenu:
+			return pixel(50, 126) == 0xdddddd;
+		case VeditPath:
+			return pixel(300, 258) == 0xdddddd;
+		case VeditSource:
+			return pixel(280, 160) == 0xffffff && pixel(300, 258) == Desktop &&
+				editor_has_color(0x204bab) && editor_has_color(0x387141) &&
+				editor_has_color(0x9b3223) && editor_has_color(0x86468c) &&
+				editor_has_color(0x046782);
+		case VeditFunctions:
+			return pixel(280, 160) == 0xdddddd;
+		case VeditJump:
+			return pixel(280, 160) == 0xffffff && editor_has_color(0x046782) &&
+				!editor_has_color(0x204bab);
+		default:
+			return 0;
+		}
+	}
+
 	if(view == Vkeys)
 		return pixel(300, 303) != Desktop && pixel(300, 465) != Desktop;
 	return pixel(100, 65) == Desktop &&
@@ -607,6 +643,91 @@ test_files(unsigned int painted)
 	puts("PASS Files opened Documents and previewed a file by double tap, then returned to Home");
 }
 
+static void
+type_path(const char *path)
+{
+	for(; *path; path++){
+		int code, meta = 0;
+		if(*path >= 'a' && *path <= 'z')
+			code = AKEYCODE_A + *path - 'a';
+		else if(*path >= 'A' && *path <= 'Z'){
+			code = AKEYCODE_A + *path - 'A';
+			meta = AMETA_SHIFT_ON;
+		}else if(*path == '/')
+			code = AKEYCODE_SLASH;
+		else if(*path == '.')
+			code = AKEYCODE_PERIOD;
+		else
+			abort();
+		key(code, meta);
+	}
+}
+
+static void
+wait_editor_save(void)
+{
+	for(int attempt = 0; attempt < 120; attempt++){
+		char line[256];
+		FILE *file = fopen("/sdcard/Inferno/usr/inferno/Documents/zsample.b", "r");
+		if(file != NULL){
+			int complete = 0;
+			while(fgets(line, sizeof(line), file) != NULL)
+				if(strcmp(line, "\tcompletion_target;\n") == 0){
+					complete = 1;
+					break;
+				}
+			fclose(file);
+			if(complete)
+				return;
+		}
+		usleep(50000);
+	}
+	fputs("Edit did not save the completed identifier in shared storage\n", stderr);
+	exit(1);
+}
+
+static void
+test_editor(void)
+{
+	unsigned int painted;
+
+	tap(27, 19);
+	painted = capture("awm-editor-menu.ppm", Vmenu, 0);
+	tap(390, 61);
+	painted = capture("awm-editor-window.ppm", Veditor, painted);
+	tap(20, 71);
+	painted = capture("awm-editor-file-menu.ppm", VeditFileMenu, painted);
+	tap(40, 108);
+	painted = capture("awm-editor-open-path.ppm", VeditPath, painted);
+	tap(180, 258);
+	type_path("/usr/inferno/Documents/zsample.b");
+	key(AKEYCODE_ENTER, 0);
+	painted = capture("awm-editor-source.ppm", VeditSource, painted);
+
+	key(AKEYCODE_G, AMETA_CTRL_ON);
+	painted = capture("awm-editor-functions.ppm", VeditFunctions, painted);
+	key(AKEYCODE_DPAD_DOWN, 0);
+	key(AKEYCODE_ENTER, 0);
+	painted = capture("awm-editor-jump.ppm", VeditJump, painted);
+	key(AKEYCODE_G, AMETA_CTRL_ON);
+	painted = capture("awm-editor-functions-again.ppm", VeditFunctions, painted);
+	key(AKEYCODE_ENTER, 0);
+	scroll(200, 125, 6.0f);
+	painted = capture("awm-editor-first-function.ppm", VeditSource, painted);
+
+	tap(123, 172);                   /* The partial identifier on line 7. */
+	key(AKEYCODE_MOVE_END, 0);
+	key(AKEYCODE_DPAD_LEFT, 0);
+	key(AKEYCODE_T, AMETA_CTRL_ON);
+	tap(20, 71);
+	painted = capture("awm-editor-save-menu.ppm", VeditFileMenu, painted);
+	tap(27, 129);
+	wait_editor_save();
+	tap(350, 52);
+	capture("awm-editor-closed.ppm", Vdesktop, painted);
+	puts("PASS native Edit opened a Limbo file, highlighted it, jumped to a function, completed an identifier and saved it");
+}
+
 static void*
 observe(void *unused)
 {
@@ -680,6 +801,7 @@ observe(void *unused)
 	tap(65, 125);
 	painted = capture("awm-closed.ppm", Vdesktop, painted);
 	test_files(painted);
+	test_editor();
 	exit(0);
 }
 
