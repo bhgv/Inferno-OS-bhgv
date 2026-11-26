@@ -41,6 +41,9 @@ struct AInputEvent {
 	int64_t time;
 	size_t count;
 	Contact contact[3];
+	int32_t source;
+	int32_t buttons;
+	float wheel;
 };
 
 int32_t AMotionEvent_getAction(const AInputEvent *e) { return e->action; }
@@ -49,6 +52,14 @@ size_t AMotionEvent_getPointerCount(const AInputEvent *e) { return e->count; }
 int32_t AMotionEvent_getPointerId(const AInputEvent *e, size_t i) { return e->contact[i].id; }
 float AMotionEvent_getX(const AInputEvent *e, size_t i) { return e->contact[i].x; }
 float AMotionEvent_getY(const AInputEvent *e, size_t i) { return e->contact[i].y; }
+int32_t AInputEvent_getSource(const AInputEvent *e) { return e->source; }
+int32_t AMotionEvent_getButtonState(const AInputEvent *e) { return e->buttons; }
+float AMotionEvent_getAxisValue(const AInputEvent *e, int32_t axis, size_t i)
+{
+	if(axis != AMOTION_EVENT_AXIS_VSCROLL || i != 0)
+		abort();
+	return e->wheel;
+}
 
 typedef struct { int x, y, buttons; } PointerEvent;
 static const PointerEvent touch_expected[] = {
@@ -58,16 +69,17 @@ static const PointerEvent touch_expected[] = {
 	{30,60,1}, {30,60,0}, {33,63,257}, {33,63,0},
 	{44,50,1}, {200,50,1}, {44,50,0}, {44,50,1}, {44,50,0}
 };
-static size_t touch_received;
+static const PointerEvent *expected_pointer;
+static size_t expected_count, pointer_received;
 
 static void
-expect_touch(int x, int y, int buttons)
+expect_pointer(int x, int y, int buttons)
 {
-	if(touch_received >= sizeof(touch_expected)/sizeof(touch_expected[0]))
+	if(pointer_received >= expected_count)
 		exit(2);
-	PointerEvent want = touch_expected[touch_received++];
+	PointerEvent want = expected_pointer[pointer_received++];
 	if(want.x != x || want.y != y || want.buttons != buttons){
-		fprintf(stderr, "Unexpected touch output #%zu: %d %d %d\n", touch_received, x, y, buttons);
+		fprintf(stderr, "Unexpected pointer output #%zu: %d %d %d\n", pointer_received, x, y, buttons);
 		exit(2);
 	}
 }
@@ -96,17 +108,76 @@ test_touch(void)
 		{AMOTION_EVENT_ACTION_DOWN, 0, 1, {{4,44,50}}},
 	};
 	IoaTouch touch = {0};
+	expected_pointer = touch_expected;
+	expected_count = sizeof(touch_expected)/sizeof(touch_expected[0]);
+	pointer_received = 0;
 	for(size_t i = 0; i < sizeof(samples)/sizeof(samples[0]); i++){
 		AInputEvent event = samples[i];
 		event.time = (i+1)*INT64_C(50000000);
-		if(!ioa_touch_motion(&touch, &event, Width, Height, expect_touch))
+		if(!ioa_touch_motion(&touch, &event, Width, Height, expect_pointer))
 			exit(2);
 	}
-	ioa_touch_reset(&touch, expect_touch);
-	ioa_touch_reset(&touch, expect_touch);
-	if(touch_received != sizeof(touch_expected)/sizeof(touch_expected[0]))
+	ioa_touch_reset(&touch, expect_pointer);
+	ioa_touch_reset(&touch, expect_pointer);
+	if(pointer_received != expected_count)
 		exit(2);
 	puts("PASS motion pointer IDs, button masks, chord release, cancellation, drag and double tap");
+}
+
+static void
+test_mouse(void)
+{
+	enum {
+		Primary = AMOTION_EVENT_BUTTON_PRIMARY,
+		Secondary = AMOTION_EVENT_BUTTON_SECONDARY,
+		Tertiary = AMOTION_EVENT_BUTTON_TERTIARY
+	};
+	const PointerEvent expected[] = {
+		{16,63,0}, {16,63,1}, {16,63,0}, {16,63,257}, {16,63,0},
+		{16,63,4}, {16,63,12}, {16,63,4}, {16,63,6}, {16,63,2}, {16,63,0},
+		{16,63,16}, {16,63,0}, {16,63,1}, {16,63,0}, {16,63,4}, {16,63,0}
+	};
+	const struct { int action; int buttons; float wheel; int touch; } samples[] = {
+		{AMOTION_EVENT_ACTION_HOVER_MOVE, 0, 0, 0},
+		{AMOTION_EVENT_ACTION_DOWN, Primary, 0, 0},
+		{AMOTION_EVENT_ACTION_BUTTON_PRESS, Primary, 0, 0},
+		{AMOTION_EVENT_ACTION_UP, 0, 0, 0},
+		{AMOTION_EVENT_ACTION_DOWN, Primary, 0, 0},
+		{AMOTION_EVENT_ACTION_UP, 0, 0, 0},
+		{AMOTION_EVENT_ACTION_BUTTON_PRESS, Secondary, 0, 0},
+		{AMOTION_EVENT_ACTION_DOWN, 0, 0, 1},
+		{AMOTION_EVENT_ACTION_SCROLL, Secondary, .5f, 0},
+		{AMOTION_EVENT_ACTION_SCROLL, Secondary, .5f, 0},
+		{AMOTION_EVENT_ACTION_BUTTON_PRESS, Secondary | Tertiary, 0, 0},
+		{AMOTION_EVENT_ACTION_BUTTON_RELEASE, Tertiary, 0, 0},
+		{AMOTION_EVENT_ACTION_CANCEL, 0, 0, 0},
+		{AMOTION_EVENT_ACTION_SCROLL, 0, -.5f, 0},
+		{AMOTION_EVENT_ACTION_SCROLL, 0, -.5f, 0},
+		{AMOTION_EVENT_ACTION_DOWN, 0, 0, 1},
+		{AMOTION_EVENT_ACTION_DOWN, Primary, 0, 0},
+		{AMOTION_EVENT_ACTION_UP, 0, 0, 1},
+		{AMOTION_EVENT_ACTION_MOVE, Primary, 0, 0},
+		{AMOTION_EVENT_ACTION_UP, 0, 0, 0},
+		{AMOTION_EVENT_ACTION_BUTTON_PRESS, Secondary, 0, 0},
+	};
+	IoaInput input = {0};
+	expected_pointer = expected;
+	expected_count = sizeof(expected)/sizeof(expected[0]);
+	pointer_received = 0;
+	for(size_t i = 0; i < sizeof(samples)/sizeof(samples[0]); i++){
+		AInputEvent event = {
+			.action = samples[i].action, .time = (i+1)*INT64_C(50000000),
+			.count = 1, .contact = {{0,16,63}},
+			.source = samples[i].touch ? AINPUT_SOURCE_TOUCHSCREEN : AINPUT_SOURCE_MOUSE,
+			.buttons = samples[i].buttons, .wheel = samples[i].wheel
+		};
+		if(!ioa_pointer_motion(&input, &event, Width, Height, expect_pointer))
+			exit(2);
+	}
+	ioa_pointer_reset(&input, expect_pointer);
+	if(pointer_received != expected_count)
+		exit(2);
+	puts("PASS mouse buttons, double click, fractional wheel and touch/mouse grab ownership");
 }
 
 /* Map the shared Android mount onto the test's writable directory. */
@@ -311,12 +382,32 @@ capture(const char *path, enum View view, unsigned int after)
 }
 
 static void
+pointer_motion(int32_t action, int x, int y, int source, int buttons, float wheel)
+{
+	static IoaInput input;
+	static int64_t time;
+	AInputEvent event = {action, time += 100000000, 1, {{0,x,y}}, source, buttons, wheel};
+	ioa_pointer_motion(&input, &event, Width, Height, xmouse_btn);
+}
+
+static void
 motion(int32_t action, int x, int y)
 {
-	static IoaTouch touch;
-	static int64_t time;
-	AInputEvent event = {action, time += 100000000, 1, {{0,x,y}}};
-	ioa_touch_motion(&touch, &event, Width, Height, xmouse_btn);
+	pointer_motion(action, x, y, AINPUT_SOURCE_TOUCHSCREEN, 0, 0);
+}
+
+static void
+mouse_click(int x, int y)
+{
+	pointer_motion(AMOTION_EVENT_ACTION_DOWN, x, y, AINPUT_SOURCE_MOUSE, AMOTION_EVENT_BUTTON_PRIMARY, 0);
+	usleep(100000);
+	pointer_motion(AMOTION_EVENT_ACTION_UP, x, y, AINPUT_SOURCE_MOUSE, 0, 0);
+}
+
+static void
+scroll(int x, int y, float delta)
+{
+	pointer_motion(AMOTION_EVENT_ACTION_SCROLL, x, y, AINPUT_SOURCE_MOUSE, 0, delta);
 }
 
 static void
@@ -399,18 +490,28 @@ test_files(unsigned int painted)
 	tap(40, 131);
 	wait_files(file_path, home, 0, "opening Documents with a double tap");
 	list = wait_files(file_list, 0, 0, "listing Documents");
+	scroll(90, 175, -1);
+	wait_files(file_list, list, 0, "scrolling down in the file list");
+	scroll(90, 175, 1);
+	wait_files(file_list, list, 1, "scrolling back to the first file");
 	tap(40, 131);
 	list = wait_files(file_list, list, 0, "selecting the first file");
 	tap(40, 131);
 	first = wait_files(file_preview, empty, 0, "previewing the first file with a double tap");
-	tap(40, 148);
+	mouse_click(40, 148);
 	wait_files(file_list, list, 0, "selecting the second file");
-	tap(158, 103);
+	mouse_click(40, 148);
 	second = wait_files(file_preview, first, 0, "previewing the second file");
 	if(second == empty){
 		fputs("Files cleared the preview instead of showing a second file\n", stderr);
 		exit(1);
 	}
+	scroll(70, 286, -.5f);
+	scroll(70, 286, -.5f);
+	wait_files(file_preview, second, 0, "scrolling down in the preview");
+	scroll(70, 286, 1);
+	wait_files(file_preview, second, 1, "scrolling back to the top of the preview");
+	puts("PASS mouse opened a file by double click and scrolled both Files panes");
 	painted = capture("awm-files-preview.ppm", Vfiles, painted);
 	tap(22, 102);
 	wait_files(file_path, home, 1, "going up to Home");
@@ -480,6 +581,7 @@ main(int argc, char **argv)
 	if(argc != 3)
 		return 2;
 	test_touch();
+	test_mouse();
 	AAssetManager manager = {argv[1]};
 	sdcard = argv[2];
 	deny_storage = 1;
@@ -500,7 +602,10 @@ main(int argc, char **argv)
 	puts("PASS shared storage denial, interrupted extraction and ready-tree reuse without assets");
 	const char *document = "/sdcard/Inferno/usr/inferno/Documents/alpha.txt";
 	const char *panel = "/sdcard/Inferno/dis/wm/awmpanel.dis";
-	const char local[] = "Local document preserved by AWM\n";
+	const char local[] = "Local document preserved by AWM\n"
+		"01 local line\n02 local line\n03 local line\n04 local line\n"
+		"05 local line\n06 local line\n07 local line\n08 local line\n"
+		"09 local line\n10 local line\n11 local line\n12 local line\n";
 	FILE *file = fopen(document, "w");
 	if(file == NULL || fputs(local, file) < 0 || fclose(file) != 0 ||
 	   unlink(panel) != 0 || ioa_prepare_storage(NULL) != -1 ||
@@ -508,10 +613,10 @@ main(int argc, char **argv)
 		perror("Restore missing AWM panel");
 		return 2;
 	}
-	char content[sizeof(local)];
+	char content[sizeof(local)-1];
 	file = fopen(document, "r");
-	if(file == NULL || fgets(content, sizeof(content), file) == NULL ||
-	   strcmp(content, local) != 0 || fclose(file) != 0){
+	if(file == NULL || fread(content, 1, sizeof(content), file) != sizeof(content) ||
+	   memcmp(content, local, sizeof(content)) != 0 || fgetc(file) != EOF || fclose(file) != 0){
 		fputs("AWM panel repair overwrote a local document\n", stderr);
 		return 2;
 	}
