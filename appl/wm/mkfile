@@ -30,6 +30,7 @@ TARG=\
 	filename.dis\
 	getauthinfo.dis\
 	keyboard.dis\
+	limboedit.dis\
 	logon.dis\
 	logwindow.dis\
 	man.dis\
@@ -82,6 +83,7 @@ SYSMODULES=\
 	filepat.m\
 	html.m\
 	keyring.m\
+	limboedit.m\
 	man.m\
 	mpeg.m\
 	newns.m\
@@ -109,3 +111,5 @@ DISBIN=$ROOT/dis/wm
 
 awmpanel-keyboard.dis: awmpanel.dis
 	cp awmpanel.dis $target
+
+edit.install edit.installall:V: $DISBIN/edit.dis $DISBIN/limboedit.dis

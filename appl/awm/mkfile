@@ -30,6 +30,7 @@ TARG=\
 	filename.dis\
 	getauthinfo.dis\
 	keyboard.dis\
+	limboedit.dis\
 	logon.dis\
 	logwindow.dis\
 	man.dis\
@@ -102,3 +103,12 @@ DISBIN=$ROOT/dis/wm
 
 <$ROOT/mkfiles/mkdis
 <$ROOT/mkfiles/mksubdirs
+
+# Both window-manager builds install the same editor under /dis/wm.
+edit.dis: ../wm/edit.b $MODDIR/limboedit.m
+	limbo $LIMBOFLAGS -gw -o $target ../wm/edit.b
+
+limboedit.dis: ../wm/limboedit.b $MODDIR/limboedit.m
+	limbo $LIMBOFLAGS -gw -o $target ../wm/limboedit.b
+
+edit.install edit.installall:V: $DISBIN/edit.dis $DISBIN/limboedit.dis

@@ -35,6 +35,23 @@ init()
 '''
 
 
+def run_dis(emu, root, image, jit, marker, env):
+    # Linux cleanexit kills its process group; keep the test runner outside it.
+    process = subprocess.Popen([str(emu), '-v', '-r', str(root), '-c', str(jit),
+                                '-d', '/'+str(image.relative_to(root))], env=env,
+                               start_new_session=True, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True)
+    try:
+        output, _ = process.communicate(timeout=30)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        output, _ = process.communicate()
+        raise RuntimeError('Classic console did not terminate: '+output)
+    if (process.returncode not in (0, -signal.SIGKILL) or output.count(marker) != 1 or
+        any(error in output for error in ('panic:', 'Broken:', 'faults:'))):
+        raise RuntimeError(f'{image.name} JIT={jit} failed: {output}')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--emu', type=Path, required=True)
@@ -56,22 +73,19 @@ def main():
         if not image.is_file() or not image.stat().st_size or image.read_bytes().startswith(b'Dis64'):
             raise RuntimeError('The classic compiler did not produce ordinary Dis')
         for jit in (0, 1):
-            # Linux cleanexit kills its process group; keep the test runner outside it.
-            process = subprocess.Popen([str(emu), '-v', '-r', str(root), '-c', str(jit),
-                                        '-d', '/'+str(image.relative_to(root))], env=env,
-                                       start_new_session=True, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT, text=True)
-            try:
-                output, _ = process.communicate(timeout=30)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                output, _ = process.communicate()
-                raise RuntimeError('Classic console did not terminate: '+output)
-            if (process.returncode not in (0, -signal.SIGKILL) or
-                output.count('CLASSIC32_OK') != 1 or
-                any(error in output for error in ('panic:', 'Broken:', 'faults:'))):
-                raise RuntimeError('Classic32 JIT='+str(jit)+' failed: '+output)
+            run_dis(emu, root, image, jit, 'CLASSIC32_OK', env)
             print('PASS actual ELF32 console: classic Dis, Sys, int/big/real/array/string, JIT='+str(jit))
+
+        # Use an isolated root for the helper so any installed editor is untouched.
+        wm = work/'dis/wm'
+        wm.mkdir(parents=True)
+        image = work/'test.dis'
+        for source, target in ((root/'appl/wm/limboedit.b', wm/'limboedit.dis'),
+                               (root/'utils/tests/limboedit.b', image)):
+            subprocess.run([str(args.limbo.resolve()), '-w', '-I', str(root/'module'),
+                            '-o', str(target), str(source)], env=env, check=True, timeout=60)
+        run_dis(emu, work, image, 0, 'LIMBOEDIT_OK', env)
+        print('PASS Limbo editor lexer, function index, and completion')
 
 
 if __name__ == '__main__':

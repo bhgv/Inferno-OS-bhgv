@@ -13,6 +13,7 @@ on:
       - 'limbo/**'
       - 'module/**'
       - 'emu/**'
+      - 'appl/wm/limboedit.b'
   pull_request:
     branches: [experiment]
   workflow_dispatch:
