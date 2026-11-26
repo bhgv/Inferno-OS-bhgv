@@ -49,9 +49,11 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
     executable = build/'awm-framebuffer'
     launcher = app/'app/src/main/cpp'
     run([str(llvm/'aarch64-linux-android29-clang'), '-O2', '-g', '-static',
-         '-DINFERNO_BUNDLE_RUNTIME=1', '-DINFERNO_PRIVATE_RUNTIME=1', '-I'+str(launcher),
+         '-DINFERNO_BUNDLE_RUNTIME=1', '-DINFERNO_AWM_RUNTIME=1', '-I'+str(launcher),
          str(ROOT/'utils/tests/android-awm-framebuffer.c'), str(launcher/'inferno_storage.c'),
-         '-Wl,--wrap=inferno_android_root', '-Wl,--start-group', '-lm',
+         *(f'-Wl,--wrap={symbol}' for symbol in
+           ('inferno_android_root', 'stat', 'access', 'mkdir', 'fopen', 'rename', 'unlink')),
+         '-Wl,--start-group', '-lm',
          *(str(archives/(name+'.a')) for name in libraries), '-Wl,--end-group',
          '-o', str(executable)], build, env, logs/'framebuffer-link.log')
     bundle = build/'framebuffer-assets'
@@ -71,13 +73,13 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
     entries += [f'F\t{file.relative_to(bundle/"inferno").as_posix()}'
                 for file in sorted(documents.iterdir())]
     manifest.write_text('\n'.join(entries)+'\n')
-    files = build/'app-files'
+    files = build/'sdcard'
     files.mkdir()
     run([runner, str(executable), str(bundle), str(files)], logs, env,
         logs/'framebuffer-run.log', timeout=60)
 
 
-def package_awm(apk_tools, platform, app, build, assets, library, revisions, env, logs):
+def package_awm(apk_tools, platform, signing_tools, app, build, assets, library, revisions, env, logs):
     android = '{http://schemas.android.com/apk/res/android}'
     ET.register_namespace('android', android[1:-1])
     resources = app/'app/src/main'
@@ -87,9 +89,6 @@ def package_awm(apk_tools, platform, app, build, assets, library, revisions, env
     root.set('package', f'bhgv.vitanuova.inferno_os.awm64.c{core[:12]}.a{launcher[:12]}')
     root.set(android+'versionName', core[:12])
     storage_permissions = {'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'MANAGE_EXTERNAL_STORAGE'}
-    for permission in root.findall('uses-permission'):
-        if permission.get(android+'name', '').removeprefix('android.permission.') in storage_permissions:
-            root.remove(permission)
     application = root.find('application')
     application.set(android+'extractNativeLibs', 'false')
     application.set(android+'label', 'Inferno AWM ARM64 test')
@@ -100,36 +99,44 @@ def package_awm(apk_tools, platform, app, build, assets, library, revisions, env
     manifest.write(manifest_path, encoding='utf-8', xml_declaration=True)
 
     unsigned = build/'unsigned.apk'
+    jarsigned = build/'v1.apk'
     aligned = build/'aligned.apk'
     signed = build/'signed.apk'
-    key = build/'test.jks'
+    key = build/'test-key.pem'
+    cert = build/'test-cert.pem'
     apk = build/'Inferno-AWM-arm64-v8a-test.apk'
+    min_sdk = '21'
     run([str(apk_tools/'aapt'), 'package', '-f', '-M', str(manifest_path), '-S',
          str(resources/'res'), '-A', str(assets), '-I', str(platform),
-         '--min-sdk-version', '21', '--target-sdk-version', '28', '-F', str(unsigned)],
+         '--min-sdk-version', min_sdk, '--target-sdk-version', '28', '-F', str(unsigned)],
         build, env, logs/'apk-package.log')
     native = 'lib/arm64-v8a/libinferno_os_app.so'
     with ZipFile(unsigned, 'a') as archive:
         archive.write(library, native, compress_type=ZIP_STORED)
-    run([str(apk_tools/'zipalign'), '-P', '16', '-f', '4', str(unsigned), str(aligned)],
+    run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '3650',
+         '-subj', '/CN=Inferno AWM ARM64 test', '-keyout', str(key), '-out', str(cert)],
+        build, env, logs/'apk-key.log')
+    signer = [str(signing_tools/'apksign'), '-key', str(key), '-cert', str(cert)]
+    # Include the v1 entries in alignment before applying the whole-APK signatures.
+    run([*signer, '-v1', '-v3=false', '-in', str(unsigned), '-out', str(jarsigned)],
+        build, env, logs/'apk-sign-v1.log')
+    run([str(apk_tools/'zipalign'), '-P', '16', '-f', '4', str(jarsigned), str(aligned)],
         build, env, logs/'apk-align.log')
-    run(['keytool', '-genkeypair', '-noprompt', '-keystore', str(key), '-storetype', 'JKS',
-         '-storepass', 'android', '-keypass', 'android', '-alias', 'androiddebugkey',
-         '-dname', 'CN=Inferno AWM ARM64 test', '-keyalg', 'RSA', '-keysize', '2048',
-         '-validity', '3650'], build, env, logs/'apk-key.log')
-    run([str(apk_tools/'apksigner'), 'sign', '--ks', str(key), '--ks-key-alias',
-         'androiddebugkey', '--ks-pass', 'pass:android', '--key-pass', 'pass:android',
-         '--out', str(signed), str(aligned)], build, env, logs/'apk-sign.log')
-    run([str(apk_tools/'apksigner'), 'verify', '--verbose', str(signed)], build, env,
-        logs/'apk-verify.log')
+    run([*signer, '-in', str(aligned), '-out', str(signed)], build, env, logs/'apk-sign.log')
+    verification = logs/'apk-verify.log'
+    run([str(signing_tools/'apksigverify'), '-min-sdk', min_sdk, str(signed)],
+        build, env, verification)
+    if not all(status in verification.read_text() for status in
+               ('v1:   verified=true', 'v2:   present=true verified=true', 'v3:   present=true verified=true')):
+        raise RuntimeError('AWM APK is missing a verified v1, v2 or v3 signature')
     run([str(apk_tools/'zipalign'), '-c', '-P', '16', '4', str(signed)], build, env,
         logs/'apk-verify-align.log')
     run([sys.executable, str(app/'tools/verify-apk-abi.py'), str(signed), '--abi', 'arm64-v8a'],
         app, env, logs/'apk-abi.log')
     permissions = subprocess.check_output(
         [str(apk_tools/'aapt'), 'dump', 'permissions', str(signed)], text=True)
-    if any('android.permission.'+name in permissions for name in storage_permissions):
-        raise RuntimeError('App-private AWM APK requests shared-storage permissions')
+    if any('android.permission.'+name not in permissions for name in storage_permissions):
+        raise RuntimeError('AWM APK is missing shared-storage permissions')
     with ZipFile(signed) as archive:
         if archive.testzip() is not None or any(name.endswith('.dex') for name in archive.namelist()):
             raise RuntimeError('Invalid native-only AWM APK')
@@ -157,6 +164,7 @@ def main():
     parser.add_argument('--native64-tk', action='store_true', help='select native64 Tk C frames/registration; full GUI startup stays guarded')
     parser.add_argument('--native64-awm', action='store_true', help='select the compiled-in native64 AWM desktop and panel')
     parser.add_argument('--apk-sdk', type=Path, help='package the AWM test using Android platform and build-tools 35')
+    parser.add_argument('--apk-sign-tools', type=Path, help='directory with native apksign and apksigverify')
     parser.add_argument('--awm-runner', help='run the real Bionic framebuffer smoke test with this qemu-aarch64 executable')
     parser.add_argument('--cmake', default='cmake')
     parser.add_argument('--ninja', default='ninja')
@@ -179,8 +187,12 @@ def main():
         apk_tools = args.apk_sdk.resolve()/'build-tools/35.0.0'
         platform = args.apk_sdk.resolve()/'platforms/android-35/android.jar'
         if not platform.is_file() or not all(os.access(apk_tools/name, os.X_OK)
-                                             for name in ('aapt', 'zipalign', 'apksigner')):
+                                             for name in ('aapt', 'zipalign')):
             parser.error('Install Android platform 35 and build-tools 35.0.0 in --apk-sdk')
+        if not args.apk_sign_tools or not all(os.access(args.apk_sign_tools/name, os.X_OK)
+                                             for name in ('apksign', 'apksigverify')):
+            parser.error('--apk-sdk requires native apksign and apksigverify in --apk-sign-tools')
+        signing_tools = args.apk_sign_tools.resolve()
     build, tools, ndk, app = (path.resolve() for path in
                              (args.build_root, args.host_tools, args.ndk, args.app_root))
     for source in (ROOT, app):
@@ -254,7 +266,7 @@ def main():
          '-DANDROID_PLATFORM=android-21', '-DANDROID_STL=c++_static',
          '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON', '-DINFERNO_ROOT='+str(core),
          '-DINFERNO_BUNDLE_RUNTIME='+('ON' if args.native64_awm else 'OFF'),
-         '-DINFERNO_PRIVATE_RUNTIME='+('ON' if args.native64_awm else 'OFF'),
+         '-DINFERNO_AWM_RUNTIME='+('ON' if args.native64_awm else 'OFF'),
          '-DCMAKE_BUILD_TYPE=Debug'], app, env, logs/'cmake.log')
     run([args.cmake, '--build', str(build/'native'), '--parallel', '2'], app, env, logs/'native-link.log')
     library = build/'native/libinferno_os_app.so'
@@ -269,7 +281,7 @@ def main():
     (logs/'symbols.txt').write_text(symbols)
     required = ['ANativeActivity_onCreate', 'android_main', 'amain']
     if args.native64_awm:
-        required += ['native64awmboot', '__wrap_inferno_android_root', 'ioa_prepare_private_storage']
+        required += ['native64awmboot', 'inferno_android_root', 'ioa_prepare_storage_progress']
     if args.native64_formatter:
         required += ['Sys_'+name+'64' for name in ('print', 'fprint', 'sprint', 'aprint')]
         required += ['Sys_bindframe64', 'Sys_setframes64', 'Sys_clearframes64', 'Sys_bindsite64', 'Sys_callsite64']
@@ -298,10 +310,10 @@ def main():
     if args.awm_runner:
         test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs)
         report.update(awm_started=True, awm_panel_interaction_verified=True,
-                      awm_files_interaction_verified=True, awm_private_storage_verified=True)
+                      awm_files_interaction_verified=True, awm_shared_storage_verified=True)
         result.write_text(json.dumps(report, indent=2)+'\n')
     if args.apk_sdk:
-        report.update(package_awm(apk_tools, platform, app, build, assets, library,
+        report.update(package_awm(apk_tools, platform, signing_tools, app, build, assets, library,
                                   (report['core_revision'], report['app_revision']), env, logs))
         result.write_text(json.dumps(report, indent=2)+'\n')
         print('PASS signed Android ARM64 AWM test APK', flush=True)

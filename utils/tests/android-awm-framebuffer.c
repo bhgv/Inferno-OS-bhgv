@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include "inferno_storage.h"
 
@@ -25,9 +26,69 @@ unsigned char *xscreendata;
 static unsigned char snapshot[Width * Height * 4];
 static pthread_mutex_t frame_lock = PTHREAD_MUTEX_INITIALIZER;
 static unsigned int flushes;
+static const char shared_root[] = "/sdcard/Inferno";
+static const char *sdcard;
+static int deny_storage;
 
 extern void amain(void);
 extern void xmouse_btn(int, int, int);
+
+/* Map the shared Android mount onto the test's writable directory. */
+static const char *
+fixture_path(const char *path, char *out, size_t size)
+{
+	size_t base = sizeof(shared_root)-1;
+	if(strncmp(path, shared_root, base) != 0 || (path[base] && path[base] != '/'))
+		return path;
+	int n = snprintf(out, size, "%s/Inferno%s", sdcard, path+base);
+	if(n < 0 || (size_t)n >= size)
+		abort();
+	return out;
+}
+
+extern int __real_stat(const char *, struct stat *);
+extern int __real_access(const char *, int);
+extern int __real_mkdir(const char *, mode_t);
+extern FILE *__real_fopen(const char *, const char *);
+extern int __real_rename(const char *, const char *);
+extern int __real_unlink(const char *);
+extern int __real_inferno_android_root(char *, size_t);
+
+int __wrap_stat(const char *p, struct stat *st) { char b[4096]; return __real_stat(fixture_path(p, b, sizeof(b)), st); }
+int __wrap_access(const char *p, int mode) { char b[4096]; return __real_access(fixture_path(p, b, sizeof(b)), mode); }
+FILE *__wrap_fopen(const char *p, const char *mode) { char b[4096]; return __real_fopen(fixture_path(p, b, sizeof(b)), mode); }
+int __wrap_unlink(const char *p) { char b[4096]; return __real_unlink(fixture_path(p, b, sizeof(b))); }
+
+int
+__wrap_mkdir(const char *path, mode_t mode)
+{
+	char mapped[4096];
+	if(deny_storage && strcmp(path, shared_root) == 0){
+		errno = EACCES;
+		return -1;
+	}
+	return __real_mkdir(fixture_path(path, mapped, sizeof(mapped)), mode);
+}
+
+int
+__wrap_rename(const char *from, const char *to)
+{
+	char source[4096], destination[4096];
+	return __real_rename(fixture_path(from, source, sizeof(source)),
+	                     fixture_path(to, destination, sizeof(destination)));
+}
+
+int
+__wrap_inferno_android_root(char *out, size_t size)
+{
+	char path[sizeof(shared_root)];
+	if(__real_inferno_android_root(path, sizeof(path)) != 0)
+		return -1;
+	if(strcmp(path, shared_root) != 0)
+		abort();
+	fixture_path(path, out, size);
+	return 0;
+}
 
 /* Supply the bundle bytes to the production installer without Android's Java framework. */
 struct AAssetManager { const char *directory; };
@@ -316,18 +377,41 @@ main(int argc, char **argv)
 	if(argc != 3)
 		return 2;
 	AAssetManager manager = {argv[1]};
-	const char *files = argv[2];
-	if(ioa_prepare_private_storage(files, &manager, cancel_install, NULL) != -1 ||
-	   errno != ECANCELED || ioa_prepare_private_storage(files, NULL, NULL, NULL) != -1){
+	sdcard = argv[2];
+	deny_storage = 1;
+	if(ioa_prepare_storage(&manager) != -1 || errno != EACCES){
+		fputs("The installer ignored the shared-storage denial\n", stderr);
+		return 2;
+	}
+	deny_storage = 0;
+	if(ioa_prepare_storage_progress(&manager, cancel_install, NULL) != -1 ||
+	   errno != ECANCELED || ioa_prepare_storage(NULL) != -1){
 		fputs("Interrupted extraction was accepted as a complete runtime\n", stderr);
 		return 2;
 	}
-	if(ioa_prepare_private_storage(files, &manager, NULL, NULL) != 0 ||
-	   ioa_prepare_private_storage(files, NULL, NULL, NULL) != 0){
+	if(ioa_prepare_storage(&manager) != 0 || ioa_prepare_storage(NULL) != 0){
 		perror("Bundled Inferno runtime");
 		return 2;
 	}
-	puts("PASS app-private extraction, interrupted retry and reuse without assets");
+	puts("PASS shared storage denial, interrupted extraction and ready-tree reuse without assets");
+	const char *document = "/sdcard/Inferno/usr/inferno/Documents/alpha.txt";
+	const char *panel = "/sdcard/Inferno/dis/wm/awmpanel.dis";
+	const char local[] = "Local document preserved by AWM\n";
+	FILE *file = fopen(document, "w");
+	if(file == NULL || fputs(local, file) < 0 || fclose(file) != 0 ||
+	   unlink(panel) != 0 || ioa_prepare_storage(NULL) != -1 ||
+	   ioa_prepare_storage(&manager) != 0 || ioa_prepare_storage(NULL) != 0){
+		perror("Restore missing AWM panel");
+		return 2;
+	}
+	char content[sizeof(local)];
+	file = fopen(document, "r");
+	if(file == NULL || fgets(content, sizeof(content), file) == NULL ||
+	   strcmp(content, local) != 0 || fclose(file) != 0){
+		fputs("AWM panel repair overwrote a local document\n", stderr);
+		return 2;
+	}
+	puts("PASS shared AWM panel repair preserved the user's document");
 	xscreendata = calloc((size_t)Width * Height, 4);
 	if(xscreendata == NULL || pthread_create(&worker, NULL, observe, NULL) != 0)
 		return 2;
