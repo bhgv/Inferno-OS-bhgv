@@ -16,6 +16,7 @@ struct GraphSpec {const Native64ModuleSpec*spec;const Native64ModuleVariadic*var
 #include "graph-awmpanel.h"
 #include "graph-atoolbar.h"
 #include "graph-edit.h"
+#include "graph-awmfiles.h"
 #include "graph-dialog.h"
 #include "graph-limboedit.h"
 #include "limboedit-native.h"
@@ -306,13 +307,16 @@ panelconstruction(void)
     !strcmp(toolbar.module->htab[0].etab[0].s,"fail:*"),"Toolbar catch installed");
  ck(native64typedmodule(&awmpanel_spec,0,&panel),"native64 Android panel module construction");
  for(int jit=0;jit<2;jit++){
-  Native64ModuleOwner edit={0},dialog={0};
+  Native64ModuleOwner edit={0},dialog={0},files={0};
   ck(native64sysmodule(&edit_spec,edit_variadics,nelem(edit_variadics),jit,&edit),"native64 Edit module construction");
   ck(native64sysmodule(&dialog_spec,dialog_variadics,nelem(dialog_variadics),jit,&dialog),"native64 Dialog module construction");
+  ck(native64typedmodule(&awmfiles_spec,jit,&files),"native64 Files module construction");
   panellink(edit.module,&edit_spec,dialog.module,"getstring");
-  ck(native64typedmoduleclear(&edit)&&native64typedmoduleclear(&dialog),"Edit and Dialog module retirement");
+  panellink(edit.module,&edit_spec,files.module,"choose");
+  ck(native64typedmoduleclear(&edit)&&native64typedmoduleclear(&dialog)&&
+     native64typedmoduleclear(&files),"Editor, Dialog and Files module retirement");
  }
- puts("PASS stock Edit and Dialog constructors and imports with interpreter and JIT");
+ puts("PASS stock Edit, Dialog and Files constructors and imports with interpreter and JIT");
  panelself(toolbar.module);
  panellink(panel.module,&awmpanel_spec,tkclient.module,"toplevel");
  panellink(toolbar.module,&atoolbar_spec,tkclient.module,"toplevel");

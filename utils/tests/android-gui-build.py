@@ -72,7 +72,8 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
     for index in range(12):
         (documents/f'z{index:02d}.txt').write_text(
             f'Wheel fixture {index}\n' + f'Content from fixture {index}.\n'*20, encoding='utf-8')
-    (documents/'zsample.b').write_text(
+    picker_fixture = documents/'zsample.b'
+    picker_fixture.write_text(
         'implement Sample;\nSample: module { init: fn(); };\n'
         'init() {\n\t# marker\n\tvalue := 16rAA;\n\ttext := "# literal";\n'
         '\tcomple;\n}\n'
@@ -97,10 +98,11 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
     files.mkdir()
     run([runner, str(executable), str(bundle), str(files)], logs, env,
         logs/'framebuffer-run.log', timeout=60)
-    edited = files/'Inferno'/edit_fixture.relative_to(bundle/'inferno')
-    expected = edit_fixture.read_bytes().replace(b'\tcomple;\n', b'\tcompletion_target;\n')
-    if edited.read_bytes() != expected:
-        raise RuntimeError('Files → Edit modified source bytes outside the completed identifier')
+    for fixture in (picker_fixture, edit_fixture):
+        edited = files/'Inferno'/fixture.relative_to(bundle/'inferno')
+        expected = fixture.read_bytes().replace(b'\tcomple;\n', b'\tcompletion_target;\n')
+        if edited.read_bytes() != expected:
+            raise RuntimeError(f'Edit modified source bytes outside the completed identifier in {fixture.name}')
 
 
 
@@ -338,7 +340,8 @@ def main():
                       awm_files_interaction_verified=True, awm_shared_storage_verified=True,
                       awm_android_touch_verified=True, awm_android_mouse_verified=True,
                       awm_android_keyboard_verified=True, awm_screen_keyboard_verified=True,
-                      awm_editor_verified=True, awm_files_editor_verified=True)
+                      awm_editor_verified=True, awm_files_editor_verified=True,
+                      awm_editor_picker_verified=True)
         result.write_text(json.dumps(report, indent=2)+'\n')
     if args.apk_sdk:
         report.update(package_awm(apk_tools, platform, signing_tools, app, build, assets, library,

@@ -23,6 +23,8 @@ include "dialog.m";
 include "selectfile.m";
 	selectfile: Selectfile;
 
+include "awmfiles.m";
+
 include "limboedit.m";
 	limboedit: Limboedit;
 
@@ -234,7 +236,16 @@ init(ctxt: ref Draw->Context, argv: list of string)
 				case s {
 				"exit" =>	if ( check_dirty() ){ set_clean(); break cmdloop; }
 				"new" =>	if ( check_dirty()) {set_clean(); do_new();}
-				"open" =>	if ( check_dirty() && do_open()) set_clean();
+				"open" =>
+					# Handle the menu's queued window deletion before entering a modal dialog.
+					pending: for(;;) alt {
+						req := <-requests =>
+							tkclient->wmctl(ed, req);
+						* =>
+							break pending;
+					}
+					if(check_dirty() && do_open())
+						set_clean();
 				"save" =>	do_save(0);
 				"saveas" =>	do_save(1);
 				"cut" =>	do_snarf(1); set_dirty();
@@ -424,6 +435,9 @@ filename(): string
 	image := ed.image;
 	if(selectfile != nil)
 		return selectfile->filename(context, image, "", nil, path);
+	chooser := load Awmfiles Awmfiles->PATH;
+	if(chooser != nil)
+		return chooser->choose(context, path);
 	file := dialog->getstring(context, image, "Open file (path)");
 	if(len file > 0 && file[0] != '/' && path != "")
 		file = path + "/" + file;
@@ -457,7 +471,10 @@ basepath(file: string)
 {
 	for(i := len file-1; i >= 0; i--)
 		if(file[i] == '/') {
-			path = file[0:i];
+			if(i == 0)
+				path = "/";
+			else
+				path = file[0:i];
 			break;
 		}
 }

@@ -75,6 +75,7 @@ MODULES=\
 	wmdeb.m\
 
 SYSMODULES=\
+	awmfiles.m\
 	bufio.m\
 	cci.m\
 	daytime.m\

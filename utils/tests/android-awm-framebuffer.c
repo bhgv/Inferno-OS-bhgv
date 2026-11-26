@@ -20,13 +20,15 @@
 enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Desktop = 0x777777 };
 enum View { Vdesktop, Vmenu, Vcalc, VcalcKeysClosed, Vcalcmoved, Vtask, Vabout,
             Vfiles, VfilesKeysClosed, Vkeys, Veditor, VeditFileMenu,
-            VeditPath, VeditSource, VeditFunctions, VeditJump,
+            VeditPicker, VeditConfirm, VeditSource, VeditFunctions, VeditJump,
             VfilesEditor, VfilesEditorSave };
 typedef struct Area Area;
 struct Area { int x0, y0, x1, y1; };
 static const Area file_path = { 8, 65, 340, 80 };
 static const Area file_preview = { 8, 260, 340, 324 };
 static const Area file_list = { 8, 122, 340, 160 };
+static const Area picker_path = { 8, 250, 340, 264 };
+static const Area picker_list = { 8, 305, 340, 438 };
 int Xsize = Width, Ysize = Height;
 unsigned char *xscreendata;
 static unsigned char snapshot[Width * Height * 4];
@@ -412,15 +414,17 @@ visible(enum View view)
 		return pixel(50, 146) == 0xdddddd && editor_has_color(0x046782);
 
 	if(view >= Veditor){
-		if(view != VeditFileMenu && view != VeditPath && pixel(40, 82) != 0x009f9f)
+		if(view != VeditFileMenu && pixel(40, 82) != 0x009f9f)
 			return 0;
 		switch(view){
 		case Veditor:
 			return pixel(280, 160) == 0xffffff;
 		case VeditFileMenu:
 			return pixel(50, 126) == 0xdddddd;
-		case VeditPath:
-			return pixel(300, 258) == 0xdddddd;
+		case VeditPicker:
+			return pixel(380, 254) == 0xdce8f5 && pixel(300, 350) == 0xdddddd;
+		case VeditConfirm:
+			return pixel(390, 145) == 0xdddddd;
 		case VeditSource:
 			return pixel(280, 160) == 0xffffff && pixel(300, 258) == Desktop &&
 				editor_has_color(0x204bab) && editor_has_color(0x387141) &&
@@ -556,7 +560,7 @@ wait_value(uint64_t reference, int equal)
 
 /* Wait for a specific widget to repaint, independently of the font bitmap. */
 static uint64_t
-wait_files(Area area, uint64_t reference, int equal, const char *action)
+wait_region(enum View view, Area area, uint64_t reference, int equal, const char *action)
 {
 	for(int attempt = 0; attempt < 120; attempt++){
 		uint64_t hash = UINT64_C(14695981039346656037);
@@ -564,14 +568,20 @@ wait_files(Area area, uint64_t reference, int equal, const char *action)
 		for(int y = area.y0; y < area.y1; y++)
 			for(int x = area.x0; x < area.x1; x++)
 				hash = (hash ^ pixel(x, y)) * UINT64_C(1099511628211);
-		int matched = visible(Vfiles) && (hash == reference) == equal;
+		int matched = visible(view) && (hash == reference) == equal;
 		pthread_mutex_unlock(&frame_lock);
 		if(matched)
 			return hash;
 		usleep(50000);
 	}
-	fprintf(stderr, "Files did not repaint as expected after %s\n", action);
+	fprintf(stderr, "File browser did not repaint as expected after %s\n", action);
 	exit(1);
+}
+
+static uint64_t
+wait_files(Area area, uint64_t reference, int equal, const char *action)
+{
+	return wait_region(Vfiles, area, reference, equal, action);
 }
 
 static void
@@ -651,26 +661,6 @@ test_files(unsigned int painted)
 }
 
 static void
-type_path(const char *path)
-{
-	for(; *path; path++){
-		int code, meta = 0;
-		if(*path >= 'a' && *path <= 'z')
-			code = AKEYCODE_A + *path - 'a';
-		else if(*path >= 'A' && *path <= 'Z'){
-			code = AKEYCODE_A + *path - 'A';
-			meta = AMETA_SHIFT_ON;
-		}else if(*path == '/')
-			code = AKEYCODE_SLASH;
-		else if(*path == '.')
-			code = AKEYCODE_PERIOD;
-		else
-			abort();
-		key(code, meta);
-	}
-}
-
-static void
 wait_editor_save(const char *path)
 {
 	for(int attempt = 0; attempt < 120; attempt++){
@@ -697,6 +687,7 @@ static void
 test_editor(void)
 {
 	unsigned int painted;
+	uint64_t home, documents, first_page;
 
 	tap(27, 19);
 	painted = capture("awm-editor-menu.ppm", Vmenu, 0);
@@ -705,10 +696,17 @@ test_editor(void)
 	tap(20, 71);
 	painted = capture("awm-editor-file-menu.ppm", VeditFileMenu, painted);
 	tap(40, 108);
-	painted = capture("awm-editor-open-path.ppm", VeditPath, painted);
-	tap(180, 258);
-	type_path("/usr/inferno/Documents/zsample.b");
-	key(AKEYCODE_ENTER, 0);
+	painted = capture("awm-editor-open-picker.ppm", VeditPicker, painted);
+	home = wait_region(VeditPicker, picker_path, 0, 0, "opening the chooser at Home");
+	tap(55, 314);
+	tap(160, 285);
+	documents = wait_region(VeditPicker, picker_path, home, 0, "opening Documents in the chooser");
+	first_page = wait_region(VeditPicker, picker_list, 0, 0, "listing Documents in the chooser");
+	scroll(150, 370, -9.0f);
+	scroll(150, 370, -9.0f);
+	wait_region(VeditPicker, picker_list, first_page, 0, "scrolling to the last file in the chooser");
+	tap(60, 426);                   /* zsample.b is the last row. */
+	tap(160, 285);
 	painted = capture("awm-editor-source.ppm", VeditSource, painted);
 
 	key(AKEYCODE_G, AMETA_CTRL_ON);
@@ -727,12 +725,21 @@ test_editor(void)
 	key(AKEYCODE_DPAD_LEFT, 0);
 	key(AKEYCODE_T, AMETA_CTRL_ON);
 	tap(20, 71);
+	painted = capture("awm-editor-reopen-menu.ppm", VeditFileMenu, painted);
+	tap(40, 108);
+	painted = capture("awm-editor-confirm.ppm", VeditConfirm, painted);
+	key(AKEYCODE_ENTER, 0);
+	painted = capture("awm-editor-reopen-picker.ppm", VeditPicker, painted);
+	wait_region(VeditPicker, picker_path, documents, 1, "reopening in the current document directory");
+	tap(286, 285);
+	painted = capture("awm-editor-picker-cancelled.ppm", VeditSource, painted);
+	tap(20, 71);
 	painted = capture("awm-editor-save-menu.ppm", VeditFileMenu, painted);
 	tap(27, 129);
 	wait_editor_save("/sdcard/Inferno/usr/inferno/Documents/zsample.b");
 	tap(350, 52);
 	capture("awm-editor-closed.ppm", Vdesktop, painted);
-	puts("PASS native Edit opened a Limbo file, highlighted it, jumped to a function, completed an identifier and saved it");
+	puts("PASS native Edit picked a Limbo file by touch, highlighted it, jumped to a function, and preserved an unsaved completion after cancelling Open");
 }
 
 static void

@@ -5,15 +5,15 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 ALT=runpy.run_path(str(ROOT/'utils/tests/native64-aprint-alt.py'));G,CMD=ALT['G'],ALT['CMD'];E=G['E']
 MODULES=(('boot','Emuinit','appl/cmd/emuinit.b',4),('arg','Arg','appl/lib/arg.b',8),('awm','Wm','appl/wm/awm.b',20),('string','String','appl/lib/string.b',21),('wmsrv','Wmsrv','appl/lib/wmsrv.b',34),('wmclient','Wmclient','appl/lib/wmclient.b',21),('winplace','Winplace','appl/lib/winplace.b',21),('wmlib','Wmlib','appl/lib/wmlib.b',25),('titlebar','Titlebar','appl/lib/titlebar.b',7))
-PANEL_MODULES=(('tkclient','Tkclient','appl/lib/tkclient.b',16),('awmpanel','Awmpanel','appl/wm/awmpanel.b',14),('awmcalc','Awmcalc','appl/wm/awmcalc.b',6),('awmfiles','Awmfiles','appl/wm/awmfiles.b',9),('awmkeys','Awmkeys','appl/wm/awmkeys.b',6),('limboedit','Limboedit','appl/wm/limboedit.b',15),('dialog','Dialog','appl/lib/dialog.b',6),('edit','WmEdit','appl/wm/edit.b',40))
+PANEL_MODULES=(('tkclient','Tkclient','appl/lib/tkclient.b',16),('awmpanel','Awmpanel','appl/wm/awmpanel.b',14),('awmcalc','Awmcalc','appl/wm/awmcalc.b',6),('awmfiles','Awmfiles','appl/wm/awmfiles.b',11),('awmkeys','Awmkeys','appl/wm/awmkeys.b',6),('limboedit','Limboedit','appl/wm/limboedit.b',15),('dialog','Dialog','appl/lib/dialog.b',6),('edit','WmEdit','appl/wm/edit.b',40))
 TOOLBAR=('atoolbar','Toolbar','appl/wm/atoolbar.b',26)
 def generate(limbo,w,metadata=None,panel=False):
  selected=MODULES+PANEL_MODULES if panel else MODULES
  if panel and metadata is None:
   selected+=(TOOLBAR,)
- interface=w/'graph.m';interface.write_text(''.join('include "'+n+'.m";'for n in(('sys','draw','tk','string','wmsrv','wmlib','titlebar','wmclient','winplace','arg','sh')+('tkclient','limboedit','dialog','selectfile')*panel))+'Wm:module{init:fn(ctxt:ref Draw->Context,argv:list of string);};Emuinit:module{init:fn();};')
+ interface=w/'graph.m';interface.write_text(''.join('include "'+n+'.m";'for n in(('sys','draw','tk','string','wmsrv','wmlib','titlebar','wmclient','winplace','arg','sh')+('tkclient','limboedit','dialog','selectfile','awmfiles')*panel))+'Wm:module{init:fn(ctxt:ref Draw->Context,argv:list of string);};Emuinit:module{init:fn();};')
  if panel:
-  for name in ('Awmpanel','Awmcalc','Awmfiles','Awmkeys','WmEdit'):
+  for name in ('Awmpanel','Awmcalc','Awmkeys','WmEdit'):
    interface.write_text(interface.read_text()+name+':module{init:fn(ctxt:ref Draw->Context,argv:list of string);};')
   if metadata is None:
    source=(ROOT/TOOLBAR[2]).read_text()

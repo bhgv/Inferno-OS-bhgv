@@ -105,7 +105,7 @@ DISBIN=$ROOT/dis/wm
 <$ROOT/mkfiles/mksubdirs
 
 # Both window-manager builds install the same editor under /dis/wm.
-edit.dis: ../wm/edit.b $MODDIR/limboedit.m
+edit.dis: ../wm/edit.b $MODDIR/limboedit.m $MODDIR/awmfiles.m
 	limbo $LIMBOFLAGS -gw -o $target ../wm/edit.b
 
 limboedit.dis: ../wm/limboedit.b $MODDIR/limboedit.m

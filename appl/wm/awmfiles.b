@@ -9,10 +9,7 @@ include "tk.m";
 include "tkclient.m";
 	tkclient: Tkclient;
 
-Awmfiles: module
-{
-	init: fn(ctxt: ref Draw->Context, argv: list of string);
-};
+include "awmfiles.m";
 
 Maxentries: con 256;
 Previewbytes: con 4096;
@@ -20,20 +17,36 @@ Home: con "/usr/inferno";
 
 init(ctxt: ref Draw->Context, nil: list of string)
 {
+	browse(ctxt, Home, 0);
+}
+
+choose(ctxt: ref Draw->Context, directory: string): string
+{
+	if(directory == nil || directory == ".")
+		directory = Home;
+	return browse(ctxt, directory, 1);
+}
+
+browse(ctxt: ref Draw->Context, path: string, picking: int): string
+{
 	sys = load Sys Sys->PATH;
 	tk = load Tk Tk->PATH;
 	tkclient = load Tkclient Tkclient->PATH;
 	if(ctxt == nil || sys == nil || tk == nil || tkclient == nil)
 		raise "fail:cannot start Files";
 	tkclient->init();
-	(top, title) := tkclient->toplevel(ctxt, "", "Files", Tkclient->Hide);
+	caption := "Files";
+	buttons := Tkclient->Hide;
+	if(picking){
+		caption = "Open file";
+		buttons = Tkclient->Popup;
+	}
+	(top, title) := tkclient->toplevel(ctxt, "", caption, buttons);
 	actions := chan of string;
 	# The editor can finish after this Files window closes.
 	edited := chan[1] of string;
 	tk->namechan(top, actions, "files");
-	widgets(top);
-
-	path := Home;
+	widgets(top, picking);
 	previewed, editing: string;
 	names := array[Maxentries] of string;
 	modes := array[Maxentries] of int;
@@ -56,7 +69,7 @@ init(ctxt: ref Draw->Context, nil: list of string)
 		s = <-wreq or
 		s = <-title =>
 			if(s == "exit")
-				return;
+				return nil;
 			if(s == "task")
 				tkclient->wmctl(top, "kbdfocus 0");
 			if(s != nil)
@@ -79,7 +92,7 @@ init(ctxt: ref Draw->Context, nil: list of string)
 			reload := 1;
 			case action {
 			"close" =>
-				return;
+				return nil;
 			"up" =>
 				path = parent(path);
 			"root" =>
@@ -90,7 +103,7 @@ init(ctxt: ref Draw->Context, nil: list of string)
 				;
 			"open" or "openactive" or "edit" =>
 				reload = 0;
-				if(action == "edit" && editing != nil)
+				if(action == "edit" && (picking || editing != nil))
 					break;
 				query := ".entries.list curselection";
 				if(action == "openactive")
@@ -108,6 +121,8 @@ init(ctxt: ref Draw->Context, nil: list of string)
 					child += "/";
 				child += name;
 				if(!(mode & Sys->DMDIR)){
+					if(picking)
+						return child;
 					if(action == "edit"){
 						editing = child;
 						cmd(top, ".nav.edit configure -state disabled");
@@ -130,6 +145,8 @@ init(ctxt: ref Draw->Context, nil: list of string)
 			}
 			if(reload){
 				previewed = nil;
+				if(!picking)
+					setpreview(top, "");
 				count = listdir(top, path, names, modes);
 				cmd(top, ".entries.list activate 0; update");
 			}
@@ -155,7 +172,7 @@ edit(ctxt: ref Draw->Context, path: string, done: chan of string)
 	done <-= result;
 }
 
-widgets(top: ref Tk->Toplevel)
+widgets(top: ref Tk->Toplevel, picking: int)
 {
 	cmd(top, "label .path -anchor w -bg #dce8f5; pack .path -fill x -padx 6 -pady 3");
 	cmd(top, "frame .nav; pack .nav -fill x -padx 6 -pady 4");
@@ -164,9 +181,15 @@ widgets(top: ref Tk->Toplevel)
 	cmd(top, "button .nav.home -text Home -takefocus 0 -command {send files home}");
 	cmd(top, "button .nav.open -text Open -takefocus 0 -command {send files open}");
 	cmd(top, "button .nav.refresh -text Refresh -takefocus 0 -command {send files refresh}");
-	cmd(top, "button .nav.close -text Close -takefocus 0 -command {send files close}");
-	cmd(top, "button .nav.edit -text Edit -takefocus 0 -command {send files edit}");
-	cmd(top, "pack .nav.up .nav.root .nav.home .nav.open .nav.refresh .nav.close .nav.edit -side left -padx 3 -ipady 6");
+	if(picking)
+		cmd(top, "button .nav.close -text Cancel -takefocus 0 -command {send files close}");
+	else
+		cmd(top, "button .nav.close -text Close -takefocus 0 -command {send files close}");
+	cmd(top, "pack .nav.up .nav.root .nav.home .nav.open .nav.refresh .nav.close -side left -padx 3 -ipady 6");
+	if(!picking){
+		cmd(top, "button .nav.edit -text Edit -takefocus 0 -command {send files edit}");
+		cmd(top, "pack .nav.edit -side left -padx 3 -ipady 6");
+	}
 
 	cmd(top, "frame .entries; pack .entries -fill x -padx 6");
 	cmd(top, "listbox .entries.list -width 340 -height 130 -selectmode single " +
@@ -178,12 +201,16 @@ widgets(top: ref Tk->Toplevel)
 	cmd(top, "bind .entries.list <Key-\n> {send files openactive}");
 	cmd(top, "bind .entries.list <Key-\b> {send files up}");
 
-	cmd(top, "frame .document; pack .document -fill x -padx 6 -pady 6");
-	cmd(top, "text .document.preview -width 340 -height 100 -wrap word -state disabled " +
-		"-takefocus 0 -bg #ffffff -yscrollcommand {.document.scroll set}");
-	cmd(top, "scrollbar .document.scroll -command {.document.preview yview}");
-	cmd(top, "pack .document.scroll -side right -fill y");
-	cmd(top, "pack .document.preview -side left -expand 1 -fill both");
+	if(picking)
+		cmd(top, "bind .entries.list <Key-\u001b> {send files close}");
+	else{
+		cmd(top, "frame .document; pack .document -fill x -padx 6 -pady 6");
+		cmd(top, "text .document.preview -width 340 -height 100 -wrap word -state disabled " +
+			"-takefocus 0 -bg #ffffff -yscrollcommand {.document.scroll set}");
+		cmd(top, "scrollbar .document.scroll -command {.document.preview yview}");
+		cmd(top, "pack .document.scroll -side right -fill y");
+		cmd(top, "pack .document.preview -side left -expand 1 -fill both");
+	}
 	cmd(top, "label .status -anchor w; pack .status -fill x -padx 6 -pady 3");
 }
 
@@ -192,7 +219,6 @@ listdir(top: ref Tk->Toplevel, path: string, names: array of string, modes: arra
 	header := ".path configure -text '" + path;
 	cmd(top, header);
 	cmd(top, ".entries.list delete 0 end");
-	setpreview(top, "");
 	fd := sys->open(path, Sys->OREAD);
 	if(fd == nil){
 		cmd(top, ".status configure -text {Cannot open directory}; update");
