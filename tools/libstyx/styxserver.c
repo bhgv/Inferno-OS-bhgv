@@ -3,7 +3,7 @@
 #include "styxserver.h"
 #include "styxaux.h"
 
-#define MAXSTAT	512
+#define MAXSTAT	(MSGMAX-9)
 #define EMSGLEN			256		/* %r */
 
 #define TABSZ	32	/* power of 2 */
@@ -38,12 +38,13 @@ struct Fid
 {
 	Client 	*client;
 	Fid *next;
-	short	fid;
+	u32int	fid;
 	ushort	open;
 	ushort	mode;	/* read/write */
-	ulong	offset;	/* in file */
+	vlong	offset;	/* in file */
 	int		dri;		/* dirread index */
 	Qid		qid;
+	void	*aux;	/* owned by freefid callback until retirement */
 };
 
 struct Walkqid
@@ -53,10 +54,14 @@ struct Walkqid
 	Qid	qid[1];
 };
 
-#define ASSERT(A,B) styxassert((int)A,B)
+#define ASSERT(A,B) styxassert((A)!=0,B)
 
 static int hash(Path);
 static void deletefids(Client *);
+static void cancelattach(Client *);
+static void cancelreads(Client *, Fid *);
+static int readtag(Client *, ushort);
+static void flushread(Client *, ushort);
 
 static void
 styxfatal(char *fmt, ...)
@@ -112,13 +117,15 @@ newclient(Styxserver *server, int fd)
 	c->nread = 0;
 	c->nc = 0;
 	c->state = 0;
+	c->msize = MSGMAX;
+	c->versioned = -1;
 	c->fids = nil;
 	c->uname = strdup(eve);
 	c->aname = strdup("");
 	c->next = server->clients;
 	server->clients = c;
-	if(server->ops->newclient)
-		server->ops->newclient(c);
+	if(server->ops->newclient != nil && server->ops->newclient(c) != nil)
+		c->state |= CDISC;
 	return c;
 }
 
@@ -131,15 +138,19 @@ freeclient(Client *c)
 	if(Debug)
 		fprint(2, "Freeing client at %lux\n", (ulong)c);
 	server = c->server;
+	cancelattach(c);
+	cancelreads(c, nil);
+	deletefids(c);
 	if(server->ops->freeclient)
 		server->ops->freeclient(c);
 	for(p = &server->clients; *p; p = &(*p)->next)
 		if(*p == c){
 			styxclosesocket(c->fd);
 			*p = c->next;
-			deletefids(c);
 			free(c->uname);
 			free(c->aname);
+			if(server->curc == c)
+				server->curc = nil;
 			styxfree(c);
 			return;
 		}
@@ -152,7 +163,9 @@ nbread(Client *c, int nr)
 
 	if(c->state&CDISC)
 		return -1;
-	nb = styxrecv(c->server, c->fd, c->msg + c->nread, nr, 0);
+	do
+		nb = styxrecv(c->server, c->fd, c->msg + c->nread, nr, 0);
+	while(nb < 0 && errno == EINTR);
 	if(nb <= 0){
 		c->nread = 0;
 		c->state |= CDISC;
@@ -162,58 +175,74 @@ nbread(Client *c, int nr)
 	return 0;
 }
 
+/* Keep incomplete TCP frames until their remaining bytes arrive. */
 static int
 rd(Client *c, Fcall *r)
 {
-	if(c->nc > 0){	/* last convM2S consumed nc bytes */
+	u32int n;
+
+	if(c->nc > 0){
+		if(c->nc > c->nread)
+			goto Bad;
 		c->nread -= c->nc;
-		if((int)c->nread < 0){
-			r->ename = "negative size in rd";
-			return -1;
-		}
 		memmove(c->msg, c->msg+c->nc, c->nread);
 		c->nc = 0;
 	}
 	if(c->state&CRECV){
-		if(nbread(c, MSGMAX - c->nread) != 0){
-			r->ename = "unexpected EOF";
-			return -1;
-		}
 		c->state &= ~CRECV;
+		if(nbread(c, MSGMAX-c->nread) != 0)
+			goto Bad;
 	}
-	c->nc = convM2S((uchar*)(c->msg), c->nread, r);
-	if(c->nc < 0){
-		r->ename = "bad message format";
-		return -1;
-	}
-	if(c->nc == 0 && c->nread > 0){
-		c->nread = 0;
-		c->state &= ~CNREAD;
+	c->state &= ~CNREAD;
+	if(c->nread < BIT32SZ)
 		return 0;
-	}
-	if(c->nread > c->nc)
+	n = GBIT32((uchar*)c->msg);
+	if(n < 7 || n > MSGMAX)
+		goto Bad;
+	if(c->nread >= 5 && c->msg[4] != Tversion && c->msize != 0 && n > c->msize)
+		goto Bad;
+	if(c->nread < n)
+		return 0;
+	c->nc = convM2S((uchar*)c->msg, n, r);
+	if(c->nc != n)
+		goto Bad;
+	if(c->nread > n)
 		c->state |= CNREAD;
-	else
-		c->state &= ~CNREAD;
-	if(c->nc == 0)
-		return 0;
-	/* fprint(2, "rd: %F\n", r); */
 	return 1;
+Bad:
+	c->state |= CDISC|CNREAD;
+	r->ename = "invalid or closed Styx stream";
+	return -1;
 }
 
+/* Complete one encoded reply; never discard a short transport write. */
 static int
 wr(Client *c, Fcall *r)
 {
-	int n;
+	int n, sent, m;
 	char buf[MSGMAX];
 
 	n = convS2M(r, (uchar*)buf, sizeof(buf));
-	if(n < 0){
-		r->ename = "bad message type in wr";
-		return -1;
+	if(n > (c->msize != 0 ? c->msize : MSGMAX)){
+		r->type = Rerror;
+		r->ename = "reply exceeds negotiated msize";
+		n = convS2M(r, (uchar*)buf, sizeof(buf));
 	}
-	/* fprint(2, "wr: %F\n", r); */
-	return styxsend(c->server, c->fd, buf, n, 0);
+	if(n <= 0)
+		goto Bad;
+	for(sent = 0; sent < n; sent += m){
+		m = styxsend(c->server, c->fd, buf+sent, n-sent, 0);
+		if(m < 0 && errno == EINTR){
+			m = 0;
+			continue;
+		}
+		if(m <= 0 || m > n-sent)
+			goto Bad;
+	}
+	return sent;
+Bad:
+	c->state |= CDISC|CNREAD;
+	return -1;
 }
 
 static void
@@ -235,11 +264,12 @@ sremove(Styxserver *server, Styxfile *f)
 			*p = f->next;
 			break;
 		}
-	for(p = &f->parent->child; *p; p = &(*p)->sibling)
-		if(*p == f){
-			*p = f->sibling;
-			break;
-		}
+	if(f->parent != nil)
+		for(p = &f->parent->child; *p; p = &(*p)->sibling)
+			if(*p == f){
+				*p = f->sibling;
+				break;
+			}
 	styxfree(f->d.name);
 	styxfree(f->d.uid);
 	styxfree(f->d.gid);
@@ -354,7 +384,7 @@ styxfindfile(Styxserver *server, Path path)
 }
 
 static Fid *
-findfid(Client *c, short fid)
+findfid(Client *c, u32int fid)
 {
 	Fid *f;
 	for(f = c->fids; f && f->fid != fid; f = f->next)
@@ -365,34 +395,51 @@ findfid(Client *c, short fid)
 static void
 deletefid(Client *c, Fid *d)
 {
-	/* TODO: end any outstanding reads on this fid */
 	Fid **f;
+
+	cancelreads(c, d);
 
 	for(f = &c->fids; *f; f = &(*f)->next)
 		if(*f == d){
 			decreff(d);
 			decopen(d);
 			*f = d->next;
+			if(c->current == d)
+				c->current = nil;
+			if(d->aux != nil && c->server->ops->freefid != nil)
+				c->server->ops->freefid(d->aux);
 			styxfree(d);
 			return;
 		}
 }
 
+/* Clunk session handles while the per-client backend context is still alive. */
 static void
 deletefids(Client *c)
 {
 	Fid *f, *g;
+	Client *previous;
 
-	for(f = c->fids; f; f = g){
+	previous = c->server->curc;
+	c->server->curc = c;
+	f = c->fids;
+	c->fids = nil;
+	c->current = nil;
+	for(; f != nil; f = g){
+		g = f->next;
 		decreff(f);
 		decopen(f);
-		g = f->next;
+		if(f->open && c->server->ops->close != nil)
+			c->server->ops->close(f->qid, f->mode);
+		if(f->aux != nil && c->server->ops->freefid != nil)
+			c->server->ops->freefid(f->aux);
 		styxfree(f);
 	}
+	c->server->curc = previous;
 }
 
 Fid *
-newfid(Client *c, short fid, Qid qid){
+newfid(Client *c, u32int fid, Qid qid){
 	Fid *f;
 
 	f = styxmalloc(sizeof(Fid));
@@ -408,11 +455,6 @@ newfid(Client *c, short fid, Qid qid){
 	return f;
 }
 
-static void
-flushtag(int oldtag)
-{
-	USED(oldtag);
-}
 
 int
 eqqid(Qid a, Qid b)
@@ -421,7 +463,7 @@ eqqid(Qid a, Qid b)
 }
 
 static Fid *
-fidclone(Fid *old, short fid)
+fidclone(Fid *old, u32int fid)
 {
 	Fid *new;
 
@@ -451,8 +493,6 @@ devwalk(Client *c, Styxfile *file, Fid *fp, Fid *nfp, char **name, int nname, ch
 	qid = p != nil ? p->d.qid : fp->qid;
 	for(j = 0; j < nname; j++){
 		if(!(qid.type&QTDIR)){
-			if(j == 0)
-				styxfatal("devwalk error");
 			*err = Enotdir;
 			goto Done;
 		}
@@ -491,6 +531,10 @@ devwalk(Client *c, Styxfile *file, Fid *fp, Fid *nfp, char **name, int nname, ch
 				qid = p != nil ? p->d.qid : nfp->qid;
 				goto Accept;
 			}
+			if(!server->needfile){
+				*err = e;
+				goto Done;
+			}
 		}
 
 		if(p != nil)
@@ -518,6 +562,7 @@ Done:
 	return wq;
 }
 
+/* Emit whole live directory records; an undersized buffer must not look like EOF. */
 static long
 devdirread(Fid *fp, Styxfile *file, char *d, long n)
 {
@@ -525,28 +570,40 @@ devdirread(Fid *fp, Styxfile *file, char *d, long n)
 	Styxfile *f;
 	int i;
 
-	struct{
-		Dir d;
-		char slop[100];	/* TO DO */
-	}dir;
-
 	f = file->child;
-	for(i = 0; i < fp->dri; i++)
-		if(f == 0)
-			return 0;
-		else
-			f = f->sibling;
-	for(m = 0; m < n; fp->dri++){
-		if(f == nil)
-			break;
-		dir.d = f->d;
-		dsz = convD2M(&dir.d, (uchar*)d, n-m);
+	for(i = 0; i < fp->dri && f != nil; i++)
+		f = f->sibling;
+	for(m = 0; m < n && f != nil; fp->dri++){
+		dsz = sizeD2M(&f->d);
+		if(dsz > n-m)
+			return m != 0 ? m : -1;
+		if(convD2M(&f->d, (uchar*)d, n-m) != dsz)
+			return -1;
 		m += dsz;
 		d += dsz;
 		f = f->sibling;
 	}
-
 	return m;
+}
+
+/* Provider directory data must contain only complete stat records. */
+static int
+validdir(char *data, ulong n)
+{
+	uint size;
+	uchar *p;
+
+	p = (uchar*)data;
+	while(n != 0){
+		if(n < BIT16SZ)
+			return 0;
+		size = GBIT16(p)+BIT16SZ;
+		if(size > n || statcheck(p, size) < 0)
+			return 0;
+		p += size;
+		n -= size;
+	}
+	return 1;
 }
 
 static char*
@@ -617,25 +674,42 @@ newfile(Styxserver *server, Styxfile *parent, int isdir, Path qid, char *name, i
 	return file;
 }
 
+#include "attach.c"
+#include "read.c"
+
 static void
-run(Client *c)
+dispatch(Client *c)
 {
 	Fcall f;
 	Fid *fp, *nfp;
-	int i, open, mode;
+	int i, open, mode, isdir;
+	long dircount;
+	ulong count;
 	char ebuf[EMSGLEN];
 	Walkqid *wq;
 	Styxfile *file;
 	Dir dir;
 	Qid qid;
 	Styxops *ops;
-	char strs[128];
+	char strs[MSGMAX+4];
 
 	ebuf[0] = 0;
 	if(rd(c, &f) <= 0)
 		return;
+	if(f.type != Tversion && c->versioned < 0){
+		f.type = Rerror;
+		f.ename = "version not negotiated";
+		wr(c, &f);
+		return;
+	}
+	if(f.type != Tversion && ((c->attach != nil && c->attach->tag == f.tag) || readtag(c, f.tag))){
+		c->state |= CDISC;
+		return;
+	}
 	if(f.type == Tflush){
-		flushtag(f.oldtag);
+		if(c->attach != nil && c->attach->tag == f.oldtag)
+			cancelattach(c);
+		flushread(c, f.oldtag);
 		f.type = Rflush;
 		wr(c, &f);
 		return;
@@ -643,6 +717,7 @@ run(Client *c)
 	ops = c->server->ops;
 	file = nil;
 	fp = findfid(c, f.fid);
+	c->current = fp;
 	if(f.type != Tversion && f.type != Tauth && f.type != Tattach){
 		if(fp == nil){
 			f.type = Rerror;
@@ -669,13 +744,15 @@ run(Client *c)
 				fprint(2, " %s", f.wname[i]);
 			fprint(2, "\n");
 		}
+		if(c->attach != nil && c->attach->fid == f.newfid){
+			f.type = Rerror;
+			f.ename = "fid reserved by pending attach";
+			wr(c, &f);
+			break;
+		}
 		nfp = findfid(c, f.newfid);
 		f.type = Rerror;
-		if(nfp){
-			deletefid(c, nfp);
-			nfp = nil;
-		}
-		if(nfp){
+		if(nfp != nil && f.newfid != f.fid){
 			f.ename = "fid in use";
 			if(Debug) fprint(2, "walk: %s\n", f.ename);
 			wr(c, &f);
@@ -779,32 +856,53 @@ run(Client *c)
 	case	Tread:
 		if(Debug)
 			fprint(2, "Tread %d\n", f.fid);
-		if(!fp->open){
+		if(!fp->open || (fp->mode&3) == OWRITE){
 			f.type = Rerror;
 			f.ename = Ebadfid;
 			wr(c, &f);
 			break;
 		}
-		if(fp->qid.type&QTDIR || (file != nil && file->d.qid.type&QTDIR)){
-			f.type = Rread;
-			if(file == nil){
-				f.ename = Eperm;
-				if(ops->read && (f.ename = ops->read(fp->qid, c->data, (ulong*)(&f.count), fp->dri)) == nil){
-					f.data = c->data;
-				}
-				else
-					f.type = Rerror;
+		if(f.count > sizeof(c->data)-IOHDRSZ)
+			f.count = sizeof(c->data)-IOHDRSZ;
+		if(c->msize != 0 && f.count > c->msize-IOHDRSZ)
+			f.count = c->msize-IOHDRSZ;
+		count = f.count;
+		isdir = (fp->qid.type&QTDIR) || (file != nil && (file->d.qid.type&QTDIR));
+		f.type = Rerror;
+		f.ename = Eperm;
+		if(isdir && file != nil && (c->server->needfile || ops->read == nil)){
+			if(f.offset == 0){
+				fp->dri = 0;
+				fp->offset = 0;
 			}
+			if(f.offset != fp->offset)
+				f.ename = "invalid directory offset";
 			else{
-				f.count = devdirread(fp, file, c->data, f.count);
-				f.data = c->data;
-			}		
-		}else{
-			f.ename = Eperm;
-			f.type = Rerror;
-			if(ops->read && (f.ename = ops->read(fp->qid, c->data, (ulong*)(&f.count), f.offset)) == nil){
+				dircount = devdirread(fp, file, c->data, f.count);
+				if(dircount < 0)
+					f.ename = "directory entry exceeds read capacity";
+				else{
+					count = dircount;
+					fp->offset += count;
+					f.type = Rread;
+				}
+			}
+		}else if(ops->read != nil){
+			if(callbackread(c, fp, &f, &count, isdir))
+				break;
+			if(f.ename == nil)
 				f.type = Rread;
-				f.data = c->data;			
+		}
+		if(f.type == Rread){
+			if(count > f.count){
+				f.type = Rerror;
+				f.ename = "invalid read count";
+			}else if(isdir && !validdir(c->data, count)){
+				f.type = Rerror;
+				f.ename = "invalid directory records";
+			}else{
+				f.count = count;
+				f.data = c->data;
 			}
 		}
 		wr(c, &f);
@@ -812,7 +910,7 @@ run(Client *c)
 	case	Twrite:
 		if(Debug)
 			fprint(2, "Twrite %d\n", f.fid);
-		if(!fp->open){
+		if(!fp->open || ((fp->mode&3) != OWRITE && (fp->mode&3) != ORDWR)){
 			f.type = Rerror;
 			f.ename = Ebadfid;
 			wr(c, &f);
@@ -820,8 +918,14 @@ run(Client *c)
 		}
 		f.ename = Eperm;
 		f.type = Rerror;
-		if(ops->write && (f.ename = ops->write(fp->qid, f.data, (ulong*)(&f.count), f.offset)) == nil){
-			f.type = Rwrite;
+		count = f.count;
+		if(ops->write && (f.ename = ops->write(fp->qid, f.data, &count, f.offset)) == nil){
+			if(count > f.count)
+				f.ename = "invalid write count";
+			else{
+				f.count = count;
+				f.type = Rwrite;
+			}
 		}
 		wr(c, &f);
 		break;
@@ -858,18 +962,23 @@ run(Client *c)
 	case	Tstat:
 		if(Debug)
 			fprint(2, "Tstat %d qid=%llx\n", f.fid, fp->qid.path);
+		memset(&dir, 0, sizeof(dir));
 		f.stat = styxmalloc(MAXSTAT);
 		f.ename = "stat error";
 		if(ops->stat == nil && file != nil){
 			f.type = Rstat;
-			f.nstat = convD2M(&file->d, f.stat, MAXSTAT);
+			f.nstat = convD2M(&file->d, f.stat, c->msize != 0 ? c->msize-9 : MAXSTAT);
 		}
 		else if(ops->stat && (f.ename = ops->stat(fp->qid, &dir)) == nil){
 			f.type = Rstat;
-			f.nstat = convD2M(&dir, f.stat, MAXSTAT);
+			f.nstat = convD2M(&dir, f.stat, c->msize != 0 ? c->msize-9 : MAXSTAT);
 		}
 		else
 			f.type = Rerror;
+		if(f.type == Rstat && f.nstat <= BIT16SZ){
+			f.type = Rerror;
+			f.ename = "stat record exceeds message capacity";
+		}
 		wr(c, &f);
 		styxfree(f.stat);
 		break;
@@ -877,7 +986,13 @@ run(Client *c)
 		if(Debug)
 			fprint(2, "Twstat %d\n", f.fid);
 		f.ename = Eperm;
-		convM2D(f.stat, f.nstat, &dir, strs);
+		memset(&dir, 0, sizeof(dir));
+		if(f.nstat < STATFIXLEN || convM2D(f.stat, f.nstat, &dir, strs) != f.nstat){
+			f.type = Rerror;
+			f.ename = "invalid stat record";
+			wr(c, &f);
+			break;
+		}
 		dir.name = nilconv(dir.name);
 		dir.uid = nilconv(dir.uid);
 		dir.gid = nilconv(dir.gid);
@@ -889,48 +1004,64 @@ run(Client *c)
 		wr(c, &f);
 		break;
 	case	Tversion:
-		if(Debug)
-			fprint(2, "Tversion\n");
+		if(f.tag != NOTAG || f.msize < 256){
+			f.type = Rerror;
+			f.ename = "invalid version tag or msize below 256";
+			wr(c, &f);
+			break;
+		}
+		cancelattach(c);
+		cancelreads(c, nil);
+		deletefids(c);
+		c->msize = f.msize > MSGMAX ? MSGMAX : f.msize;
+		c->versioned = strcmp(f.version, VERSION9P) == 0 ||
+			strncmp(f.version, VERSION9P".", 7) == 0 ? 1 : -1;
+		f.msize = c->msize;
+		f.version = c->versioned > 0 ? VERSION9P : "unknown";
 		f.type = Rversion;
-		f.tag = NOTAG;
 		wr(c, &f);
 		break;
 	case Tauth:
-		if(Debug)
-			fprint(2, "Tauth\n");
-		f.type = Rauth;
+		f.type = Rerror;
+		f.ename = "authentication not provided";
 		wr(c, &f);
 		break;
-	case	Tattach:
-		if(Debug)
-			fprint(2, "Tattach %d %s %s\n", f.fid, f.uname[0] ? f.uname : c->uname, f.aname[0]? f.aname: c->aname);
-		if(fp){
-			f.type = Rerror;
-			f.ename = "fid in use";
-		}else{
-			Qid q;
-
-			if(f.uname[0]){
-				free(c->uname);
-				c->uname = strdup(f.uname);
-			}
-			if(f.aname[0]){
-				free(c->aname);
-				c->aname = strdup(f.aname);
-			}
-			q.path = Qroot;
-			q.type = QTDIR;
-			q.vers = 0;
-			fp = newfid(c, f.fid, q);
-			f.type = Rattach;
-			f.fid = fp->fid;
-			f.qid = q;
-			if(ops->attach && (f.ename = ops->attach(c->uname, c->aname)) != nil)
-				f.type = Rerror;
-		}
-		wr(c, &f);
+	case Tattach:
+		beginattach(c, &f);
 		break;
 	}
+}
+
+/* Current fid storage is borrowed only while a callback is executing. */
+static void
+run(Client *c)
+{
+	c->current = nil;
+	dispatch(c);
+	c->current = nil;
+}
+
+/* No implicit sharing or replacement of a native handle is allowed. */
+int
+styxsetaux(Styxserver *server, void *aux)
+{
+	Fid *f;
+	if(server == nil || server->curc == nil || server->ops->freefid == nil || aux == nil)
+		return -1;
+	f = server->curc->current;
+	if(f == nil || f->aux != nil)
+		return -1;
+	f->aux = aux;
+	return 0;
+}
+
+/* Return a borrowed native context, never a VM or wire pointer. */
+void*
+styxgetaux(Styxserver *server)
+{
+	if(server == nil || server->curc == nil || server->curc->current == nil)
+		return nil;
+	return server->curc->current->aux;
 }
 
 char *
@@ -943,29 +1074,54 @@ styxinit(Styxserver *server, Styxops *ops, char *port, int perm, int needfile)
 	if(perm == -1)
 		perm = 0555;
 	server->ops = ops;
+	server->connfd = -1;
+	server->priv = nil;
+	server->curc = nil;
 	server->clients = nil;
 	server->root = nil;
 	server->ftab = (Styxfile**)malloc(TABSZ*sizeof(Styxfile*));
+	if(server->ftab == nil)
+		return Enomem;
 	for(i = 0; i < TABSZ; i++)
 		server->ftab[i] = nil;
 	server->qidgen = Qroot+1;
-	if(styxinitsocket() < 0)
+	if(styxinitsocket() < 0){
+		free(server->ftab);
+		server->ftab = nil;
 		return "styxinitsocket failed";
+	}
 	server->connfd = styxannounce(server, port);
-	if(server->connfd < 0)
+	if(server->connfd < 0){
+		styxend(server);
 		return "can't announce on network port";
+	}
 	styxinitwait(server);
 	server->root = newfile(server, nil, 1, Qroot, "/", perm|DMDIR, eve);
 	server->needfile = needfile;
 	return nil;
 }
 
-char*
-styxend(Styxserver *server)
+/* Release common state after the owning platform admits synchronous teardown. */
+void
+styxendserver(Styxserver *server)
 {
-	USED(server);
-	styxendsocket();
-	return nil;
+	Client *c;
+
+	while((c = server->clients) != nil){
+		server->curc = c;
+		if(server->priv != nil)
+			styxfreeclient(server, c->fd);
+		freeclient(c);
+	}
+	server->curc = nil;
+	if(server->root != nil)
+		sremove(server, server->root);
+	server->root = nil;
+	free(server->ftab);
+	server->ftab = nil;
+	if(server->connfd >= 0)
+		styxclosesocket(server->connfd);
+	server->connfd = -1;
 }
 
 char *
@@ -993,18 +1149,19 @@ styxprocess(Styxserver *server)
 		server->curc = c;
 		if(c->fd >= 0 && styxnewmsg(server, c->fd))
 			c->state |= CRECV;
-		if(c->state&(CNREAD|CRECV)){
+		if(c->state&(CNREAD|CRECV|CDISC)){
+			if(!(c->state&CDISC))
+				do
+					run(c);
+				while((c->state&CNREAD) && !(c->state&CDISC));
 			if(c->state&CDISC){
 				styxfreeclient(server, c->fd);
 				freeclient(c);
-			}else
-				do
-					run(c);
-				while(c->state&CNREAD);
+			}
 		}
 		c = next;
 	}
-	
+	server->curc = nil;
 	return nil;
 }
 
@@ -1053,7 +1210,7 @@ styxreadstr(ulong off, char *buf, ulong n, char *str)
 }
 
 Qid
-styxqid(int path, int isdir)
+styxqid(Path path, int isdir)
 {
 	Qid q;
 

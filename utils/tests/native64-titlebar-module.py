@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Construct and execute the complete unchanged Titlebar module."""
+import argparse,copy,os,re,runpy,shlex,subprocess,tempfile
+from pathlib import Path
+ROOT=Path(__file__).resolve().parents[2]
+ALT=runpy.run_path(str(ROOT/'utils/tests/native64-aprint-alt.py'));G,CMD=ALT['G'],ALT['CMD']
+def generate(limbo,w):
+ R=ROOT;m=w/'interfaces.m';m.write_text(''.join('include "'+n+'.m";'for n in('sys','draw','tk','titlebar')));frames={};sigs={}
+ for name in('Sys','Draw','Tk','Titlebar'):
+  h=subprocess.check_output([str(limbo),'-H','-M',name,'-I',str(R/'module'),str(m)],text=True);(w/(name+'.h')).write_text(h)
+  for fn,sig in re.findall(r'^#define LIMBO_NATIVE64_SIGNATURE_'+name+r'_(\w+) (0x[0-9a-f]+)U',h,re.M):
+   public=fn.replace('_','.',1)if '_'in fn else fn;size=re.search(r'^#define F_'+name+'_'+fn+r'_size (\d+)',h,re.M);mp=re.search(r'^#define F_'+name+'_'+fn+r'_map \{([^}]*)\}',h,re.M)
+   if size and mp:frames[(public,int(sig,16))]=(int(size[1]),[int(x,0)for x in mp[1].split(',')if x])
+   if name=='Titlebar':sigs[public]=int(sig,16)
+ h=(w/'Draw.h').read_text();(w/'geometry-layout.h').write_text(''.join('typedef struct F_Draw_'+n+' F_Draw_'+n+';\n'+re.search(r'struct F_Draw_'+n+r' \{.*?\n};',h,re.S)[0]+'\n'for n in('Rect_size','Rect_dx','Rect_combine')))
+ source=(R/'appl/lib/titlebar.b').read_text();data,rows=G['E']['compile_source'](limbo,w,source,interface='',loads=True);tables=G['E']['BASE']['READ']['legacy_instructions'](data,with_imports=True)[-1];assert (len(rows),len(tables),sum(len(r.get('variadics',[]))for r in rows))==(7,3,1)
+ (w/'window-native.h').write_text(re.sub(r'struct Sys_FD \{.*?\n};','',(w/'Titlebar.h').read_text(),flags=re.S))
+ rows=G['generate'](limbo,w,source,'Titlebar',(len(rows),len(tables),sum(len(r.get('variadics',[]))for r in rows),'~0U'),import_frames=frames,export_signatures=sigs)
+
+ initial=G['E']['BASE']['READ']['legacy_instructions'](data,with_types=True,with_data=True)[3]
+ cfg=next(v for v in initial.values()if v['kind']=='array');text=[bytes(v['bytes']).decode()for v in initial.values()if v['kind']=='string']
+ optional=[next(t for t in text if t.startswith('button .Wm_t.'+n+' -bitmap'))for n in('ok','top','m','h')]
+ (w/'expected-title.h').write_text('static const char*expected_config[]={'+','.join(__import__('json').dumps(bytes(v['bytes']).decode())for _,v in sorted(cfg['initial'].items()))+'};\nstatic const char*expected_optional[]={'+','.join(map(__import__('json').dumps,optional))+'};\nstatic const uint expected_bits[]={8,2,1,4};\n')
+
+ count=0
+ for row in rows:
+  for pc,step in enumerate(row['code']):
+   if step[5]not in(74,75,76,254,255):continue
+   for k in range(6):
+    bad=copy.deepcopy(row);bad['code'][pc][k]+=1
+    try:CMD['verify_nilbranches'](data,bad,tables,rows=rows)
+    except(AssertionError,KeyError,IndexError,StopIteration,ValueError):count+=1
+    else:raise AssertionError(('unchecked original source mutation',row['name'],pc,k))
+ print('PASS Titlebar new source roles:',count,'instruction corruptions detected',flush=True)
+ for mutable in (False,True):
+  source='implement Borrow;Borrow:module{run:fn(i:int):string;swap:fn();};items:=array[]of{"one","two"};run(i:int):string{return take(items[i]);}take(s:string):string{return s;}swap(){'+('items=array[]of{"changed"};'if mutable else'')+'}'
+  _,checks=G['E']['compile_source'](limbo,w,source,interface='',loads=True);assert next(x for x in checks if x['name']=='run')['accepted']==(not mutable),checks
+ print('PASS String array boundary: immutable global accepted, replaceable global refused',flush=True)
+
+
+ global OP_NAMES
+ OP_NAMES={name[1:].lower()for name,op in G['E']['OPCODES'].items()if any(c[0]==op for r in rows for c in r['code'])}
+def unit(w):
+ src=ALT['unit'](w).replace('#define RuntimeBlocks 256','#define RuntimeBlocks 1024').split('\n#line 1 "native64-aprint-alt.c"')[0]
+ extract=CMD['NS']['S']['FILES']['FILES']['function'];heap=(ROOT/'libinterp/heap.c').read_text();src=src.replace(extract(src,'Array*\narraycpy('),'void* arraycpy(Array*);',1);src+='\ntypedef struct ArrayCopy ArrayCopy;\n'+re.search(r'struct ArrayCopy \{.*?\n};',heap,re.S)[0]+'\n'+extract(heap,'static int\ncopyarray(')+'\n'+extract(heap,'void*\narraycpy(')+'\n';vm=(ROOT/'libinterp/xec.c').read_text();strings=(ROOT/'libinterp/string.c').read_text()
+ for sig in('static uchar*\narrayaddress(','static void\narrayindex(','static void\nnewarray(','static void\nbranchstring(','static Inst*\ncasepc(','static uvlong\ncaseccell('):
+  if sig not in src:src+='\n'+extract(vm,sig)+'\n'
+ src+='\n#include \"window-native.h\"\n#include \"geometry-layout.h\"\n'
+ for n in('Rect_size','Rect_dx','Rect_combine'):src+='\n#define F_'+n+' F_Draw_'+n+'\n'+extract((ROOT/'libinterp/geom.c').read_text(),'void\n'+n+'(')+'\n'
+ src+='\n'+extract(strings,'String*\nslicer(')+'\n'
+ for n in sorted(OP_NAMES):
+  n={'load':'iload','goto':'igoto','send':'isend','recv':'irecv','exit':'iexit','raise':'iraise','case':'icase','casec':'casec'}.get(n,n)
+  if 'OP('+n+')'not in src:src+='\n'+extract(strings if 'OP('+n+')'in strings else vm,'OP('+n+')')+'\n'
+ handlers=''.join('optab['+name+']=actual_'+({'load':'iload','goto':'igoto','send':'isend','recv':'irecv','exit':'iexit','raise':'iraise','case':'icase','casec':'casec'}.get(name[1:].lower(),name[1:].lower()))+';'for name in G['E']['OPCODES']if 'OP('+({'load':'iload','goto':'igoto','send':'isend','recv':'irecv','exit':'iexit','raise':'iraise','case':'icase','casec':'casec'}.get(name[1:].lower(),name[1:].lower()))+')'in src)
+ src=src.replace('newc(&Tword, movw);','newc(&Tword, actual_movw);').replace('newc(&Tptr, movp);','newc(&Tptr, actual_movp);')
+ return src+'\n#line 1 "native64-titlebar-module.c"\n'+(ROOT/'utils/tests/native64-titlebar-module.c').read_text().replace(' WM_HANDLERS',handlers)
+def main():
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--limbo',type=Path,required=True);a=p.parse_args()
+ if not __debug__:p.error('source oracle requires assertions')
+ with tempfile.TemporaryDirectory(prefix='titlebar-module-',dir=ROOT)as td:
+  w=Path(td);CMD['generate'](a.limbo.resolve(),w,'Command',False,argv=True,local=True,pair=True,raises=True);generate(a.limbo.resolve(),w);(w/'unit.c').write_text(unit(w));arch=os.environ.get('NATIVE64_ARCH','amd64');cc=shlex.split(os.environ.get('CC','cc'))+shlex.split(os.environ.get('NATIVE64_CFLAGS','-O0 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'))
+  if arch in('arm64','riscv64'):cc+=['-DDIS64_TEST_'+arch.upper()+'=1','-DDIS64_TEST_COMPILER="comp-'+arch+'.c"']
+  cc+=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DNAMESPACE_HEADER="provider.h"','-DNAMESPACE_ORDINAL=LIMBO_NATIVE64_IMPORT_Library_mid','-I'+str(w)]+['-I'+str(ROOT/x)for x in('Linux/'+arch+'/include','Linux/386/include','emu/port','include','libinterp')]
+  cc+=[str(w/'unit.c'),str(ROOT/'libinterp/dec.c')]+[str(ROOT/('lib9/'+n+'.c'))for n in('sprint','snprint','vsnprint','dofmt','fmt','fmtlock','errfmt','utflen','utfnlen','runestrlen','fltfmt','pow10','isnan-posix')]+CMD['FILES']['releaseflags'](cc)+['-pthread','-lm','-o',str(w/'unit')];subprocess.run(cc,check=True);subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(w/'unit')],check=True,timeout=180)
+  for label,header,before,after,predicate in (
+   ('array initialization','native64-typed-module.h','s->string((char*)v->values[j].text,v->values[j].bytes)','s->string((char*)v->values[0].text,v->values[0].bytes)','exact original configuration command'),
+   ('String array element argument','native64-typed-multi.h','else if(s->returned==74||s->returned==76){if(s->op==IINDL){p->s.ind=s->s;p->reg=48;p->d.imm=s->d;','else if(s->returned==74||s->returned==76){if(s->op==IINDL){p->s.ind=s->s;p->reg=48;p->d.imm=0;p->add=(p->add&~7)|AIMM;','exact original configuration command'),
+   ('local String concat','native64-typed-multi.h','else if(s->returned==75){p->s.ind=s->s;p->reg=s->m;','else if(s->returned==75){p->s.ind=s->m;p->reg=s->m;p->add=(p->add&~(7<<3))|SRC((s->mode&ARM)==AXINF?AFP:AMP);','exact local concat command')):
+   parents=('native64-typed-module.h','native64-sys-module.h','native64-typed-multi.h','native64-typed-code.h')
+   for name in parents:(w/name).write_text((ROOT/'include'/name).read_text())
+   text=(ROOT/'include'/header).read_text();assert text.count(before)==1;(w/header).write_text(text.replace(before,after,1));subprocess.run(cc,check=True);r=subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(w/'unit')],capture_output=True,text=True,timeout=180)
+   assert r.returncode==10 and predicate in r.stderr and 'Sanitizer'not in r.stderr and 'runtime error:'not in r.stderr,(label,r.returncode,r.stdout[-1000:],r.stderr[-1000:])
+   for name in parents:(w/name).unlink()
+   print('PASS Titlebar active control:',label,flush=True)
+
+if __name__=='__main__':main()

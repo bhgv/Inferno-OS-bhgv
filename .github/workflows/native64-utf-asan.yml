@@ -1,5 +1,7 @@
-name: Native64 UTF address checks
+name: Native64 UTF and binding address checks
 on:
+  pull_request:
+    branches: [experiment]
   push:
     branches: [experiment]
     paths:
@@ -7,17 +9,107 @@ on:
       - 'libinterp/runt.c'
       - 'libinterp/tests/sys-utf.c'
       - 'libinterp/tests/sys-utf.py'
+      - 'include/dis64*.h'
+      - 'utils/tests/dis64-call-*'
+      - 'utils/tests/dis64-file-calls*'
+      - 'libinterp/tests/dis64-fileloader*'
+      - 'libinterp/tests/dis64-scheduler*'
+      - 'libinterp/readmod.c'
+      - 'libinterp/load.c'
+      - 'emu/port/main.c'
+      - 'utils/tests/goldens/dis64-calls/**'
+      - 'utils/tests/goldens/dis64-infer/**'
+      - 'utils/tests/goldens/dis64-construct/**'
+      - 'utils/tests/native64-result-calls*'
+      - 'libinterp/xec.c'
+      - 'libinterp/load64.c'
+      - 'libinterp/tests/dis64-runtime.c'
       - 'include/interp.h'
       - 'include/runt.h'
       - 'lib9/rune.c'
+      - 'libinterp/disc.c'
+      - 'utils/tests/native64-disc-binding.c'
+      - 'utils/tests/native64-disc-binding.py'
+      - 'libinterp/prefab.c'
+      - 'libinterp/freetype.c'
+      - 'libfreetype/**'
+      - 'limbo/**'
+      - 'makemk.sh'
+      - 'libinterp/geom.c'
+      - 'module/draw-native64.m'
+      - 'utils/tests/native64-geometry*'
+      - 'utils/tests/native64-draw-scalars.py'
+      - 'utils/tests/native64-pixels*'
+      - 'utils/tests/native64-polygons*'
+      - 'utils/tests/native64-curves*'
+      - 'utils/tests/native64-primitives*'
+      - 'utils/tests/native64-text*'
+      - 'utils/tests/native64-channels*'
+      - 'utils/tests/dis64-peer-schema.py'
+      - 'utils/tests/native64-draw-owners*'
+      - 'utils/tests/native64-display-allocate*'
+      - 'utils/tests/native64-bezier-consumers*'
+      - 'utils/tests/dis64-peer-semantics.py'
+      - 'utils/tests/dis64-storage-image*'
+      - 'utils/dis64inspect/**'
+      - 'libinterp/tests/dis64-inspect.py'
+      - 'utils/dis64_storage.py'
+      - 'utils/tests/dis64-python-storage.py'
+      - 'utils/tests/dis64-storage-owner*'
+      - 'utils/tests/dis64-storage-clone*'
+      - 'utils/tests/dis64-storage-attach*'
+      - 'utils/tests/dis64-numeric-*'
+      - 'utils/tests/dis64-provider-call.c'
+      - 'utils/tests/native64-module-mptype*'
+      - 'utils/tests/native64-draw-attach.c'
+      - 'utils/tests/native64-draw-info.py'
+      - 'utils/tests/native64-draw-mix*'
+      - 'utils/tests/dis64-peer-binding.py'
+      - 'utils/tests/native64-draw-init*'
+      - 'utils/tests/native64-refresh*'
+      - 'utils/tests/native64-display-close*'
+      - 'include/draw.h'
+      - 'libdraw/**'
+      - 'fonts/**/*.font'
+      - 'libmemdraw/**'
+      - 'module/freetype-native64.m'
+      - 'module/freetype.m'
+      - 'module/draw.m'
+      - 'module/sys.m'
+      - 'include/native64-scalar-boot.h'
+      - 'include/freetype/**'
+      - 'utils/tests/native64-freetype*'
+      - 'libinterp/tests/gui-type-maps.c'
+      - 'libinterp/tests/gui-type-maps.py'
+      - 'libinterp/tests/draw-windows.py'
+      - 'libinterp/tests/draw-windows.c'
+      - 'utils/tests/native64-graphics-init.c'
+      - 'utils/tests/native64-graphics-init.py'
+      - 'libinterp/draw.c'
+      - 'emu/port/devdraw.c'
+      - 'utils/tests/native64-draw-init.c'
+      - 'utils/tests/native64-draw-init.py'
+      - 'utils/tests/native64-builtins.py'
+      - 'libinterp/tests/loader-snapshots.c'
+      - 'libinterp/tests/loader-snapshots.py'
+      - 'utils/tests/native64-loader-branch.c'
+      - 'utils/tests/native64-loader-branch.py'
+      - 'utils/tests/native64-loader-init.c'
+      - 'utils/tests/native64-loader-init.py'
+      - 'libinterp/loader.c'
+      - 'utils/tests/native64-loader-mode.c'
+      - 'utils/tests/native64-loader-mode.py'
   workflow_dispatch:
+concurrency:
+  group: native64-utf-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
   utf:
-    name: UTF ASan ${{ matrix.arch }} (native)
+    name: Address ASan ${{ matrix.arch }} (native)
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -39,11 +131,1064 @@ jobs:
           set -euo pipefail
           uname -a
           python3 libinterp/tests/sys-utf.py 2>&1 | tee utf-asan.log
+      - name: Execute static binding memory and refusal controls
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-disc-binding.py 2>&1 | tee binding-asan.log
+          for control in mode jit image; do
+            python3 utils/tests/native64-disc-binding.py --control "$control" 2>&1 | tee -a binding-asan.log
+          done
+      - name: Execute public Loader result and mode checks
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-loader-mode.py 2>&1 | tee loader-mode-asan.log
+          python3 utils/tests/native64-loader-mode.py --control 2>&1 | tee -a loader-mode-asan.log
+      - name: Execute transactional Draw initialization checks
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-draw-init.py 2>&1 | tee draw-init-asan.log
+          for control in retirement publication registration; do
+            python3 utils/tests/native64-draw-init.py --control "$control" 2>&1 | tee -a draw-init-asan.log
+          done
+      - name: Execute transactional Loader initialization checks
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-loader-init.py 2>&1 | tee loader-init-asan.log
+          for control in retirement publication registration; do
+            python3 utils/tests/native64-loader-init.py --control "$control" 2>&1 | tee -a loader-init-asan.log
+          done
+      - name: Execute checked Loader branch snapshots
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-loader-branch.py 2>&1 | tee loader-branch-asan.log
+          for control in width bounds; do
+            python3 utils/tests/native64-loader-branch.py --control "$control" 2>&1 | tee -a loader-branch-asan.log
+          done
+      - name: Execute public Loader snapshot rollback
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 libinterp/tests/loader-snapshots.py 2>&1 | tee loader-snapshots-asan.log
+      - name: Execute native graphical descriptor and ownership checks
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          for module in prefab freetype; do
+            python3 utils/tests/native64-graphics-init.py --module "$module" 2>&1 | tee -a graphics-init-asan.log
+            for control in retirement publication registration; do
+              python3 utils/tests/native64-graphics-init.py --module "$module" --control "$control" 2>&1 | tee -a graphics-init-asan.log
+            done
+          done
+          for control in face-map glyph-map; do
+            python3 utils/tests/native64-graphics-init.py --module freetype --control "$control" 2>&1 | tee -a graphics-init-asan.log
+          done
+          python3 libinterp/tests/gui-type-maps.py 2>&1 | tee gui-type-maps-asan.log
+      - name: Execute native Freetype transforms, rasters and vendored engine
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-freetype.py 2>&1 | tee freetype-bridge-asan.log
+          for control in vm-transform native-transform pitch limits result sort; do
+            python3 utils/tests/native64-freetype.py --control "$control" 2>&1 | tee -a freetype-bridge-asan.log
+          done
+      - name: Register and execute the complete native64 Freetype interface
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/font-host-tools" sh makemk.sh
+          python3 utils/tests/native64-freetype-register.py --limbo "$RUNNER_TEMP/font-host-tools/limbo" 2>&1 | tee freetype-register-asan.log
+      - name: Check complete native64 Draw geometry
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-geometry.py --limbo "$RUNNER_TEMP/font-host-tools/limbo" 2>&1 | tee geometry-asan.log
+      - name: Check complete Draw consumer and real scalar libraries
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-draw-scalars.py --limbo "$RUNNER_TEMP/font-host-tools/limbo" 2>&1 | tee draw-scalars-asan.log
+      - name: Check pixel extents, protocol and VM byte-array boundaries
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-pixels.py --limbo "$RUNNER_TEMP/font-host-tools/limbo" 2>&1 | tee pixels-asan.log
+      - name: Check fragmented refresh records and native buffer/queue ownership
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-refresh.py 2>&1 | tee refresh-asan.log
+      - name: Check native Display cancellation and close resource ownership
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-display-close.py 2>&1 | tee display-close-asan.log
+      - name: Check immutable complete call images through private C and RX execution
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-call-goldens.py 2>&1 | tee call-goldens-asan.log
       - name: Preserve complete sanitizer diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: native64-utf-asan-${{ matrix.arch }}
-          path: utf-asan.log
+          name: native64-address-asan-${{ matrix.arch }}
+          path: |
+            utf-asan.log
+            binding-asan.log
+            loader-mode-asan.log
+            draw-init-asan.log
+            loader-init-asan.log
+            loader-branch-asan.log
+            loader-snapshots-asan.log
+            graphics-init-asan.log
+            gui-type-maps-asan.log
+            freetype-bridge-asan.log
+            freetype-register-asan.log
+            geometry-asan.log
+            draw-scalars-asan.log
+            pixels-asan.log
+            refresh-asan.log
+            display-close-asan.log
+            call-goldens-asan.log
           if-no-files-found: warn
           retention-days: 14
+
+  call-inference:
+    name: Raw Dis64 inference ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Infer scalar locals from immutable raw bytes and execute actual C and RX
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-call-infer.py 2>&1 | tee call-inference-asan.log
+      - name: Preserve inference diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-call-inference-${{ matrix.arch }}
+          path: call-inference-asan.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  call-construction:
+    name: Actual Dis64 construction ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construct owned scalar-call Modules and check every allocation failure
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-call-construct.py 2>&1 | tee call-construction-asan.log
+          python3 utils/tests/dis64-file-calls.py 2>&1 | tee file-calls-asan.log
+          for control in cache seal proof-route; do
+            python3 utils/tests/dis64-file-calls.py --control "$control" 2>&1 | tee -a file-calls-asan.log
+          done
+      - name: Preserve constructor diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-call-construction-${{ matrix.arch }}
+          path: |
+            call-construction-asan.log
+            file-calls-asan.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  polygons:
+    name: Draw polygons ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap native compiler for fresh Draw Frame64 declarations
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/polygon-host-tools" sh makemk.sh
+      - name: Check owning scheduler and file constructor source closure
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-live-vm.py 2>&1 | tee polygon-live-vm.log
+      - name: Check actual polygon packets and curve allocation retirement
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-polygons.py --limbo "$RUNNER_TEMP/polygon-host-tools/limbo" 2>&1 | tee polygons-asan.log
+      - name: Check nonzero bounded curves and independent exact integer geometry
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-curves.py 2>&1 | tee curves-asan.log
+      - name: Preserve polygon diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-polygons-${{ matrix.arch }}
+          path: |
+            polygons-asan.log
+            curves-asan.log
+            polygon-live-vm.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  primitives:
+    name: Draw primitives ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap compiler for owning Frame64 declarations
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/primitive-host-tools" sh makemk.sh
+      - name: Check exact native packets and fifteen actual Frame64 consumers
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-primitives.py --limbo "$RUNNER_TEMP/primitive-host-tools/limbo" 2>&1 | tee primitives-asan.log
+      - name: Preserve primitive diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-primitives-${{ matrix.arch }}
+          path: primitives-asan.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  text:
+    name: Draw text ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap compiler for owning text Frame64 declarations
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/text-host-tools" sh makemk.sh
+      - name: Check actual cache hits, text packets, widths and five Frame64 consumers
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-text.py --limbo "$RUNNER_TEMP/text-host-tools/limbo" 2>&1 | tee text-asan.log
+      - name: Preserve text diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-text-${{ matrix.arch }}
+          path: text-asan.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  draw-owners:
+    name: Draw owners ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap compiler for owning resource Frame64 declarations
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/draw-owner-tools" sh makemk.sh
+      - name: Check private descriptor rollback and guarded native registration
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-draw-init.py 2>&1 | tee draw-owner-init.log
+          for control in retirement publication registration; do
+            python3 utils/tests/native64-draw-init.py --control "$control" 2>&1 | tee -a draw-owner-init.log
+          done
+          python3 libinterp/tests/gui-type-maps.py 2>&1 | tee draw-owner-maps.log
+          CFLAGS="$NATIVE64_CFLAGS" python3 libinterp/tests/draw-windows.py 2>&1 | tee draw-owner-windows.log
+          python3 utils/tests/native64-draw-owners.py --limbo "$RUNNER_TEMP/draw-owner-tools/limbo" 2>&1 | tee draw-owners-asan.log
+      - name: Preserve resource ownership diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-draw-owners-${{ matrix.arch }}
+          path: |
+            draw-owner-init.log
+            draw-owner-maps.log
+            draw-owner-windows.log
+            draw-owners-asan.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  channels:
+    name: Channels and full subfont paths ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap compiler for the owning channel Frame64 declarations
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/channel-tools" sh makemk.sh
+      - name: Check protocol width, actual String owners and complete file paths
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-channels.py --limbo "$RUNNER_TEMP/channel-tools/limbo" 2>&1 | tee channels-asan.log
+      - name: Preserve channel diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-channels-${{ matrix.arch }}
+          path: channels-asan.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  attach:
+    name: Fresh window ownership and Image initialization ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap compiler for the owning attach Frame64 declarations
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/attach-tools" sh makemk.sh
+      - name: Check attach rollback, pair publication, borrowed defaults and dirty Image headers
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-draw-owners.py --attach-only --limbo "$RUNNER_TEMP/attach-tools/limbo" 2>&1 | tee attach-asan.log
+      - name: Preserve attach diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-draw-attach-${{ matrix.arch }}
+          path: attach-asan.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  peer-schema:
+    name: Independent FlashVM partial Dis64 schema
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout the independently reviewed schema reader and report
+        uses: actions/checkout@v4
+        with:
+          repository: bhgv/flashVM
+          ref: 92f2dafdb21e7554ea91b3de679f56505762bf5b
+          path: .dis64-peer-schema
+          sparse-checkout: |
+            disVM/envelope/tests
+            disVM/envelope/reports
+      - name: Compare exact corpus and preserve schema versus admission boundaries
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-peer-schema.py --peer-root .dis64-peer-schema --report peer-schema.json 2>&1 | tee peer-schema.log
+          for control in identity schema authority generator; do
+            python3 utils/tests/dis64-peer-schema.py --peer-root .dis64-peer-schema --control "$control" 2>&1 | tee -a peer-schema.log
+          done
+      - name: Preserve independent partial-schema evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis64-independent-partial-schema
+          path: |
+            peer-schema.json
+            peer-schema.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  peer-binding:
+    name: Independent FlashVM structural Code and bindings
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout the independently reviewed schema reader and report
+        uses: actions/checkout@v4
+        with:
+          repository: bhgv/flashVM
+          ref: 0517104b4192ee0297f58a56a419e6f24e66cde0
+          path: .dis64-peer-binding
+          sparse-checkout: |
+            disVM/envelope/tests
+            disVM/envelope/reports
+      - name: Compare exact corpus and preserve schema versus admission boundaries
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-peer-binding.py --peer-root .dis64-peer-binding --report peer-binding.json 2>&1 | tee peer-binding.log
+          for control in identity binding unsupported authority generator; do
+            python3 utils/tests/dis64-peer-binding.py --peer-root .dis64-peer-binding --control "$control" 2>&1 | tee -a peer-binding.log
+          done
+      - name: Preserve independent structural-binding evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis64-independent-structural-binding
+          path: |
+            peer-binding.json
+            peer-binding.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  font-input:
+    name: Bounded native font input ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check C-format fields, exact Int32 offsets and parser ownership
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 libdraw/tests/font-loading.py 2>&1 | tee font-input.log
+          for control in range separator unicode offset; do
+            python3 libdraw/tests/font-loading.py --control "$control" 2>&1 | tee -a font-input.log
+          done
+      - name: Preserve parser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-font-input-${{ matrix.arch }}
+          path: font-input.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  default-font:
+    name: Immutable default-font ownership ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check byte alignment, upload refusal and synthetic font transfer
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 libdraw/tests/default-font.py 2>&1 | tee default-font.log
+          for model in signed unsigned; do
+            python3 libdraw/tests/default-font.py --char-model "$model" 2>&1 | tee -a default-font.log
+          done
+          for control in immutable extent pixels rollback range transfer bearing; do
+            python3 libdraw/tests/default-font.py --control "$control" 2>&1 | tee -a default-font.log
+          done
+      - name: Preserve built-in-font diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-default-font-${{ matrix.arch }}
+          path: default-font.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  subfont-geometry:
+    name: Checked native subfont geometry ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check placement, accumulated width and complete-glyph refusal
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 libdraw/tests/subfont-geometry.py 2>&1 | tee subfont-geometry.log
+          for model in signed unsigned; do
+            python3 libdraw/tests/subfont-geometry.py --char-model "$model" 2>&1 | tee -a subfont-geometry.log
+          done
+          for control in metrics placement width; do
+            python3 libdraw/tests/subfont-geometry.py --control "$control" 2>&1 | tee -a subfont-geometry.log
+          done
+      - name: Preserve native subfont geometry diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-subfont-geometry-${{ matrix.arch }}
+          path: subfont-geometry.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  font-cache:
+    name: Populated native font cache ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check populated growth, geometry and publication under native service refusals
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 libdraw/tests/font-cache.py 2>&1 | tee font-cache.log
+          for model in signed unsigned; do
+            python3 libdraw/tests/font-cache.py --char-model "$model" 2>&1 | tee -a font-cache.log
+          done
+          for control in extent geometry publication flush capacity; do
+            python3 libdraw/tests/font-cache.py --control "$control" 2>&1 | tee -a font-cache.log
+          done
+      - name: Preserve populated native font cache diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-font-cache-${{ matrix.arch }}
+          path: font-cache.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  display-allocate:
+    name: Staged native Display allocation ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap compiler for fresh Draw Frame64 declarations
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/display-allocation-tools" sh makemk.sh
+      - name: Check private roots, alias publication and partial resource rollback
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-draw-init.py 2>&1 | tee display-init.log
+          python3 utils/tests/native64-display-allocate.py --limbo "$RUNNER_TEMP/display-allocation-tools/limbo" 2>&1 | tee display-allocate.log
+          for control in input publication image display unlock root edges; do
+            python3 utils/tests/native64-display-allocate.py --limbo "$RUNNER_TEMP/display-allocation-tools/limbo" --control "$control" 2>&1 | tee -a display-allocate.log
+          done
+      - name: Preserve staged display diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-display-allocation-${{ matrix.arch }}
+          path: |
+            display-init.log
+            display-allocate.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  bezier-consumers:
+    name: Cubic Frame64 consumers ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap compiler for four fresh curve interfaces
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/bezier-consumer-tools" sh makemk.sh
+      - name: Check captured arguments and native C dispatch/refusal boundaries
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-draw-init.py 2>&1 | tee bezier-init.log
+          python3 utils/tests/native64-bezier-consumers.py --limbo "$RUNNER_TEMP/bezier-consumer-tools/limbo" 2>&1 | tee bezier-consumers.log
+          for control in capture source flush operator radius foreign unlock; do
+            python3 utils/tests/native64-bezier-consumers.py --limbo "$RUNNER_TEMP/bezier-consumer-tools/limbo" --control "$control" 2>&1 | tee -a bezier-consumers.log
+          done
+      - name: Preserve native cubic-consumer diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-bezier-consumers-${{ matrix.arch }}
+          path: |
+            bezier-init.log
+            bezier-consumers.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  peer-typed-semantics:
+    name: Independent Dis64 typed roles, initialization and result proof
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout the reviewed independent semantic checkpoint
+        uses: actions/checkout@v4
+        with:
+          repository: bhgv/flashVM
+          ref: 7119413a641d69bee54adf315ec6e65725a542ba
+          path: .dis64-peer-semantics
+          sparse-checkout: |
+            disVM/envelope/tests
+            disVM/envelope/reports
+      - name: Replay exact verdicts, semantic omissions and authority boundaries
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-peer-semantics.py --peer-root .dis64-peer-semantics --report peer-typed-semantics.json 2>&1 | tee peer-typed-semantics.log
+          for control in identity facts authority admission; do
+            python3 utils/tests/dis64-peer-semantics.py --peer-root .dis64-peer-semantics --control "$control" 2>&1 | tee -a peer-typed-semantics.log
+          done
+      - name: Preserve independent semantic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis64-independent-typed-semantics
+          path: |
+            peer-typed-semantics.json
+            peer-typed-semantics.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  native-display-init:
+    name: Native display initialization ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check staged descriptors, channel leases, images, paths and locks
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 libdraw/tests/display-init.py 2>&1 | tee native-display-init.log
+          for control in memory channel image lock descriptor path diagnostic complete; do
+            python3 libdraw/tests/display-init.py --control "$control" 2>&1 | tee -a native-display-init.log
+          done
+      - name: Preserve native initialization diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-display-init-${{ matrix.arch }}
+          path: native-display-init.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  native-screen-channel:
+    name: Native Screen channel ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check owned/public screens, channels and window publication
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 libdraw/tests/screen-channel.py 2>&1 | tee native-screen-channel.log
+          for control in owned public channel publication attachment validation; do
+            python3 libdraw/tests/screen-channel.py --control "$control" 2>&1 | tee -a native-screen-channel.log
+          done
+      - name: Preserve native screen diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-screen-channel-${{ matrix.arch }}
+          path: native-screen-channel.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  dis64-storage-image:
+    name: Dis64 storage image ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check joined immutable storage and exact refusal controls
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-storage-image.py 2>&1 | tee dis64-storage-image.log
+          for control in types data imports exports code module; do
+            python3 utils/tests/dis64-storage-image.py --control "$control" 2>&1 | tee -a dis64-storage-image.log
+          done
+          python3 libinterp/tests/dis64-inspect.py 2>&1 | tee -a dis64-storage-image.log
+          python3 utils/tests/dis64-python-storage.py 2>&1 | tee -a dis64-storage-image.log
+          for control in types data imports exports code module; do
+            python3 utils/tests/dis64-python-storage.py --control "$control" 2>&1 | tee -a dis64-storage-image.log
+          done
+      - name: Preserve joined storage diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis64-storage-image-${{ matrix.arch }}
+          path: dis64-storage-image.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  dis64-storage-owner:
+    name: Dis64 storage owner GC ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check actual Type, heap, protected ownership and collector epochs
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-storage-owner.py 2>&1 | tee dis64-storage-owner.log
+          for control in map pin release types data preflight; do
+            python3 utils/tests/dis64-storage-owner.py --control "$control" 2>&1 | tee -a dis64-storage-owner.log
+          done
+      - name: Preserve actual storage ownership diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis64-storage-owner-${{ matrix.arch }}
+          path: dis64-storage-owner.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  dis64-storage-clone:
+    name: Dis64 storage clone GC ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check independent data, recursive arrays, source lifetime and clone rollback
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-storage-clone.py 2>&1 | tee dis64-storage-clone.log
+          for control in retain pin copy release partial reserve; do
+            python3 utils/tests/dis64-storage-clone.py --control "$control" 2>&1 | tee -a dis64-storage-clone.log
+          done
+      - name: Preserve actual storage clone diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis64-storage-clone-${{ matrix.arch }}
+          path: dis64-storage-clone.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  native64-module-mptype:
+    name: Native Module MP ordinal GC ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check explicit MP ordinal, actual Heap descriptor and module construction roots
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/native64-module-mptype.py 2>&1 | tee native64-module-mptype.log
+          for control in ordinal descriptor source instance; do
+            python3 utils/tests/native64-module-mptype.py --control "$control" 2>&1 | tee -a native64-module-mptype.log
+          done
+      - name: Preserve native module MP diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native64-module-mptype-${{ matrix.arch }}
+          path: native64-module-mptype.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  dis64-storage-attach:
+    name: Dis64 Module storage attachment GC ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check native Module attachment, lease/cache roots, real unload and atomic refusal
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-storage-attach.py 2>&1 | tee dis64-storage-attach.log
+          for control in type data mark ordinal atomic cached; do
+            python3 utils/tests/dis64-storage-attach.py --control "$control" 2>&1 | tee -a dis64-storage-attach.log
+          done
+      - name: Preserve native Module attachment diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis64-storage-attach-${{ matrix.arch }}
+          path: dis64-storage-attach.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  dis64-numeric-module:
+    name: Private numeric Module C RX GC ASan ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check numeric map exclusion, owned code entry, real GC and true native RX execution
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-numeric-storage.py 2>&1 | tee numeric-module.log
+          for control in map frame fp data interfaces; do
+            python3 utils/tests/dis64-numeric-storage.py --control "$control" 2>&1 | tee -a numeric-module.log
+          done
+          python3 utils/tests/dis64-numeric-module.py 2>&1 | tee -a numeric-module.log
+          for control in entry path partial lease; do
+            python3 utils/tests/dis64-numeric-module.py --control "$control" 2>&1 | tee -a numeric-module.log
+          done
+          python3 utils/tests/dis64-numeric-exec.py 2>&1 | tee -a numeric-module.log
+          python3 utils/tests/dis64-numeric-exec.py --control 2>&1 | tee -a numeric-module.log
+          python3 utils/tests/dis64-numeric-fault.py 2>&1 | tee -a numeric-module.log
+          python3 utils/tests/dis64-numeric-fault.py --control lease 2>&1 | tee -a numeric-module.log
+          python3 utils/tests/dis64-numeric-fault.py --control mapping 2>&1 | tee -a numeric-module.log
+      - name: Preserve numeric map, code, ownership and RX diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dis64-numeric-module-${{ matrix.arch }}
+          path: numeric-module.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  dis64-numeric-gc:
+    name: Dis64 numeric quanta with GC ${{ matrix.arch }} (native)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+          - arch: amd64
+            runner: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run actual C and RX quanta with collection and trace omission control
+        env:
+          NATIVE64_ARCH: ${{ matrix.arch }}
+          NATIVE64_CFLAGS: '-O3 -g -DNDEBUG -fno-strict-aliasing -fsanitize=address,undefined -fno-sanitize-recover=all -DNATIVE64_TEST_PORT_ALIASES=1'
+        run: |
+          set -euo pipefail
+          python3 utils/tests/dis64-numeric-gc.py
+          python3 utils/tests/dis64-numeric-gc.py --control mp
+          python3 utils/tests/dis64-numeric-gc.py --control frame
+          python3 utils/tests/dis64-numeric-gc.py --provider
+          python3 utils/tests/dis64-numeric-gc.py --calls

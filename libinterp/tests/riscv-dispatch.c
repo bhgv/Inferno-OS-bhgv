@@ -4,7 +4,10 @@
 #include "isa.h"
 typedef uint32_t u32int;
 typedef unsigned long uintptr;
+typedef unsigned char uchar;
 #define nil ((void*)0) // Native C boundary used by the actual executor body.
+#define H ((void*)-1) // Invalid native owner sentinel used by the extracted executor.
+#define O(type, field) offsetof(type, field) // Synthetic fixture layout, not the complete runtime ABI.
 #ifdef TEST_WORD64
 typedef int64_t TestWord;
 #else
@@ -13,18 +16,56 @@ typedef int32_t TestWord;
 #include "riscv-emit.h"
 
 typedef struct REG REG;
+typedef struct Module Module;
+typedef struct Modlink Modlink;
+
+/* Minimal ordinary-owner metadata for this freestanding calling-convention fixture. */
+struct Module
+{
+	int (*cstep)(void); // Nil denotes ordinary decoded LEA execution.
+};
+
+struct Modlink
+{
+	Module *m; // Live synthetic owner; full runtime ownership is tested separately.
+	int compiled; // Zero denotes original Dis-PC mode.
+};
 
 struct REG
 {
 	void *PC; // Synthetic decoded leaf layout, independently supplied to the actual encoder.
 	void *s, *d, *m; // Native operand addresses, including four-byte-aligned wide values.
+	Modlink *M; // Ordinary owner required by the actual decoded LEA guard.
 };
 
-REG R;
+static Module ordinarymodule; // This fixture never installs a translated execution profile.
+static Modlink ordinarylink = {&ordinarymodule, 0}; // Stable owner for all bridge invocations.
+REG R = {nil, nil, nil, nil, &ordinarylink};
 static void (*optab[256])(void); // Real executor uses this C handler table.
-static char exOp[]="opcode"; // Observable absent-handler boundary.
+static char exOp[]="opcode", exCompile[]="compile"; // Observable absent-handler boundary.
 static int faults, helpers, fastcalls, acceptfast, expectedop, captured; // Independent callback observations.
 static void *mapping; // Owned code page whose lifetime may end inside the C handler.
+
+
+/* Supply exact byte-copy support without a libc dependency in RV64I builds. */
+void*
+memmove(void *destination, const void *source, size_t bytes)
+{
+	unsigned char *out = destination;
+	const unsigned char *in = source;
+	size_t i;
+
+	if((uintptr)out <= (uintptr)in){
+		for(i=0; i<bytes; i++)
+			out[i] = in[i];
+	}else{
+		while(bytes != 0){
+			bytes--;
+			out[bytes] = in[bytes];
+		}
+	}
+	return destination;
+}
 
 
 /* Provide only freestanding compiler support for zeroed layout storage. */
@@ -75,6 +116,11 @@ static void
 error(char *message)
 {
 	if(message == exOp) faults++;
+	if(message == exCompile){
+		systemcall(93, 21, 0, 0, 0, 0, 0);
+		for(;;)
+			;
+	}
 }
 
 EXECUTOR_IMPLEMENTATION
@@ -123,7 +169,8 @@ static int
 publish(void)
 {
 	if(systemcall(226, (long)mapping, 4096, 5, 0, 0, 0) != 0) return 0;
-	__asm__ volatile("fence.i" ::: "memory");
+	/* Preserve the same cache instruction with assemblers that require explicit Zifencei naming. */
+	__asm__ volatile(".word 0x0000100f" ::: "memory");
 	return 1;
 }
 

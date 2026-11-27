@@ -317,8 +317,9 @@ nonexistent(e: string): int
 {
 	errs := array[] of {"does not exist", "directory entry not found"};
 	for (i := 0; i < len errs; i++){
-		j := len errs[i];
-		if (j <= len e && e[len e-j:] == errs[i])
+		suffix := errs[i];
+		j := len suffix;
+		if (j <= len e && e[len e-j:] == suffix)
 			return 1;
 	}
 	return 0;
@@ -587,7 +588,9 @@ subsbuiltin(ctxt: ref Context, n: ref Node): list of ref Listnode
 	if (cmd == nil || (hd cmd).word == nil || (hd cmd).cmd != nil)
 		ctxt.fail("bad $ arg", "sh: bad builtin name");
 
-	(nil, bmods) := findbuiltin(ctxt.env.sbuiltins, (hd cmd).word);
+	sbuiltins := ctxt.env.sbuiltins;
+	commandname := (hd cmd).word;
+	bmods := builtinproviders(sbuiltins, commandname);
 	if (bmods == nil)
 		ctxt.fail("builtin not found",
 			sys->sprint("sh: builtin %s not found", (hd cmd).word));
@@ -780,25 +783,25 @@ runexternal(ctxt: ref Context, args: list of ref Listnode, last: int): string
 		mod := load Command npath;
 		if (mod != nil) {
 			argv := list2stringlist(args);
-			export(ctxt.env.localenv);
+			localenv := ctxt.env.localenv;
+			export(localenv);
 
 			if (last) {
 				{
-					sys->pctl(Sys->NEWFD, ctxt.keepfds);
-					mod->init(ctxt.drawcontext, argv);
-					exit;
+					return runlast(mod, ctxt.drawcontext, argv, ctxt.keepfds);
 				} exception e {
-				EPIPE =>
-					return EPIPE;
 				"fail:*" =>
 					return failurestatus(e);
 				}
 			}
 			extstart := chan of int;
-			spawn externalexec(mod, ctxt.drawcontext, argv, extstart, ctxt.keepfds);
+			drawcontext := ctxt.drawcontext;
+			keepfds := ctxt.keepfds;
+			spawn externalexec(mod, drawcontext, argv, extstart, keepfds);
 			pid := <-extstart;
 			if (DEBUG) debug("started external externalexec; pid is "+string pid);
-			return waitfor(ctxt, pid :: nil);
+			pids := pid :: nil;
+			return waitfor(ctxt, pids);
 		}
 		err = sys->sprint("%r");
 		if (nonexistent(err)) {
@@ -807,8 +810,13 @@ runexternal(ctxt: ref Context, args: list of ref Listnode, last: int): string
 				(ok, info) := sys->fstat(fd);
 				# make permission checking more accurate later
 				if (ok == 0 && (info.mode & Sys->DMDIR) == 0
-						&& (info.mode & 8r111) != 0)
-					return runhashpling(ctxt, fd, path, tl args, last);
+						&& (info.mode & 8r111) != 0) {
+					tail := tl args;
+					script := scriptargv(ctxt, fd, path, tail);
+					if (script == nil)
+						return "bad header";
+					return runexternal(ctxt, script, last);
+				}
 			};
 			err = sys->sprint("%r");
 		}
@@ -816,6 +824,18 @@ runexternal(ctxt: ref Context, args: list of ref Listnode, last: int): string
 	} while (pathlist != nil && nonexistent(err));
 	diagnostic(ctxt, sys->sprint("%s: %s", progname, err));
 	return err;
+}
+
+runlast(mod: Command, drawcontext: ref Draw->Context, argv: list of string, keepfds: list of int): string
+{
+	{
+		sys->pctl(Sys->NEWFD, keepfds);
+		mod->init(drawcontext, argv);
+		exit;
+	} exception e {
+	EPIPE =>
+		return EPIPE;
+	}
 }
 
 failurestatus(e: string): string
@@ -828,32 +848,73 @@ failurestatus(e: string): string
 	return "failed";
 }
 
-runhashpling(ctxt: ref Context, fd: ref Sys->FD,
-		path: string, argv: list of ref Listnode, last: int): string
+# Return the first line end for a complete interpreter header.
+scriptheader(header: array of byte, n: int): int
+{
+	if (n < 4)
+		return -1;
+	hash := int header[0];
+	bang := int header[1];
+	if (hash != '#' || bang != '!')
+		return -1;
+	for (i := 2; i < n; i++) {
+		c := int header[i];
+		if (c == '\n') {
+			if (i < 3)
+				return -1;
+			return i;
+		}
+	}
+	return -1;
+}
+
+# Build the reversed argument list used to append the script path and arguments.
+scriptwords(line: string): list of ref Listnode
+{
+	words: list of ref Listnode;
+	i := 0;
+	while (i < len line) {
+		c := line[i];
+		if (c == ' ' || c == '\t') {
+			i++;
+			continue;
+		}
+		start := i++;
+		while (i < len line) {
+			c = line[i];
+			if (c == ' ' || c == '\t')
+				break;
+			i++;
+		}
+		word := line[start:i];
+		entry := ref Listnode(nil, word);
+		words = entry :: words;
+	}
+	return words;
+}
+
+scriptargv(ctxt: ref Context, fd: ref Sys->FD,
+		path: string, argv: list of ref Listnode): list of ref Listnode
 {
 	header := array[1024] of byte;
 	n := sys->read(fd, header, len header);
-	for (i := 0; i < n; i++)
-		if (header[i] == byte '\n')
-			break;
-	if (i == n || i < 3 || header[0] != byte('#') || header[1] != byte('!')) {
+	i := scriptheader(header, n);
+	if (i < 0) {
 		diagnostic(ctxt, "bad script header on " + path);
-		return "bad header";
+		return nil;
 	}
-	(nil, args) := sys->tokenize(string header[2:i], " \t");
-	if (args == nil) {
+	line := string header[2:i];
+	nargs := scriptwords(line);
+	if (nargs == nil) {
 		diagnostic(ctxt, "empty header on " + path);
-		return "bad header";
+		return nil;
 	}
 	header = nil;
 	fd = nil;
-	nargs: list of ref Listnode;
-	for (; args != nil; args = tl args)
-		nargs = ref Listnode(nil, hd args) :: nargs;
 	nargs = ref Listnode(nil, path) :: nargs;
 	for (; argv != nil; argv = tl argv)
 		nargs = hd argv :: nargs;
-	return runexternal(ctxt, revlist(nargs), last);
+	return revlist(nargs);
 }
 
 runblock(ctxt: ref Context, args: list of ref Listnode, last: int): string
@@ -891,7 +952,9 @@ runblock(ctxt: ref Context, args: list of ref Listnode, last: int): string
 trybuiltin(ctxt: ref Context, args: list of ref Listnode, lseq: int)
 		: (int, string)
 {
-	(nil, bmods) := findbuiltin(ctxt.env.builtins, (hd args).word);
+	builtins := ctxt.env.builtins;
+	commandname := (hd args).word;
+	bmods := builtinproviders(builtins, commandname);
 	if (bmods == nil)
 		return (0, nil);
 	return (1, (hd bmods)->runbuiltin(ctxt, myself, args, lseq));
@@ -1026,19 +1089,25 @@ waitfor(ctxt: ref Context, pids: list of int): string
 		n := sys->read(ctxt.waitfd, buf, len buf);
 		if(n < 0)
 			panic(sys->sprint("error on wait read: %r"));
-		(who, line, s) := parsewaitstatus(ctxt, string buf[0:n]);
+		line := string buf[0:n];
+		s := parsewaitstatus(ctxt, line);
+		who := int line;
 		if (s != nil) {
 			if (len s >= 5 && s[0:5] == "fail:")
 				s = failurestatus(s);
 			else
 				diagnostic(ctxt, line);
 		}
-		for ((i, pl) := (0, pids); pl != nil; (i, pl) = (i+1, tl pl))
+		i := 0;
+		for (pl := pids; pl != nil; pl = tl pl) {
 			if (who == hd pl)
 				break;
+			i++;
+		}
 		if (i < len status) {
 			# wait returns two records for a killed process...
-			if (status[i] == nil || s != "killed") {
+			prior := status[i];
+			if (prior == nil || s != "killed") {
 				onebad += s != nil;
 				status[i] = s;
 				if (wcount-- <= 1)
@@ -1049,12 +1118,14 @@ waitfor(ctxt: ref Context, pids: list of int): string
 	if (!onebad)
 		return nil;
 	r := status[len status - 1];
-	for (i := len status - 2; i >= 0; i--)
-		r += "|" + status[i];
+	for (i := len status - 2; i >= 0; i--) {
+		part := status[i];
+		r += "|" + part;
+	}
 	return r;
 }
 
-parsewaitstatus(ctxt: ref Context, status: string): (int, string, string)
+parsewaitstatus(ctxt: ref Context, status: string): string
 {
 	for (i := 0; i < len status; i++)
 		if (status[i] == ' ')
@@ -1070,7 +1141,7 @@ parsewaitstatus(ctxt: ref Context, status: string): (int, string, string)
 		ctxt.fail("bad wait read",
 			sys->sprint("sh: bad exit status '%s'", status));
 
-	return (int status, status, status[i+2:]);
+	return status[i+2:];
 }
 
 panic(s: string)
@@ -1091,22 +1162,19 @@ Context.new(drawcontext: ref Draw->Context): ref Context
 	initialise();
 	if (env != nil)
 		env->clone();
-	ctxt := ref Context(
-		ref Environment(
-			ref Builtins(nil, 0),
-			ref Builtins(nil, 0),
-			nil,
-			newlocalenv(nil)
-		),
-		waitfd(),
-		drawcontext,
-		0 :: 1 :: 2 :: nil
-	);
+	sbuiltins := ref Builtins(nil, 0);
+	builtins := ref Builtins(nil, 0);
+	localenv := newlocalenv(nil);
+	contextenv := ref Environment(sbuiltins, builtins, nil, localenv);
+	fd := waitfd();
+	ctxt := ref Context(contextenv, fd, drawcontext, 0 :: 1 :: 2 :: nil);
 	myselfbuiltin->initbuiltin(ctxt, myself);
 	ctxt.env.localenv.flags = ctxt.VERBOSE;
 	for (vl := ctxt.get("autoload"); vl != nil; vl = tl vl)
-		if ((hd vl).cmd == nil && (hd vl).word != nil)
-			loadmodule(ctxt, (hd vl).word);
+		if ((hd vl).cmd == nil && (hd vl).word != nil) {
+			moduleword := (hd vl).word;
+			loadmodule(ctxt, moduleword);
+		}
 	return ctxt;
 }
 
@@ -1171,11 +1239,14 @@ Context.get(ctxt: self ref Context, name: string): list of ref Listnode
 		}
 	}
 
-	v := varfind(ctxt.env.localenv, name);
+	environment := ctxt.env;
+	localenv := environment.localenv;
+	v := varfind(localenv, name);
 	if (v != nil) {
+		value := v.val;
 		if (idx != -1)
-			return index(v.val, idx);
-		return v.val;
+			return index(value, idx);
+		return value;
 	}
 	return nil;
 }
@@ -1249,7 +1320,8 @@ Context.run(ctxt: self ref Context, args: list of ref Listnode, last: int): stri
 	if (args == nil || ((hd args).cmd == nil && (hd args).word == nil))
 		return nil;
 	cmd := hd args;
-	if (cmd.cmd != nil || cmd.word[0] == '{')	# }
+	commandword := cmd.word;
+	if (cmd.cmd != nil || commandword[0] == '{')	# }
 		return runblock(ctxt, args, last);
 
 	if (ctxt.options() & ctxt.EXECPRINT)
@@ -1264,7 +1336,12 @@ Context.run(ctxt: self ref Context, args: list of ref Listnode, last: int): stri
 Context.addmodule(ctxt: self ref Context, name: string, mod: Shellbuiltin)
 {
 	mod->initbuiltin(ctxt, myself);
-	ctxt.env.bmods = (name, mod->getself()) :: ctxt.env.bmods;
+	identity := mod->getself();
+	environment := ctxt.env;
+	modules := environment.bmods;
+	entry := (name, identity);
+	modules = entry :: modules;
+	environment.bmods = modules;
 }
 
 Context.addbuiltin(c: self ref Context, name: string, mod: Shellbuiltin)
@@ -1289,11 +1366,14 @@ Context.removesbuiltin(c: self ref Context, name: string, mod: Shellbuiltin)
 
 varfind(e: ref Localenv, name: string): ref Var
 {
-	idx := hashfn(name, len e.vars);
-	for (; e != nil; e = e.pushed)
-		for (vl := e.vars[idx]; vl != nil; vl = tl vl)
-			if ((hd vl).name == name)
-				return hd vl;
+	bucketcount := len e.vars;
+	idx := hashfn(name, bucketcount);
+	for (; e != nil; e = e.pushed) {
+		buckets := e.vars;
+		entry := hashfind(buckets, idx, name);
+		if (entry != nil)
+			return entry;
+	}
 	return nil;
 }
 
@@ -1331,15 +1411,20 @@ hashfn(s: string, n: int): int
 
 hashfind(ht: array of list of ref Var, idx: int, n: string): ref Var
 {
-	for (ent := ht[idx]; ent != nil; ent = tl ent)
-		if ((hd ent).name == n)
-			return hd ent;
+	for (ent := ht[idx]; ent != nil; ent = tl ent) {
+		entry := hd ent;
+		name := entry.name;
+		if (name == n)
+			return entry;
+	}
 	return nil;
 }
 
 hashadd(ht: array of list of ref Var, idx: int, v: ref Var)
 {
-	ht[idx] = v :: ht[idx];
+	bucket := ht[idx];
+	bucket = v :: bucket;
+	ht[idx] = bucket;
 }
 
 copylocalenv(e: ref Localenv): ref Localenv
@@ -1358,11 +1443,16 @@ copylocalenv(e: ref Localenv): ref Localenv
 
 newlocalenv(pushed: ref Localenv): ref Localenv
 {
-	e := ref Localenv(array[ENVHASHSIZE] of list of ref Var, pushed, 0);
+	vars := array[ENVHASHSIZE] of list of ref Var;
+	e := ref Localenv(vars, pushed, 0);
 	if (pushed == nil && env != nil) {
+		bucketcount := len e.vars;
 		for (vl := env->getall(); vl != nil; vl = tl vl) {
 			(name, val) := hd vl;
-			hashadd(e.vars, hashfn(name, len e.vars), ref Var(name, envstringtoval(val), 0));
+			bucket := hashfn(name, bucketcount);
+			words := envstringtoval(val);
+			entry := ref Var(name, words, 0);
+			hashadd(e.vars, bucket, entry);
 		}
 	}
 	if (pushed != nil)
@@ -1377,21 +1467,44 @@ copybuiltins(b: ref Builtins): ref Builtins
 	return nb;
 }
 
-findbuiltin(b: ref Builtins, name: string): (int, list of Shellbuiltin)
+# Return the matching index, or -1 minus the insertion index.
+builtinindex(table: array of (string, list of Shellbuiltin), count: int, name: string): int
 {
 	lo := 0;
-	hi := b.n - 1;
+	hi := count - 1;
 	while (lo <= hi) {
 		mid := (lo + hi) / 2;
-		(bname, bmod) := b.ba[mid];
+		(bname, nil) := table[mid];
 		if (name < bname)
 			hi = mid - 1;
 		else if (name > bname)
 			lo = mid + 1;
 		else
-			return (mid, bmod);
+			return mid;
 	}
-	return (lo, nil);
+	return -1 - lo;
+}
+
+findbuiltin(b: ref Builtins, name: string): (int, list of Shellbuiltin)
+{
+	table := b.ba;
+	count := b.n;
+	index := builtinindex(table, count, name);
+	if (index < 0)
+		return (-1 - index, nil);
+	(nil, providers) := table[index];
+	return (index, providers);
+}
+
+builtinproviders(b: ref Builtins, name: string): list of Shellbuiltin
+{
+	table := b.ba;
+	count := b.n;
+	index := builtinindex(table, count, name);
+	if (index < 0)
+		return nil;
+	(nil, providers) := table[index];
+	return providers;
 }
 
 removebuiltin(b: ref Builtins, name: string, mod: Shellbuiltin)
@@ -1433,32 +1546,37 @@ addbuiltin(b: ref Builtins, name: string, mod: Shellbuiltin)
 
 removebuiltinmod(b: ref Builtins, mod: Shellbuiltin)
 {
+	table := b.ba;
 	j := 0;
 	for (i := 0; i < b.n; i++) {
-		(name, bmods) := b.ba[i];
+		(name, bmods) := table[i];
 		if (hd bmods == mod)
 			bmods = tl bmods;
 		if (bmods != nil)
-			b.ba[j++] = (name, bmods);
+			table[j++] = (name, bmods);
 	}
 	b.n = j;
 	for (; j < i; j++)
-		b.ba[j] = (nil, nil);
+		table[j] = (nil, nil);
 }
 
 export(e: ref Localenv)
 {
 	if (env == nil)
 		return;
-	if (e.pushed != nil)
-		export(e.pushed);
+	pushed := e.pushed;
+	if (pushed != nil)
+		export(pushed);
 
-	for (i := 0; i < len e.vars; i++) {
-		for (vl := e.vars[i]; vl != nil; vl = tl vl) {
+	vars := e.vars;
+	for (i := 0; i < len vars; i++) {
+		for (vl := vars[i]; vl != nil; vl = tl vl) {
 			v := hd vl;
 			# a bit inefficient: a local variable will get several putenvs.
 			if ((v.flags & Var.CHANGED) && !(v.flags & Var.NOEXPORT)) {
-				setenv(v.name, v.val);
+				name := v.name;
+				value := v.val;
+				setenv(name, value);
 				v.flags &= ~Var.CHANGED;
 			}
 		}
@@ -1646,13 +1764,15 @@ revlist(l: list of ref Listnode): list of ref Listnode
 fdassignstr(isassign: int, redir: ref Redir): string
 {
 	l: string = nil;
-	if (redir.fd1 >= 0)
-		l = string redir.fd1;
+	fd1 := redir.fd1;
+	if (fd1 >= 0)
+		l = string fd1;
 	
 	if (isassign) {
 		r: string = nil;
-		if (redir.fd2 >= 0)
-			r = string redir.fd2;
+		fd2 := redir.fd2;
+		if (fd2 >= 0)
+			r = string fd2;
 		return "[" + l + "=" + r + "]";
 	}
 	return "[" + l + "]";
@@ -1675,7 +1795,8 @@ cmd2string(n: ref Node): string
 		return "";
 
 	s: string;
-	case n.ntype {
+	kind := n.ntype;
+	case kind {
 	n_BLOCK =>	s = "{" + cmd2string(n.left) + "}";
 	n_VAR =>		s = "$" + cmd2string(n.left);
 				# XXX can this ever occur?
@@ -1685,24 +1806,32 @@ cmd2string(n: ref Node): string
 	n_COUNT =>	s = "$#" + cmd2string(n.left);
 	n_BQ =>		s = "`" + cmd2string(n.left);
 	n_BQ2 =>		s = "\"" + cmd2string(n.left);
-	n_REDIR =>	s = redirstr(n.redir.rtype);
-				if (n.redir.fd1 != -1)
-					s += fdassignstr(0, n.redir);
+	n_REDIR =>	rd := n.redir;
+				mode := rd.rtype;
+				s = redirstr(mode);
+				if (rd.fd1 != -1)
+					s += fdassignstr(0, rd);
 				s += cmd2string(n.left);
-	n_DUP =>		s = redirstr(n.redir.rtype) + fdassignstr(1, n.redir);
+	n_DUP =>		rd := n.redir;
+				mode := rd.rtype;
+				s = redirstr(mode) + fdassignstr(1, rd);
 	n_LIST =>		s = "(" + cmd2string(n.left) + ")";
 	n_SEQ =>		s = cmd2string(n.left) + ";" + cmd2string(n.right);
 	n_NOWAIT =>	s = cmd2string(n.left) + "&";
 	n_CONCAT =>	s = cmd2string(n.left) + "^" + cmd2string(n.right);
 	n_PIPE =>		s = cmd2string(n.left) + "|";
-				if (n.redir != nil && (n.redir.fd1 != -1 || n.redir.fd2 != -1))
-					s += fdassignstr(n.redir.fd2 != -1, n.redir);
+				rd := n.redir;
+				if (rd != nil && (rd.fd1 != -1 || rd.fd2 != -1)) {
+					assign := rd.fd2 != -1;
+					s += fdassignstr(assign, rd);
+				}
 				s += cmd2string(n.right);
 	n_ASSIGN =>	s = cmd2string(n.left) + "=" + cmd2string(n.right);
 	n_LOCAL =>	s = cmd2string(n.left) + ":=" + cmd2string(n.right);
 	n_ADJ =>		s = cmd2string(n.left) + " " + cmd2string(n.right);
-	n_WORD =>	s = quote(n.word, 1);
-	* =>			s = sys->sprint("unknown%d", n.ntype);
+	n_WORD =>	word := n.word;
+				s = quote(word, 1);
+	* =>			s = sys->sprint("unknown%d", kind);
 	}
 	return s;
 }
@@ -1816,10 +1945,16 @@ sbuiltin_builtin(ctxt: ref Context, args: list of ref Listnode): list of ref Lis
 	if (args == nil || tl args == nil)
 		builtinusage(ctxt, "builtin command [args ...]");
 	name := (hd tl args).word;
-	(nil, mods) := findbuiltin(ctxt.env.sbuiltins, name);
-	for (; mods != nil; mods = tl mods)
-		if (hd mods == myselfbuiltin)
-			return (hd mods)->runsbuiltin(ctxt, myself, tl args);
+	sbuiltins := ctxt.env.sbuiltins;
+	mods := builtinproviders(sbuiltins, name);
+	for (; mods != nil; mods = tl mods) {
+		mod := hd mods;
+		if (mod == myselfbuiltin) {
+			argv := tl args;
+			result := mod->runsbuiltin(ctxt, myself, argv);
+			return result;
+		}
+	}
 	ctxt.fail("builtin not found", sys->sprint("sh: builtin %s not found", name));
 	return nil;
 }
@@ -1869,14 +2004,20 @@ builtin_subsh(ctxt: ref Context, args: list of ref Listnode, nil: int): string
 builtin_loaded(ctxt: ref Context, nil: list of ref Listnode, nil: int): string
 {
 	b := ctxt.env.builtins;
+	table := b.ba;
 	for (i := 0; i < b.n; i++) {
-		(name, bmods) := b.ba[i];
-		sys->print("%s\t%s\n", name, modname(ctxt, hd bmods));
+		(name, bmods) := table[i];
+		mod := hd bmods;
+		owner := modname(ctxt, mod);
+		sys->print("%s\t%s\n", name, owner);
 	}
 	b = ctxt.env.sbuiltins;
+	table = b.ba;
 	for (i = 0; i < b.n; i++) {
-		(name, bmods) := b.ba[i];
-		sys->print("${%s}\t%s\n", name, modname(ctxt, hd bmods));
+		(name, bmods) := table[i];
+		mod := hd bmods;
+		owner := modname(ctxt, mod);
+		sys->print("${%s}\t%s\n", name, owner);
 	}
 	return nil;
 }
@@ -1889,7 +2030,8 @@ builtin_load(ctxt: ref Context, args: list of ref Listnode, nil: int): string
 	if (args == nil)
 		builtinusage(ctxt, "load path...");
 	for (; args != nil; args = tl args) {
-		s := loadmodule(ctxt, (hd args).word);
+		moduleword := (hd args).word;
+		s := loadmodule(ctxt, moduleword);
 		if (s != nil)
 			raise "fail:" + s;
 	}
@@ -1901,9 +2043,11 @@ builtin_unload(ctxt: ref Context, args: list of ref Listnode, nil: int): string
 	if (tl args == nil)
 		builtinusage(ctxt, "unload path...");
 	status := "";
-	for (args = tl args; args != nil; args = tl args)
-		if ((s := unloadmodule(ctxt, (hd args).word)) != nil)
+	for (args = tl args; args != nil; args = tl args) {
+		moduleword := (hd args).word;
+		if ((s := unloadmodule(ctxt, moduleword)) != nil)
 			status = s;
+	}
 	return status;
 }
 
@@ -1955,7 +2099,8 @@ whatisit(ctxt: ref Context, el: ref Listnode): string
 		found++;
 		w += sys->sprint("%s=%s\n", quote(name, 0), quoted(val, 0));
 	}
-	(nil, mods) := findbuiltin(ctxt.env.sbuiltins, name);
+	sbuiltins := ctxt.env.sbuiltins;
+	mods := builtinproviders(sbuiltins, name);
 	if (mods != nil) {
 		mod := hd mods;
 		if (mod == myselfbuiltin)
@@ -1968,7 +2113,8 @@ whatisit(ctxt: ref Context, el: ref Listnode): string
 		}
 		found++;
 	}
-	(nil, mods) = findbuiltin(ctxt.env.builtins, name);
+	builtins := ctxt.env.builtins;
+	mods = builtinproviders(builtins, name);
 	if (mods != nil) {
 		mod := hd mods;
 		if (mod == myselfbuiltin)
@@ -2038,13 +2184,23 @@ builtin_builtin(ctxt: ref Context, args: list of ref Listnode, last: int): strin
 		diagnostic(ctxt, name + " not found");
 		return "not found";
 	}
-	(nil, mods) := findbuiltin(ctxt.env.builtins, name);
-	for (; mods != nil; mods = tl mods)
-		if (hd mods == myselfbuiltin)
-			return (hd mods)->runbuiltin(ctxt, myself, tl args, last);
-	if (ctxt.options() & ctxt.EXECPRINT)
-		sys->fprint(stderr(), "%s\n", quoted(tl args, 0));
-	return runexternal(ctxt, tl args, last);
+	builtins := ctxt.env.builtins;
+	mods := builtinproviders(builtins, name);
+	for (; mods != nil; mods = tl mods) {
+		mod := hd mods;
+		if (mod == myselfbuiltin) {
+			argv := tl args;
+			result := mod->runbuiltin(ctxt, myself, argv, last);
+			return result;
+		}
+	}
+	argv := tl args;
+	if (ctxt.options() & ctxt.EXECPRINT) {
+		fd := stderr();
+		line := quoted(argv, 0);
+		sys->fprint(fd, "%s\n", line);
+	}
+	return runexternal(ctxt, argv, last);
 }
 
 modname(ctxt: ref Context, mod: Shellbuiltin): string
@@ -2077,7 +2233,12 @@ loadmodule(ctxt: ref Context, name: string): string
 		return "bad module";
 	}
 	s := mod->initbuiltin(ctxt, myself);
-	ctxt.env.bmods = (name, mod->getself()) :: ctxt.env.bmods;
+	identity := mod->getself();
+	environment := ctxt.env;
+	modules := environment.bmods;
+	entry := (name, identity);
+	modules = entry :: modules;
+	environment.bmods = modules;
 	if (s != nil) {
 		unloadmodule(ctxt, name);
 		diagnostic(ctxt, "load: module init failed: " + s);
@@ -2102,8 +2263,11 @@ unloadmodule(ctxt: ref Context, name: string): string
 	}
 	for (ctxt.env.bmods = nil; bl != nil; bl = tl bl)
 		ctxt.env.bmods = hd bl :: ctxt.env.bmods;
-	removebuiltinmod(ctxt.env.builtins, mod);
-	removebuiltinmod(ctxt.env.sbuiltins, mod);
+	environment := ctxt.env;
+	builtins := environment.builtins;
+	removebuiltinmod(builtins, mod);
+	sbuiltins := environment.sbuiltins;
+	removebuiltinmod(sbuiltins, mod);
 	return nil;
 }
 
@@ -2119,10 +2283,12 @@ quoted(val: list of ref Listnode, quoteblocks: int): string
 	s := "";
 	for (; val != nil; val = tl val) {
 		el := hd val;
-		if (el.cmd == nil || (quoteblocks && el.word != nil))
-			s += quote(el.word, 0);
+		node := el.cmd;
+		word := el.word;
+		if (node == nil || (quoteblocks && word != nil))
+			s += quote(word, 0);
 		else {
-			cmd := cmd2string(el.cmd);
+			cmd := cmd2string(node);
 			if (quoteblocks)
 				cmd = quote(cmd, 0);
 			s += cmd;

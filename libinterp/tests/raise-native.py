@@ -42,7 +42,7 @@ def main():
 Type Tarray={1}; // Required builtin identity for compiler publication.
 int mutator,nprop; // Required mark-barrier globals; RAISE does not alter them.
 void (*optab[256])(void); // Actual complete-entry C handler slots.
-char exOp[]="opcode"; // Invalid decoded opcode identity.
+char exOp[]="opcode", exCompile[]="compile"; // Invalid decoded opcode identity.
 static Jit *raisejit; // Owned executable table for the selected native backend.
 
 

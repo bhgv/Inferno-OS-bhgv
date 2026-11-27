@@ -335,7 +335,51 @@ frames(void)
 }
 
 
-/* Select independent actual sweep and packed-root failures for parent-source replay. */
+/* A pending argument can be the only reference to an object during allocation. */
+static void
+pending(void)
+{
+	Stkext caller;
+	union {
+		Stkext extent;
+		uchar bytes[sizeof(Stkext)+sizeof(void*)];
+	} storage;
+	Stkext *extension = &storage.extent;
+	Type callerkind;
+	Frame frame = {0};
+	void *argument;
+
+	setup();
+	memset(&caller, 0, sizeof(caller));
+	memset(&storage, 0, sizeof(storage));
+	callerkind = leaf;
+	callerkind.size = sizeof(Frame);
+	caller.reg.TR = &callerkind;
+	memmove(caller.reg.tos.fu, &frame, sizeof(frame));
+	framekind = leaf;
+	framekind.size = sizeof(Frame)+sizeof(void*);
+	framekind.np = 1;
+	framekind.map[0] = 128>>(sizeof(Frame)/sizeof(void*));
+	extension->reg.TR = &framekind;
+	extension->reg.EX = caller.stack;
+	extension->reg.SP = caller.reg.tos.fu+callerkind.size;
+	memmove(extension->reg.tos.fu, &frame, sizeof(frame));
+	argument = object(2, &leaf);
+	memmove(storage.bytes+OA(Stkext, reg.tos.fu)+sizeof(Frame), &argument, sizeof(argument));
+	process.R.FP = caller.reg.tos.fu;
+	process.R.EX = extension->stack;
+	process.R.SP = storage.bytes+OA(Stkext, reg.tos.fu)+framekind.size;
+
+	epochs(6);
+	check(!freed[2] && D2H(argument)->ref == 1);
+	process.R.EX = caller.stack;
+	process.R.SP = extension->reg.SP;
+	epochs(6);
+	check(freed[2] == 1 && leaf.ref == 1);
+}
+
+
+/* Select independent collector checks for parent-source replay. */
 int
 main(int argc, char **argv)
 {
@@ -344,6 +388,8 @@ main(int argc, char **argv)
 		exceptions();
 	else if(strcmp(argv[1], "frames") == 0)
 		frames();
+	else if(strcmp(argv[1], "pending") == 0)
+		pending();
 	else
 		check(0);
 	printf("PASS GC roots %s: %d active predicates; actual rootset/markheap/rungc, bounded pool\n", argv[1], checks);

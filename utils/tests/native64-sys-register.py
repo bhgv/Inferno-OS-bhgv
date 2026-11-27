@@ -11,6 +11,29 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 
 
+# Emit canonical imports and structurally valid mutations independently of the C decoder.
+def imports():
+    raw = runpy.run_path(str(ROOT/'utils/tests/dis64-numeric-module.py'))
+    words = raw['W']
+    bindings = raw['RAW']['RAW']
+    cases = (
+        ('clock_image', '$Sys', 'millisec', 1, ()),
+        ('wrong_module', '$sys', 'millisec', 1, ()),
+        ('wrong_symbol', '$Sys', 'millisecX', 1, ()),
+        ('wrong_result', '$Sys', 'millisec', 0, ()),
+        ('wrong_parameters', '$Sys', 'millisec', 1, (1,)),
+    )
+    arrays = []
+    for label, module, symbol, result, parameters in cases:
+        names = (module, symbol, 'consumer')
+        pool = words(len(names))+b''.join(words(len(name), *map(ord, name)) for name in names)
+        signature = bindings['signature'](result, parameters)
+        sections = raw['SECTIONS'](name=2, imports=[bindings['binding'](module=0, sig=signature)])
+        image = raw['IMAGE']([(kind, pool if kind == 7 else body) for kind, body in sections])
+        arrays.append(f'static const uchar {label}[] = {{'+','.join(map(str, image))+'};')
+    return '\n'.join(arrays)
+
+
 # Generate metadata with host Limbo and exercise real constructors on the selected target.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -30,14 +53,32 @@ def main():
         start = runt.index('static const LimboNative64Entry *const native64sysio[]')
         profile = runt[start:runt.index('\n#endif', start)]
         body = (ROOT/'utils/tests/native64-sys-register.c').read_text().replace('SYS_PROFILE', profile).replace('SYS_REGISTRATION', support['function'](runt, 'void\nsysmodinit('))
-        unit = work/'test.c'; unit.write_text(support['constructor']()+body)
+        body = body.replace('SYS_IMPORTS', imports())
+        inferno = (ROOT/'emu/port/inferno.c').read_text()
+        clock = '\n'.join(support['function'](inferno, signature) for signature in
+                          ('static void\nsysstatusframe(', 'void\nSys_millisec('))
+        body = body.replace('SYS_MILLISEC', clock)
+        link = (ROOT/'libinterp/link.c').read_text()
+        linker = link[link.index('static int\nlinkm('):link.index('/* Release partial or complete export tables')]
+        body = body.replace('SYS_LINKER', linker)
+        xec = (ROOT/'libinterp/xec.c').read_text()
+        iload = '\n'.join(support['function'](xec, signature) for signature in
+                          ('static Import*\nmoduleimports(', 'OP(iload)'))
+        body = body.replace('SYS_ILOAD', iload)
+        load64 = (ROOT/'libinterp/load64.c').read_text()
+        metadata = support['function'](load64, 'static int\ndis64sysloadmetadata(')
+        body = body.replace('SYS_LOAD_METADATA', metadata)
+        fixture = support['constructor']()
+        fixture = fixture.replace('check(p == H);', 'if(p != H) destroysyslink(p);')
+        unit = work/'test.c'
+        unit.write_text('static void destroysyslink(void*);\n'+fixture+body)
         includes = ['-I'+str(work)]+['-I'+str(ROOT/p) for p in ('Linux/'+arch+'/include', 'Linux/386/include', 'emu/port', 'include', 'libinterp')]
         base = ['-DDIS_WORD32=1', '-DDIS64_PILOT_LOADER=1', '-DDIS_NATIVE64_SCALAR_BOOT=1', '-DDIS_NATIVE64_BOOT_SYS_IO=1']
         command = compiler+flags+base+includes
-        for source in ('libinterp/runt.c', 'emu/port/inferno.c'):
-            subprocess.run(command+['-c', str(ROOT/source), '-o', str(work/(Path(source).stem+'.o'))], env=env, check=True)
+        for source in ('libinterp/runt.c', 'libinterp/load64.c', 'emu/port/inferno.c'):
+            subprocess.run(command+['-ffunction-sections', '-fdata-sections', '-c', str(ROOT/source), '-o', str(work/(Path(source).stem+'.o'))], env=env, check=True)
         binary = work/'test'
-        subprocess.run(command+['-ffunction-sections', '-fdata-sections', str(unit), '-Wl,--gc-sections', '-o', str(binary)], env=env, check=True)
+        subprocess.run(command+['-ffunction-sections', '-fdata-sections', str(unit), str(work/'load64.o'), '-Wl,--gc-sections', '-o', str(binary)], env=env, check=True)
         subprocess.run(runner+[str(binary)], env=env, check=True)
         for selection, message in ((base[:-1]+['-DDIS_NATIVE64_BOOT_SYS_IO=0'], 'must be 1'),
                                    (base[:-1]+['-DDIS_NATIVE64_BOOT_SYS_IO=2'], 'must be 1'),

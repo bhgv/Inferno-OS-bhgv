@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import os
+import shutil
 
 ROOT=Path(__file__).resolve().parents[2]
 
@@ -48,6 +49,19 @@ def main():
         bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch','arm64','--console','--native64-sys-io-boot','--output',str(work/'invalid-sys')],capture_output=True)
         if bad.returncode==0 or (work/'invalid-sys').exists():
             raise RuntimeError('Trusted Sys startup accepted the legacy ABI')
+        for arch in ('amd64','arm64','riscv64'):
+            selected=['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch',arch,'--console','--native64-scalar-boot','--native64-sys-io-boot','--native64-emuinit-boot','--output',str(output)]
+            subprocess.run(selected,check=True,capture_output=True)
+            text=output.read_text()
+            for item in ('-DDIS_NATIVE64_BOOT_EMUINIT=1','-DDIS_NATIVE64_FORMATTER=1','NATIVE64_BOOT_EMUINIT_HEADERS='+str(ROOT)+'/libinterp/emuinit-native64.h'):
+                if item not in text:raise RuntimeError('Checked emuinit startup lost coherent selection: '+item)
+            for missing in ('--native64-sys-io-boot','--native64-scalar-boot'):
+                invalid=selected.copy();invalid.remove(missing);invalid[-1]=str(work/'invalid-emuinit')
+                refused=subprocess.run(invalid,capture_output=True)
+                if refused.returncode==0 or (work/'invalid-emuinit').exists():raise RuntimeError('Checked emuinit admitted an incompatible profile')
+        # Deselection clears generated metadata and formatter/model flags.
+        selected.remove('--native64-emuinit-boot');subprocess.run(selected,check=True,capture_output=True)
+        if 'DIS_NATIVE64_BOOT_EMUINIT=1'in output.read_text() or 'NATIVE64_BOOT_EMUINIT_HEADERS=\n'not in output.read_text():raise RuntimeError('Checked emuinit deselection leaked optional dependencies')
         # Cover every 64-bit backend and optional Sys combination: a later flag must not erase the lease.
         for arch in ('amd64','arm64','riscv64'):
             for sysio in (False,True):
@@ -64,6 +78,42 @@ def main():
                     raise RuntimeError('Caller lease flags are not coherent: '+arch)
                 if ('-DDIS_NATIVE64_BOOT_SYS_IO=1' in model[0])!=sysio:
                     raise RuntimeError('Caller lease selected the wrong Sys profile')
+                if ('-DDIS_NATIVE64_MANAGED_FILES=1' in model[0])!=sysio:
+                    raise RuntimeError('Managed file profile does not follow the selected native console')
+                expected='NATIVE64_BOOT_STRING_HEADERS='+ (str(ROOT)+'/libinterp/string-native64.h' if sysio else '')
+                if expected not in lines:
+                    raise RuntimeError('Managed file profile lost or retained its generated String dependency')
+        # The font profile adds a headless archive and a selected native header on all Linux backends.
+        for arch in ('amd64','arm64','riscv64'):
+            subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch',arch,'--console',
+                            '--native64-scalar-boot','--native64-math-boot','--native64-sys-io-boot',
+                            '--native64-caller-guard','--native64-freetype-boot','--output',str(output)],check=True,capture_output=True)
+            text=output.read_text()
+            for item in ('-DDIS_NATIVE64_BOOT_FREETYPE=1','-DDIS_NATIVE64_CALLER_GUARD=1',
+                         'NATIVE64_FREETYPE_DIR=libfreetype','NATIVE64_FREETYPE_LIBS=freetype',
+                         'NATIVE64_BOOT_FREETYPE_HEADERS='+str(ROOT)+'/libinterp/freetype-native64.h'):
+                if item not in text:
+                    raise RuntimeError('Font startup lost its coherent dependency: '+item)
+        # Reconfiguration from a generated font profile must clear its optional closure and model.
+        fake=work/'configuration-source'; fake.mkdir()
+        # Exercise the owning script against its current ROOT through an isolated copy of its inputs.
+        shutil.copytree(ROOT/'mkfiles',fake/'mkfiles')
+        (fake/'utils').mkdir()
+        shutil.copy2(ROOT/'utils/configure.py',fake/'utils/configure.py')
+        (fake/'mkconfig').write_text(text)
+        subprocess.run(['python3',str(fake/'utils/configure.py'),'--host','linux','--arch','386','--console',
+                        '--output',str(output)],check=True,capture_output=True)
+        cleared=output.read_text()
+        if 'DISMODELFLAGS=\n' not in cleared or any(item in cleared for item in
+            ('DIS_NATIVE64_BOOT_FREETYPE=1','NATIVE64_FREETYPE_LIBS=freetype','NATIVE64_FREETYPE_DIR=libfreetype')):
+            raise RuntimeError('Font deselection preserved a stale native model or archive')
+        refused=work/'invalid-font'; refused.write_text('preserve font configuration\n')
+        for options in ([], ['--native64-scalar-boot','--arch','386'],
+                        ['--native64-scalar-boot','--target','android','--renderer','framebuffer']):
+            bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--arch','arm64','--console',
+                                '--native64-freetype-boot','--output',str(refused)]+options,capture_output=True)
+            if bad.returncode==0 or refused.read_text()!='preserve font configuration\n':
+                raise RuntimeError('Invalid font profile changed an existing configuration')
         # Validation must preserve an existing output as well as refuse creating a new one.
         sentinel=work/'invalid-caller'; sentinel.write_text('preserve user configuration\n')
         for options in ([],['--native64-scalar-boot'],['--native64-math-boot'],
@@ -79,7 +129,7 @@ def main():
         text=android.read_text()
         if text.index('DISMODELFLAGS=')>text.index('<$ROOT/mkfiles/mkfile-') or '-DDIS_NATIVE64_SCALAR_BOOT=1' not in text:
             raise RuntimeError('Android scalar model must precede target profile expansion')
-        for extra in (['--renderer','gles'],['--arch','arm'],['--native64-math-boot'],['--native64-sys-io-boot']):
+        for extra in (['--renderer','gles'],['--arch','arm'],['--native64-math-boot'],['--native64-sys-io-boot'],['--native64-freetype-boot']):
             bad=subprocess.run(['python3',str(ROOT/'utils/configure.py'),'--host','linux','--target','android','--arch','arm64',
                                 '--native64-scalar-boot','--output',str(work/'bad-android64')]+extra,capture_output=True)
             if bad.returncode==0 or (work/'bad-android64').exists():

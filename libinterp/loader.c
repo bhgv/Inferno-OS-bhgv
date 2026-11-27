@@ -13,17 +13,74 @@ static Type*	Tdesc;
 static uchar	Tlinkmap[] = Loader_Link_map;
 static Type*	Tlink;
 
+
+/* Stage Loader snapshot descriptors before publishing the module.
+ * Sys retains its independent initialization ownership. Caller holds VM init
+ * exclusion; failed Loader staging never publishes or replaces a descriptor. */
 void
 loadermodinit(void)
 {
+	Type *types[3] = {nil};
+	char reason[ERRMAX], *failure;
+	int i;
+
+	if(Tinst != nil || Tdesc != nil || Tlink != nil){
+		if(Tinst != nil && Tdesc != nil && Tlink != nil)
+			return;
+		error("partial Loader type initialization");
+		return;
+	}
 	sysinit();
-	builtinmod("$Loader", Loadermodtab, Loadermodlen);
-	Tinst = dtype(freeheap, sizeof(Loader_Inst), Instmap, sizeof(Instmap));
-	Tdesc = dtype(freeheap, sizeof(Loader_Typedesc), Tdescmap, sizeof(Tdescmap));
-	Tlink = dtype(freeheap, sizeof(Loader_Link), Tlinkmap, sizeof(Tlinkmap));
+	failure = exNomem;
+	types[0] = dtype(freeheap, sizeof(Loader_Inst), Instmap, sizeof(Instmap));
+	if(types[0] == nil)
+		goto failed;
+	types[1] = dtype(freeheap, sizeof(Loader_Typedesc), Tdescmap, sizeof(Tdescmap));
+	if(types[1] == nil)
+		goto failed;
+	types[2] = dtype(freeheap, sizeof(Loader_Link), Tlinkmap, sizeof(Tlinkmap));
+	if(types[2] == nil)
+		goto failed;
+	if(builtinmod("$Loader", Loadermodtab, Loadermodlen) == nil){
+		reason[0] = 0;
+		kgerrstr(reason, sizeof(reason));
+		reason[sizeof(reason)-1] = 0;
+		failure = reason[0] != 0 ? reason : "Loader module registration failed";
+		goto failed;
+	}
+	Tinst = types[0];
+	Tdesc = types[1];
+	Tlink = types[2];
+	return;
+failed:
+	for(i=0; i<3; i++)
+		freetype(types[i]);
+	error(failure);
 }
 
-/* Recover a Dis PC from the native pointer before narrowing to a Limbo int. */
+
+/* Recover a checked Dis index without subtracting unrelated native pointers.
+ * The caller owns the decoded image; no target is dereferenced. Refusal occurs
+ * before changing a snapshot, including on WORD32/reference64 hosts. */
+static WORD
+loaderpc(Module *m, Inst *pc)
+{
+	uintptr base, target, bytes;
+
+	if(m == nil || m == H || m->prog == nil || m->prog == H || m->nprog <= 0 ||
+	   (uintptr)m->prog%sizeof(void*) != 0 || (uintptr)m->nprog > (uintptr)-1/sizeof(Inst))
+		error(exBounds);
+	base = (uintptr)m->prog;
+	bytes = (uintptr)m->nprog*sizeof(Inst);
+	target = (uintptr)pc;
+	if(base > (uintptr)-1-bytes || target < base || target-base >= bytes ||
+	   (target-base)%sizeof(Inst) != 0)
+		error(exBounds);
+	return (target-base)/sizeof(Inst);
+}
+
+
+/* Rewrite only branch operands whose native code targets are within this image. */
 static void
 brunpatch(Loader_Inst *ip, Inst *inst, Module *m)
 {
@@ -61,10 +118,11 @@ brunpatch(Loader_Inst *ip, Inst *inst, Module *m)
 	case IBGTL:
 	case IBGEL:
 	case ISPAWN:
-		ip->dst = inst->d.ins - m->prog;
+		ip->dst = loaderpc(m, inst->d.ins);
 		break;
 	}
 }
+
 
 /* Clear a borrowed pointer result slot before destroying its former owner.
  * The slot may be unaligned; nil and H are rejected before any allocation.
@@ -110,6 +168,7 @@ struct LoaderSnapshot {
 	int kind;
 };
 
+
 /* Keep partial pointer-bearing arrays valid for destruction after any error. */
 static int
 loadersnapshot(void *arg)
@@ -154,7 +213,7 @@ loadersnapshot(void *arg)
 				ll->pc = -1;
 				ll->tdesc = -1;
 			}else{
-				ll->pc = link->u.pc - m->prog;
+				ll->pc = loaderpc(m, link->u.pc);
 				if(link->frame == nil){
 					ll->tdesc = -1;
 					continue;
@@ -556,6 +615,10 @@ loadercompile(void *a)
 	return compile(f->mp->m, f->mp->m->nprog, f->mp);
 }
 
+
+/* Public compilation must not compose cached native entries with a static step.
+ * Trusted owning constructors use the separate C compiler entry under their
+ * own checked mode contract; a guest Loader request cannot grant that authority. */
 void
 Loader_compile(void *a)
 {
@@ -577,6 +640,10 @@ Loader_compile(void *a)
 	}
 	if(m->compiled) {
 		kwerrstr("compiled module");
+		return;
+	}
+	if(m->cstep != nil) {
+		kwerrstr("static translated module");
 		return;
 	}
 	loaderword(f->ret, 0);

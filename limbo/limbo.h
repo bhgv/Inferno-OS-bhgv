@@ -132,6 +132,8 @@ struct Addr
 	long	reg;
 	long	offset;
 	Decl	*decl;
+	Type *native64type;		/* Borrowed per-use type before temporary reuse; no wire field. */
+	Type *native64base;		/* Original ref ADT owner beneath an indirect operand; no wire field. */
 };
 
 struct Inst
@@ -149,6 +151,7 @@ struct Inst
 	Inst	*branch;		/* branch destination */
 	Inst	*next;
 	int	block;			/* blocks nested inside */
+	Type *native64args;		/* Borrowed instantiated variadic FRAME arguments; no wire field. */
 };
 
 struct Case
@@ -602,8 +605,10 @@ Extern	int	dowarn;
 Extern	char	*emitcode;		/* emit stub routines for system module functions */
 Extern	int	emitdyn;		/* emit stub routines as above but for dynamic modules */
 Extern	int	emitstub;		/* emit type and call frames for system modules */
-Extern	int	emitscalar64; // Emit only the checked, existing scalar Dis64 file profile.
+Extern	int	emitscalar64; // 1 selects scalar Dis64; 2 selects the managed pair trial; 3 preserves managed file LOAD.
+Extern	int	emitnative64requests; // Opt-in scalar Imports/Strings generated from the selected .m interface.
 Extern	int	emitnative64;	// Emit experimental native64 metadata without changing the compiler target.
+Extern	char*	native64targetmodule; // Optional exact module selection for native64 metadata.
 Extern	char	*emittab;		/* emit table of runtime functions for this module */
 Extern	int	errors;
 Extern	char	escmap[256];

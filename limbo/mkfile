@@ -7,8 +7,11 @@ OFILES=	asm.$O\
 	decls.$O\
 	dis.$O\
 	dis64.$O\
+	dis64-calls.$O\
 	dis64-lower.$O\
 	dis64-inline.$O\
+	dis64-layout.$O\
+	dis64-typed.$O\
 	dtocanon.$O\
 	ecom.$O\
 	gen.$O\
@@ -26,6 +29,20 @@ OFILES=	asm.$O\
 HFILES=	limbo.h\
 	dis64-lower.h\
 	dis64-inline.h\
+	dis64-layout.h\
+	dis64-typed.h\
+	dis64-multi.h\
+	dis64-raw-array.h\
+	dis64-record-fields.h\
+	$ROOT/include/native64-record-layout.h\
+	$ROOT/include/native64-array-layout.h\
+	dis64-alt.h\
+	dis64-wmcontext.h\
+	dis64-external.h\
+	dis64-variadic.h\
+	dis64-dial.h\
+	dis64-connection.h\
+	$ROOT/include/dis64-sys-dial-schema.h\
 	fns.h\
 	y.tab.h\
 	$ROOT/include/interp.h\
@@ -33,10 +50,20 @@ HFILES=	limbo.h\
 	$ROOT/include/dis64.h\
 	$ROOT/include/dis64-module.h\
 	$ROOT/include/dis64-types.h\
+	$ROOT/include/dis64-numeric-storage.h\
+	$ROOT/include/dis64-storage-image.h\
+	$ROOT/include/dis64-managed-trial.h\
+	$ROOT/include/dis64-bindings.h\
+	$ROOT/include/dis64-signature.h\
 	$ROOT/include/dis64-data.h\
 	$ROOT/include/dis64-scalar.h\
 	$ROOT/include/dis64-code.h\
+	$ROOT/include/dis64-call-infer.h\
+	$ROOT/include/dis64-call-chain.h\
+	$ROOT/include/dis64-call-library.h\
+	$ROOT/include/dis64-bound-call.h\
 	$ROOT/include/dis64-pilot.h\
+	$ROOT/include/dis64-sys-string-flow.h\
 	$ROOT/include/dis-string-pool.h\
 	$ROOT/include/dis-rune.h\
 	$ROOT/include/dis-layout.h\
@@ -56,3 +83,8 @@ BIN=$ROOT/$OBJDIR/bin
 
 CFLAGS='-DINCPATH="'$ROOT/module'"' $CFLAGS
 YFLAGS=-d
+
+# The selected file writer and its independent proof are included by dis64-calls.c.
+dis64-calls.$O: dis64-client.h dis64-command.h dis64-command-local.h dis64-file-strings.h\
+	$ROOT/include/dis64-scalar-client.h $ROOT/include/dis64-client-local.h\
+	$ROOT/include/dis64-client-literals.h $ROOT/include/dis64-command-image.h

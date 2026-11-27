@@ -120,7 +120,7 @@ native64syswrite(const Native64SysWriteRequest *request, int fprint)
 {
 	uchar printmap[] = F_Sys_print_map;
 	uchar fprintmap[] = F_Sys_fprint_map;
-	LimboNative64Entry fixed;
+	const LimboNative64Entry *fixed;
 	Native64ArgumentSource source;
 	Native64SysWriteCall call;
 	int status;
@@ -142,13 +142,13 @@ native64syswrite(const Native64SysWriteRequest *request, int fprint)
 	call.prefix.fd = request->fd;
 	call.prefix.pattern = request->format.pattern;
 	native64argumentsinit(&call.arguments);
-	memset(&fixed, 0, sizeof(fixed));
-	fixed.name = fprint ? "fprint" : "print";
-	fixed.frame_size = fprint ? sizeof(F_Sys_fprint) : sizeof(F_Sys_print);
-	fixed.map_bytes = 2;
-	fixed.map = fprint ? fprintmap : printmap;
+	fixed = native64tailprefix(fprint ? &limbo_native64_Sys_fprint_prefix : &limbo_native64_Sys_print_prefix,
+		fprint ? "fprint" : "print", fprint ? LIMBO_NATIVE64_SIGNATURE_Sys_fprint : LIMBO_NATIVE64_SIGNATURE_Sys_print,
+		fprint ? 2 : 1, fprint ? sizeof(F_Sys_fprint) : sizeof(F_Sys_print), fprint ? fprintmap : printmap, 2);
+	if(fixed == nil)
+		return 0;
 	memset(&source, 0, sizeof(source));
-	source.fixed = &fixed;
+	source.fixed = fixed;
 	source.prefix = fprint ? (void*)&call.prefix : (void*)&call.prefix.pattern;
 	source.prefix_bytes = fprint ? sizeof(call.prefix) : sizeof(call.prefix.pattern);
 	source.slots = call.request.format.slots;

@@ -44,3 +44,17 @@ other compiler warnings remain enabled. Regression: `libinterp/tests/dis64-inspe
 The pilot report also includes `initializer_count`, checked through the shared
 scalar initializer codec. Both the180-byte MOVW42 and192-byte init40/ADDW2
 goldens are accepted. This count does not imply applying data to a VM heap.
+
+## Match an import
+
+Run `dis64inspect consumer.dis64 --match-import 0 provider.dis64` to
+check import ordinal 0 against a specific provider. Both images pass
+the whole-module storage checker. The imported module name must equal
+the provider's declared module name by Rune contents. The export must
+match both the symbol contents and the complete scalar signature.
+
+The JSON result identifies the provider's export ordinal, Dis-PC and
+frame descriptor ordinal. It reports `execution_supported: false`.
+The caller selects the provider file explicitly. The command returns
+status 1 when no match can be established and status 2 for a malformed
+ordinal argument.

@@ -11,6 +11,18 @@
 int		rebootargc = 0;
 char**		rebootargv;
 static	char	*imod = "/dis/emuinit.dis";
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+int dis64bootauto; // Resolve the sole import beside the consumer.
+char *dis64bootmanagedinput;
+int dis64bootmanaged; // Select the explicit managed file-pair trial.
+char *dis64bootprovider; // Explicit provider namespace path for paired startup.
+#endif
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+int dis64bootemuinit;
+static char **native64originalargv;
+static int native64originalargc, native64skipoption=-1, native64skipvalue=-1;
+#endif
+static int imodexplicit; // A selected call profile requires an explicit initial module.
 extern	char*	hosttype;
 char*	tkfont;	/* for libtk/utils.c */
 int	tkstylus;	/* libinterp/tk.c */
@@ -36,6 +48,16 @@ usage(void)
 		"\t-gXxY\n"
 		"\t-c[0-9]\n"
 		"\t-d file.dis\n"
+		"\t-X dis64-calls (experimental; requires -d module.dis64)\n"
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+        "\t-X dis64-emuinit (checked emuinit/Arg startup; no -d)\n"
+#endif
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+		"\t-P provider.dis64 (experimental pair; requires -d consumer.dis64)\n"
+		"\t-X dis64-pair (find the provider beside the -d consumer.dis64 file)\n"
+		"\t-X dis64-managed-trial (requires -d consumer.dis64 and -P provider.dis64 or $Sys)\n"
+		"\t-A text (managed trial input, up to 4096 UTF-8 bytes)\n"
+#endif
 		"\t-s\n"
 		"\t-v\n"
 		"\t-p<poolname>=maxsize\n"
@@ -119,6 +141,8 @@ poolopt(char *str)
 		usage();
 }
 
+
+/* Apply explicit command-line or EMU startup options before namespace initialization. */
 static void
 option(int argc, char *argv[], void (*badusage)(void))
 {
@@ -147,9 +171,53 @@ option(int argc, char *argv[], void (*badusage)(void))
 	case 'I':	/* (temporary option) run without cons */
 		dflag++;
 		break;
+	case 'X':		/* Explicit startup-only experimental file profile. */
+#ifdef DIS64_PILOT_LOADER
+		cp = EARGF(badusage());
+#ifdef DIS_NATIVE64_SCALAR_BOOT
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+		if(strcmp(cp, "dis64-emuinit") == 0){
+            if(dis64bootemuinit)badusage();
+			if(!dis64selectlaunch("dis64-calls"))badusage();
+			dis64bootemuinit=1;
+            {int i;for(i=1;i<native64originalargc;i++){
+                if(cp==native64originalargv[i] && i>1 && !strcmp(native64originalargv[i-1],"-X")){native64skipoption=i-1;native64skipvalue=i;break;}
+                if(!strncmp(native64originalargv[i],"-X",2) && cp==native64originalargv[i]+2){native64skipoption=i;break;}
+            }}
+            break;
+		}
+#endif
+		if(strcmp(cp, "dis64-pair") == 0){
+			dis64bootauto = 1;
+			break;
+		}
+		if(strcmp(cp, "dis64-managed-trial") == 0){
+			dis64bootmanaged = 1;
+			break;
+		}
+#endif
+		if(!dis64selectlaunch(cp))
+			badusage();
+#else
+		badusage();
+#endif
+		break;
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+	case 'A':
+		dis64bootmanagedinput = EARGF(badusage());
+		break;
+#endif
+	case 'P':
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+		dis64bootprovider = EARGF(badusage());
+#else
+		badusage();
+#endif
+		break;
 	case 'd':		/* run as a daemon */
 		dflag++;
 		imod = EARGF(badusage());
+		imodexplicit = 1;
 		break;
 	case 's':		/* No trap handling */
 		sflag++;
@@ -193,11 +261,43 @@ option(int argc, char *argv[], void (*badusage)(void))
 	} ARGEND
 }
 
+
+/* Finish profile selection after all EMU/argv options and before initializing the VM. */
+static int
+launchoptions(void)
+{
+#ifdef DIS64_PILOT_LOADER
+#if defined(DIS_NATIVE64_SCALAR_BOOT)
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+	if(dis64bootemuinit)return !imodexplicit && !dis64bootmanaged && !dis64bootprovider && !dis64bootauto && !dis64bootmanagedinput && dis64launchmode();
+#endif
+	if(dis64bootmanaged)
+		return imodexplicit && dis64bootprovider != nil && !dis64bootauto && !dis64launchmode() &&
+			(dis64bootprovider[0] != '$'
+#if defined(DIS_NATIVE64_BOOT_SYS_IO) && defined(DIS_NATIVE64_MANAGED_FILES)
+			 || strcmp(dis64bootprovider, "$Sys") == 0
+#endif
+			) &&
+			(dis64bootmanagedinput == nil || strlen(dis64bootmanagedinput) <= 4096);
+	if(dis64bootmanagedinput != nil)
+		return 0;
+	if(dis64bootprovider != nil || dis64bootauto)
+		return imodexplicit && !dis64launchmode() && !(dis64bootprovider != nil && dis64bootauto);
+#endif
+	return !dis64launchmode() || imodexplicit;
+#else
+	return 1;
+#endif
+}
+
 static void
 savestartup(int argc, char *argv[])
 {
 	int i;
 
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+    native64originalargv=argv;native64originalargc=argc;
+#endif
 	rebootargc = argc;
 	rebootargv = malloc((argc+1)*sizeof(char*));
 	if(rebootargv == nil)
@@ -209,6 +309,21 @@ savestartup(int argc, char *argv[])
 	}
 	rebootargv[i] = nil;
 }
+
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+/* Keep host-only startup selection out of the unchanged Limbo Arg parser.
+ * Indexes are captured from the actual parsed option, including attached -X;
+ * positional lookalikes and the separately retained reboot argv stay intact. */
+static void
+putemuinitargs(void)
+{
+    Fmt f;char *value;int i,n=0;
+    fmtstrinit(&f);
+    for(i=0;i<rebootargc;i++)if(i!=native64skipoption && i!=native64skipvalue)
+        fmtprint(&f,"%s%q",n++?" ":"",rebootargv[i]);
+    value=fmtstrflush(&f);ksetenv("emuargs",value,1);free(value);
+}
+#endif
 
 void
 putenvq(char *name, char *val, int conf)
@@ -266,6 +381,13 @@ main(int argc, char *argv[])
 		option(envc, enva, envusage);
 	}
 	option(argc, argv, usage);
+	if(!launchoptions()){
+		fprint(2, "emu: select one experimental profile and specify -d module.dis64\n");
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+		fprint(2, "emu: checked startup uses -X dis64-emuinit without -d\n");
+#endif
+		usage();
+	}
 #ifdef DIS_NATIVE64_SCALAR_BOOT
 	if(!native64model()){
 		fprint(2, "emu: incompatible native64 scalar layout\n");
@@ -349,6 +471,9 @@ emuinit(void *imod)
 
 	if(cputype != nil)
 		ksetenv("cputype", cputype, 1);
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+    if(dis64bootemuinit)putemuinitargs();else
+#endif
 	putenvqv("emuargs", rebootargv, rebootargc, 1);
 	putenvq("emuroot", rootdir, 1);
 	ksetenv("emuhost", hosttype, 1);

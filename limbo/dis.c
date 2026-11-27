@@ -1,5 +1,6 @@
 #include "limbo.h"
 #include "dis-operand.h"
+#include "dis64-layout.h"
 
 static	void	disbig(long, Long);
 static	void	disbyte(long, int);
@@ -303,6 +304,7 @@ disdatum(long offset, Node *n)
 			disint(offset, c->iwild->pc);
 		break;
 	case Tarray:
+		dis64layoutarrayreport(n->ty->tof, n->ty->tof->decl->desc->id);
 		disflush(-1, -1, 0);
 		disdata(DEFA, 1);		/* 1 is ignored */
 		discon(offset);

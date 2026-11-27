@@ -118,10 +118,10 @@ def main():
                 input_file.write_text(source(big_count, word_count), encoding="utf-8")
                 command([compiler, "-o", legacy, input_file])
                 ordinary = legacy.read_bytes()
-                command([compiler, "-6", "-o", image, input_file])
+                command([compiler, "-64", "-o", image, input_file])
                 encoded = image.read_bytes()
                 if other:
-                    command([other, "-6", "-o", alternate, input_file])
+                    command([other, "-64", "-o", alternate, input_file])
                     if alternate.read_bytes() != encoded:
                         raise RuntimeError("Compiler byte mismatch at layout " +
                                            repr((big_count, word_count)))
@@ -144,7 +144,7 @@ def main():
         if emu:
             input_file.write_text(source(7, 7).replace("answer != 78636", "answer != 78637"),
                                   encoding="utf-8")
-            command([compiler, "-6", "-o", image, input_file])
+            command([compiler, "-64", "-o", image, input_file])
             for jit in (0, 1):
                 execute(emu, root, args.runner, image, jit, "zero divide")
     if emu:

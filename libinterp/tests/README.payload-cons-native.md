@@ -1,9 +1,9 @@
-# Raw and pointer list payloads in the AMD64/ARM64 JITs
+# Raw and pointer list payloads in the 64-bit JITs
 
-ICONSM and ICONSP now have native handlers on AMD64 and ARM64, raising active
-opcode availability from 153 to 155 of 173 IDs; 18 remain interpreter-only.
-RV64 availability is unchanged. Counts indicate a native path, not universal
-operand coverage or complete VM/OS acceptance.
+The original AMD64/ARM64 checkpoint added ICONSM and ICONSP. RV64 now
+also emits ICONSP, with its common C allocator and native reference/GC/payload
+publication. Current RV64 counts are 92/173 for I, 95/173 for Zmmul and
+108/173 for M. Counts indicate availability of a guarded native path.
 
 ICONSM validates the full WORD count and native source/destination spans before
 calling the common cons allocator. Its previous destination owner is staged in
@@ -68,3 +68,31 @@ Evidence across WORD32/native pointers and legacy WORD64:
 Private sizing layouts currently use 48/56 AMD64 units and 45/68 ARM64 units
 (raw/pointer), within the unchanged 128-unit budget. Physical ARM64 execution
 and complete Inferno runtime acceptance remain separate.
+
+
+## RV64 pointer construction
+
+The RV64I body captures the full head pointer with byte loads, validates its
+lifetime and Tptr reference count, and checks the complete destination span.
+It saves the head and return address in a 16-byte aligned native frame around
+the existing cons call. Successful allocation transfers the existing tail,
+then native instructions retain and mark the head, retain Tptr, and write
+List.t and the payload. Heap.t stays Tlist.
+
+GC colors and descriptor references are reloaded after allocation. Allocation
+errors unwind through the established VM boundary. Allocator callbacks may
+borrow R.s, R.m and R.d. Both C and native paths use the original captured
+head and destination while preserving those callback changes to REG.
+
+payload-cons-native.py now supports NATIVE64_ARCH, CC and NATIVE64_RUNNER.
+The target run checks 5120 pointer cases and 20 pointer preflight cases per
+WORD model. AMD64 and ARM64 additionally retain 67968 raw cases and 16 raw
+preflight cases per model. The pointer cases include a callback that redirects
+all three decoded operand registers, separate from the callback that changes
+collector and descriptor state.
+
+payload-cons-layouts.py also covers RV64 private layouts and output capacities,
+with 11332720 RV64 checks under UBSan. Both AMD64 and ARM64 retain 3931760
+checks each. Partial output remains untouched on refusal. The managed Dis64
+GC fixture requires four native completions in each provider/image counter
+on all three architectures.

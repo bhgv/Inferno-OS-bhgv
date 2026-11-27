@@ -396,4 +396,20 @@ void zcom1(Node *, Node**);
 
 
 /* Emit the opt-in scalar Dis64 image after ordinary IR resolution. */
+void dis64library(Decl*, Inst*, long, long); // Checked entryless numeric exports.
+void dis64managed(Decl*, Decl*, Decl*, Inst*, long, long); // Explicit one-token managed trial.
 void dis64scalar(Decl*, Decl*, Inst*, long, long);
+int dis64clock(Decl*, Decl*, Decl*, Inst*, long, long); // Checked source pilot with a single imported clock.
+unsigned int native64callplan(Decl*, Type*); // Opt-in source call-site diagnostics; no bytecode admission.
+
+void native64callreset(void);
+void dis64layoutreport(Decl*, Decl**, int);
+void dis64typedreport(Decl*, Decl**, int, Inst*, long, Except*);
+void native64callnote(unsigned int, Inst*, Inst*, Inst*, Decl*, Type*);
+void native64callpcs(Inst*, long, Decl*, int); // Final legacy Dis coordinates, never Dis64 admission.
+
+void dis64callsfile(Decl*, Decl*, Decl**, int, Inst*, long); // Checked scalar call file producer.
+
+int dis64commandfile(Decl*, Decl**, int, Inst*, long, long);
+void dis64clientfile(Decl*, Decl*, Decl*, Decl**, int, Inst*, long, long);
+void dis64commandimportfile(Decl*, Decl*, Decl**, int, Inst*, long, long);

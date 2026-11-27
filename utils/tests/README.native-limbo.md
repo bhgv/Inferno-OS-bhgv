@@ -93,3 +93,48 @@ argument declarations. See [the generator checkpoint](../../doc/dis64-native64-d
 for the supported shapes, model predicate and actual C checks. Normal `-a` and
 Dis/AOT remain on the existing target; this metadata mode does not emit a new
 Dis64 program, install native headers or enable builtin calls.
+
+
+## Serialized conditional Sys callers
+
+The `-64` Sys `millisec/sleep/dup` producer lowers Word conditions, conditional
+call diamonds, loops, break/continue and early void-entry returns. Target PCs
+account for expanded native result copies. Conditional/looping programs retain
+call results in stable Word cells; the shared descending fixed-point check
+requires initialization on every path, including the first loop iteration.
+Entering a prepared call, re-entering LOAD and unreachable exit paths are
+rejected before scheduling. This is executable `.dis64` output, not the `-Dq`
+source-plan transport. `dis64-pair-boot.py --sys-flow-only` runs compiled
+programs through the complete emulator with `-c 0` and `-c 1`, plus normal/error
+cleanup, trip-count/result-identity assertions, signed middle widths and active
+malformed-flow controls. The shared flow check is also compared with an
+independent set-based reference on 256 deterministic graphs, including
+backedges. An intersection-to-union mutation must fail. The same tests run in the full `--sys-clock` gate.
+JIT request mode does not prove machine-code completion of this Sys caller.
+The existing three-local, 32-site and scalar-step bounds still apply. Variadic
+Sys, managed arguments and AWM remain outside this profile.
+
+Nested expressions of the supported fixed integer calls are accepted. Earlier
+results read after a later call retain stable Word identities; reused legacy
+frame temporaries do not alias those native scalar cells. Tests cover both
+argument positions, arithmetic and implicit reads, nested chains, loops, early
+returns and both evaluated/skipped arms of short-circuit conditions. Results
+and locals share the same three-cell budget, with an explicit over-budget
+refusal. Existing flat-call byte layouts are checked unchanged.
+
+
+## Serialized managed String literals
+
+`dis64-pair-boot.py --managed-literal-only` checks the explicit `-64l` void-entry
+profile without an external input seed. `dis64-managed-literal.py` generates
+independent payload expectations, malformed images and constructor fixtures;
+`dis64-managed-literal.c` checks actual Rune32 materialization, production GC
+and allocation rollback. The normal managed GC gate also requires the active
+root-publication removal control. See `doc/dis64-managed-literals.md` for a
+runnable provider/caller pair and the private profile boundaries.
+
+The literal profile now supports 32 independently mapped strings, 255 runes
+each and 1024 in aggregate. `dis64-managed-multiliteral.py` supplies complete
+CODE/type-map byte oracles and boundary/refusal cases. The owning GC fixture
+checks every root, distinct ownership for equal contents, final argument
+identity, allocation rollback and collection between all execution quanta.

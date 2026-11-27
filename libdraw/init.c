@@ -1,6 +1,7 @@
 #include "lib9.h"
 #include "draw.h"
 #include "kernel.h"
+#include "drawinfo.h"
 #include "interp.h"
 
 #include "emu.h"
@@ -12,204 +13,284 @@ enum {
 	CHECKLOCKING = 0
 };
 
-/*
- * Attach, or possibly reattach, to window.
- * If reattaching, maintain value of screen pointer.
- */
+
+/* Retire an exclusively owned attach graph; native display defaults are borrowed aliases. */
+static void
+windowdiscard(Display *d, Image *window, Screen *screen)
+{
+	Image *backing;
+
+	backing = screen == nil ? nil : screen->image;
+	if(window != nil && window != d->image)
+		freeimage(window);
+	if(screen != nil)
+		freescreen(screen);
+	if(backing != nil && backing != window && backing != d->image &&
+	   backing != d->white && backing != d->black &&
+	   backing != d->opaque && backing != d->transparent)
+		freeimage(backing);
+}
+
+
+/* Stage a complete fresh native graph before replacing a caller-owned pair; refusal preserves the old pair. */
 int
 gengetwindow(Display *d, char *winname, Image **winp, Screen **scrp, int ref)
 {
 	int n, fd;
-	char buf[64+1];
-	Image *image;
+	char buf[256+1], reason[ERRMAX];
+	Image *backing, *window, *oldwindow;
+	Screen *screen, *oldscreen;
+	Rectangle rectangle;
 
+	if(d == nil || winname == nil || winp == nil || scrp == nil ||
+	   (void*)winp == (void*)scrp || d->closing){
+		kwerrstr("getwindow: invalid attach arguments");
+		return -1;
+	}
+	oldwindow = *winp;
+	oldscreen = *scrp;
+	if((oldwindow != nil && oldwindow->display != d) ||
+	   (oldscreen != nil && oldscreen->display != d) ||
+	   (oldwindow != nil && oldwindow != d->image && oldwindow->screen != oldscreen)){
+		kwerrstr("getwindow: foreign attach graph");
+		return -1;
+	}
+	backing = nil;
+	window = nil;
+	screen = nil;
 	fd = libopen(winname, OREAD);
-	if(fd<0 || (n=libread(fd, buf, sizeof buf-1))<=0){
-		*winp = d->image;
-		assert(*winp && (*winp)->chan != 0);
-		return 1;
+	n = -1;
+	if(fd >= 0){
+		n = libread(fd, buf, sizeof(buf)-1);
+		libclose(fd);
 	}
-	libclose(fd);
-	buf[n] = '\0';
-	if(*winp != nil){
-		_freeimage1(*winp);
-		freeimage((*scrp)->image);
-		freescreen(*scrp);
-		*scrp = nil;
+	if(n <= 0){
+		if(d->image == nil || d->image->chan == 0){
+			kwerrstr("getwindow: missing display image");
+			return -1;
+		}
+		window = d->image;
+	}else{
+		if(n > sizeof(buf)-1){
+			kwerrstr("getwindow: invalid window-name length");
+			return -1;
+		}
+		buf[n] = '\0';
+		backing = namedimage(d, buf);
+		if(backing == nil)
+			return -1;
+		if(backing->chan == 0 || d->white == nil ||
+		   (vlong)backing->r.max.x-backing->r.min.x <= 2*Borderwidth ||
+		   (vlong)backing->r.max.y-backing->r.min.y <= 2*Borderwidth){
+			kwerrstr("getwindow: invalid backing image");
+			goto Refuse;
+		}
+		screen = allocscreen(backing, d->white, 0);
+		if(screen == nil)
+			goto Refuse;
+		rectangle = insetrect(backing->r, Borderwidth);
+		window = _allocwindow(nil, screen, rectangle, ref, DWhite);
+		if(window == nil)
+			goto Refuse;
 	}
-	image = namedimage(d, buf);
-	if(image == 0){
-		*winp = nil;
-		return -1;
-	}
-	assert(image->chan != 0);
-
-	*scrp = allocscreen(image, d->white, 0);
-	if(*scrp == nil){
-		*winp = nil;
-		return -1;
-	}
-
-	*winp = _allocwindow(*winp, *scrp, insetrect(image->r, Borderwidth), ref, DWhite);
-	if(*winp == nil)
-		return -1;
-	assert((*winp)->chan != 0);
+	*winp = window;
+	*scrp = screen;
+	windowdiscard(d, oldwindow, oldscreen);
 	return 1;
+
+Refuse:
+	kgerrstr(reason, sizeof(reason));
+	if(window != nil)
+		freeimage(window);
+	if(screen != nil)
+		freescreen(screen);
+	freeimage(backing);
+	kwerrstr("%s", reason);
+	return -1;
 }
 
-#define	NINFO	12*12
+#define	NINFO	(12*12) // Bound the native display information response.
 
+
+/* Stage native descriptors, channels and images; one refusal path retires every acquired owner. */
 Display*
 initdisplay(char *dev, char *win, void(*error)(Display*, char*))
 {
-	char buf[128], info[NINFO+1], *t;
-	int datafd, ctlfd, reffd;
+	char buf[128], info[NINFO+1], reason[ERRMAX], *windowdir, *devdir;
+	int datafd, ctlfd, reffd, directory, locked, received;
+	Image parsed;
 	Display *disp;
 	Image *image;
 	Dir *dir;
 	void *q;
-	ulong chan;
 
 	fmtinstall('P', Pfmt);
 	fmtinstall('R', Rfmt);
-	if(dev == 0)
+	if(dev == nil)
 		dev = "/dev";
-	if(win == 0)
+	if(win == nil)
 		win = "/dev";
-	if(strlen(dev)>sizeof buf-25 || strlen(win)>sizeof buf-25){
+	if(strlen(dev)>sizeof(buf)-25 || strlen(win)>sizeof(buf)-25){
 		kwerrstr("initdisplay: directory name too long");
 		return nil;
 	}
-	t = strdup(win);
-	if(t == nil)
-		return nil;
-
+	windowdir = nil;
+	devdir = nil;
+	q = nil;
+	disp = nil;
+	image = nil;
+	dir = nil;
+	ctlfd = datafd = reffd = -1;
+	locked = 0;
+	windowdir = strdup(win);
+	if(windowdir == nil)
+		goto Refuse;
 	q = libqlalloc();
 	if(q == nil)
-		return nil;
-
-printf("\n\n>> %s: %d prog=%p, proc=%p\n", "initdisplay", __LINE__, currun(), up);
-
+		goto Refuse;
+	if(_drawdebug)
+		print("initdisplay: prog=%p, proc=%p\n", (void*)currun(), (void*)up);
 	sprint(buf, "%s/draw/new", dev);
 	ctlfd = libopen(buf, ORDWR);
 	if(ctlfd < 0){
-		if(libbind("#i", dev, MBEFORE) < 0){
-    Error1:
-			libqlfree(q);
-			free(t);
-			kwerrstr("initdisplay: %s: %r", buf);
-			return 0;
-		}
+		if(libbind("#i", dev, MBEFORE) < 0)
+			goto Refuse;
 		ctlfd = libopen(buf, ORDWR);
+		if(ctlfd < 0)
+			goto Refuse;
 	}
-	if(ctlfd < 0)
-		goto Error1;
-	if(libread(ctlfd, info, sizeof info) < NINFO){
-    Error2:
-		libclose(ctlfd);
-		goto Error1;
+	received = libread(ctlfd, info, sizeof(info));
+	if(received != NINFO){
+		if(received >= 0)
+			kwerrstr("invalid display image information length");
+		goto Refuse;
 	}
-
-	if((chan=strtochan(info+2*12)) == 0){
-		kwerrstr("bad channel in %s", buf);
-		goto Error2;
+	if(!drawimageinfo(info, &parsed, &directory) || parsed.chan == 0){
+		kwerrstr("invalid display image information");
+		goto Refuse;
 	}
-
-	sprint(buf, "%s/draw/%d/data", dev, atoi(info+0*12));
+	sprint(buf, "%s/draw/%d/data", dev, directory);
 	datafd = libopen(buf, ORDWR);
 	if(datafd < 0)
-		goto Error2;
-	sprint(buf, "%s/draw/%d/refresh", dev, atoi(info+0*12));
+		goto Refuse;
+	sprint(buf, "%s/draw/%d/refresh", dev, directory);
 	reffd = libopen(buf, OREAD);
-	if(reffd < 0){
-    Error3:
-		libclose(datafd);
-		goto Error2;
-	}
-	strcpy(buf, "allocation failed");
-	disp = malloc(sizeof(Display));
-	if(disp == 0){
-    Error4:
-		libclose(reffd);
-		goto Error3;
-	}
-	image = malloc(sizeof(Image));
-	if(image == 0){
-    Error5:
-		free(disp);
-		goto Error4;
-	}
-	memset(image, 0, sizeof(Image));
-	memset(disp, 0, sizeof(Display));
+	if(reffd < 0)
+		goto Refuse;
+	disp = malloc(sizeof(*disp));
+	if(disp == nil)
+		goto Refuse;
+	memset(disp, 0, sizeof(*disp));
+	image = malloc(sizeof(*image));
+	if(image == nil)
+		goto Refuse;
+	memset(image, 0, sizeof(*image));
+	devdir = strdup(dev);
+	if(devdir == nil)
+		goto Refuse;
 	image->display = disp;
 	image->id = 0;
-	image->chan = chan;
-	image->depth = chantodepth(chan);
-	image->repl = atoi(info+3*12);
-	image->r.min.x = atoi(info+4*12);
-	image->r.min.y = atoi(info+5*12);
-	image->r.max.x = atoi(info+6*12);
-	image->r.max.y = atoi(info+7*12);
-	image->clipr.min.x = atoi(info+8*12);
-	image->clipr.min.y = atoi(info+9*12);
-	image->clipr.max.x = atoi(info+10*12);
-	image->clipr.max.y = atoi(info+11*12);
-	disp->dirno = atoi(info+0*12);
-	disp->datachan = libfdtochan(datafd, ORDWR);
-	disp->refchan = libfdtochan(reffd, OREAD);
-	disp->ctlchan = libfdtochan(ctlfd, ORDWR);
-	if(disp->datachan == nil || disp->refchan == nil || disp->ctlchan == nil)
-		goto Error4;
-	disp->bufsize = Displaybufsize;	/* TO DO: iounit(datafd) */
-	if(disp->bufsize <= 0)
-		disp->bufsize = Displaybufsize;
-	if(disp->bufsize < 512){
-		kwerrstr("iounit %d too small", disp->bufsize);
-		goto Error5;
-	}
-	/* TO DO: allocate buffer */
-
-	libclose(datafd);
-	libclose(reffd);
+	image->chan = parsed.chan;
+	image->depth = parsed.depth;
+	image->repl = parsed.repl;
+	image->r = parsed.r;
+	image->clipr = parsed.clipr;
+	disp->dirno = directory;
 	disp->image = image;
 	disp->bufp = disp->buf;
+	disp->bufsize = Displaybufsize;
 	disp->error = error;
 	disp->chan = image->chan;
 	disp->depth = image->depth;
-	disp->windir = t;
-	disp->devdir = strdup(dev);
+	disp->windir = windowdir;
+	disp->devdir = devdir;
 	disp->qlock = q;
+	disp->datachan = libfdtochan(datafd, ORDWR);
+	if(disp->datachan == nil)
+		goto Refuse;
+	disp->refchan = libfdtochan(reffd, OREAD);
+	if(disp->refchan == nil)
+		goto Refuse;
+	disp->ctlchan = libfdtochan(ctlfd, ORDWR);
+	if(disp->ctlchan == nil)
+		goto Refuse;
 	libqlock(q);
-	disp->white = allocimage(disp, Rect(0, 0, 1, 1), GREY1, 1, DWhite);
-	disp->black = allocimage(disp, Rect(0, 0, 1, 1), GREY1, 1, DBlack);
-	disp->opaque = allocimage(disp, Rect(0, 0, 1, 1), GREY1, 1, DWhite);
-	disp->transparent = allocimage(disp, Rect(0, 0, 1, 1), GREY1, 1, DBlack);
-	if(disp->white == nil || disp->black == nil || disp->opaque == nil || disp->transparent == nil){
-		free(image);
-		free(disp->devdir);
-		free(disp->white);
-		free(disp->black);
-		libclose(ctlfd);
-		goto Error5;
-	}
-	if((dir = libdirfstat(ctlfd))!=nil && dir->type=='i'){
+	locked = 1;
+	disp->white = allocimage(disp, Rect(0,0,1,1), GREY1, 1, DWhite);
+	if(disp->white == nil)
+		goto Refuse;
+	disp->black = allocimage(disp, Rect(0,0,1,1), GREY1, 1, DBlack);
+	if(disp->black == nil)
+		goto Refuse;
+	disp->opaque = allocimage(disp, Rect(0,0,1,1), GREY1, 1, DWhite);
+	if(disp->opaque == nil)
+		goto Refuse;
+	disp->transparent = allocimage(disp, Rect(0,0,1,1), GREY1, 1, DBlack);
+	if(disp->transparent == nil)
+		goto Refuse;
+	dir = libdirfstat(ctlfd);
+	if(dir != nil && dir->type == 'i'){
 		disp->local = 1;
 		disp->dataqid = dir->qid.path;
 	}
 	free(dir);
+	libclose(reffd);
+	libclose(datafd);
 	libclose(ctlfd);
-
 	if(CHECKLOCKING)
-		disp->local = 0;	/* force display locking even for local access */
-
-	assert(disp->chan != 0 && image->chan != 0);
+		disp->local = 0;
+	/* The complete display adopts every staged owner and retains its initial exclusion. */
 	return disp;
+
+Refuse:
+	kgerrstr(reason, sizeof(reason));
+	if(disp != nil){
+		freeimage(disp->white);
+		freeimage(disp->black);
+		freeimage(disp->opaque);
+		freeimage(disp->transparent);
+		if(locked)
+			libqunlock(q);
+		libchanclose(disp->datachan);
+		libchanclose(disp->refchan);
+		libchanclose(disp->ctlchan);
+	}
+	free(image);
+	free(disp);
+	if(reffd >= 0)
+		libclose(reffd);
+	if(datafd >= 0)
+		libclose(datafd);
+	if(ctlfd >= 0)
+		libclose(ctlfd);
+	if(q != nil)
+		libqlfree(q);
+	free(devdir);
+	free(windowdir);
+	kwerrstr("initdisplay: %s", reason[0] != 0 ? reason : "native initialization failed");
+	return nil;
 }
 
-/*
- * Call with d unlocked.
- * Note that disp->defaultfont and defaultsubfont are not freed here.
- */
+
+/* Discard private notifications under display exclusion without invoking their payloads. */
+static void
+discardrefresh(Display *disp)
+{
+	Refreshq *entry, *next;
+
+	entry = disp->refhead;
+	disp->refhead = disp->reftail = nil;
+	while(entry != nil){
+		next = entry->next;
+		free(entry);
+		entry = next;
+	}
+}
+
+
+/* Caller owns an unlocked display and has excluded or stopped its other users.
+ * Cancel notifications before resource teardown. Default fonts remain caller-owned.
+ * This function does not itself join the refresh worker or grant a lifetime pin. */
 void
 closedisplay(Display *disp)
 {
@@ -219,6 +300,8 @@ closedisplay(Display *disp)
 	if(disp == nil)
 		return;
 	libqlock(disp->qlock);
+	disp->closing = 1;
+	discardrefresh(disp);
 	if(disp->oldlabel[0]){
 		snprint(buf, sizeof buf, "%s/label", disp->windir);
 		fd = libopen(buf, OWRITE);
@@ -238,7 +321,8 @@ closedisplay(Display *disp)
 	libchanclose(disp->datachan);
 	libchanclose(disp->refchan);
 	libchanclose(disp->ctlchan);
-	/* should cause refresh slave to shut down */
+	/* Channel closure requests worker termination; caller must still exclude its users. */
+	discardrefresh(disp);
 	libqunlock(disp->qlock);
 	libqlfree(disp->qlock);
 	free(disp);

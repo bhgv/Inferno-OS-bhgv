@@ -26,6 +26,7 @@ X11LIBS= -lX11 -lXext	# can remove or override using env section in config files
 OBJ=\
 	asm-$OBJTYPE.$O\
 	storage.$O\
+	key-andr.$O\
 	$ARCHFILES\
 	os.$O\
 	kproc-pthreads.$O\

@@ -1,22 +1,31 @@
 #include "lib9.h"
 #include "draw.h"
+#include "kernel.h"
 
+
+/* Reduce through a wide positive period so Int32 endpoints cannot overflow before modulo. */
 int
 drawreplxy(int min, int max, int x)
 {
-	int sx;
+	vlong period, offset;
 
-	sx = (x-min)%(max-min);
-	if(sx < 0)
-		sx += max-min;
-	return sx+min;
+	period = (vlong)max-min;
+	if(period <= 0){
+		kwerrstr("drawreplxy: nonpositive interval");
+		return min;
+	}
+	offset = ((vlong)x-min)%period;
+	if(offset < 0)
+		offset += period;
+	return (int)(offset+min);
 }
 
+
+/* Normalize each coordinate through its own independently bounded interval. */
 Point
-drawrepl(Rectangle r, Point p)
+drawrepl(Rectangle rectangle, Point point)
 {
-	p.x = drawreplxy(r.min.x, r.max.x, p.x);
-	p.y = drawreplxy(r.min.y, r.max.y, p.y);
-	return p;
+	point.x = drawreplxy(rectangle.min.x, rectangle.max.x, point.x);
+	point.y = drawreplxy(rectangle.min.y, rectangle.max.y, point.y);
+	return point;
 }
-

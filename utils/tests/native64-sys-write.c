@@ -6,7 +6,8 @@ static int writemode, writefprint, releasedvm, releases, acquires, writes, write
 static int movedword, fdretired; // Logical scalar destination transfer and independently retired FD owner.
 static F_Roots_caller *writecaller; // Generated caller with mapped source roots and scalar result storage.
 static Sys_FD *writefd; // Caller-owned live FD, independently pinned until transfer/retirement.
-static char nativebytes[128]; // Exact bytes passed to the one native write, including NUL.
+static char nativebytes[512]; // Exact bytes passed to the one native write, including NUL.
+static void (*nativewriteobserver)(void); // Optional VM-frame liveness probe, nil in ordinary gateway cases.
 static long nativecount; // Exact native count, independent of C string termination.
 
 
@@ -39,6 +40,7 @@ kwrite(int descriptor, void *bytes, long count)
 	check(descriptor == (writefprint ? writemode == 15 ? -1 : 7 : 1));
 	writes++;
 	nativecount=count; memmove(nativebytes, bytes, count);
+	if(nativewriteobserver != nil) nativewriteobserver();
 	if(writemode == 8){
 		memmove(&old, &writecaller->padding, sizeof(old));
 		memmove((uchar*)&writecaller->padding+sizeof(WORD), &old, sizeof(old));

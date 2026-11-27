@@ -29,7 +29,9 @@ TARG=\
 	edit.dis\
 	filename.dis\
 	getauthinfo.dis\
+	help.dis\
 	keyboard.dis\
+	limboedit.dis\
 	logon.dis\
 	logwindow.dis\
 	man.dis\
@@ -64,12 +66,20 @@ TARG=\
 	wm.dis\
 	wmplay.dis\
 	awm.dis\
+	awmcalc.dis\
+	awmdebug.dis\
+	awmproc.dis\
+	awmsh.dis\
+	awmfiles.dis\
+	awmpanel-keyboard.dis\
 	atoolbar.dis\
 
 MODULES=\
 	wmdeb.m\
 
 SYSMODULES=\
+	awmcommands.m\
+	awmfiles.m\
 	bufio.m\
 	cci.m\
 	daytime.m\
@@ -78,6 +88,7 @@ SYSMODULES=\
 	filepat.m\
 	html.m\
 	keyring.m\
+	limboedit.m\
 	man.m\
 	mpeg.m\
 	newns.m\
@@ -102,3 +113,8 @@ DISBIN=$ROOT/dis/wm
 
 <$ROOT/mkfiles/mkdis
 <$ROOT/mkfiles/mksubdirs
+
+awmpanel-keyboard.dis: awmpanel.dis
+	cp awmpanel.dis $target
+
+edit.install edit.installall:V: $DISBIN/edit.dis $DISBIN/limboedit.dis

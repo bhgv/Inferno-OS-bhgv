@@ -230,6 +230,7 @@ main(int argc, char *argv[])
 		 * g	print out globals
 		 * m	module declaration and type checking
 		 * n	nil references
+		 * q	native64 call-site plans and final legacy Dis positions
 		 * s	print sizes of output file sections
 		 * S	type signing
 		 * t	type checking function bodies
@@ -256,10 +257,20 @@ main(int argc, char *argv[])
 		gendis = 0;
 		break;
 	case '6':
-		emitscalar64 = 1;
+		if(strcmp(_args, "4") != 0 && strcmp(_args, "4m") != 0 && strcmp(_args, "4l") != 0)
+			usage();
+		emitscalar64 = strcmp(_args, "4l") == 0 ? 3 : strcmp(_args, "4m") == 0 ? 2 : 1;
+		(void)ARGF();
 		break;
 	case 'H':
 		emitstub = emitnative64 = 1;
+		break;
+	case 'M':
+		if(native64targetmodule != nil)
+			usage();
+		native64targetmodule = ARGF();
+		if(native64targetmodule == nil || native64targetmodule[0] == 0)
+			usage();
 		break;
 	case 'a':
 		emitstub = 1;
@@ -336,6 +347,8 @@ main(int argc, char *argv[])
 		break;
 	}ARGEND
 
+	if(native64targetmodule != nil && !emitnative64)
+		usage();
 	if(emitscalar64 && (argc != 1 || emitstub || emittab != nil || emitcode != nil ||
 	   emitdyn || dosym || signdump != nil || !gendis || mustcompile || dontcompile))
 		usage();
@@ -376,7 +389,7 @@ main(int argc, char *argv[])
 static void
 usage(void)
 {
-	fprint(2, "usage: limbo [-6CGSHacgwe] [-I incdir] [-o outfile] [-{T|t|d} module] [-D debug] file ...\n");
+	fprint(2, "usage: limbo [-64] [-64m] [-64l] [-CGSHacgwe] [-I incdir] [-M native64-module] [-o outfile] [-{T|t|d} module] [-D debug] file ...\n");
 	exits("usage");
 }
 

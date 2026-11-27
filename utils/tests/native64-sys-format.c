@@ -1,4 +1,5 @@
 /* Append after actual owning formatter and port-error/collector services. */
+#define LIMBO_NATIVE64_PREFIXES
 #include "sys-native64.h"
 #include "native64-sys-format.h"
 

@@ -127,14 +127,21 @@ linkmodule(void *arg)
 		if(i >= (0x7fffffff-sizeof(Heap)-(sizeof(Modlink)-sizeof(Modl)))/sizeof(Modl))
 			error(exHeap);
 	t = nil;
-	if(c->mkmp && m->rt != DYNMOD && m->origmp != H && m->ntype > 0){
-		if(m->type == nil || m->type == H)
+	if(c->mkmp && m->rt != DYNMOD && m->origmp != H){
+		if(m->ntype <= 0 || m->mptype < 0 || m->mptype >= m->ntype ||
+		   m->type == nil || m->type == H)
 			error(exHeap);
-		t = m->type[0];
+		t = m->type[m->mptype];
 		if(t == nil || t == H || t->size < 0 ||
 		   (ulong)t->size > 0x7fffffff-sizeof(Heap) ||
 		   t->ref <= 0 || t->ref > 0x7ffffffe - (t == &Tmodlink) ||
 		   (t->size != 0 && m->origmp == nil))
+			error(exHeap);
+		/* The selected descriptor must describe the actual managed source, not
+		 * another ordinal whose larger extent/map could overread or misretain it. */
+		if(m->origmp != nil && ((uintptr)m->origmp <= sizeof(Heap) ||
+		   (uintptr)m->origmp%sizeof(void*) != 0 ||
+		   D2H(m->origmp)->ref == 0 || D2H(m->origmp)->t != t))
 			error(exHeap);
 		/* A rejected clone must never leave an uninitialized mapped MP to destroy. */
 		if(t->np < 0 ||

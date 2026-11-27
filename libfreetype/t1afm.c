@@ -137,9 +137,10 @@
 
 
   /* compare two kerning pairs */
+  /* Match the Inferno sorter callback ABI; compare keys without narrowing. */
   FT_CALLBACK_DEF( int )
-  compare_kern_pairs( const void*  a,
-                      const void*  b )
+  compare_kern_pairs( void*  a,
+                      void*  b )
   {
     T1_Kern_Pair*  pair1 = (T1_Kern_Pair*)a;
     T1_Kern_Pair*  pair2 = (T1_Kern_Pair*)b;
@@ -148,7 +149,7 @@
     FT_ULong  index2 = KERN_INDEX( pair2->glyph1, pair2->glyph2 );
 
 
-    return ( index1 - index2 );
+    return index1 < index2 ? -1 : index1 > index2 ? 1 : 0;
   }
 
 

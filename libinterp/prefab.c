@@ -31,37 +31,78 @@ enum
 	IREnter	= 20,
 };
 
-/* Map public managed fields without treating private native aliases as owners. */
+
+/* Stage native maps and descriptors before exposing the Prefab module.
+ * Private native aliases stay unmapped. Caller holds VM initialization exclusion;
+ * no descriptor or public map changes until complete registration succeeds. */
 void
 prefabmodinit(void)
 {
-	memset(elementmap, 0, sizeof(elementmap));
-	nativefieldmap(elementmap, PElement, e.environ);
-	nativefieldmap(elementmap, PElement, e.tag);
-	nativefieldmap(elementmap, PElement, e.kids);
-	nativefieldmap(elementmap, PElement, e.str);
-	nativefieldmap(elementmap, PElement, e.mask);
-	nativefieldmap(elementmap, PElement, e.image);
-	nativefieldmap(elementmap, PElement, e.font);
-	memset(compoundmap, 0, sizeof(compoundmap));
-	nativefieldmap(compoundmap, PCompound, c.image);
-	nativefieldmap(compoundmap, PCompound, c.environ);
-	nativefieldmap(compoundmap, PCompound, c.title);
-	nativefieldmap(compoundmap, PCompound, c.contents);
-	memset(layoutmap, 0, sizeof(layoutmap));
-	nativefieldmap(layoutmap, Prefab_Layout, font);
-	nativefieldmap(layoutmap, Prefab_Layout, color);
-	nativefieldmap(layoutmap, Prefab_Layout, text);
-	nativefieldmap(layoutmap, Prefab_Layout, icon);
-	nativefieldmap(layoutmap, Prefab_Layout, mask);
-	nativefieldmap(layoutmap, Prefab_Layout, tag);
+	Type *types[3] = {nil};
+	uchar elementbits[sizeof(elementmap)], compoundbits[sizeof(compoundmap)];
+	uchar layoutbits[sizeof(layoutmap)];
+	char reason[ERRMAX], *failure;
+	int i;
 
-	TElement = dtype(freeheap, sizeof(PElement), elementmap, sizeof(elementmap));
-	TLayout = dtype(freeheap, sizeof(Prefab_Layout), layoutmap, sizeof(layoutmap));
-	TCompound = dtype(freeprefabcompound, sizeof(PCompound), compoundmap, sizeof(compoundmap));
-	builtinmod("$Prefab", Prefabmodtab, Prefabmodlen);
+	if(TElement != nil || TLayout != nil || TCompound != nil){
+		if(TElement != nil && TLayout != nil && TCompound != nil)
+			return;
+		error("partial Prefab type initialization");
+		return;
+	}
+	memset(elementbits, 0, sizeof(elementbits));
+	nativefieldmap(elementbits, PElement, e.environ);
+	nativefieldmap(elementbits, PElement, e.tag);
+	nativefieldmap(elementbits, PElement, e.kids);
+	nativefieldmap(elementbits, PElement, e.str);
+	nativefieldmap(elementbits, PElement, e.mask);
+	nativefieldmap(elementbits, PElement, e.image);
+	nativefieldmap(elementbits, PElement, e.font);
+	memset(compoundbits, 0, sizeof(compoundbits));
+	nativefieldmap(compoundbits, PCompound, c.image);
+	nativefieldmap(compoundbits, PCompound, c.environ);
+	nativefieldmap(compoundbits, PCompound, c.title);
+	nativefieldmap(compoundbits, PCompound, c.contents);
+	memset(layoutbits, 0, sizeof(layoutbits));
+	nativefieldmap(layoutbits, Prefab_Layout, font);
+	nativefieldmap(layoutbits, Prefab_Layout, color);
+	nativefieldmap(layoutbits, Prefab_Layout, text);
+	nativefieldmap(layoutbits, Prefab_Layout, icon);
+	nativefieldmap(layoutbits, Prefab_Layout, mask);
+	nativefieldmap(layoutbits, Prefab_Layout, tag);
+
+	failure = exNomem;
+	types[0] = dtype(freeheap, sizeof(PElement), elementbits, sizeof(elementbits));
+	if(types[0] == nil)
+		goto failed;
+	types[1] = dtype(freeheap, sizeof(Prefab_Layout), layoutbits, sizeof(layoutbits));
+	if(types[1] == nil)
+		goto failed;
+	types[2] = dtype(freeprefabcompound, sizeof(PCompound), compoundbits, sizeof(compoundbits));
+	if(types[2] == nil)
+		goto failed;
+	if(builtinmod("$Prefab", Prefabmodtab, Prefabmodlen) == nil){
+		reason[0] = 0;
+		kgerrstr(reason, sizeof(reason));
+		reason[sizeof(reason)-1] = 0;
+		failure = reason[0] != 0 ? reason : "Prefab module registration failed";
+		goto failed;
+	}
+	memmove(elementmap, elementbits, sizeof(elementmap));
+	memmove(compoundmap, compoundbits, sizeof(compoundmap));
+	memmove(layoutmap, layoutbits, sizeof(layoutmap));
+	TElement = types[0];
+	TLayout = types[1];
+	TCompound = types[2];
+	return;
+failed:
+	for(i=0; i<3; i++)
+		freetype(types[i]);
+	error(failure);
 }
 
+
+/* Check the descriptor identity before exposing the native element wrapper. */
 PElement*
 checkelement(Prefab_Element *de)
 {

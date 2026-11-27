@@ -119,9 +119,10 @@
   /*************************************************************************/
   /*************************************************************************/
 
+  /* Match the Inferno sorter callback ABI; compare keys without narrowing. */
   FT_CALLBACK_DEF( FT_Int )
-  cff_cmap_uni_pair_compare( const void*  pair1,
-                             const void*  pair2 )
+  cff_cmap_uni_pair_compare( void*  pair1,
+                             void*  pair2 )
   {
     FT_UInt32  u1 = ((CFF_CMapUniPair)pair1)->unicode;
     FT_UInt32  u2 = ((CFF_CMapUniPair)pair2)->unicode;

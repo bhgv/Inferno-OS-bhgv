@@ -1,50 +1,29 @@
 #include "lib9.h"
 #include "draw.h"
 #include "kernel.h"
+#include "drawinfo.h"
 
 
+/* Refuse invalid image handles and failed pending output before requesting attachment. */
 void
-attachtowindow(Image *i)
+attachtowindow(Image *image)
 {
-	uchar *a;
-	char *err;
-//	Image *i;
-	Rectangle r;
-	int id;
-	Display *d;
+	uchar *command;
+	Display *display;
 
-	err = 0;
-
-	if(i == nil){
-		err = "bad image descriptor";
-    Error:
-		if(err)
-			kwerrstr("attachtowindow: %s", err);
-		else
-			kwerrstr("attachtowindow: %r");
+	if(image == nil || image->display == nil || image->display->closing){
+		kwerrstr("attachtowindow: invalid image descriptor");
 		return;
 	}
-	d = i->display;
-
-	/* flush pending data so we don't get error allocating the image */
-	flushimage(d, 0);
-	a = bufimage(d, 1+4);
-	if(a == 0)
-		goto Error;
-	
-	id = i->id;
-	r = i->r;
-	
-	a[0] = 'W';
-	BPLONG(a+1, id);
-//	BPLONG(a+5, screenid);
-//	BPLONG(a+15, r.min.x);
-//	BPLONG(a+19, r.min.y);
-//	BPLONG(a+23, r.max.x);
-//	BPLONG(a+27, r.max.y);
-
-	if(flushimage(d, 0) < 0)
-		goto Error;
+	display = image->display;
+	if(flushimage(display, 0) < 0)
+		return;
+	command = bufimage(display, 1+4);
+	if(command == nil)
+		return;
+	command[0] = 'W';
+	BPLONG(command+1, image->id);
+	flushimage(display, 0);
 }
 
 
@@ -54,6 +33,8 @@ allocimage(Display *d, Rectangle r, ulong chan, int repl, ulong val)
 	return _allocimage(nil, d, r, chan, repl, val, 0, 0);
 }
 
+
+/* Initialize fresh callback state while preserving the callback identity of an explicitly reused header. */
 Image*
 _allocimage(Image *ai, Display *d, Rectangle r, ulong chan, int repl, ulong val, int screenid, int refresh)
 {
@@ -67,6 +48,10 @@ _allocimage(Image *ai, Display *d, Rectangle r, ulong chan, int repl, ulong val,
 	err = 0;
 	i = 0;
 
+	if(d == nil || d->closing || d->imageid < 0 || d->imageid == 2147483647){
+		kwerrstr("allocimage: unavailable image ID");
+		return nil;
+	}
 	if(chan == 0){
 		kwerrstr("bad channel descriptor");
 		return nil;
@@ -84,8 +69,9 @@ _allocimage(Image *ai, Display *d, Rectangle r, ulong chan, int repl, ulong val,
 		return 0;
 	}
 
-	/* flush pending data so we don't get error allocating the image */
-	flushimage(d, 0);
+	/* Refuse before issuing another request if pending output failed. */
+	if(flushimage(d, 0) < 0)
+		goto Error;
 	a = bufimage(d, 1+4+4+1+4+1+4*4+4*4+4);
 	if(a == 0)
 		goto Error;
@@ -128,6 +114,10 @@ _allocimage(Image *ai, Display *d, Rectangle r, ulong chan, int repl, ulong val,
 			goto Error;
 		}
 	}
+	if(ai == nil){
+		i->reffn = nil;
+		i->refptr = nil;
+	}
 	i->display = d;
 	i->id = id;
 	i->depth = depth;
@@ -141,32 +131,42 @@ _allocimage(Image *ai, Display *d, Rectangle r, ulong chan, int repl, ulong val,
 	return i;
 }
 
+
+/* A newly named native image starts with no path or refresh callback owner. */
 Image*
 namedimage(Display *d, char *name)
 {
 	uchar *a;
-	char *err, buf[12*12+1];
+	char *err, buf[12*12+1], reason[ERRMAX];
 	Image *i;
 	int id, n;
-	ulong chan;
+	uvlong length;
 
 	err = 0;
 	i = 0;
 
-	n = strlen(name);
-	if(n >= 256){
+	if(d == nil || d->closing || d->imageid < 0 || d->imageid == 2147483647 || name == nil){
+		kwerrstr("namedimage: invalid display, image ID or name");
+		return nil;
+	}
+	length = strlen(name);
+	if(length >= 256){
 		err = "name too long";
     Error:
 		if(err)
 			kwerrstr("namedimage: %s", err);
-		else
-			kwerrstr("namedimage: %r");
+		else{
+			kgerrstr(reason, sizeof(reason));
+			kwerrstr("namedimage: %s", reason);
+		}
 		if(i)
 			free(i);
 		return 0;
 	}
-	/* flush pending data so we don't get error allocating the image */
-	flushimage(d, 0);
+	n = length;
+	/* Refuse before issuing another request if pending output failed. */
+	if(flushimage(d, 0) < 0)
+		goto Error;
 	a = bufimage(d, 1+4+1+n);
 	if(a == 0)
 		goto Error;
@@ -179,63 +179,73 @@ namedimage(Display *d, char *name)
 	if(flushimage(d, 0) < 0)
 		goto Error;
 
-	if(kchanio(d->ctlchan, buf, sizeof buf, OREAD) < 12*12)
-		goto Error;
+	if(kchanio(d->ctlchan, buf, sizeof buf, OREAD) != 12*12){
+		kwerrstr("invalid image information length");
+		goto Error1;
+	}
 	buf[12*12] = '\0';
 
 	i = malloc(sizeof(Image));
 	if(i == nil){
 	Error1:
+		kgerrstr(reason, sizeof(reason));
 		a = bufimage(d, 1+4);
 		if(a){
 			a[0] = 'f';
 			BPLONG(a+1, id);
 			flushimage(d, 0);
 		}
+		kwerrstr("%s", reason);
 		goto Error;
 	}
 	i->display = d;
 	i->id = id;
-	if((chan=strtochan(buf+2*12))==0){
-		kwerrstr("bad channel from devdraw");
+	if(!drawimageinfo(buf, i, nil)){
+		kwerrstr("invalid image information fields");
 		goto Error1;
 	}
-	i->chan = chan;
-	i->depth = chantodepth(chan);
-	i->repl = atoi(buf+3*12);
-	i->r.min.x = atoi(buf+4*12);
-	i->r.min.y = atoi(buf+5*12);
-	i->r.max.x = atoi(buf+6*12);
-	i->r.max.y = atoi(buf+7*12);
-	i->clipr.min.x = atoi(buf+8*12);
-	i->clipr.min.y = atoi(buf+9*12);
-	i->clipr.max.x = atoi(buf+10*12);
-	i->clipr.max.y = atoi(buf+11*12);
+	i->reffn = nil;
+	i->refptr = nil;
+	i->fpath = nil;
 	i->screen = 0;
 	i->next = 0;
 	return i;
 }
 
-int
-nameimage(Image *i, char *name, int in)
-{
-	uchar *a;
-	int n;
 
-	n = strlen(name);
-	a = bufimage(i->display, 1+4+1+1+n);
-	if(a == 0)
+/* Keep the one-byte name length exact; refusal must not reserve or send a truncated packet. */
+int
+nameimage(Image *image, char *name, int in)
+{
+	uchar *command;
+	uvlong length;
+	int count;
+
+	if(image == nil || image->display == nil || image->display->closing || name == nil){
+		kwerrstr("nameimage: invalid image descriptor or name");
 		return 0;
-	a[0] = 'N';
-	BPLONG(a+1, i->id);
-	a[5] = in;
-	a[6] = n;
-	memmove(a+7, name, n);
-	if(flushimage(i->display, 0) < 0)
+	}
+	length = strlen(name);
+	if(length >= 256){
+		kwerrstr("nameimage: name too long");
+		return 0;
+	}
+	count = length;
+	command = bufimage(image->display, 1+4+1+1+count);
+	if(command == nil)
+		return 0;
+	command[0] = 'N';
+	BPLONG(command+1, image->id);
+	command[5] = in != 0;
+	command[6] = count;
+	memmove(command+7, name, count);
+	if(flushimage(image->display, 0) < 0)
 		return 0;
 	return 1;
 }
 
+
+/* Unlink a retiring window before any blocking or refused I/O can leave a stale Display.windows edge. */
 int
 _freeimage1(Image *i)
 {
@@ -247,13 +257,6 @@ _freeimage1(Image *i)
 		return 0;
 	/* make sure no refresh events occur on this if we block in the write */
 	d = i->display;
-	/* flush pending data so we don't get error deleting the image */
-	flushimage(d, 0);
-	a = bufimage(d, 1+4);
-	if(a == 0)
-		return -1;
-	a[0] = 'f';
-	BPLONG(a+1, i->id);
 	if(i->screen){
 		w = d->windows;
 		if(w == i)
@@ -267,6 +270,14 @@ _freeimage1(Image *i)
 				w = w->next;
 			}
 	}
+	i->next = nil;
+	/* flush pending data so we don't get error deleting the image */
+	flushimage(d, 0);
+	a = bufimage(d, 1+4);
+	if(a == 0)
+		return -1;
+	a[0] = 'f';
+	BPLONG(a+1, i->id);
 	if(flushimage(d, i->screen!=0) < 0)
 		return -1;
 

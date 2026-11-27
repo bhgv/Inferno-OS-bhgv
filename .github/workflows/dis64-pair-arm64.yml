@@ -1,0 +1,278 @@
+name: Dis64 paired console on 64-bit Linux
+on:
+  pull_request:
+    branches: [experiment]
+  push:
+    branches: [experiment]
+    paths:
+      - '.github/workflows/dis64-pair-arm64.yml'
+      - 'makemk.sh'
+      - 'mkfiles/**'
+      - 'Linux/**'
+      - 'libinterp/comp-*.c'
+      - 'libinterp/comp-leaf64.h'
+      - 'libinterp/riscv-emit.h'
+      - 'libinterp/tests/owner-native.*'
+      - 'libinterp/tests/payload-cons-native.*'
+      - 'libinterp/tests/payload-cons-layouts.py'
+      - 'emu/port/main.c'
+      - 'emu/port/dis.c'
+      - 'libinterp/readmod.c'
+      - 'libinterp/tests/readmod-io.*'
+      - 'libinterp/runt.c'
+      - 'emu/port/inferno.c'
+      - 'utils/tests/native64-sys-register.*'
+      - 'libinterp/tests/sys-pctl.*'
+      - 'libinterp/load64.c'
+      - 'libinterp/mkfile'
+      - 'libinterp/xec.c'
+      - 'utils/tests/dis64-numeric-gc.*'
+      - 'utils/tests/dis64-managed-gc.c'
+      - 'utils/tests/dis64-managed-load.c'
+      - 'utils/tests/dis64-managed-groups.py'
+      - 'utils/tests/dis64-provider-call.c'
+      - 'include/dis64*.h'
+      - 'include/interp.h'
+      - 'include/native64*.h'
+      - 'utils/tests/native64-scalar-boot.py'
+      - 'limbo/**'
+      - 'module/**'
+      - 'emu/Android/emu'
+      - 'appl/cmd/emuinit.b'
+      - 'appl/cmd/sh/sh.b'
+      - 'appl/wm/awm.b'
+      - 'appl/wm/atoolbar.b'
+      - 'appl/lib/arg.b'
+      - 'appl/lib/bufio.b'
+      - 'appl/lib/env.b'
+      - 'appl/lib/filepat.b'
+      - 'appl/lib/readdir.b'
+      - 'appl/lib/string.b'
+      - 'appl/lib/wmsrv.b'
+      - 'appl/lib/wmclient.b'
+      - 'appl/lib/winplace.b'
+      - 'appl/lib/wmlib.b'
+      - 'appl/lib/titlebar.b'
+      - 'appl/lib/tkclient.b'
+      - 'utils/tests/awm-native64-preflight.py'
+      - 'utils/tests/dis64-pair-boot.py'
+      - 'utils/tests/dis64-source-call*.py'
+      - 'utils/tests/dis64-command*'
+      - 'appl/cmd/sh/sh.y'
+      - 'utils/tests/dis64-source-calls.c'
+      - 'utils/tests/dis64-typed*.c'
+      - 'utils/tests/dis64-typed*-unit.py'
+      - 'utils/tests/dis64-client-literal-scalar.py'
+      - 'utils/tests/dis64-library*'
+      - 'utils/tests/dis64-scalar-client*'
+      - 'libinterp/tests/dis64-scheduler.c'
+      - 'utils/tests/native64-port.py'
+      - 'utils/native64-emuinit.py'
+      - 'utils/tests/native64-emuinit*'
+      - 'include/native64-emuinit-boot.h'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dis64-pair-arm64-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  pair:
+    name: Linux ${{ matrix.arch }} (${{ matrix.execution }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+            execution: native
+            compiler: gcc
+            cross: ''
+            executor: ''
+          - arch: amd64
+            runner: ubuntu-22.04
+            execution: native
+            compiler: gcc
+            cross: ''
+            executor: ''
+          - arch: riscv64
+            runner: ubuntu-22.04
+            execution: QEMU
+            compiler: riscv64-linux-gnu-gcc
+            cross: riscv64-linux-gnu-
+            executor: qemu-riscv64 -R 0x10000000000 -L /usr/riscv64-linux-gnu
+    env:
+      NATIVE64_ARCH: ${{ matrix.arch }}
+      NATIVE64_RUNNER: ${{ matrix.executor }}
+      TARGET_CC: ${{ matrix.compiler }}
+      TARGET_CROSS: ${{ matrix.cross }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap native build tools
+        id: bootstrap
+        run: |
+          if [ "$NATIVE64_ARCH" = arm64 ]; then
+            test "$(uname -m)" = aarch64
+          fi
+          packages=()
+          for tool in cc gcc ar make; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              packages+=(build-essential)
+              break
+            fi
+          done
+          if ! command -v python3 >/dev/null 2>&1; then
+            packages+=(python3)
+          fi
+          if [ "$NATIVE64_ARCH" = riscv64 ]; then
+            if ! command -v riscv64-linux-gnu-gcc >/dev/null 2>&1; then
+              packages+=(gcc-riscv64-linux-gnu)
+            fi
+            if ! printf '#include <sys/types.h>\n#include <stdint.h>\n' | riscv64-linux-gnu-gcc -E -x c - >/dev/null 2>&1; then
+              packages+=(libc6-dev-riscv64-cross)
+            fi
+            if ! command -v riscv64-linux-gnu-ar >/dev/null 2>&1; then
+              packages+=(binutils-riscv64-linux-gnu)
+            fi
+            if ! command -v qemu-riscv64 >/dev/null 2>&1; then
+              packages+=(qemu-user)
+            fi
+          fi
+          if [ "${#packages[@]}" -gt 0 ]; then
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 \
+              -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any update
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 \
+              -o Acquire::https::Timeout=20 install -y --no-install-recommends "${packages[@]}"
+          fi
+          MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+      - name: Compile the AWM startup slice and record Dis64 barriers
+        if: matrix.arch == 'arm64'
+        run: |
+          set -o pipefail
+          python3 utils/tests/awm-native64-preflight.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --report "$RUNNER_TEMP/awm-preflight.json" \
+            | tee "$RUNNER_TEMP/awm-preflight.log"
+      - name: Build with classic mk and boot the paired console
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        run: |
+          python3 utils/tests/native64-port.py --arch "$NATIVE64_ARCH" --pair-boot-only --emuinit-boot \
+            --cross "$TARGET_CROSS" --runner "$NATIVE64_RUNNER" \
+            --build-root "$RUNNER_TEMP/native64-pair" --host-tools "$RUNNER_TEMP/host-tools"
+      - name: Execute source-compiled local calls on each target
+        run: |
+          set -o pipefail
+          python3 utils/tests/dis64-source-call-boot.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --root "$RUNNER_TEMP/native64-pair" --emu "$RUNNER_TEMP/native64-pair/emu/Linux/o.emu-g" \
+            --runner "$NATIVE64_RUNNER" | tee "$RUNNER_TEMP/native64-pair/port-logs/source-call-boot.log"
+      - name: Boot Limbo callers through differently named Command implementations
+        run: |
+          set -o pipefail
+          flags='-O2 -g -DNDEBUG -fno-strict-aliasing'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" \
+            python3 utils/tests/dis64-command-alias.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+              --root "$RUNNER_TEMP/native64-pair" --emu "$RUNNER_TEMP/native64-pair/emu/Linux/o.emu-g" \
+              --runner "$NATIVE64_RUNNER" 2>&1 | tee "$RUNNER_TEMP/native64-pair/port-logs/command-alias-boot.log"
+      - name: Check release compiler predicates and managed library execution on each target
+        run: |
+          set -o pipefail
+          flags='-O2 -g -DNDEBUG -fno-strict-aliasing'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          export CC="$TARGET_CC" NATIVE64_CFLAGS="$flags"
+          for gate in dis64-source-calls-unit dis64-typed-tail-unit dis64-typed-local-unit dis64-typed-external-unit dis64-typed-multi-unit; do
+            python3 "utils/tests/$gate.py" | tee "$RUNNER_TEMP/native64-pair/port-logs/$gate.log"
+          done
+          for control in leaf bridge; do
+            python3 utils/tests/dis64-scalar-client.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+              --case single --route-control "$control" \
+              | tee "$RUNNER_TEMP/native64-pair/port-logs/client-route-$control.log"
+          done
+          python3 utils/tests/dis64-client-literal-scalar.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/client-literal-scalar.log"
+          python3 utils/tests/dis64-library-files.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/library-files.log"
+          for control in module signature entry atomic; do
+            python3 utils/tests/dis64-library-files.py --limbo "$RUNNER_TEMP/host-tools/limbo" --control "$control" \
+              | tee "$RUNNER_TEMP/native64-pair/port-logs/library-$control-control.log"
+          done
+          python3 utils/tests/dis64-library-namespace.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/library-namespace.log"
+          python3 utils/tests/dis64-library-namespace.py --iload --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/library-iload.log"
+      - name: Check the selected native Sys registration
+        run: |
+          set -o pipefail
+          flags='-O3 -g -DNDEBUG -fno-strict-aliasing'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" \
+            python3 utils/tests/native64-sys-register.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-registration.log"
+      - name: Check AWM namespace setup on each target
+        run: |
+          set -o pipefail
+          flags='-O2 -g -DNDEBUG'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" PCTL_PLATFORM=emu PCTL_WORD=32 CFLAGS="$flags" \
+            python3 libinterp/tests/sys-pctl.py \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/awm-pctl.log"
+      - name: Boot the scalar Sys profile
+        run: |
+          set -o pipefail
+          python3 utils/tests/native64-scalar-boot.py --math --sys-io --freetype \
+            --runner "$NATIVE64_RUNNER" \
+            --root "$RUNNER_TEMP/native64-pair" --emu "$RUNNER_TEMP/native64-pair/emu/Linux/o.emu-g" \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-boot.log"
+      - name: Check module loader ownership in both startup profiles
+        run: |
+          set -o pipefail
+          flags='-O2 -g -DNDEBUG'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" CFLAGS="$flags" \
+            python3 libinterp/tests/readmod-io.py \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/readmod-ownership.log"
+      - name: Exercise Sys and provider calls and managed GC ownership
+        run: |
+          set -o pipefail
+          flags='-O3 -g -DNDEBUG -fno-strict-aliasing'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" python3 utils/tests/dis64-numeric-gc.py --calls \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/sys-clock-vm.log"
+          CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" python3 utils/tests/dis64-numeric-gc.py --provider \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/provider-vm.log"
+          CC="$TARGET_CC" NATIVE64_CFLAGS="$flags" python3 utils/tests/dis64-numeric-gc.py --managed \
+            --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/managed-string-gc.log"
+      - name: Compare native pointer ownership with C in both WORD models
+        run: |
+          set -o pipefail
+          flags='-O3 -g -DNDEBUG -fno-strict-aliasing'
+          if [ "$NATIVE64_ARCH" != riscv64 ]; then
+            flags="$flags -fsanitize=undefined -fno-sanitize-recover=all"
+          fi
+          CC="$TARGET_CC" CFLAGS="$flags" python3 libinterp/tests/owner-native.py \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/pointer-ownership.log"
+          CC="$TARGET_CC" CFLAGS="$flags" python3 libinterp/tests/payload-cons-native.py \
+            | tee "$RUNNER_TEMP/native64-pair/port-logs/pointer-construction.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dis64-pair-${{ matrix.arch }}-logs
+          path: |
+            ${{ runner.temp }}/native64-pair/port-logs
+            ${{ runner.temp }}/awm-preflight.log
+            ${{ runner.temp }}/awm-preflight.json
+          if-no-files-found: warn

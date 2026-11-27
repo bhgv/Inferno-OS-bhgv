@@ -76,3 +76,41 @@ Physical ARM64 execution and complete VM frame/GC/native-block ABI acceptance
 remain separate. These counts describe guarded opcode availability, not full
 operand coverage or completed whole-VM ports. Tk, security/crypto and the
 MIPS/SPARC/PowerPC JIT sources are outside this checkpoint.
+
+
+## RV64 ownership paths
+
+RV64 now emits IMOVP, ISELF, IHEADP and ITAIL for both WORD models, using
+RV64I instructions. Packed source and destination pointer cells use byte
+loads and stores. Naturally aligned heap reference counts remain native
+eight-byte values, and GC colors and propagation flags remain four-byte
+integers.
+
+The fast path validates complete operand spans and the source lifetime
+before reading the destination owner. Empty and identical destinations
+complete natively. A different previous owner returns to the C handler
+before changing references, colors, operand pointers or destination bytes.
+Successful HEADP and TAIL update REG.s to the selected list field as the
+C handler does.
+
+Code is staged privately and copied only when the caller supplies the
+complete required capacity. RvMax is 384 instructions to accommodate the
+guarded ownership bodies. Compiler cache validation regenerates and
+compares these bodies, including their trusted GC addresses.
+
+Run the production differential fixture on RV64 or through a runner.
+
+```sh
+NATIVE64_ARCH=riscv64 CC=riscv64-linux-gnu-gcc \
+NATIVE64_RUNNER='qemu-riscv64 -R 0x10000000000 -L /usr/riscv64-linux-gnu' \
+CFLAGS='-O3 -g -DNDEBUG -fsanitize=undefined -fno-sanitize-recover=all' \
+python3 libinterp/tests/owner-native.py
+```
+
+The RV64 run checks exact output capacities, publication canaries and
+malformed layouts, then executes 3160 preflight cases and 385856 C
+differential cases per WORD model. The differential covers reference
+counts across the 32-bit boundary, nil and invalid owners, unaligned and
+aliased slots, collector marking, error priority and FP state. The managed
+String GC fixture now requires four RV64 native completions in each
+provider/image counter after adding pointer CONS.

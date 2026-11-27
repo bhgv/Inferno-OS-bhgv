@@ -18,17 +18,21 @@ typedef struct Module Module;
 typedef struct Modlink Modlink;
 typedef struct Heap Heap;
 typedef struct String String;
+typedef struct Import Link;
 typedef struct FixtureReg FixtureReg;
 typedef struct SelfData SelfData;
 
 struct Import {
 	char *name; // Import entry identity used by the fixture linker.
+	int sig;
 };
 
 struct Module {
 	int rt; // Runtime/import-table flags.
 	int ref; // Signed module owner count.
 	Import **ldt; // Sentinel-terminated import table.
+	int (*cstep)(void);
+	Modlink *(*native64importload)(Module*, WORD, char*);
 };
 
 struct Modlink {
@@ -72,8 +76,49 @@ static jmp_buf boundary;
 static int failed, conversions, reads, links, destroyed, fail_link, checks;
 static Import *expected;
 static Module loaded;
+static Module sys;
 static Modlink result;
 
+#define DIS_NATIVE64_BOOT_SYS_IO 1
+
+static int
+native64lea8step(void)
+{
+	abort();
+}
+
+static int
+native64stringlea8step(void)
+{
+	abort();
+}
+
+static int
+native64diallea8step(void)
+{
+	abort();
+}
+
+static void
+ptrdel(Heap *heap)
+{
+	(void)heap;
+	abort();
+}
+
+static const Link*
+native64sysexport(const char *name, Module **owner)
+{
+	static const Link exports[] = {{"first", 101}, {"second", 102}};
+	int i;
+
+	for(i = 0; i < 2; i++)
+		if(strcmp(name, exports[i].name) == 0){
+			*owner = &sys;
+			return &exports[i];
+		}
+	return nil;
+}
 
 /* Record VM exceptions without allowing destination publication to proceed. */
 static void
@@ -153,6 +198,38 @@ __lsan_is_turned_off(void)
 
 IMPLEMENTATION
 
+/* A bad later binding must leave the old destination and module owner intact. */
+static void
+sysgroup(void)
+{
+	Import imports[] = {{"second", 102}, {"first", 101}, {nil, 0}};
+	Import *tables[] = {imports, nil};
+	Module module = {HASLDT, 1, tables, native64lea8step};
+	Modlink current = {&module, H}, *destination;
+	String name = {"$Sys"}, *source = &name;
+	WORD index = 0;
+	int attempt;
+
+	expected = imports;
+	R.M = &current;
+	R.s = &source;
+	R.m = &index;
+	R.d = &destination;
+	for(attempt = 0; attempt < 3; attempt++){
+		sys.ref = 1;
+		destination = &current;
+		failed = reads = links = destroyed = 0;
+		imports[1].sig = attempt == 1 ? 102 : 101;
+		imports[1].name = attempt == 2 ? "missing" : "first";
+		if(setjmp(boundary) == 0)
+			iload();
+		if(reads || failed != (attempt != 0) || links != (attempt == 0) ||
+		   destroyed != (attempt == 0) || sys.ref != 1+(attempt == 0) ||
+		   destination != (attempt == 0 ? &result : &current))
+			abort();
+		checks++;
+	}
+}
 
 /* Rejected input preserves the old destination and performs no external work. */
 static void
@@ -298,6 +375,15 @@ selfrefs(Modlink *current)
 }
 
 
+static Modlink*
+unexpectedselfload(Module *module, WORD table, char *path)
+{
+	(void)module;
+	(void)table;
+	(void)path;
+	abort();
+}
+
 /* Sentinel and large indices must be rejected in both VM word models. */
 int
 main(void)
@@ -325,6 +411,10 @@ main(void)
 	module.rt = HASLDT;
 	loads(&current);
 	selfrefs(&current);
+	module.rt = 0;
+	module.native64importload = unexpectedselfload;
+	selfrefs(&current);
+	sysgroup();
 	printf("module imports: %d cases, WORD%d\n", checks, WORD_BITS);
 	return 0;
 }

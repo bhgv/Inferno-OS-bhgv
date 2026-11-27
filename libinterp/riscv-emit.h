@@ -1,12 +1,14 @@
 /*
  * RV32I/RV64I leaf code for decoded Dis operations.
- * a0 points to REG; only caller-saved t0-t6 are clobbered. No native stack,
- * absolute addresses, compressed instructions, relocations or helper calls in leaf bodies.
+ * a0 points to REG; numeric leaves use caller-saved t0-t6 without a native stack.
+ * Pointer construction uses an ABI-aligned save area around the C allocator call.
+ * Emitted bodies use uncompressed instructions without relocations.
+ * Guarded RV64 owner leaves materialize trusted GC flag addresses in registers.
  * The separate RV64 complete-tail bridge below embeds trusted executor/fast pointers.
  * Include isa.h first. u32int must be exactly 32 bits, independently of XLEN.
  */
-enum { Rvzero=0, Rvra=1, Rvt0=5, Rvt1=6, Rvt2=7, Rva0=10,
-	   Rvt3=28, Rvt4=29, Rvt5=30, Rvt6=31, RvMax=64 };
+enum { Rvzero=0, Rvra=1, Rvsp=2, Rvt0=5, Rvt1=6, Rvt2=7, Rva0=10, Rva1=11,
+	   Rvt3=28, Rvt4=29, Rvt5=30, Rvt6=31, RvMax=384 };
 
 typedef struct RvLayout RvLayout;
 struct RvLayout {
@@ -22,6 +24,11 @@ struct RvLayout {
 	int fixedcoef;
 	int module, linkmodule, moduleprog, modulenprog, instbytes;
 	int heaptype;
+	int heapref, heapcolor, refbytes;
+	void *mutator, *nprop;
+	int markcolor;
+	void *consentry, *ptrtype;
+	int listtype, typeref;
 };
 typedef struct RvBuf RvBuf;
 struct RvBuf {
@@ -109,6 +116,282 @@ rvguard(RvBuf *b, int relation, int left, int right)
 	rvi(b, 0x67, 0, Rvzero, Rvra, 0);
 }
 
+/* Materialize trusted native addresses without adding a literal-pool alignment rule. */
+static void
+rvconstant(RvBuf *b, int reg, unsigned long long value)
+{
+	int i;
+
+	rvi(b, 0x13, 0, reg, Rvzero, (value>>56)&255);
+	for(i=6; i>=0; i--){
+		rvi(b, 0x13, 1, reg, reg, 8);
+		rvi(b, 0x13, 6, reg, reg, (value>>(8*i))&255);
+	}
+}
+
+
+/* Patch a private forward branch after its complete guarded region is sized. */
+static void
+rvpatchbranch(RvBuf *b, int at, int relation, int left, int right)
+{
+	u32int word;
+	RvBuf patch;
+
+	patch.out = &word;
+	patch.n = patch.bad = 0;
+	patch.cap = 1;
+	patch.abi = b->abi;
+	rvbranch(&patch, relation, left, right, 4*(b->n-at));
+	if(b->out != 0 && at < b->cap)
+		b->out[at] = word;
+}
+
+
+/* Require a non-null complete span; t3/t6 are scratch and no VM field changes. */
+static void
+rvownerspan(RvBuf *b, int reg, int bytes)
+{
+	rvguard(b, 1, reg, Rvzero);
+	rvi(b, 0x13, 0, Rvt6, Rvzero, bytes);
+	rvr(b, 0x33, 0, 0, Rvt3, reg, Rvt6);
+	rvguard(b, 7, Rvt3, reg);
+}
+
+
+/* Owner operands may be byte-packed. Heap metadata below remains naturally aligned. */
+static void
+rvownerload(RvBuf *b, int reg, int pointer)
+{
+	int i;
+
+	rvi(b, 0x03, 4, reg, pointer, 0);
+	for(i=1; i<8; i++){
+		rvi(b, 0x03, 4, Rvt5, pointer, i);
+		rvi(b, 0x13, 1, Rvt5, Rvt5, 8*i);
+		rvr(b, 0x33, 6, 0, reg, reg, Rvt5);
+	}
+}
+
+
+static void
+rvownerstore(RvBuf *b, int pointer, int reg)
+{
+	int i;
+
+	rvs(b, 0, pointer, reg, 0);
+	for(i=1; i<8; i++){
+		rvi(b, 0x13, 5, Rvt5, reg, 8*i);
+		rvs(b, 0, pointer, Rvt5, i);
+	}
+}
+
+
+/* Allocate a pointer-list node through the existing C allocator, then retain and publish
+ * its captured head. An allocation error unwinds the native save area through the VM boundary. */
+static int
+rvpointercons(u32int *out, int cap, RvLayout *abi)
+{
+	u32int code[RvMax];
+	RvBuf b;
+	unsigned long long allocator, descriptor, cells[3];
+	int i, j, fields[3], empty, marked;
+
+	allocator = (unsigned long long)abi->consentry;
+	descriptor = (unsigned long long)abi->ptrtype;
+	cells[0] = (unsigned long long)abi->mutator;
+	cells[1] = (unsigned long long)abi->nprop;
+	if(abi->xlen != 64 || allocator == 0 || allocator == ~0ULL || allocator%2 ||
+	   abi->refbytes != 8 || abi->heapref <= 0 || abi->heapref > 128 || abi->heapref%8 ||
+	   abi->heapcolor < abi->heapref+4 || abi->heapcolor > 255 || abi->heapcolor%4 ||
+	   abi->typeref < 0 || abi->typeref > 2047 || abi->typeref%4 ||
+	   descriptor == 0 || descriptor%8 || descriptor > ~0ULL-(abi->typeref+4) ||
+	   abi->markcolor < 0 || abi->markcolor > 255)
+		return 0;
+	cells[2] = descriptor+abi->typeref;
+	fields[0] = abi->listtail; fields[1] = abi->listtype; fields[2] = abi->listdata;
+	for(i=0; i<3; i++){
+		if(fields[i] < 0 || fields[i] > 2047 || fields[i]%8 ||
+		   cells[i] == 0 || cells[i]%4 || cells[i] > ~0ULL-4)
+			return 0;
+		for(j=0; j<i; j++)
+			if(fields[i] == fields[j] || cells[i] == cells[j])
+				return 0;
+	}
+	b.out = code; b.n = b.bad = 0; b.cap = RvMax; b.abi = abi;
+	rvptr(&b, Rvt0, abi->s);
+	rvownerspan(&b, Rvt0, 8);
+	rvownerload(&b, Rvt2, Rvt0);
+	rvguard(&b, 1, Rvt2, Rvzero);
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+	empty = b.n;
+	rvbranch(&b, 0, Rvt2, Rvt6, 0);
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, abi->heapcolor);
+	rvguard(&b, 6, Rvt6, Rvt2);
+	rvi(&b, 0x13, 7, Rvt3, Rvt2, 7);
+	rvguard(&b, 0, Rvt3, Rvzero);
+	rvi(&b, 0x03, 3, Rvt3, Rvt2, -abi->heapref);
+	rvguard(&b, 1, Rvt3, Rvzero);
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+	rvguard(&b, 1, Rvt3, Rvt6);
+	rvpatchbranch(&b, empty, 0, Rvt2, Rvt6);
+	rvconstant(&b, Rvt6, descriptor);
+	rvi(&b, 0x03, 2, Rvt3, Rvt6, abi->typeref);
+	rvguard(&b, 4, Rvzero, Rvt3);
+	rvput(&b, 0x7ffff000U | (u32int)Rvt4<<7 | 0x37); /* lui t4, 0x7ffff */
+	rvi(&b, 0x13, 0, Rvt4, Rvt4, 2047);
+	rvi(&b, 0x13, 0, Rvt4, Rvt4, 2047);
+	rvi(&b, 0x13, 0, Rvt4, Rvt4, 1);
+	rvguard(&b, 1, Rvt3, Rvt4);
+	rvptr(&b, Rvt1, abi->d);
+	rvownerspan(&b, Rvt1, 8);
+	/* Preserve the head and return address in one ABI-aligned native save area. */
+	rvi(&b, 0x13, 0, Rvsp, Rvsp, -16);
+	rvs(&b, 3, Rvsp, Rvt2, 0);
+	rvs(&b, 3, Rvsp, Rvra, 8);
+	rvi(&b, 0x13, 0, Rva1, Rvt1, 0);
+	rvi(&b, 0x13, 0, Rva0, Rvzero, 8);
+	rvconstant(&b, Rvt6, allocator);
+	rvi(&b, 0x67, 0, Rvra, Rvt6, 0);
+	rvi(&b, 0x03, 3, Rvt2, Rvsp, 0);
+	rvi(&b, 0x03, 3, Rvra, Rvsp, 8);
+	rvi(&b, 0x13, 0, Rvsp, Rvsp, 16);
+	/* The allocator may collect. Reload descriptor counts and collector colors after it returns. */
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+	empty = b.n;
+	rvbranch(&b, 0, Rvt2, Rvt6, 0);
+	rvi(&b, 0x03, 3, Rvt3, Rvt2, -abi->heapref);
+	rvi(&b, 0x13, 0, Rvt3, Rvt3, 1);
+	rvs(&b, 3, Rvt2, Rvt3, -abi->heapref);
+	rvi(&b, 0x03, 2, Rvt3, Rvt2, -abi->heapcolor);
+	rvconstant(&b, Rvt6, cells[0]);
+	rvi(&b, 0x03, 2, Rvt4, Rvt6, 0);
+	marked = b.n;
+	rvbranch(&b, 0, Rvt3, Rvt4, 0);
+	rvi(&b, 0x13, 0, Rvt3, Rvzero, abi->markcolor);
+	rvs(&b, 2, Rvt2, Rvt3, -abi->heapcolor);
+	rvconstant(&b, Rvt6, cells[1]);
+	rvi(&b, 0x13, 0, Rvt3, Rvzero, 1);
+	rvs(&b, 2, Rvt6, Rvt3, 0);
+	rvpatchbranch(&b, marked, 0, Rvt3, Rvt4);
+	rvpatchbranch(&b, empty, 0, Rvt2, Rvt6);
+	rvconstant(&b, Rvt6, descriptor);
+	rvi(&b, 0x03, 2, Rvt3, Rvt6, abi->typeref);
+	rvi(&b, 0x13, 0, Rvt3, Rvt3, 1);
+	rvs(&b, 2, Rvt6, Rvt3, abi->typeref);
+	rvs(&b, 3, Rva0, Rvt6, abi->listtype);
+	rvs(&b, 3, Rva0, Rvt2, abi->listdata);
+	rvi(&b, 0x13, 0, Rva0, Rvzero, 1);
+	rvi(&b, 0x67, 0, Rvzero, Rvra, 0);
+	if(b.bad || b.n > cap)
+		return 0;
+	if(out != 0)
+		for(i=0; i<b.n; i++)
+			out[i] = code[i];
+	return b.n;
+}
+
+
+/* Native owner publication is allowed only for an empty or identical destination.
+ * All lifetime guards precede retain/mark/publication; other owners use C destruction. */
+static int
+rvowner(u32int *out, int cap, RvLayout *abi, int op)
+{
+	u32int code[RvMax];
+	RvBuf b;
+	unsigned long long mutator, propagation;
+	int offset, nilvalue, empty, same, marked, i, head, self;
+
+	head = op == IHEADP || op == ITAIL;
+	self = op == ISELF;
+	offset = op == IHEADP ? abi->listdata : abi->listtail;
+	mutator = (unsigned long long)abi->mutator;
+	propagation = (unsigned long long)abi->nprop;
+	if(abi->xlen != 64 || abi->module < 0 || abi->module > 2047 || abi->module%8 ||
+	   abi->heapref <= 0 || abi->heapref > 255 || abi->heapref%8 ||
+	   abi->heapcolor <= 0 || abi->heapcolor > 255 || abi->heapcolor%4 ||
+	   abi->refbytes != 8 || abi->markcolor < 0 || abi->markcolor > 255 ||
+	   (abi->heapcolor < abi->heapref+4 && abi->heapref < abi->heapcolor+8) ||
+	   mutator == 0 || propagation == 0 || (mutator|propagation)%4 ||
+	   mutator > ~0ULL-4 || propagation > ~0ULL-4 || mutator == propagation ||
+	   (head && (offset < 0 || offset > 2039)))
+		return 0;
+	b.out = code;
+	b.n = b.bad = 0;
+	b.cap = RvMax;
+	b.abi = abi;
+	rvptr(&b, Rvt1, abi->d);
+	rvownerspan(&b, Rvt1, 8);
+	if(self)
+		rvptr(&b, Rvt2, abi->module);
+	else{
+		rvptr(&b, Rvt0, abi->s);
+		rvownerspan(&b, Rvt0, 8);
+		rvownerload(&b, Rvt2, Rvt0);
+	}
+	if(head){
+		rvownerspan(&b, Rvt2, offset+8);
+		rvi(&b, 0x13, 0, Rvt0, Rvt2, offset);
+		rvownerload(&b, Rvt2, Rvt0);
+	}
+	rvguard(&b, 1, Rvt2, Rvzero);
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+	nilvalue = -1;
+	if(self)
+		rvguard(&b, 1, Rvt2, Rvt6);
+	else{
+		nilvalue = b.n;
+		rvbranch(&b, 0, Rvt2, Rvt6, 0);
+	}
+	i = abi->heapref > abi->heapcolor ? abi->heapref : abi->heapcolor;
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, i);
+	rvguard(&b, 6, Rvt6, Rvt2);
+	rvi(&b, 0x13, 7, Rvt3, Rvt2, 7);
+	rvguard(&b, 0, Rvt3, Rvzero);
+	rvi(&b, 0x03, 3, Rvt3, Rvt2, -abi->heapref);
+	rvguard(&b, 1, Rvt3, Rvzero);
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+	rvguard(&b, 1, Rvt3, Rvt6);
+	if(nilvalue >= 0)
+		rvpatchbranch(&b, nilvalue, 0, Rvt2, Rvt6);
+	rvownerload(&b, Rvt4, Rvt1);
+	rvi(&b, 0x13, 0, Rvt6, Rvzero, -1);
+	empty = b.n;
+	rvbranch(&b, 0, Rvt4, Rvt6, 0);
+	rvguard(&b, 0, Rvt4, Rvt2);
+	rvpatchbranch(&b, empty, 0, Rvt4, Rvt6);
+	nilvalue = b.n;
+	rvbranch(&b, 0, Rvt2, Rvt6, 0);
+	same = b.n;
+	rvbranch(&b, 0, Rvt4, Rvt2, 0);
+	rvi(&b, 0x13, 0, Rvt3, Rvt3, 1);
+	rvs(&b, 3, Rvt2, Rvt3, -abi->heapref);
+	rvpatchbranch(&b, same, 0, Rvt4, Rvt2);
+	rvi(&b, 0x03, 2, Rvt3, Rvt2, -abi->heapcolor);
+	rvconstant(&b, Rvt6, mutator);
+	rvi(&b, 0x03, 2, Rvt4, Rvt6, 0);
+	marked = b.n;
+	rvbranch(&b, 0, Rvt3, Rvt4, 0);
+	rvi(&b, 0x13, 0, Rvt3, Rvzero, abi->markcolor);
+	rvs(&b, 2, Rvt2, Rvt3, -abi->heapcolor);
+	rvconstant(&b, Rvt6, propagation);
+	rvi(&b, 0x13, 0, Rvt3, Rvzero, 1);
+	rvs(&b, 2, Rvt6, Rvt3, 0);
+	rvpatchbranch(&b, marked, 0, Rvt3, Rvt4);
+	rvpatchbranch(&b, nilvalue, 0, Rvt2, Rvt6);
+	if(head)
+		rvs(&b, 3, Rva0, Rvt0, abi->s);
+	rvownerstore(&b, Rvt1, Rvt2);
+	rvi(&b, 0x13, 0, Rva0, Rvzero, 1);
+	rvi(&b, 0x67, 0, Rvzero, Rvra, 0);
+	if(b.bad || b.n > cap)
+		return 0;
+	if(out != 0)
+		for(i=0; i<b.n; i++)
+			out[i] = code[i];
+	return b.n;
+}
+
+
 /* Turn t3/t4 bits into signed keys using t5/t6, leaving FP state untouched. */
 static void
 rvrealkey(RvBuf *b, int reg)
@@ -177,6 +460,8 @@ rvprogramscale(RvBuf *b, int stride)
 
 /* Return instruction count, or 0 for unsupported/invalid/overflow. out==0
  * performs the same bounded sizing pass without touching memory. */
+#include "riscv-tables.h"
+
 static int
 rvemit(u32int *out, int cap, RvLayout *abi, int op)
 {
@@ -191,6 +476,10 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 	   abi->pc > 2047 || abi->s > 2047 || abi->d > 2047 || abi->m > 2047 ||
 	   (abi->pc|abi->s|abi->d|abi->m) % (abi->xlen/8) != 0)
 		return 0;
+	if(op == ICONSP)
+		return rvpointercons(out, cap, abi);
+	if(op == IMOVP || op == ISELF || op == IHEADP || op == ITAIL)
+		return rvowner(out, cap, abi, op);
 	b.out=out; b.n=0; b.cap=cap; b.bad=0; b.abi=abi;
 	bytes=abi->wordbytes; f3=0; f7=0; binary=0; branch=0; swap=0; invert=0; shift=0; division=0; realbranch=0;
 	switch(op) {
@@ -308,7 +597,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 		rvguard(&b, 7, Rvt0, Rvt4); rvr(&b, 0x33, 0, 1, Rvt4, Rvt4, Rvt6); rvguard(&b, 7, Rvt0, Rvt4);
 		rvguard(&b, 1, Rvt3, Rvzero); rvi(&b, 0x13, 0, Rvt6, Rvzero, -1); rvguard(&b, 1, Rvt3, Rvt6);
 		rvr(&b, 0x33, 0, 0, Rvt5, Rvt3, Rvt4); rvguard(&b, 7, Rvt5, Rvt3);
-		rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, abi->wordbytes);
+		rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, 8);
 		break;
 	case IMULX: case IDIVX:
 		/* Preserve the signed 64-bit intermediate; only DIVX needs hardware division. */
@@ -582,7 +871,7 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 			if(scale) rvi(&b, 0x13, 1, Rvt4, Rvt4, scale);
 			rvr(&b, 0x33, 0, 0, Rvt5, Rvt3, Rvt4);
 			rvguard(&b, 7, Rvt5, Rvt3);
-			rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, abi->wordbytes);
+			rvptr(&b, Rvt2, abi->m); rvstore(&b, Rvt2, Rvt5, 8);
 		}
 		break;
 	case IRUNT:
@@ -746,7 +1035,6 @@ rvemit(u32int *out, int cap, RvLayout *abi, int op)
 
 
 enum {
-	Rva1=11, // Opcode argument to the ordinary C executor.
 	Rva2=12, // Optional native fast-entry argument.
 	RvBridgeWords=15, // Fixed RV64I tail and full-width literal pool budget.
 };

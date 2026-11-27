@@ -1,10 +1,34 @@
 #include "lib9.h"
 #include "interp.h"
 #include "isa.h"
+#ifdef DIS_NATIVE64_GUI_TK
+#if DIS_NATIVE64_GUI_TK != 1 || defined(DIS_NATIVE64_TK_REGISTER) || defined(DIS_NATIVE64_TK_HEADER)
+#error native64 GUI Tk selection owns its generated declarations
+#endif
+#define DIS_NATIVE64_TK_REGISTER 1
+#define DIS_NATIVE64_TK_HEADER "tk-native64.h"
+#endif
+#if defined(DIS_NATIVE64_TK_REGISTER) && DIS_NATIVE64_TK_REGISTER != 1
+#error DIS_NATIVE64_TK_REGISTER must be 1 when selected
+#endif
+#if defined(DIS_NATIVE64_TK_REGISTER) && !defined(DIS_NATIVE64_TK_HEADER)
+#error native64 Tk registration requires an explicit generated header
+#endif
+#ifdef DIS_NATIVE64_TK_HEADER
+#if !defined(DIS_WORD32) || DIS_WORD32 != 1
+#error native64 Tk declarations require DIS_WORD32=1
+#endif
+#ifdef DIS_NATIVE64_TK_REGISTER
+#define LIMBO_NATIVE64_IMPLEMENTATIONS
+#endif
+#include DIS_NATIVE64_TK_HEADER
+typedef struct Draw_Font Draw_Font; /* Opaque drawif helpers; not a Tk interface dependency. */
+#else
 #include "runt.h"
+#include "tkmod.h"
+#endif
 #include "draw.h"
 #include "tk.h"
-#include "tkmod.h"
 #include "pool.h"
 #include "drawif.h"
 #include "keyboard.h"
@@ -69,15 +93,59 @@ tkmarktop(Type *t, void *vw)
 	}
 }
 
+/* Native64 startup stages the mapped top under VM exclusion; legacy ordering stays unchanged. */
 void
 tkmodinit(void)
 {
-	builtinmod("$Tk", Tkmodtab, Tkmodlen);
-	fmtinstall('v', tkeventfmt);			/* XXX */
+#ifdef DIS_NATIVE64_TK_HEADER
+#ifdef DIS_NATIVE64_TK_REGISTER
+	Type *type;
+	Module *module;
+	char reason[ERRMAX];
+	typedef char TkNativePrefix[
+		offsetof(TkTop, dd) == offsetof(Tk_Toplevel, display) &&
+		offsetof(TkTop, wreq) == offsetof(Tk_Toplevel, wreq) &&
+		offsetof(TkTop, di) == offsetof(Tk_Toplevel, image) &&
+		offsetof(TkTop, wmctxt) == offsetof(Tk_Toplevel, ctxt) &&
+		offsetof(TkTop, screenr) == offsetof(Tk_Toplevel, screenr) &&
+		offsetof(TkTop, ctxt) == sizeof(Tk_Toplevel) ? 1 : -1];
 
+	USED(sizeof(TkNativePrefix));
+	if(!limbo_native64_Tk_layout()){
+		error("native64 Tk layout mismatch");
+		return;
+	}
+	if(fakeTkTop != nil) return;
+	type = dtype(tkfreetop, sizeof(TkTop), TktypeMap, sizeof(TktypeMap));
+	if(type == nil){
+		error(exNomem);
+		return;
+	}
+	type->mark = tkmarktop;
+	module = builtinmod64("$Tk", limbo_native64_Tk_specs, limbo_native64_Tk_spec_count,
+		limbo_native64_Tk_implementations, limbo_native64_Tk_implementation_count);
+	if(module == nil){
+		reason[0] = 0;
+		kgerrstr(reason, sizeof(reason));
+		reason[sizeof(reason)-1] = 0;
+		freetype(type);
+		error(reason[0] != 0 ? reason : "native64 Tk registration failed");
+		return;
+	}
+	fakeTkTop = type;
+#else
+	error("experimental native64 Tk registration is not supported");
+	return;
+#endif
+#else
+	builtinmod("$Tk", Tkmodtab, Tkmodlen);
+	fmtinstall('v', tkeventfmt);
 	fakeTkTop = dtype(tkfreetop, sizeof(TkTop), TktypeMap, sizeof(TktypeMap));
 	fakeTkTop->mark = tkmarktop;
-
+	tksorttable();
+	return;
+#endif
+	fmtinstall('v', tkeventfmt);
 	tksorttable();
 }
 

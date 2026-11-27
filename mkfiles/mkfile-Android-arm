@@ -1,49 +1,22 @@
-TARGMODEL=	Posix
-TARGSHTYPE=	sh
-CPUS=		arm
-
-O=		o
-OS=		o
-
-AR=		arm-linux-androideabi-ar
-ARFLAGS=	ruvs
-
-AS=		arm-linux-androideabi-gcc -c 
-ARMFPFLAGS=	-march=armv7-a -marm -mfloat-abi=softfp -mfpu=vfpv3-d16
-ASFLAGS=	$ARMFPFLAGS
-
-CC=		arm-linux-androideabi-gcc -c 
-CFLAGS=		-O\
-		-g\
-		-fPIE -fPIC -std=c99\
-		-Wuninitialized -Wunused-variable -Wreturn-type -Wimplicit\
-		-Wattributes\
-		-I$ROOT/ndk_toolchain/sysroot/usr/include\
-		-I$ROOT/ndk_toolchain/sysroot/usr/include/arm-linux-androideabi\
-		-I$ROOT/ndk_toolchain/lib/gcc/arm-linux-androideabi/4.9.x/include\
-		-I$ROOT/Android/arm/include\
-		-I$ROOT/include\
-		-DLINUX_ARM\
-		$EXTWINFLAGS\
-		-D__arm__\
-		-D__ANDROID_API__=17 -DANDROID\
-		-ffunction-sections -funwind-tables \
-		-no-canonical-prefixes $ARMFPFLAGS\
-		-Wa,--noexecstack -Wformat -Werror=format-security  -std=c99\
-		--sysroot=$ROOT/ndk_toolchain/sysroot 
-
-#-static
-#		-g -finstrument-functions\
-#		-g -funwind-tables\
-#		-fstack-protector-strong\
-
-
+# Android ARMv7 NativeActivity, built with the modern NDK LLVM toolchain.
+TARGMODEL= Posix
+TARGSHTYPE= sh
+CPUS= arm
+O= o
+OS= o
+NDK_TOOLCHAIN= $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+ANDROID_API= 21
+AR= $NDK_TOOLCHAIN/llvm-ar
+ARFLAGS= rcs
+AS= $NDK_TOOLCHAIN/armv7a-linux-androideabi$ANDROID_API-clang -c
+ASFLAGS= -marm -fPIC
+CC= $NDK_TOOLCHAIN/armv7a-linux-androideabi$ANDROID_API-clang -c
+CFLAGS= -O2 -g -marm -fPIC -fno-strict-aliasing\
+ -I$ROOT/Android/arm/include -I$ROOT/include\
+ -DANDROID -DLINUX_ARM $EXTWINFLAGS $DISMODELFLAGS
 ANSICPP=
-LD=		arm-linux-androideabi-gcc 
-LDFLAGS=	-L$ROOT/ndk_toolchain/sysroot/usr/lib -llog 
-#-lbfd
-
-SYSLIBS=-lm
-
-YACC=		iyacc
-YFLAGS=		-d
+LD= $NDK_TOOLCHAIN/armv7a-linux-androideabi$ANDROID_API-clang
+LDFLAGS= -llog
+SYSLIBS= -lm
+YACC= iyacc
+YFLAGS= -d

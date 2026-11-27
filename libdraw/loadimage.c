@@ -1,47 +1,53 @@
 #include "lib9.h"
 #include "draw.h"
 #include "kernel.h"
+#include "pixelspan.h"
 
+
+/* Validate complete source storage before clipping, pointer arithmetic or output. */
 int
 loadimage(Image *i, Rectangle r, uchar *data, int ndata)
 {
-	long dy;
-	int n, bpl, roff, dstroff, lskip, llen, y;
-	uchar *a;
-	int chunk;
 	Rectangle dstr;
+	vlong offset;
+	int bpl, total, chunk, llen, clipped, dy, n, written, y;
+	uchar *a;
 
-	chunk = i->display->bufsize - 64;
-
-	bpl = bytesperline(r, i->depth);
-	n = bpl*Dy(r);
-	if(n > ndata){
-		kwerrstr("loadimage: insufficient data");
+	if(i == nil || i->display == nil ||
+	   !drawpixelspan(r, i->depth, ndata, &bpl, &total)){
+		kwerrstr("loadimage: invalid rectangle or insufficient data");
 		return -1;
 	}
-
-	dstr = r;
-	rectclip(&dstr, i->r);
-	rectclip(&dstr, i->clipr);
-
-	if (!rectinrect(dstr, i->r))
+	if(total == 0)
 		return 0;
-
-	roff = (r.min.x*i->depth)>>3;
-	dstroff = dstr.min.x * i->depth >> 3;
-	lskip = dstroff - roff;
-	llen = (dstr.max.x*i->depth + 7 >> 3) - dstroff;
-	data += (dstr.min.y - r.min.y) * bpl + lskip;
-
-	ndata = 0;
+	if(data == nil){
+		kwerrstr("loadimage: nil data");
+		return -1;
+	}
+	dstr = r;
+	if(!rectclip(&dstr, i->r) || !rectclip(&dstr, i->clipr))
+		return 0;
+	if(!drawpixelspan(dstr, i->depth, ndata, &llen, &clipped)){
+		kwerrstr("loadimage: invalid clipped rectangle");
+		return -1;
+	}
+	offset = ((vlong)dstr.min.y-r.min.y)*bpl+
+		drawpixelbyte(dstr.min.x, i->depth)-drawpixelbyte(r.min.x, i->depth);
+	if(offset < 0 || offset > total || llen > total-offset){
+		kwerrstr("loadimage: invalid clipped offset");
+		return -1;
+	}
+	if(i->display->bufsize <= 64 || llen > i->display->bufsize-64){
+		kwerrstr("loadimage: image too wide for buffer");
+		return -1;
+	}
+	chunk = i->display->bufsize-64;
+	data += offset;
+	written = 0;
 	while(dstr.max.y > dstr.min.y){
-		dy = dstr.max.y - dstr.min.y;
-		if(dy*llen > chunk)
+		dy = (vlong)dstr.max.y-dstr.min.y;
+		if(dy > chunk/llen)
 			dy = chunk/llen;
-		if(dy <= 0){
-			kwerrstr("loadimage: image too wide for buffer");
-			return -1;
-		}
 		n = dy*llen;
 		a = bufimage(i->display, 21+n);
 		if(a == nil){
@@ -55,16 +61,17 @@ loadimage(Image *i, Rectangle r, uchar *data, int ndata)
 		BPLONG(a+13, dstr.max.x);
 		BPLONG(a+17, dstr.min.y+dy);
 		a += 21;
-		for (y = 0; y < dy; y++) {
+		for(y=0; y<dy; y++){
 			memmove(a, data, llen);
 			a += llen;
-			ndata += llen;
-			data += bpl;
+			written += llen;
+			/* The last source row needs no pointer to a nonexistent next row. */
+			if((vlong)dstr.min.y+y+1 < dstr.max.y)
+				data += bpl;
 		}
 		dstr.min.y += dy;
 	}
 	if(flushimage(i->display, 0) < 0)
 		return -1;
-	return ndata;
+	return written;
 }
-

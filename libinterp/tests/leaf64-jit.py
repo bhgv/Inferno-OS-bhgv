@@ -156,7 +156,7 @@ class Layout(C.Structure):
         ]
     )
 class RvLayout(C.Structure):
-    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype')]
+    _fields_ = [(x, C.c_int) for x in ('xlen', 'wordbytes', 'hasm', 'pc', 's', 'd', 'm', 'arraylen', 'arraydata', 'stringlen', 'stringdata', 'listdata', 'listtail', 'fp', 'fixedtmp', 'arraytype', 'typesize','hasdiv','framelr','framefp','fixedcoef','module','linkmodule','moduleprog','modulenprog','instbytes','heaptype', 'heapref', 'heapcolor', 'refbytes')] + [('mutator', C.c_void_p), ('nprop', C.c_void_p), ('markcolor', C.c_int), ('consentry', C.c_void_p), ('ptrtype', C.c_void_p), ('listtype', C.c_int), ('typeref', C.c_int)]
 
 
 def check_layout(lib, layout_type):
@@ -1153,8 +1153,8 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     out,pc,before,after,_=run('IINDX',array=(data+0x500,length,index,backing),arrayalias=alias,
                                                             descriptor=(data+0x700,width),expect=int(valid))
                                     if valid:
-                                        require(int.from_bytes(out[:wb],'little')==(backing+actualindex*width)&((1<<(8*wb))-1), (arch,width,length,index,backing))
-                                        require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1129')
+                                        require(int.from_bytes(out[:8],'little')==(backing+actualindex*width)&((1<<64)-1), (arch,width,length,index,backing))
+                                        require(before[:8]==after[:8] and before[16:]==after[16:], 'leaf regression near source line 1129')
                                     else:require(before==after, 'leaf regression near source line 1130')
                                     require(pc==oldpc, 'leaf regression near source line 1131')
                                     checks+=1
@@ -1633,8 +1633,8 @@ with tempfile.TemporaryDirectory(prefix='leaf64-jit-') as directory:
                                     for alias in (0,1,2):
                                         out,pc,before,after,_=run(name,expect=int(valid),array=(pointer,length,index,backing),arrayalias=alias)
                                         if valid:
-                                            require(int.from_bytes(out[:wb],'little')==(backing+actualindex*stride)&((1<<(8*wb))-1), (arch,name,length,index,backing,out))
-                                            require(before[:8]==after[:8] and before[8+wb:]==after[8+wb:], 'leaf regression near source line 1608')
+                                            require(int.from_bytes(out[:8],'little')==(backing+actualindex*stride)&((1<<64)-1), (arch,name,length,index,backing,out))
+                                            require(before[:8]==after[:8] and before[16:]==after[16:], 'leaf regression near source line 1608')
                                         else:require(before==after, 'leaf regression near source line 1609')
                                         require(pc==oldpc, 'leaf regression near source line 1610')
                                         checks+=1

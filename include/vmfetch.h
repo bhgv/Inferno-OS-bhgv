@@ -142,6 +142,30 @@ vmrun(VmFetch *f)
 }
 
 
+/* Keep trusted LEA8 semantics in C instrumentation without invoking arbitrary AOT
+ * callbacks. Only LEA can be intercepted, so LOAD notifications retain the decoded
+ * source slot. Successful steps own PC publication; never decode them twice. */
+VmInline void
+vminstrument(VmFetch *f, void **source)
+{
+	int (*step)(void);
+
+	if(source != nil)
+		*source = nil;
+	if(f->op == ILEA){
+		memmove(&step, (uchar*)f->module+O(Module, cstep), sizeof(step));
+		if(step == native64lea8step && step())
+			return;
+		if(step == native64managedlea8step && step())
+			return;
+	}
+	vmdecode(f);
+	if(source != nil)
+		*source = R.s;
+	vmrun(f);
+}
+
+
 /* Honor callback yields without decrementing zero, negative values or INT_MIN. */
 VmInline int
 vmyield(void)

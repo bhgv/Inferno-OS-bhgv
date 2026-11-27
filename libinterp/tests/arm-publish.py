@@ -60,7 +60,16 @@ struct Modl {union {Inst *pc;} u;Type *frame;};
 typedef struct Modlink {int nlinks;Modl links[2];} Modlink;
 typedef struct Except {char *s;int pc;} Except;
 typedef struct Handler {int pc1,pc2;Except *etab;} Handler;
-struct Module {Inst *prog,*entry;int compiled,nprog,ntype;Type **type;Link *ext;char *name;uint8_t *origmp;Handler *htab;};
+struct Module {
+ Inst *prog,*entry; // Borrowed program geometry for the publication fixture.
+ int compiled,nprog,ntype; // Actual driver state and descriptor population.
+ Type **type; // Borrowed descriptor table at original ordinals.
+ Link *ext; // Borrowed exports observed by the driver.
+ char *name; // Native diagnostic label.
+ uint8_t *origmp; // Native original data copied only after successful staging.
+ Handler *htab; // Borrowed exception metadata.
+ int mptype; // Explicit native MP descriptor ordinal; default0 remains legacy.
+};
 int __lsan_is_turned_off(void) {return 1;}
 static int live,fail_after=-1,flushes,fail_flush,phase_error;
 static void *allocations[256];

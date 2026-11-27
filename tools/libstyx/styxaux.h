@@ -12,3 +12,5 @@ char* styxwaitmsg(Styxserver*);
 int styxrecv(Styxserver*, int, char*, int, int);
 int styxsend(Styxserver*, int, char*, int, int);
 void styxexit(int);
+
+void styxendserver(Styxserver*);

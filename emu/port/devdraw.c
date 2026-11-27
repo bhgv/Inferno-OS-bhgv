@@ -1254,26 +1254,31 @@ drawwrite(Chan *c, void *a, long n, vlong off)
 	return n;
 }
 
+/* Decode existing signed7/signed23 coordinates without negative shifts or wrapped addition.
+ * p/maxp delimit one accessible message span; newx publishes only after complete validation. */
 uchar*
 drawcoord(uchar *p, uchar *maxp, int oldx, int *newx)
 {
 	int b, x;
+	u32int bits;
+	vlong sum;
 
 	if(p >= maxp)
 		error(Eshortdraw);
 	b = *p++;
-	x = b & 0x7F;
-	if(b & 0x80){
-		if(p+1 >= maxp)
+	bits = b&0x7f;
+	if(b&0x80){
+		if(maxp-p < 2)
 			error(Eshortdraw);
-		x |= *p++ << 7;
-		x |= *p++ << 15;
-		if(x & (1<<22))
-			x |= ~0<<23;
+		bits |= (u32int)*p++<<7;
+		bits |= (u32int)*p++<<15;
+		x = bits&(1U<<22) ? (int)bits-8388608 : (int)bits;
 	}else{
-		if(b & 0x40)
-			x |= ~0<<7;
-		x += oldx;
+		x = b&0x40 ? (int)bits-128 : (int)bits;
+		sum = (vlong)oldx+x;
+		if(sum < (-0x7fffffff-1) || sum > 0x7fffffff)
+			error(Ebadarg);
+		x = (int)sum;
 	}
 	*newx = x;
 	return p;

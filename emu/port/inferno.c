@@ -4,6 +4,13 @@
 #include "interp.h"
 #include "isa.h"
 #include "native64-scalar-boot.h"
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+#if DIS_NATIVE64_GUI_SYS_FIXED != 1 || defined(DIS_NATIVE64_SYS_HEADER) || defined(DIS_NATIVE64_BOOT_SYS_IO) || defined(DIS_NATIVE64_SCALAR_BOOT)
+#error native64 GUI Sys selection owns its generated declarations
+#endif
+#define DIS_NATIVE64_SYS_HEADER "sys-native64.h"
+#include "native64-sys-fixed.h"
+#endif
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 #ifdef DIS_NATIVE64_SYS_HEADER
 #error native64 Sys startup owns its generated metadata selection
@@ -60,6 +67,9 @@ sysinit(void)
 	uchar readmap[sizeof(rmap)], writemap[sizeof(wmap)];
 	ulong readslot, dataslot, replyslot;
 	int i;
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+	char reason[ERRMAX], *failure = exNomem;
+#endif
 
 	if(TFD != nil || TFileIO != nil || FioTread != nil || FioTwrite != nil || Tdir != nil){
 		if(TFD != nil && TFileIO != nil && FioTread != nil && FioTwrite != nil && Tdir != nil)
@@ -102,6 +112,15 @@ sysinit(void)
 	if(types[4] == nil)
 		goto failed;
 
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+	if(!sysnative64registerfixed()){
+		reason[0] = 0;
+		kgerrstr(reason, sizeof(reason));
+		reason[sizeof(reason)-1] = 0;
+		failure = reason[0] != 0 ? reason : "native64 Sys registration failed";
+		goto failed;
+	}
+#endif
 	memmove(rmap, readmap, sizeof(rmap));
 	memmove(wmap, writemap, sizeof(wmap));
 	TFD = types[0];
@@ -113,8 +132,33 @@ sysinit(void)
 failed:
 	for(i=0; i<5; i++)
 		freetype(types[i]);
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+	error(failure);
+#else
 	error(exNomem);
+#endif
 }
+
+
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+/* Verify the complete native descriptor set before accepting an idempotent module startup. */
+int
+sysnative64typesready(void)
+{
+	Type *types[] = {TFD, TFileIO, FioTread, FioTwrite, Tdir};
+	uchar *maps[] = {FDmap, FileIOmap, rmap, wmap, dmap};
+	unsigned int sizes[] = {sizeof(FD), sizeof(Sys_FileIO), sizeof(Sys_FileIO_read), sizeof(Sys_FileIO_write), sizeof(Sys_Dir)};
+	unsigned int bytes[] = {sizeof(FDmap), sizeof(FileIOmap), sizeof(rmap), sizeof(wmap), sizeof(dmap)};
+	unsigned int i;
+
+	for(i=0; i<nelem(types); i++)
+		if(types[i] == nil || types[i]->size != sizes[i] || types[i]->np != bytes[i] ||
+		   memcmp(types[i]->map, maps[i], bytes[i]) != 0)
+			return 0;
+	return TFD->free == freeFD && TFileIO->free == freeFileIO &&
+		FioTread->free == freeheap && FioTwrite->free == freeheap && Tdir->free == freeheap;
+}
+#endif
 
 
 void
@@ -181,7 +225,13 @@ struct FDResult
 	int raw[2];
 	Sys_FD *handle[2];
 	String *directory;
+	Sys_Connection *stage;
+	int rooted;
 };
+
+/* Private construction owner: three native-width roots, never a wire type. */
+#define SYS_CONNECTION_STAGE 1
+static Type SysConnectionStage = {.ref=1,.free=freeheap,.mark=markheap,.size=sizeof(Sys_Connection),.np=1,.map={0xe0}};
 
 /* Mark a descriptor as transferred before mkfd can raise an allocation error. */
 static Sys_FD*
@@ -202,15 +252,21 @@ freefdresult(volatile FDResult *result)
 	int i;
 
 	memmove(saved, up->env->errstr, sizeof(saved));
+    /* ptradd can fail only before the empty stage acquires any children. */
+    if(result->stage != H && !result->rooted){destroy(result->stage);result->stage=H;}
 	for(i = 0; i < 2; i++){
 		if(result->raw[i] >= 0){
 			release();
 			kclose(result->raw[i]);
 			acquire();
 		}
-		destroy(result->handle[i]);
 	}
-	destroy(result->directory);
+    if(result->stage != H){
+        ptrdel(D2H(result->stage));destroy(result->stage);
+    }else{
+        for(i=0;i<2;i++)destroy(result->handle[i]);
+        destroy(result->directory);
+    }
 	memmove(up->env->errstr, saved, sizeof(saved));
 }
 
@@ -257,18 +313,27 @@ makeconnection(int datafd, int controlfd, char *directory, void *slot, const Sys
 	result.raw[1] = controlfd;
 	result.handle[0] = result.handle[1] = H;
 	result.directory = H;
+	result.stage = H;result.rooted=0;
 	if(waserror()){
 		freefdresult(&result);
 		nexterror();
 	}
+    result.stage=H2D(Sys_Connection*,heap(&SysConnectionStage));
+    result.stage->dfd=result.stage->cfd=H;result.stage->dir=H;
+    ptradd(D2H(result.stage));result.rooted=1;
 	result.handle[0] = takefd(&result.raw[0]);
+    result.stage->dfd=result.handle[0];Setmark(D2H(result.stage));
 	result.handle[1] = takefd(&result.raw[1]);
+    result.stage->cfd=result.handle[1];Setmark(D2H(result.stage));
 	result.directory = c2string(directory, strlen(directory));
+    result.stage->dir=result.directory;Setmark(D2H(result.stage));
 	poperror();
 	replacement.dfd = result.handle[0];
 	replacement.cfd = result.handle[1];
 	replacement.dir = result.directory;
 	memmove(slot, &replacement, sizeof(replacement));
+    result.stage->dfd=result.stage->cfd=H;result.stage->dir=H;
+    ptrdel(D2H(result.stage));destroy(result.stage);
 	destroy(old.dfd);
 	destroy(old.cfd);
 	destroy(old.dir);
@@ -447,6 +512,7 @@ void
 Sys_open(void *fp)
 {
 	int fd;
+	char *path;
 	F_Sys_open local, *f;
 	Sys_FD *old, *result;
 
@@ -460,8 +526,9 @@ Sys_open(void *fp)
 		seterror(Ebadarg);
 		return;
 	}
+	path = string2c(f->s);
 	release();
-	fd = kopen(string2c(f->s), f->mode);
+	fd = kopen(path, f->mode);
 	acquire();
 	if(fd == -1)
 		return;
@@ -516,6 +583,7 @@ Sys_pipe(void *fp)
 	result.raw[1] = fd[1];
 	result.handle[0] = result.handle[1] = H;
 	result.directory = H;
+	result.stage = H;result.rooted=0;
 	if(waserror()){
 		freefdresult(&result);
 		nexterror();
@@ -591,6 +659,7 @@ void
 Sys_create(void *fp)
 {
 	int fd;
+	char *path;
 	F_Sys_create local, *f;
 	Sys_FD *old, *result;
 
@@ -604,8 +673,9 @@ Sys_create(void *fp)
 		seterror(Ebadarg);
 		return;
 	}
+	path = string2c(f->s);
 	release();
-	fd = kcreate(string2c(f->s), f->mode, f->perm);
+	fd = kcreate(path, f->mode, (UWORD)f->perm);
 	acquire();
 	if(fd == -1)
 		return;
@@ -621,11 +691,14 @@ Sys_remove(void *fp)
 {
 	F_Sys_remove local, *f;
 	WORD result;
+	char *path;
 
 	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_remove, ret), sizeof(*local.ret));
 	f = &local;
+	/* Allocation failure must unwind while the VM is still held. */
+	path = string2c(f->s);
 	release();
-	result = kremove(string2c(f->s));
+	result = kremove(path);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
@@ -665,11 +738,14 @@ Sys_unmount(void *fp)
 {
 	F_Sys_unmount local, *f;
 	WORD result;
+	char *first, *second;
 
 	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_unmount, ret), sizeof(*local.ret));
 	f = &local;
+	first = string2c(f->s1);
+	second = string2c(f->s2);
 	release();
-	result = kunmount(string2c(f->s1), string2c(f->s2));
+	result = kunmount(first, second);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
@@ -831,11 +907,14 @@ Sys_chdir(void *fp)
 {
 	F_Sys_chdir local, *f;
 	WORD result;
+	char *path;
 
 	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_chdir, ret), sizeof(*local.ret));
 	f = &local;
+	/* Allocation failure must unwind while the VM is still held. */
+	path = string2c(f->path);
 	release();
-	result = kchdir(string2c(f->path));
+	result = kchdir(path);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
@@ -1091,6 +1170,7 @@ Sys_mount(void *fp)
 	F_Sys_mount local, *f;
 	WORD result;
 	int fd, afd;
+	char *on, *spec;
 
 	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_mount, ret), sizeof(*local.ret));
 	f = &local;
@@ -1105,8 +1185,10 @@ Sys_mount(void *fp)
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
+	on = string2c(f->on);
+	spec = string2c(f->spec);
 	release();
-	result = kmount(fd, afd, string2c(f->on), f->flags, string2c(f->spec));
+	result = kmount(fd, afd, on, f->flags, spec);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
@@ -1118,6 +1200,7 @@ Sys_bind(void *fp)
 {
 	F_Sys_bind local, *f;
 	WORD result;
+	char *first, *second;
 
 	sysstatusframe(fp, &local, sizeof(local), O(F_Sys_bind, ret), sizeof(*local.ret));
 	f = &local;
@@ -1127,8 +1210,10 @@ Sys_bind(void *fp)
 		memmove(f->ret, &result, sizeof(result));
 		return;
 	}
+	first = string2c(f->s);
+	second = string2c(f->on);
 	release();
-	result = kbind(string2c(f->s), string2c(f->on), f->flags);
+	result = kbind(first, second, f->flags);
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }
@@ -1554,6 +1639,7 @@ Sys_file2chan(void *fp)
 	volatile struct {
 		Sys_FileIO *file; // Partial channel pair owned until publication.
 		int released; // Restore VM ownership when registration raises.
+		int rooted; // Keep the pair live while registration releases the VM.
 	} result;
 	Sys_FileIO *old, *published;
 	char *directory, *name, saved[ERRMAX];
@@ -1567,15 +1653,20 @@ Sys_file2chan(void *fp)
 	name = string2c(f->file);
 	result.file = H;
 	result.released = 0;
+	result.rooted = 0;
 	if(waserror()){
 		if(result.released)
 			acquire();
 		memmove(saved, up->env->errstr, sizeof(saved));
+		if(result.rooted)
+			ptrdel(D2H(result.file));
 		destroy(result.file);
 		memmove(up->env->errstr, saved, sizeof(saved));
 		nexterror();
 	}
 	result.file = H2D(Sys_FileIO*, heap(TFileIO));
+	ptradd(D2H(result.file));
+	result.rooted = 1;
 	result.file->read = cnewc(FioTread, movtmp, 16);
 	result.file->write = cnewc(FioTwrite, movtmp, 16);
 	release();
@@ -1583,6 +1674,7 @@ Sys_file2chan(void *fp)
 	status = srvf2c(directory, name, result.file);
 	acquire();
 	result.released = 0;
+	ptrdel(D2H(result.file));
 	poperror();
 	if(status < 0){
 		memmove(saved, up->env->errstr, sizeof(saved));
@@ -1918,7 +2010,12 @@ Sys_iounit(void *fp)
 		return;
 	}
 	release();
+	if(waserror()){
+		acquire();
+		nexterror();
+	}
 	result = kiounit(fd);
+	poperror();
 	memmove(f->ret, &result, sizeof(result));
 	acquire();
 }

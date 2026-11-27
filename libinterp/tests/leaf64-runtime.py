@@ -547,7 +547,7 @@ static void realbranches(Module *m) {
 static void arrays(Module *m) {
     Type type={0};Array array={0},*owner;
     uchar bytes[128];
-    WORD index,out;
+    WORD index;uintptr out;
     int operations[]={IINDB,IINDW,IINDL,IINDF},op,i,stride;
     Inst *pc=m->prog+1;
     active=m;R.PC=pc;
@@ -559,7 +559,7 @@ static void arrays(Module *m) {
         if(i<0 || i>=8){assert(!kprotect(dispatch,nil));assert(out==123);}
         else {
             stride=op==0?1:op==1?sizeof(WORD):8;
-            assert(kprotect(dispatch,nil) && (UWORD)out==(UWORD)(uintptr)(bytes+i*stride));
+            assert(kprotect(dispatch,nil) && out==(uintptr)(bytes+i*stride));
         }
         assert(R.PC==pc);
     }
@@ -606,8 +606,9 @@ int main(void) {
     assert(m.jit->entry[IMULX1] && m.jit->entry[IDIVX1] && m.jit->entry[ICVTXX1]);
     assert(m.jit->entry[IMULX0] && m.jit->entry[IDIVX0] && m.jit->entry[ICVTXX0]);
     assert(m.jit->entry[IMULX] && m.jit->entry[IDIVX]);
-    for(i=69;i<78;i++)assert(!!m.jit->entry[instructions[i].op]==REAL_LEAVES);
-    assert(!!m.jit->entry[IMOVP]==REAL_LEAVES);
+    for(i=69;i<72;i++)assert(m.jit->entry[instructions[i].op]);
+    for(i=72;i<78;i++)assert(!!m.jit->entry[instructions[i].op]==REAL_LEAVES);
+    assert(m.jit->entry[IMOVP]);
     assert(m.jit->entry[IINDX]);
     assert(!!m.jit->entry[IEXPF]==REAL_LEAVES);
     for(i=62;i<66;i++)assert(m.jit->entry[instructions[i].op]);
@@ -662,7 +663,7 @@ if backend=='riscv64':
     unit=unit.replace('assert(m.jit->entry[IMULX0] && m.jit->entry[IDIVX0] && m.jit->entry[ICVTXX0]);',
         'assert(!!m.jit->entry[IMULX0]=='+str(int(profile=='m'))+');assert(!!m.jit->entry[IDIVX0]=='+str(int(profile=='m'))+');assert(!!m.jit->entry[ICVTXX0]=='+str(int(profile=='m'))+');')
     unit=unit.replace('assert(m.jit->entry[IMULX] && m.jit->entry[IDIVX]);',
-        'assert(!m.jit->entry[IMOVP]);assert(!!m.jit->entry[IMULX]=='+str(1)+');'
+        'assert(!!m.jit->entry[IMULX]=='+str(1)+');'
         'assert(!!m.jit->entry[IDIVX]=='+str(int(profile=='m'))+');'
         'assert(!!m.jit->entry[IDIVW]=='+str(int(profile=='m'))+');'
         'assert(!!m.jit->entry[IMODW]=='+str(int(profile=='m'))+');')

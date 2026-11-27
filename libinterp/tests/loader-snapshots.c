@@ -22,6 +22,7 @@ Type Tarray = {1}, Tbyte = {1}, Tstring = {1};
 Pool *heapmem;
 int mutator, nprop;
 void (*heapmonitor)(int, void*, ulong);
+char exBounds[] = "bounds"; // Checked native snapshot PC refusal.
 char exHeap[] = "heap", exNegsize[] = "negative", exNilref[] = "nil";
 
 /* Use the actual emulator error-frame protocol around snapshot construction. */
@@ -266,6 +267,54 @@ branches(void)
 	}
 }
 
+
+/* Reject malformed PCs after partial snapshot allocation and retire every array/string owner. */
+static int
+invalidpcs(void)
+{
+	Module saved;
+	Inst before[64];
+	Link prior[5];
+	Inst *target;
+	uintptr base;
+	int op, shape, at, count;
+
+	count = 0;
+	for(op=0; op<2; op++)
+	for(shape=0; shape<5; shape++)
+	for(at=0; at<=3; at+=3){
+		if(op == 1 && shape == 4)
+			continue;
+		setup();
+		operation = op;
+		base = (uintptr)instructions;
+		target = shape == 0 ? instructions+4 : shape == 1 ? (Inst*)(base-sizeof(Inst)) :
+			shape == 2 ? (Inst*)(base+1) : shape == 3 ? H : nil;
+		if(op == 0){
+			instructions[at].op = ICALL;
+			instructions[at].add = SRC(AIMM)|DST(AIMM);
+			instructions[at].d.ins = target;
+		}else
+			exports[at].u.pc = target;
+		memmove(&saved, &module, sizeof(saved));
+		memmove(before, instructions, sizeof(before));
+		memmove(prior, exports, sizeof(prior));
+		invoke();
+		if(result != H || live != 0 || worker.nerr != 0 || strcmp(message, exBounds) != 0 ||
+		   memcmp(&saved, &module, sizeof(saved)) != 0 ||
+		   memcmp(before, instructions, sizeof(before)) != 0 || memcmp(prior, exports, sizeof(prior)) != 0 ||
+		   insttype.ref != 1 || linktype.ref != 1 || desctype.ref != 1 || Tarray.ref != 1 || Tstring.ref != 1){
+			fprintf(stderr, "Loader invalid PC snapshot rollback failed: op=%d shape=%d at=%d\n", op, shape, at);
+			return 0;
+		}
+		checks++;
+		count++;
+	}
+	printf("PASS Loader invalid PC snapshot cleanup: %d cases\n", count);
+	return 1;
+}
+
+
 /* Reject unsupported native-PC snapshots and absent type-table membership. */
 static void
 metadata(void)
@@ -389,6 +438,7 @@ main(void)
 	if(only == nil || !strcmp(only, "failures"))failures();
 	if(only == nil || !strcmp(only, "replace"))replace();
 	if(only == nil || !strcmp(only, "branches"))branches();
+	if((only == nil || !strcmp(only, "invalidpcs")) && !invalidpcs())return 1;
 	if(only == nil || !strcmp(only, "metadata"))metadata();
 	if(only == nil || !strcmp(only, "bounds"))bounds();
 	assert(live == 0 && worker.nerr == 0);

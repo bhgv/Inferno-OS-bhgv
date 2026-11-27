@@ -10,3 +10,7 @@ This Bitbucket project includes source for the basic applications, Inferno itsel
 
 Host regression checkpoint for array-slice bounds and tokenization ownership:
 [contracts, reproducible suite and validation limits](libinterp/tests/README.slice-tokenize-checkpoint.md).
+
+Android AWM builds for ARM32 and ARM64 use this repository and the NativeActivity
+launcher from their `master` branches. See the
+[Android build instructions](https://github.com/bhgv/Inferno-OS_Android/tree/master#build-arm32-and-arm64-from-master).

@@ -110,6 +110,7 @@ static Osenv environment;
 static Fgrp group;
 int mutator, nprop;
 static int allocations, failure, live, checks;
+static int stage_roots;
 static struct { Heap *heap; int size; } blocks[256];
 
 /* Retain real runtime error frames without starting an emulator process. */
@@ -235,10 +236,15 @@ destroy(void *value)
 		freeFD(heap, 0);
 		TFD->ref--;
 	}else{
-		fdtest(heap->t == &Tstring);
+		if(heap->t != &Tstring){
+            fdtest(heap->t->free == freeheap);heap->t->free(heap,0);heap->t->ref--;
+            goto retired;
+        }
+        fdtest(heap->t == &Tstring);
 		fdtest(((String*)value)->tmp == nil);
 		Tstring.ref--;
 	}
+retired:
 	blocks[i].heap = nil;
 	free(heap);
 	live--;
@@ -255,11 +261,20 @@ heap(Type *type)
 {
 	Heap *h;
 
-	fdtest(type == TFD);
+	fdtest(type == TFD || (type->size==sizeof(Sys_Connection) && type->np==1 && type->map[0]==0xe0));
 	h = nheap(type->size);
 	h->t = type;
 	type->ref++;
 	return h;
+}
+
+/* Bound the new private construction root without pretending to run a collector. */
+void ptradd(Heap *h){fdtest(h->ref>0);stage_roots++;}
+void ptrdel(Heap *h){fdtest(h->ref>0 && stage_roots>0);stage_roots--;}
+void markheap(Type *t,void *v){(void)t;(void)v;}
+void freeheap(Heap *h,int swept){
+    Sys_Connection *c=H2D(Sys_Connection*,h);
+    fdtest(!swept);destroy(c->dfd);destroy(c->cfd);destroy(c->dir);
 }
 
 /* No tested input string needs a rune-to-byte conversion cache. */
@@ -615,6 +630,9 @@ one(int fail, int shared, int firstfd)
 		(operation != 3 || (WORD)(int)descriptorarg==descriptorarg) &&
 		((operation != 1 && operation != 2) || (WORD)(int)modearg==modearg);
 	budget = operation == 4 ? 2 : operation == 5 ? 3 : operation >= 6 ? 2 : 1;
+#ifdef SYS_CONNECTION_STAGE
+    if(operation>=5)budget++;
+#endif
 	memset(returnslot.bytes,0xa5,sizeof(returnslot.bytes));
 	if(operation == 4)memmove(returnslot.bytes+8+returnoffset,&status,sizeof(status));
 	else memmove(returnslot.bytes+8+returnoffset,&single,sizeof(single));
@@ -973,6 +991,9 @@ fdmatrix(int argc, char **argv)
 			for(shared = 0; shared < (operation >= 4 ? 2 : 1); shared++)
 			for(first = 0; first < 2; first++){
 				limit = operation == 4 ? 3 : operation == 5 ? 4 : operation >= 6 ? 3 : 2;
+#ifdef SYS_CONNECTION_STAGE
+                if(operation>=5)limit++;
+#endif
 				for(length = 0; length < (operation == 4 ? 9 : 1); length++){
 					if(getenv("FD_OWNER_MULTI") && operation==4 && length!=3 && length!=4)continue;
 					pipesize = length < 5 ? length-1 : 2;
@@ -983,7 +1004,7 @@ fdmatrix(int argc, char **argv)
 			}
 		}
 	}
-	fdtest(checks > 0);
+	fdtest(checks > 0 && stage_roots==0);
 	printf("Sys FD owners: %d adoption/pipe/connection/failure cases\n", checks);
 	return 0;
 }

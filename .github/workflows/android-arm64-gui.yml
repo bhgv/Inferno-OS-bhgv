@@ -1,0 +1,192 @@
+name: Android ARM32 and ARM64 GUI and AWM build
+on:
+  pull_request:
+    branches: [master, experiment]
+  push:
+    branches: [master, experiment]
+    paths:
+      - '.github/workflows/android-arm64-gui.yml'
+      - 'utils/tests/android-gui-build.py'
+      - 'utils/tests/android-awm-framebuffer.c'
+      - 'utils/tests/native64-*'
+      - 'utils/tests/dis64-*'
+      - 'appl/cmd/sh/sh.b'
+      - 'appl/cmd/sh/sh.y'
+      - 'appl/cmd/emuinit.b'
+      - 'appl/lib/**'
+      - 'appl/wm/awm.b'
+      - 'appl/wm/awmpanel.b'
+      - 'appl/wm/awmsh.b'
+      - 'appl/wm/help.b'
+      - 'man/**'
+      - 'appl/wm/awmdebug.b'
+      - 'appl/wm/awmproc.b'
+      - 'appl/cmd/*.b'
+      - 'appl/lib/workdir.b'
+      - 'icons/tk/vitabig.png'
+      - 'appl/wm/awmcalc.b'
+      - 'appl/wm/awmfiles.b'
+      - 'appl/wm/keyboard.b'
+      - 'appl/wm/limboedit.b'
+      - 'appl/wm/edit.b'
+      - 'module/**'
+      - 'libinterp/tests/dis64-runtime.*'
+      - 'emu/Android/**'
+      - 'lib/startup/**'
+      - 'emu/port/**'
+      - 'include/**'
+      - 'libdraw/**'
+      - 'libmemdraw/**'
+      - 'libtk/**'
+      - 'libinterp/**'
+      - 'libfreetype/**'
+      - 'mkfiles/**'
+      - 'utils/configure.py'
+      - 'limbo/**'
+      - 'doc/dis64-native64-prefixes.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-arm64-gui-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-gui:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: bhgv/Inferno-OS_Android
+          ref: e595632476ce7d545ef8c6b076c32760d2ab77e8
+          path: android-app
+      - name: Prepare pinned NDK and native build tools
+        run: |
+          python3 -m pip install --user cmake==4.4.4 ninja==1.13.2
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          curl -fL --retry 3 https://dl.google.com/android/repository/android-ndk-r27c-linux.zip -o "$RUNNER_TEMP/ndk.zip"
+          echo "59c2f6dc96743b5daf5d1626684640b20a6bd2b1d85b13156b90333741bad5cc  $RUNNER_TEMP/ndk.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/ndk.zip" -d "$RUNNER_TEMP"
+          CFLAGS='-O0 -g -fno-strict-aliasing' MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+          if ! command -v qemu-aarch64 >/dev/null 2>&1 || ! command -v qemu-arm >/dev/null 2>&1; then
+            sudo apt-get -o Acquire::Retries=3 update
+            sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends qemu-user
+          fi
+      - name: Check real Android objects and GUI ownership
+        run: |
+          python3 utils/tests/host64-android.py --ndk "$RUNNER_TEMP/android-ndk-r27c"
+          python3 emu/port/tests/pointer-queue.py
+          python3 libdraw/tests/screen-channel.py
+          python3 utils/tests/native64-tk-register.py --limbo "$RUNNER_TEMP/host-tools/limbo"
+          python3 utils/tests/native64-draw-register.py --limbo "$RUNNER_TEMP/host-tools/limbo"
+          python3 utils/tests/native64-sys-fixed.py --limbo "$RUNNER_TEMP/host-tools/limbo"
+          python3 utils/tests/native64-prefix.py --limbo "$RUNNER_TEMP/host-tools/limbo"
+          python3 android-app/tests/framebuffer-lifecycle.py
+          python3 android-app/tests/framebuffer-startup.py
+          python3 android-app/tests/framebuffer-pixels.py
+          python3 android-app/tests/native-storage.py
+          python3 android-app/tests/cmake-abis.py
+      - name: Execute ARM64 Bionic managed C and JIT with collection
+        run: |
+          set -o pipefail
+          NATIVE64_RUNNER=qemu-aarch64 python3 utils/tests/dis64-numeric-gc.py \
+            --managed --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --android-ndk "$RUNNER_TEMP/android-ndk-r27c" 2>&1 \
+            | tee "$RUNNER_TEMP/bionic-managed.log"
+      - name: Execute typed Sys formatter gateways against ARM64 Bionic
+        run: |
+          set -o pipefail
+          NATIVE64_RUNNER=qemu-aarch64 python3 utils/tests/native64-arguments.py \
+            --formatter --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --android-ndk "$RUNNER_TEMP/android-ndk-r27c" 2>&1 \
+            | tee "$RUNNER_TEMP/bionic-sys-format.log"
+      - name: Execute emuinit to AWM with controlled devices on ARM64 Bionic
+        run: |
+          set -o pipefail
+          NATIVE64_RUNNER=qemu-aarch64 python3 utils/tests/native64-awm-startup.py \
+            --limbo "$RUNNER_TEMP/host-tools/limbo" \
+            --android-ndk "$RUNNER_TEMP/android-ndk-r27c" --panel 2>&1 \
+            | tee "$RUNNER_TEMP/bionic-awm-startup.log"
+      - name: Compile full Draw/Tk core and link ordinary NativeActivity
+        run: |
+          python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
+            --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
+            --build-root "$RUNNER_TEMP/android-gui"
+      - name: Link full GUI with native64 Draw/Tk and fixed Sys frames
+        run: |
+          python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
+            --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
+            --build-root "$RUNNER_TEMP/android-gui-tk" --native64-tk --native64-draw --native64-sys-fixed --native64-formatter
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.4'
+          cache: false
+      - uses: actions/checkout@v4
+        with:
+          repository: agusibrahim/apksig-go
+          ref: a0389a9d7f83032504713ac6052f85edfb52f64b
+          path: apk-sign-source
+          persist-credentials: false
+      - name: Prepare Android packaging tools without a JVM
+        run: |
+          sdk="$RUNNER_TEMP/awm-sdk"
+          mkdir -p "$sdk/build-tools" "$sdk/platforms" "$RUNNER_TEMP/apk-sign-tools"
+          curl -fL --retry 3 https://dl.google.com/android/repository/build-tools_r35_linux.zip -o "$sdk/build-tools.zip"
+          curl -fL --retry 3 https://dl.google.com/android/repository/platform-35_r02.zip -o "$sdk/platform.zip"
+          echo "bd3a4966912eb8b30ed0d00b0cda6b6543b949d5ffe00bea54c04c81e1561d88  $sdk/build-tools.zip" | sha256sum -c -
+          echo "0988cacad01b38a18a47bac14a0695f246bc76c1b06c0eeb8eb0dc825ab0c8e0  $sdk/platform.zip" | sha256sum -c -
+          unzip -q "$sdk/build-tools.zip" -d "$sdk/build-tools"
+          unzip -q "$sdk/platform.zip" -d "$sdk/platforms"
+          mv "$sdk/build-tools/android-15" "$sdk/build-tools/35.0.0"
+          cd apk-sign-source
+          for tool in apksign apksigverify; do
+            CGO_ENABLED=0 go build -mod=readonly -trimpath -o "$RUNNER_TEMP/apk-sign-tools/$tool" "./cmd/$tool"
+          done
+      - name: Package and verify the Android ARM64 AWM test
+        run: |
+          python3 utils/tests/android-gui-build.py --ndk "$RUNNER_TEMP/android-ndk-r27c" \
+            --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
+            --build-root "$RUNNER_TEMP/android-awm" --native64-tk --native64-draw \
+            --native64-sys-fixed --native64-formatter --native64-awm --apk-sdk "$RUNNER_TEMP/awm-sdk" \
+            --apk-sign-tools "$RUNNER_TEMP/apk-sign-tools" \
+            --awm-runner qemu-aarch64
+      - name: Package and verify the Android ARMv7 AWM test
+        run: |
+          python3 utils/tests/android-gui-build.py --abi armeabi-v7a --ndk "$RUNNER_TEMP/android-ndk-r27c" \
+            --host-tools "$RUNNER_TEMP/host-tools" --app-root "$GITHUB_WORKSPACE/android-app" \
+            --build-root "$RUNNER_TEMP/android-awm-arm32" --apk-sdk "$RUNNER_TEMP/awm-sdk" \
+            --apk-sign-tools "$RUNNER_TEMP/apk-sign-tools" --awm-runner qemu-arm
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-arm64-GUI-build
+          path: |
+            ${{ runner.temp }}/bionic-managed.log
+            ${{ runner.temp }}/bionic-sys-format.log
+            ${{ runner.temp }}/bionic-awm-startup.log
+            ${{ runner.temp }}/android-gui/logs/
+            ${{ runner.temp }}/android-gui/result.json
+            ${{ runner.temp }}/android-gui/native/libinferno_os_app.so
+            ${{ runner.temp }}/android-gui-tk/logs/
+            ${{ runner.temp }}/android-gui-tk/result.json
+            ${{ runner.temp }}/android-gui-tk/native/libinferno_os_app.so
+            ${{ runner.temp }}/android-awm/logs/
+            ${{ runner.temp }}/android-awm/result.json
+            ${{ runner.temp }}/android-awm/native/libinferno_os_app.so
+            ${{ runner.temp }}/android-awm/Inferno-AWM-arm64-v8a-test.apk
+            ${{ runner.temp }}/android-awm/Inferno-AWM-arm64-v8a-test.apk.sha256
+          if-no-files-found: warn
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-arm32-GUI-build
+          path: |
+            ${{ runner.temp }}/android-awm-arm32/logs/
+            ${{ runner.temp }}/android-awm-arm32/result.json
+            ${{ runner.temp }}/android-awm-arm32/native/libinferno_os_app.so
+            ${{ runner.temp }}/android-awm-arm32/Inferno-AWM-armeabi-v7a-test.apk
+            ${{ runner.temp }}/android-awm-arm32/Inferno-AWM-armeabi-v7a-test.apk.sha256
+          if-no-files-found: warn
+          retention-days: 14

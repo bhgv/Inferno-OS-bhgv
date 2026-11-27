@@ -1,6 +1,6 @@
 
 void (*optab[256])(void); // Real complete-entry C handler table.
-char exOp[]="opcode"; // Invalid decoded opcode error identity.
+char exOp[]="opcode", exCompile[]="compile"; // Invalid opcode and decoded execution-mode identities.
 #define OP(name) void name(void) // Borrow the actual interpreter operation definitions.
 
 typedef struct TransitionOwner TransitionOwner;

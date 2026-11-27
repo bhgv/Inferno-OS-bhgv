@@ -34,8 +34,9 @@ typedef struct BacktraceState
 } BacktraceState;
 
 
-/* Only the ARM32 EHABI helper consumes this private 32-bit register layout. */
-#if defined(__arm__)
+/* The old GCC ARM32 unwinder exposes a private signal-register entry point. */
+#if defined(__arm__) && !defined(__clang__)
+#define ARM32_GCC_SIGNAL_UNWIND 1
 typedef struct
 {
     uintptr_t r[16]; // ARM32 r0-r15 for the legacy EHABI seed only.
@@ -54,7 +55,7 @@ typedef struct
 extern char calltracelog_path[];
 extern void *sig_ctx;
 
-#if defined(__arm__)
+#ifdef ARM32_GCC_SIGNAL_UNWIND
 extern _Unwind_Reason_Code __gnu_Unwind_Backtrace(_Unwind_Trace_Fn trace, void *trace_argument, phase2_vrs *entry_vrs);
 #endif
 
@@ -99,7 +100,7 @@ char** dumpBacktrace(void** buffer, size_t count)
 }
 
 
-/* Native64 uses the public current-stack unwinder, never an ARM32 signal-frame cast. */
+/* The LLVM NDK uses the public current-stack unwinder on both ARM ABIs. */
 size_t
 captureBacktrace(void **buffer, size_t max, void *arg)
 {
@@ -110,7 +111,7 @@ captureBacktrace(void **buffer, size_t max, void *arg)
 		return 0;
 	state.current = buffer;
 	state.end = buffer+max;
-#if defined(__arm__)
+#ifdef ARM32_GCC_SIGNAL_UNWIND
 	if(arg != nil){
 	    ucontext_t* signal_context = (ucontext_t*) arg;
 

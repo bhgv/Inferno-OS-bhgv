@@ -1,6 +1,6 @@
 # Numeric source cases in the scalar Dis64 backend (series 0056)
 
-`limbo -6` now lowers small numeric case statements to the existing scalar
+`limbo -64` now lowers small numeric case statements to the existing scalar
 comparison and jump opcodes. This is compiler translation, not file admission
 of CASE, CASEL or GOTO. No shared section/opcode/kind/feature ID, wire type,
 module profile or native-call ABI changes. The shared np0 subset remains43 ops.
@@ -55,7 +55,7 @@ This does not define a shared debug section or native callable field witness.
 ## Example
 
 ```
-limbo -6 -o case.dis64 limbo/tests/dis64-scalar/case.b
+limbo -64 -o case.dis64 limbo/tests/dis64-scalar/case.b
 ./emu -v -r "$PWD" -c 1 -d /case.dis64
 ```
 

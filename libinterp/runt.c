@@ -2,12 +2,23 @@
 #include "isa.h"
 #include "interp.h"
 #include "native64-scalar-boot.h"
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+#if DIS_NATIVE64_GUI_SYS_FIXED != 1 || defined(DIS_NATIVE64_SYS_HEADER) || defined(DIS_NATIVE64_BOOT_SYS_IO) || defined(DIS_NATIVE64_SCALAR_BOOT)
+#error native64 GUI Sys selection owns its generated declarations
+#endif
+#define DIS_NATIVE64_SYS_HEADER "sys-native64.h"
+#define LIMBO_NATIVE64_IMPLEMENTATIONS
+#include "native64-sys-fixed.h"
+#endif
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 #ifdef DIS_NATIVE64_SYS_HEADER
 #error native64 Sys startup owns its generated metadata selection
 #endif
 #define DIS_NATIVE64_SYS_HEADER "sys-native64.h" // Coherent generated Sys types for the explicit startup profile.
 #define LIMBO_NATIVE64_TABLES // Trusted selected fixed-frame entries; variadic prefixes remain excluded.
+#endif
+#ifdef DIS_NATIVE64_FORMATTER
+#define LIMBO_NATIVE64_PREFIXES // Typed Sys gateways consume non-callable generated variadic schemas.
 #endif
 /* Explicit native64 consumers must use one coherent generated Sys declaration set. */
 #ifdef DIS_NATIVE64_SYS_HEADER
@@ -44,7 +55,111 @@ static const LimboNative64Entry *const native64sysio[] = {
 	&limbo_native64_Sys_write_entry, // Bounded native write.
 	&limbo_native64_Sys_pread_entry, // Bounded positioned read.
 	&limbo_native64_Sys_pwrite_entry, // Bounded positioned write.
+	&limbo_native64_Sys_pctl_entry, // Process and namespace setup.
+	&limbo_native64_Sys_file2chan_entry, // File-backed channel setup.
+	&limbo_native64_Sys_millisec_entry, // Pointer event timestamps.
+	&limbo_native64_Sys_open_entry, // Open process control files.
+	&limbo_native64_Sys_fildes_entry, // Duplicate the diagnostic descriptor.
+	&limbo_native64_Sys_sleep_entry, // Fixed scalar signature for the checked import group.
+	&limbo_native64_Sys_dup_entry, // Two scalar descriptor arguments.
+	&limbo_native64_Sys_werrstr_entry, // Checked String-to-Word file trial.
+	&limbo_native64_Sys_chdir_entry, // Namespace status with a rooted String argument.
+	&limbo_native64_Sys_remove_entry, // Removal status with a rooted String argument.
+	&limbo_native64_Sys_unmount_entry, // Two independently rooted namespace operands.
+	&limbo_native64_Sys_bind_entry, // Two String operands followed by Word flags.
+	&limbo_native64_Sys_iounit_entry, // Fixed FD argument and Word result.
+	&limbo_native64_Sys_create_entry, // String and scalar arguments with a managed FD result.
+	&limbo_native64_Sys_dial_entry, // Separately checked managed Connection tuple result.
+	&limbo_native64_Sys_mount_entry, // Generated descriptor/string/flag mount frame.
+	&limbo_native64_Sys_fstat_entry, // Checked native status/Dir result for emuinit getenv.
 };
+
+
+/* Borrow a verified export from the selected native Sys profile under VM exclusion. */
+const Link*
+native64sysexport(const char *name, Module **owner)
+{
+	const LimboNative64Entry *entry;
+	Module *module;
+	const Link *link;
+	Type *frame;
+	unsigned int i;
+
+	if(name == nil || owner == nil)
+		return nil;
+	for(module=modules; module != nil; module=module->link)
+		if(module->path != nil && strcmp(module->path, "$Sys") == 0)
+			break;
+	if(module == nil || module->prog != nil || module->origmp != H ||
+	   module->ntype != sizeof(native64sysio)/sizeof(native64sysio[0]) ||
+	   module->type == nil || module->ext == nil)
+		return nil;
+	for(i=0; i<module->ntype && strcmp(native64sysio[i]->name, name) != 0; i++)
+		;
+	if(i == module->ntype)
+		return nil;
+	entry = native64sysio[i];
+	link = &module->ext[i];
+	frame = module->type[i];
+	if(link->name == nil || strcmp(link->name, entry->name) != 0 ||
+	   link->u.runt != entry->function || (UWORD)link->sig != entry->legacy_signature ||
+	   frame == nil || link->frame != frame || frame->size != entry->frame_size ||
+	   frame->np != entry->map_bytes || memcmp(frame->map, entry->map, entry->map_bytes) != 0)
+		return nil;
+	*owner = module;
+	return link;
+}
+
+
+/* Keep the clock pilot's exact export selection. */
+const Link*
+native64sysclock(Module **owner)
+{
+	return native64sysexport("millisec", owner);
+}
+#endif
+
+
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+/* Only the staged Sys initializer calls this constructor while holding VM startup exclusion. */
+int
+sysnative64registerfixed(void)
+{
+	Module *module;
+
+	for(module=modules; module != nil; module=module->link)
+		if(module->path != nil && strcmp(module->path, "$Sys") == 0){
+			kwerrstr("Sys module already registered");
+			return 0;
+		}
+	return builtinmod64("$Sys", limbo_native64_Sys_specs, limbo_native64_Sys_spec_count,
+		limbo_native64_Sys_implementations, limbo_native64_Sys_implementation_count) != nil;
+}
+
+/* Repeated startup accepts only the complete selected module and its already-published types. */
+static int
+sysnative64fixedmatches(Module *module)
+{
+	const LimboNative64Entry *entry;
+	Link *link;
+	Type *type;
+	unsigned int i;
+
+	if(module->prog != nil || module->origmp != H || module->ext == nil || module->type == nil ||
+	   module->ntype != limbo_native64_Sys_implementation_count)
+		return 0;
+	for(i=0; i<module->ntype; i++){
+		entry = limbo_native64_Sys_implementations[i];
+		link = module->ext+i;
+		type = module->type[i];
+		if(link->name == nil || strcmp(link->name, entry->name) != 0 ||
+		   link->u.runt != entry->function || (UWORD)link->sig != entry->legacy_signature ||
+		   type == nil || link->frame != type || type->size != entry->frame_size ||
+		   type->np != entry->map_bytes || memcmp(type->map, entry->map, entry->map_bytes) != 0)
+			return 0;
+	}
+	return module->ext[module->ntype].name == nil;
+}
 #endif
 
 
@@ -52,7 +167,30 @@ static const LimboNative64Entry *const native64sysio[] = {
 void
 sysmodinit(void)
 {
-#ifdef DIS_NATIVE64_BOOT_SYS_IO
+#ifdef DIS_NATIVE64_GUI_SYS_FIXED
+	Module *module;
+
+	if(!limbo_native64_Sys_layout()){
+		error("native64 Sys layout mismatch");
+		return;
+	}
+	for(module=modules; module != nil; module=module->link)
+		if(module->path != nil && strcmp(module->path, "$Sys") == 0){
+			if(sysnative64fixedmatches(module) && sysnative64typesready()) return;
+			error("incompatible native64 Sys initialization");
+			return;
+		}
+	if(sysnative64typesready()){
+		error("Sys types already initialized without the selected module");
+		return;
+	}
+	sysinit(); /* Registers the module only after all five descriptors are staged. */
+	for(module=modules; module != nil; module=module->link)
+		if(module->path != nil && strcmp(module->path, "$Sys") == 0 &&
+		   sysnative64fixedmatches(module) && sysnative64typesready())
+			return;
+	error("native64 Sys initialization incomplete");
+#elif defined(DIS_NATIVE64_BOOT_SYS_IO)
 	if(!limbo_native64_Sys_layout()){
 		error("native64 Sys layout mismatch");
 		return;
@@ -401,6 +539,71 @@ int
 Sys_fprint64(const Native64SysWriteRequest *request)
 {
 	return native64syswrite(request, 1);
+}
+#include "native64-sys-frame.h"
+
+int
+Sys_bindframe64(const Native64SysFrameRequest *request, Native64SysFrameOperation operation)
+{
+	return native64sysframebind(request, operation);
+}
+
+#include "native64-sys-sites.h"
+
+int
+Sys_setframes64(Module *module, const Native64SysFrameSpec *specs, unsigned int count)
+{
+    return native64syssitesinstall(module, specs, count);
+}
+#include "native64-sys-program.h"
+
+int
+Sys_setprogram64(Module *module, const Native64SysProgramSpec *specs, unsigned int count)
+{
+    return native64sysprograminstall(module, specs, count);
+}
+
+void
+Sys_programcall64(void *frame)
+{
+    native64sysprogramcall(frame);
+}
+
+int
+Sys_clearframes64(Module *module)
+{
+    return native64syssitesclear(module);
+}
+int
+Sys_bindsite64(Module *module, unsigned int index, Prog *prog, void *frame)
+{
+    return native64syssitesrun(module, index, prog, frame, 0);
+}
+int
+Sys_callsite64(Module *module, unsigned int index, Prog *prog, void *frame)
+{
+    return native64syssitesrun(module, index, prog, frame, 1);
+}
+
+int
+Sys_sprintframe64(const Native64SysFrameRequest *request)
+{
+	return native64sysframe(request, 0);
+}
+int
+Sys_aprintframe64(const Native64SysFrameRequest *request)
+{
+	return native64sysframe(request, 1);
+}
+int
+Sys_printframe64(const Native64SysFrameRequest *request)
+{
+	return native64sysframe(request, 2);
+}
+int
+Sys_fprintframe64(const Native64SysFrameRequest *request)
+{
+	return native64sysframe(request, 3);
 }
 #endif
 #endif
@@ -1115,7 +1318,7 @@ typedef struct Native64BuiltinSet Native64BuiltinSet;
 
 struct Native64BuiltinSet
 {
-	const Native64ModuleSpec *specs; // Borrowed immutable complete construction requests.
+	const Native64BuiltinSpec *specs; // Borrowed immutable complete construction requests.
 	unsigned int count; // Number of independently owned modules to stage.
 	Module **staged; // Private zeroed module-owner vector, never published during allocation.
 	unsigned int completed; // Completed module owners in staged request order.
@@ -1125,7 +1328,7 @@ struct Native64BuiltinSet
 
 /* Check the entire set before allocating, including duplicate module names and aggregate resource bounds. */
 static int
-native64builtinsetcheck(const Native64ModuleSpec *specs, unsigned int count, Module **output)
+native64builtinsetcheck(const Native64BuiltinSpec *specs, unsigned int count, Module **output)
 {
 	unsigned int i, j, declarations, selected;
 
@@ -1156,7 +1359,7 @@ static int
 buildbuiltinset64(void *argument)
 {
 	Native64BuiltinSet *build;
-	const Native64ModuleSpec *spec;
+	const Native64BuiltinSpec *spec;
 	unsigned int i;
 
 	build = argument;
@@ -1202,7 +1405,7 @@ native64builtinsetclear(Native64BuiltinSet *build)
 
 /* Publish one complete chain only after every constructor returns; no callback or allocation occurs during commit. */
 static int
-native64builtinsetregister(const Native64ModuleSpec *specs, unsigned int count, Module **output, Module **staged)
+native64builtinsetregister(const Native64BuiltinSpec *specs, unsigned int count, Module **output, Module **staged)
 {
 	Native64BuiltinSet build;
 	Module *head;
@@ -1230,7 +1433,7 @@ native64builtinsetregister(const Native64ModuleSpec *specs, unsigned int count, 
 
 /* Atomically register a trusted native64 set; caller serializes registration and supplies disjoint nil output cells. */
 int
-builtinmods64(const Native64ModuleSpec *specs, unsigned int count, Module **output)
+builtinmods64(const Native64BuiltinSpec *specs, unsigned int count, Module **output)
 {
 	Module **staged;
 	char saved[ERRMAX];
@@ -1260,7 +1463,7 @@ Module*
 builtinmod64(char *name, const LimboNative64Entry *specs, unsigned int count,
 	const LimboNative64Entry *const *entries, unsigned int selected)
 {
-	Native64ModuleSpec request;
+	Native64BuiltinSpec request;
 	Module *output, *staged;
 
 	request.name = name;
@@ -1374,3 +1577,16 @@ utfnleng(char *s, int nb, int *ngood)
 		*ngood = s-starts;
 	return n;
 }
+
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+#include "native64-typed-module.h"
+#include "native64-sys-module.h"
+#include "emuinit-native64.h"
+#include "native64-emuinit-boot.h"
+#endif
+
+#ifdef DIS_NATIVE64_AWM_BOOT
+#include "native64-typed-module.h"
+#include "native64-sys-module.h"
+#include "native64-awm-boot.h"
+#endif

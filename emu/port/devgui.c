@@ -10,7 +10,22 @@
 
 #include "../libtk/canvs.h"
 #include "isa.h"
+#if defined(DIS_NATIVE64_GUI_DRAW) || defined(DIS_NATIVE64_GUI_TK)
+#if !defined(DIS_NATIVE64_GUI_DRAW) || !defined(DIS_NATIVE64_GUI_TK) || !defined(DIS_WORD32) || DIS_WORD32 != 1
+#error native64 devgui requires coherent Draw/Tk WORD32 declarations
+#endif
+#include "../libinterp/gui-native64.h"
+#define Display_allocate Draw_Display_allocate
+#define F_Display_allocate F_Draw_Display_allocate
+#define Screen_allocate Draw_Screen_allocate
+#define F_Screen_allocate F_Draw_Screen_allocate
+#define Screen_newwindow Draw_Screen_newwindow
+#define F_Screen_newwindow F_Draw_Screen_newwindow
+#define Image_draw Draw_Image_draw
+#define F_Image_draw F_Draw_Image_draw
+#else
 #include "../libinterp/runt.h"
+#endif
 
 //#include <stdbool.h>
 //#define TRUE true

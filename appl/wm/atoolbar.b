@@ -132,52 +132,58 @@ init(ctxt: ref Draw->Context, argv: list of string)
 
 	snarf: array of byte;
 #	write("/prog/"+string sys->pctl(0, nil)+"/ctl", "restricted"); # for testing
-	for(;;) alt{
-	k := <-tbtop.ctxt.kbd =>
-		tk->keyboard(tbtop, k);
-	m := <-tbtop.ctxt.ptr =>
-		tk->pointer(tbtop, *m);
-	s := <-tbtop.ctxt.ctl or
-	s = <-tbtop.wreq =>
-		wmctl(tbtop, s);
-	s := <-exec =>
-		# guard against parallel access to the shctxt environment
-		if (donesetup){
-			{
- 				shctxt.run(ref Listnode(nil, s) :: nil, 0);
-			} exception {
-			"fail:*" =>	;
+	for(;;){
+		wreq := tbtop.wreq;
+		wm := tbtop.ctxt;
+		alt{
+		k := <-wm.kbd =>
+			tk->keyboard(tbtop, k);
+		m := <-wm.ptr =>
+			tk->pointer(tbtop, *m);
+		s := <-wm.ctl or
+		s = <-wreq =>
+			wmctl(tbtop, s);
+		s := <-exec =>
+			# guard against parallel access to the shctxt environment
+			if (donesetup){
+				{
+					node := ref Listnode(nil, s);
+					args := node :: nil;
+					shctxt.run(args, 0);
+				} exception {
+				"fail:*" =>	;
+				}
 			}
-		}
-	detask := <-task =>
-		deiconify(detask);
-	(off, data, nil, wc) := <-snarfIO.write =>
-		if(wc == nil)
-			break;
-		if (off == 0)			# write at zero truncates
-			snarf = data;
-		else {
-			if (off + len data > len snarf) {
-				nsnarf := array[off + len data] of byte;
-				nsnarf[0:] = snarf;
-				snarf = nsnarf;
+		detask := <-task =>
+			deiconify(detask);
+		(off, data, nil, wc) := <-snarfIO.write =>
+			if(wc == nil)
+				break;
+			if (off == 0)			# write at zero truncates
+				snarf = data;
+			else {
+				if (off + len data > len snarf) {
+					nsnarf := array[off + len data] of byte;
+					nsnarf[0:] = snarf;
+					snarf = nsnarf;
+				}
+				snarf[off:] = data;
 			}
-			snarf[off:] = data;
+			wc <-= (len data, "");
+		(off, nbytes, nil, rc) := <-snarfIO.read =>
+			if(rc == nil)
+				break;
+			if (off >= len snarf) {
+				rc <-= (nil, "");		# XXX alt
+				break;
+			}
+			e := off + nbytes;
+			if (e > len snarf)
+				e = len snarf;
+			rc <-= (snarf[off:e], "");	# XXX alt
+		donesetup = <-setupfinished =>
+			;
 		}
-		wc <-= (len data, "");
-	(off, nbytes, nil, rc) := <-snarfIO.read =>
-		if(rc == nil)
-			break;
-		if (off >= len snarf) {
-			rc <-= (nil, "");		# XXX alt
-			break;
-		}
-		e := off + nbytes;
-		if (e > len snarf)
-			e = len snarf;
-		rc <-= (snarf[off:e], "");	# XXX alt
-	donesetup = <-setupfinished =>
-		;	
 	}
 }
 
@@ -236,13 +242,19 @@ iconify(id, label: string)
 	label = condenselabel(label);
 	
 	padf := ".toolbar.sp"+id;
-	tk->cmd(tbtop, "frame " + padf + " -width 2");
-	cmd(tbtop, "pack " + padf + " -side left -fill y");
+	request := "frame " + padf + " -width 2";
+	tk->cmd(tbtop, request);
+	request = "pack " + padf + " -side left -fill y";
+	cmd(tbtop, request);
 
-	e := tk->cmd(tbtop, "button .toolbar." +id+" -command {send task "+id+"} -takefocus 0");
-	cmd(tbtop, ".toolbar." +id+" configure -text '" + label);
-	if(e[0] != '!')
-		cmd(tbtop, "pack .toolbar."+id+" -side left -fill y");
+	request = "button .toolbar." +id+" -command {send task "+id+"} -takefocus 0";
+	e := tk->cmd(tbtop, request);
+	request = ".toolbar." +id+" configure -text '" + label;
+	cmd(tbtop, request);
+	if(e[0] != '!'){
+		request = "pack .toolbar."+id+" -side left -fill y";
+		cmd(tbtop, request);
+	}
 	cmd(tbtop, "update");
 }
 
@@ -329,7 +341,8 @@ condenselabel(label: string): string
 
 initbuiltin(ctxt: ref Context, nil: Sh): string
 {
-	if (tbtop == nil) {
+	top := tbtop;
+	if (top == nil) {
 		sys = load Sys Sys->PATH;
 		sys->fprint(sys->fildes(2), "wm: cannot load wm as a builtin\n");
 		raise "fail:usage";
@@ -348,7 +361,9 @@ whatis(nil: ref Sh->Context, nil: Sh, nil: string, nil: int): string
 runbuiltin(c: ref Context, sh: Sh,
 			cmd: list of ref Listnode, nil: int): string
 {
-	case (hd cmd).word {
+	node := hd cmd;
+	name := node.word;
+	case name {
 	"menu" =>	return builtin_menu(c, sh, cmd);
 	"delmenu" =>	return builtin_delmenu(c, sh, cmd);
 	}
@@ -368,10 +383,12 @@ stderr(): ref Sys->FD
 
 word(ln: ref Listnode): string
 {
-	if (ln.word != nil)
-		return ln.word;
-	if (ln.cmd != nil)
-		return shell->cmd2string(ln.cmd);
+	text := ln.word;
+	if (text != nil)
+		return text;
+	command := ln.cmd;
+	if (command != nil)
+		return shell->cmd2string(command);
 	return nil;
 }
 
@@ -391,34 +408,49 @@ builtin_menu(nil: ref Context, nil: Sh, argv: list of ref Listnode): string
 		sys->fprint(stderr(), "usage: menu topmenu [ secondmenu ] command\n");
 		raise "fail:usage";
 	}
-	primary := (hd tl argv).word;
-	argv = tl tl argv;
+	argv = tl argv;
+	first := hd argv;
+	primary := first.word;
+	argv = tl argv;
 
 	h_mnu_itm := string int (screenr.dy() / 30);
 
 	if (n == 3) {
-		w := word(hd argv);
+		node := hd argv;
+		w := word(node);
 		if (len w == 0)
 			cmd(tbtop, ".m insert 0 separator");
-		else
-			cmd(tbtop, ".m insert 0 command -height " + h_mnu_itm + " -label " + tk->quote(primary) +
-				" -command {send exec " + w + "}");
+		else {
+			label := tk->quote(primary);
+			request := ".m insert 0 command -height " + h_mnu_itm + " -label " + label +
+				" -command {send exec " + w + "}";
+			cmd(tbtop, request);
+		}
 	} else {
-		secondary := (hd argv).word;
+		second := hd argv;
+		secondary := second.word;
 		argv = tl argv;
 
 		mpath := menupath(primary);
-		e := tk->cmd(tbtop, mpath+" cget -width");
+		request := mpath + " cget -width";
+		e := tk->cmd(tbtop, request);
 		if(e[0] == '!') {
-			cmd(tbtop, "menu "+mpath);
-			cmd(tbtop, ".m insert 0 cascade -height " + h_mnu_itm + " -label "+tk->quote(primary)+" -menu "+mpath);
+			request = "menu " + mpath;
+			cmd(tbtop, request);
+			label := tk->quote(primary);
+			request = ".m insert 0 cascade -height " + h_mnu_itm + " -label " + label + " -menu " + mpath;
+			cmd(tbtop, request);
 		}
-		w := word(hd argv);
+		node := hd argv;
+		w := word(node);
 		if (len w == 0)
-			cmd(tbtop, mpath + " insert 0 separator");
-		else
-			cmd(tbtop, mpath+" insert 0 command -height " + h_mnu_itm + " -label "+tk->quote(secondary)+
-				" -command {send exec "+w+"}");
+			request = mpath + " insert 0 separator";
+		else {
+			label := tk->quote(secondary);
+			request = mpath + " insert 0 command -height " + h_mnu_itm + " -label " + label +
+				" -command {send exec " + w + "}";
+		}
+		cmd(tbtop, request);
 	}
 	return nil;
 }
@@ -432,10 +464,35 @@ builtin_delmenu(nil: ref Context, nil: Sh, nil: list of ref Listnode): string
 
 delmenu(m: string)
 {
-	for (i := int cmd(tbtop, m + " index end"); i >= 0; i--)
-		if (cmd(tbtop, m + " type " + string i) == "cascade")
-			delmenu(cmd(tbtop, m + " entrycget " + string i + " -menu"));
-	cmd(tbtop, "destroy " + m);
+	# Resume each parent at its next entry after destroying the submenu.
+	parents: list of string;
+	indices: list of int;
+	indexcmd := m + " index end";
+	i := int cmd(tbtop, indexcmd);
+	for(;;){
+		if(i < 0){
+			destroycmd := "destroy " + m;
+			cmd(tbtop, destroycmd);
+			if(parents == nil)
+				return;
+			m = hd parents;
+			parents = tl parents;
+			i = hd indices;
+			indices = tl indices;
+		}else{
+			typecmd := m + " type " + string i;
+			if(cmd(tbtop, typecmd) == "cascade"){
+				entrycmd := m + " entrycget " + string i + " -menu";
+				submenu := cmd(tbtop, entrycmd);
+				parents = m :: parents;
+				indices = (i - 1) :: indices;
+				m = submenu;
+				indexcmd = m + " index end";
+				i = int cmd(tbtop, indexcmd);
+			}else
+				i--;
+		}
+	}
 }
 
 getself(): Shellbuiltin
@@ -524,36 +581,41 @@ consoleproc(ctxt: ref Draw->Context, sync: chan of string)
 		cmd(top, con_cfg[i]);
 
 	r := tk->rect(top, ".", Tk->Border|Tk->Required);
-	cmd(top, ". configure -x " + string ((top.screenr.dx() - r.dx()) / 2 + top.screenr.min.x) +
-				" -y " + string (r.dy() / 3 + top.screenr.min.y));
+	screenr := top.screenr;
+	cmd(top, ". configure -x " + string ((screenr.dx() - r.dx()) / 2 + screenr.min.x) +
+				" -y " + string (r.dy() / 3 + screenr.min.y));
 
 	tkclient->startinput(top, "ptr"::"kbd"::nil);
 	tkclient->onscreen(top, "onscreen");
 	tkclient->wmctl(top, "task");
 
-	for(;;) alt {
-	c := <-titlectl or
-	c = <-top.wreq or
-	c = <-top.ctxt.ctl =>
-		if(c == "exit")
-			c = "task";
-		tkclient->wmctl(top, c);
-	c := <-top.ctxt.kbd =>
-		tk->keyboard(top, c);
-	p := <-top.ctxt.ptr =>
-		tk->pointer(top, *p);
-	(nil, nil, nil, rc) := <-iostdout.read =>
-		if(rc != nil)
-			rc <-= (nil, "inappropriate use of file");
-	(nil, nil, nil, rc) := <-iostderr.read =>
-		if(rc != nil)
-			rc <-= (nil, "inappropriate use of file");
-	(nil, data, nil, wc) := <-iostdout.write =>
-		conout(top, data, wc);
-	(nil, data, nil, wc) := <-iostderr.write =>
-		conout(top, data, wc);
-		if(wc != nil)
-			tkclient->wmctl(top, "untask");
+	for(;;){
+		wreq := top.wreq;
+		wm := top.ctxt;
+		alt {
+		c := <-titlectl or
+		c = <-wreq or
+		c = <-wm.ctl =>
+			if(c == "exit")
+				c = "task";
+			tkclient->wmctl(top, c);
+		c := <-wm.kbd =>
+			tk->keyboard(top, c);
+		p := <-wm.ptr =>
+			tk->pointer(top, *p);
+		(nil, nil, nil, rc) := <-iostdout.read =>
+			if(rc != nil)
+				rc <-= (nil, "inappropriate use of file");
+		(nil, nil, nil, rc) := <-iostderr.read =>
+			if(rc != nil)
+				rc <-= (nil, "inappropriate use of file");
+		(nil, data, nil, wc) := <-iostdout.write =>
+			conout(top, data, wc);
+		(nil, data, nil, wc) := <-iostderr.write =>
+			conout(top, data, wc);
+			if(wc != nil)
+				tkclient->wmctl(top, "untask");
+		}
 	}
 }
 
@@ -564,8 +626,9 @@ conout(top: ref Tk->Toplevel, data: array of byte, wc: Sys->Rwrite)
 
 	s := string data;
 	tk->cmd(top, ".cons.t insert end '"+ s);
+	reply: (int, string) = (len data, nil);
 	alt{
-	wc <-= (len data, nil) =>;
+	wc <-= reply =>;
 	* =>;
 	}
 
@@ -573,7 +636,8 @@ conout(top: ref Tk->Toplevel, data: array of byte, wc: Sys->Rwrite)
 		if(s[i] == '\n')
 			nlines++;
 	if(nlines > MAXCONSOLELINES){
-		cmd(top, ".cons.t delete 1.0 " + string (nlines/4) + ".0; update");
+		trimcmd := ".cons.t delete 1.0 " + string (nlines/4) + ".0; update";
+		cmd(top, trimcmd);
 		nlines -= nlines / 4;
 	}
 

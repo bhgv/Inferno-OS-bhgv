@@ -281,7 +281,8 @@ LOGE("attachscreen");
 		*d = displaydepth;
 	}
 
-	*width = (Xsize/4)*(*d/8);
+	/* Memimage stride is measured in host words, while pixels stay 32-bit. */
+	*width = Xsize*(*d/8)/sizeof(ulong);
 	*softscreen = 1;
 //	displaychan = *chan;
 //	displaydepth = *d;

@@ -1,5 +1,5 @@
 # Build the terminal emulator with the existing portable device configuration.
-# GUI libraries and graphics devices are omitted from this build series.
+# Graphics devices remain omitted; explicit native64 font startup adds only its headless library.
 EMUMKFILE=mkfile-console
 EMUDIRS=\
 	lib9\
@@ -7,6 +7,7 @@ EMUDIRS=\
 	libmp\
 	libsec\
 	libmath\
+	$NATIVE64_FREETYPE_DIR\
 	utils/iyacc\
 	limbo\
 	libinterp\

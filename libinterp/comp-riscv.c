@@ -8,6 +8,13 @@
 #define RVXLEN 32 // Default register width for the original embedded backend.
 #endif
 #include "riscv-emit.h"
+static int
+rvcompileemit(u32int *out,int cap,RvLayout *abi,int op)
+{
+    if(RVXLEN==64 && (op==ICASE || op==ICASEL || op==IGOTO))
+        return rvtableemit(out,cap,abi,op,O(Modlink,compiled));
+    return rvemit(out,cap,abi,op);
+}
 #ifdef RV_CODE_PAGES
 #include "leaf-code.h"
 #endif
@@ -66,6 +73,9 @@ static int
 rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 {
 	u32int expected[RvMax];
+#if RVXLEN == 64
+	void *raw[256]; // Reconstruct private fast targets without trusting published entry aliases.
+#endif
 	uintptr cursor, last, bytes;
 	int op, n, i;
 
@@ -79,6 +89,9 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 		return 0;
 	cursor = (uintptr)j->code;
 	last = cursor+(uintptr)j->size;
+#if RVXLEN == 64
+	memset(raw, 0, sizeof(raw));
+#endif
 	for(op = 0; op < 256; op++){
 #if RVXLEN != 64
 		if(j->dispatch[op] != nil)
@@ -90,14 +103,21 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 		if(j->dispatch[op] == nil)
 			return 0;
 #endif
+#if RVXLEN == 64
+		if(op == ILEA ? j->entry[op] != j->dispatch[op] : (uintptr)j->entry[op] != cursor)
+#else
 		if((uintptr)j->entry[op] != cursor)
+#endif
 			return 0;
-		n = rvemit(expected, RvMax, abi, op);
+		n = rvcompileemit(expected, RvMax, abi, op);
 		if(n <= 0)
 			return 0;
 		bytes = (uintptr)n*sizeof(u32int);
 		if(bytes > last-cursor || memcmp((void*)cursor, expected, bytes) != 0)
 			return 0;
+#if RVXLEN == 64
+		raw[op] = (void*)cursor;
+#endif
 		cursor += bytes;
 	}
 #if RVXLEN == 64
@@ -105,9 +125,9 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 		if(j->dispatch[op] == nil)
 			continue;
 		if((uintptr)j->dispatch[op] != cursor ||
-		   (j->entry[op] == nil && rvemit(nil, RvMax, abi, op) > 0))
+		   (j->entry[op] == nil && rvcompileemit(nil, RvMax, abi, op) > 0))
 			return 0;
-		n = rvbridgeemit(expected, RvMax, (uvlong)(uintptr)cjitexec, op, (uvlong)(uintptr)j->entry[op]);
+		n = rvbridgeemit(expected, RvMax, (uvlong)(uintptr)cjitexec, op, (uvlong)(uintptr)raw[op]);
 		if(n <= 0)
 			return 0;
 		bytes = (uintptr)n*sizeof(u32int);
@@ -124,7 +144,7 @@ rvcachevalid(Jit *j, Module *m, int size, RvLayout *abi)
 		if(j->dispatch[op] == nil)
 			return 0;
 #else
-		if(j->entry[op] == nil && rvemit(nil, RvMax, abi, op) > 0)
+		if(j->entry[op] == nil && rvcompileemit(nil, RvMax, abi, op) > 0)
 			return 0;
 #endif
 	}
@@ -186,6 +206,16 @@ rvcompile(void *arg)
 	abi.modulenprog = O(Module, nprog);
 	abi.instbytes = sizeof(Inst);
 	abi.heaptype = sizeof(Heap)-O(Heap, t);
+	abi.heapref = sizeof(Heap)-O(Heap, ref);
+	abi.heapcolor = sizeof(Heap)-O(Heap, color);
+	abi.refbytes = sizeof(((Heap*)0)->ref);
+	abi.mutator = &mutator;
+	abi.nprop = &nprop;
+	abi.markcolor = propagator;
+	abi.consentry = (void*)cons;
+	abi.ptrtype = &Tptr;
+	abi.listtype = O(List, t);
+	abi.typeref = O(Type, ref);
 	abi.framelr = O(Frame, lr);
 	abi.framefp = O(Frame, fp);
 	abi.arraytype = O(Array, t);
@@ -223,7 +253,7 @@ rvcompile(void *arg)
 	for(i = 0; i < size; i++){
 		op = ((uchar*)m->prog)[(uintptr)i*sizeof(Inst)+O(Inst, op)];
 		if(count[op] == 0) {
-			used = rvemit(nil, RvMax, &abi, op);
+			used = rvcompileemit(nil, RvMax, &abi, op);
 			if(used < 0)
 				return 0;
 			count[op] = used == 0 ? -1 : used;
@@ -263,7 +293,7 @@ rvcompile(void *arg)
 		if(count[op] <= 0)
 			continue;
 		fn[op] = (int(*)(REG*))code;
-		used = rvemit(code, count[op], &abi, op);
+		used = rvcompileemit(code, count[op], &abi, op);
 		if(used != count[op])
 			goto bad;
 		code += used;
@@ -278,6 +308,9 @@ rvcompile(void *arg)
 		if(used != bridge[op])
 			goto bad;
 		code += used;
+		/* RV64 exposes LEA only through the checked decoded-operation bridge. */
+		if(op == ILEA)
+			j->entry[op] = j->dispatch[op];
 #endif
 	}
 #ifdef RV_CODE_PAGES

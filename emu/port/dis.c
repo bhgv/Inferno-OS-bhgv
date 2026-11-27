@@ -834,25 +834,21 @@ struct SchedModule {
 	Prog *result; // Published process, assigned only after newprog succeeds.
 	Frame *frame; // Temporary full-sized source frame.
 	void *saved; // Caller scratch register restored on all protected paths.
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+	void *input; // Owned until transferred into the mapped startup frame.
+	int inputroot;
+#endif
 	int transferred; // linkmod has consumed the input Module reference.
 };
 
 
-/* Build complete module data and a full-sized root frame before scheduling. */
+/* Publish a full-sized frame and transfer the caller's link reference. */
 static int
-schedmodule(void *arg)
+schedframe(SchedModule *c, Type *t)
 {
-	SchedModule *c;
-	Type *t;
-	Import empty;
 	Frame *fp;
 	Prog *p;
 
-	c = arg;
-	t = vmstartup(c->m);
-	empty.name = nil;
-	c->transferred = 1;
-	c->ml = linkmod(c->m, &empty, 1);
 	c->frame = mallocz(t->size, 1);
 	if(c->frame == nil)
 		error(exNomem);
@@ -869,6 +865,23 @@ schedmodule(void *arg)
 	D2H(c->ml)->ref--;
 	c->result = p;
 	return 1;
+}
+
+
+/* Build the normal startup instance before publishing its frame. */
+static int
+schedmodule(void *arg)
+{
+	SchedModule *c;
+	Type *t;
+	Import empty;
+
+	c = arg;
+	t = vmstartup(c->m);
+	empty.name = nil;
+	c->transferred = 1;
+	c->ml = linkmod(c->m, &empty, 1);
+	return schedframe(c, t);
 }
 
 
@@ -1241,6 +1254,128 @@ vmachine(void *a)
 }
 
 
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+
+
+#include "dis64-managed-trial.h"
+
+/* Seed the mapped input slot of the already validated managed trial. */
+static void
+schedpairseed(SchedModule *c)
+{
+	Modlink *provider;
+	String *text;
+	List *list;
+	int quoted, ordinal, count;
+	Inst *first;
+
+	/* A void Sys String caller supplies every argument from its own mapped MP. */
+	if(c->m->cstep == native64stringlea8step || c->m->cstep == native64diallea8step) return;
+	first = c->m->prog;
+	if(c->m->nprog < 2)
+		error(exModule);
+	if(first->op == ILOAD)
+		first++;
+	/* The checked caller may explicitly replace the seeded root before its first call. */
+	if(first->op == IMOVP && first->add == (SRC(AMP)|DST(AFP)) && first->reg == 0 &&
+	   (first->s.ind == 8 || (first->s.ind >= 24 && first->s.ind%8 == 0 && first->s.ind < 24+8*Dis64ManagedLiterals)) && first->d.ind == 64)
+		first++;
+	if(first >= c->m->prog+c->m->nprog || first->op != IMFRAME || first->reg > 1)
+		error(exModule);
+	ordinal = first->reg;
+	memmove(&provider, c->ml->MP, sizeof(provider));
+	if(provider == H){
+		Import *entry;
+
+		/* A file LOAD has not run yet; only its checked, owned LDT describes input. */
+		if(!(c->m->rt & Dis64ManagedFile) || c->m->ldt == nil || c->m->ldt[0] == nil)
+			error(exModule);
+		entry = c->m->ldt[0];
+		for(count=0; count<2 && entry[count].name != nil; count++)
+			;
+		if(count == 0 || ordinal >= count || entry[count].name != nil)
+			error(exModule);
+		entry += ordinal;
+#ifdef DIS_NATIVE64_MANAGED_FILES
+		quoted = managed64inputlist(c->m,ordinal);
+		if(quoted < 0) error(exModule);
+#else
+		error(exModule);
+#endif
+	}else{
+		if(provider == nil || ordinal >= provider->nlinks)
+			error(exModule);
+		quoted = provider->links[ordinal].u.pc->op == IHEADP;
+	}
+	text = c2string(dis64bootmanagedinput, strlen(dis64bootmanagedinput));
+	c->input = text;
+	ptradd(D2H(text));
+	c->inputroot = 1;
+	if(quoted){
+		if(Tptr.ref <= 0 || Tptr.ref == 0x7fffffff)
+			error(exHeap);
+		list = H;
+		cons(sizeof(text), &list);
+		Tptr.ref++;
+		list->t = &Tptr;
+		memmove(list->data, &text, sizeof(text));
+		Setmark(D2H(text));
+		ptrdel(D2H(text));
+		c->input = list;
+		c->inputroot = 0;
+		ptradd(D2H(list));
+		c->inputroot = 1;
+	}
+}
+
+
+/* Reuse normal frame initialization for an already linked startup instance. */
+static int
+schedpairframe(void *argument)
+{
+	SchedModule *c;
+
+	c = argument;
+	if(dis64bootmanagedinput != nil)
+		schedpairseed(c);
+	return schedframe(c, vmstartup(c->m));
+}
+
+
+/* Transfer an external startup root into the scheduler or retire it on error. */
+static Prog*
+schedpair(Modlink *link)
+{
+	SchedModule c;
+	int ok;
+
+	memset(&c, 0, sizeof(c));
+	c.m = link->m;
+	c.ml = link;
+	c.saved = R.s;
+	ok = kprotect(schedpairframe, &c);
+	R.s = c.saved;
+	free(c.frame);
+	if(c.input != nil){
+		if(c.inputroot)
+			ptrdel(D2H(c.input));
+		if(ok){
+			memmove((uchar*)c.result->R.FP+64, &c.input, sizeof(c.input));
+			Setmark(D2H(c.input));
+		}else
+			destroy(c.input);
+	}
+	ptrdel(D2H(link));
+	if(ok)
+		return c.result;
+	free(c.initial.R.EX);
+	destroy(link);
+	krethrow();
+	return nil;
+}
+#endif
+
+
 /* Initialize the selected runtime and schedule its checked initial module. */
 void
 disinit(void *a)
@@ -1248,6 +1383,9 @@ disinit(void *a)
 	Prog *p;
 	Osenv *o;
 	Module *root;
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+	Modlink *linked;
+#endif
 	char *initmod = a;
 
 	if(waserror())
@@ -1262,7 +1400,11 @@ disinit(void *a)
 	FPsave(&up->env->fpu);
 
 	opinit();
-#ifndef DIS_NATIVE64_SCALAR_BOOT
+#ifdef DIS_NATIVE64_AWM_BOOT
+	sysmodinit();
+	drawmodinit();
+	tkmodinit();
+#elif !defined(DIS_NATIVE64_SCALAR_BOOT)
 	modinit();
 #elif defined(DIS_NATIVE64_BOOT_MATH)
 	mathmodinit();
@@ -1272,17 +1414,47 @@ disinit(void *a)
 #ifdef DIS_NATIVE64_BOOT_SYS_IO
 	sysmodinit();
 	if(vflag)
-		print("native64 startup: trusted Sys I/O registered (8 fixed exports); file imports remain disabled\n");
+		print("native64 startup: trusted Sys I/O registered; ordinary file imports remain disabled\n");
+#endif
+#ifdef DIS_NATIVE64_BOOT_FREETYPE
+	freetypemodinit();
+	if(vflag)
+		print("native64 startup: trusted Freetype registered (6 fixed exports); file imports remain disabled\n");
 #endif
 	excinit();
 
-	root = load(initmod);
-	if(root == 0) {
-		kgerrstr(up->genbuf, sizeof up->genbuf);
-		panic("loading \"%s\": %s", initmod, up->genbuf);
-	}
-
+#ifdef DIS_NATIVE64_AWM_BOOT
+	root = native64awmboot(!!cflag);
+	if(root == nil)
+		panic("constructing native64 AWM startup: %r");
 	p = schedmod(root);
+#else
+#if defined(DIS_NATIVE64_SCALAR_BOOT) && defined(DIS64_PILOT_LOADER)
+#ifdef DIS_NATIVE64_BOOT_EMUINIT
+	if(dis64bootemuinit){
+		root=native64emuinitboot(!!cflag);
+		if(root==nil)panic("constructing checked emuinit: %r");
+		p=schedmod(root);
+	}else
+#endif
+	if(dis64bootprovider != nil || dis64bootauto){
+		linked = read64pair(initmod, dis64bootprovider);
+		if(linked == nil){
+			kgerrstr(up->genbuf, sizeof up->genbuf);
+			panic("loading Dis64 pair \"%s\": %s", initmod, up->genbuf);
+		}
+		p = schedpair(linked);
+	}else
+#endif
+	{
+		root = load(initmod);
+		if(root == nil){
+			kgerrstr(up->genbuf, sizeof up->genbuf);
+			panic("loading \"%s\": %s", initmod, up->genbuf);
+		}
+		p = schedmod(root);
+	}
+#endif
 
 	memmove(p->osenv, up->env, sizeof(Osenv));
 	o = p->osenv;

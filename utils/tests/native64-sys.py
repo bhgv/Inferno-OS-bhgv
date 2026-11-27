@@ -14,7 +14,9 @@ ROOT = Path(__file__).resolve().parents[2]
 # Keep old boundary fixtures active under NDEBUG without replacing the owning Sys implementation.
 def active(source):
     source = source.replace('#include <assert.h>', '#define syscheck(test) do { if(!(test)) { fprintf(stderr,"Sys predicate failed at %d\\n",__LINE__); abort(); } } while(0) // Active oracle.')
-    return source.replace('assert(', 'syscheck(')
+    source = source.replace('assert(', 'syscheck(')
+    support = runpy.run_path(str(ROOT/'utils/tests/native64-builtins.py'))
+    return support['portfixture'](source)
 
 
 # Compile full consumers; execute actual UTF objects and I/O bodies with bounded OS transports.

@@ -45,7 +45,9 @@ def main():
     parser.add_argument('--cross',type=lambda value:literal(value) if value else '')
     parser.add_argument('--ndk',type=literal)
     parser.add_argument('--console',action='store_true')
+    parser.add_argument('--native64-emuinit-boot',action='store_true',help='build unchanged checked emuinit for explicit -X dis64-emuinit startup; AWM dependencies remain bounded')
     parser.add_argument('--native64-sys-io-boot',action='store_true',help='register eight trusted fixed Sys I/O/UTF exports; no file imports')
+    parser.add_argument('--native64-freetype-boot',action='store_true',help='register six trusted Freetype exports during Linux scalar startup; no file imports')
     parser.add_argument('--native64-math-boot',action='store_true',help='register trusted Math during experimental scalar startup; no file imports')
     parser.add_argument('--native64-scalar-boot',action='store_true',help='experimental Linux console or Android ARM64 framebuffer probe for checked scalar Dis64 images only')
     parser.add_argument('--native64-caller-guard',action='store_true',help='coherent synchronous caller lease experiment; requires scalar and Math startup, no file calls')
@@ -69,16 +71,18 @@ def main():
         parser.error('Terminal emulator entries currently exist for Linux, Windows and macOS only')
     if args.host!=target and target!='Android':
         parser.error('Hosted emulators require matching host and target; cross builds need a dedicated toolchain/port')
-    if (args.native64_math_boot or args.native64_sys_io_boot) and not args.native64_scalar_boot:
+    if (args.native64_math_boot or args.native64_sys_io_boot or args.native64_freetype_boot) and not args.native64_scalar_boot:
         parser.error('Trusted builtin startup requires --native64-scalar-boot')
     scalar_linux = target=='Linux' and arch in ('amd64','arm64','riscv64') and args.console
     scalar_android = target=='Android' and arch=='arm64' and args.renderer=='framebuffer' and not args.console
     if args.native64_scalar_boot and not (scalar_linux or scalar_android):
         parser.error('Scalar Dis64 startup requires a 64-bit Linux console or Android ARM64 framebuffer probe')
-    if args.native64_scalar_boot and scalar_android and (args.native64_math_boot or args.native64_sys_io_boot or args.native64_caller_guard):
+    if args.native64_scalar_boot and scalar_android and (args.native64_math_boot or args.native64_sys_io_boot or args.native64_freetype_boot or args.native64_caller_guard):
         parser.error('The Android ARM64 probe is builtin-free; trusted native modules are not admitted')
     if args.native64_caller_guard and not (args.native64_scalar_boot and args.native64_math_boot):
         parser.error('Caller guard requires --native64-scalar-boot and --native64-math-boot')
+    if args.native64_emuinit_boot and not (scalar_linux and args.native64_scalar_boot and args.native64_sys_io_boot):
+        parser.error('Checked emuinit boot requires Linux console, --native64-scalar-boot and --native64-sys-io-boot')
     text=(ROOT/'mkconfig').read_text()
     marker='# configure.py selected build flavour\n'
     if marker in text:
@@ -92,15 +96,27 @@ def main():
         text=assign(text,'CROSS',args.cross)
     if args.ndk is not None:
         text=assign(text,'ANDROID_NDK_HOME',args.ndk)
+    # Optional headless font linkage and generated dependencies must not survive deselection.
+    text=assign(text,'NATIVE64_FREETYPE_DIR','libfreetype' if args.native64_freetype_boot else '')
+    text=assign(text,'NATIVE64_FREETYPE_LIBS','freetype' if args.native64_freetype_boot else '')
+    text=assign(text,'NATIVE64_BOOT_FREETYPE_HEADERS',args.root+'/libinterp/freetype-native64.h' if args.native64_freetype_boot else '')
+    text=assign(text,'NATIVE64_BOOT_STRING_HEADERS',args.root+'/libinterp/string-native64.h' if args.native64_scalar_boot and args.native64_sys_io_boot else '')
+    if not args.native64_scalar_boot and re.search(r'^DISMODELFLAGS=.*DIS_NATIVE64_SCALAR_BOOT',text,re.M):
+        text=assign(text,'DISMODELFLAGS','')
+    text=assign(text,'NATIVE64_BOOT_EMUINIT_HEADERS',args.root+'/libinterp/emuinit-native64.h' if args.native64_emuinit_boot else '')
     # Compose the model once so later selections cannot discard lifetime guards.
     if args.native64_scalar_boot:
         flags=['-DDIS_WORD32=1','-DDIS64_PILOT_LOADER=1','-DDIS_NATIVE64_SCALAR_BOOT=1']
         if args.native64_sys_io_boot:
-            flags.append('-DDIS_NATIVE64_BOOT_SYS_IO=1')
+            flags.extend(['-DDIS_NATIVE64_BOOT_SYS_IO=1', '-DDIS_NATIVE64_MANAGED_FILES=1'])
             text=assign(text,'NATIVE64_BOOT_SYS_HEADERS',args.root+'/libinterp/sys-native64.h')
+        if args.native64_emuinit_boot:
+            flags.extend(['-DDIS_NATIVE64_BOOT_EMUINIT=1','-DDIS_NATIVE64_FORMATTER=1'])
         if args.native64_math_boot:
             flags.append('-DDIS_NATIVE64_BOOT_MATH=1')
             text=assign(text,'NATIVE64_BOOT_HEADERS','math-native64.h')
+        if args.native64_freetype_boot:
+            flags.append('-DDIS_NATIVE64_BOOT_FREETYPE=1')
         if args.native64_caller_guard:
             flags.extend(['-DDIS_NATIVE64_FIXED_MATH_CALL=1','-DDIS_NATIVE64_CALLER_GUARD=1'])
         text=assign(text,'DISMODELFLAGS',"'"+' '.join(flags)+"'")
@@ -120,6 +136,8 @@ def main():
             print('Trusted fixed-frame Math registration enabled; generated metadata is built by host Limbo through mk.')
         if args.native64_sys_io_boot:
             print('Trusted Sys I/O profile enabled: eight fixed exports; shared metadata is built by host Limbo through mk.')
+        if args.native64_freetype_boot:
+            print('Trusted Freetype enabled: six fixed exports, headless font library and selected generated declarations; file imports stay disabled.')
         if args.native64_caller_guard:
             print('Synchronous caller lease selected in all owning units; file CALL/MCALL admission remains disabled.')
     elif arch in ('amd64','arm64','riscv64'):

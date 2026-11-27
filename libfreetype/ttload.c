@@ -1576,9 +1576,10 @@
   }
 
 
+  /* Match the Inferno sorter callback ABI; compare keys without narrowing. */
   FT_CALLBACK_DEF( int )
-  tt_kern_pair_compare( const void*  a,
-                        const void*  b );
+  tt_kern_pair_compare( void*  a,
+                        void*  b );
 
 
   /*************************************************************************/
@@ -1715,9 +1716,10 @@
 #define TT_KERN_INDEX( g1, g2 )  ( ( (FT_ULong)g1 << 16 ) | g2 )
 
 
+  /* Compare native kerning keys using the Inferno sorter callback ABI. */
   FT_CALLBACK_DEF( int )
-  tt_kern_pair_compare( const void*  a,
-                        const void*  b )
+  tt_kern_pair_compare( void*  a,
+                        void*  b )
   {
     TT_Kern0_Pair  pair1 = (TT_Kern0_Pair)a;
     TT_Kern0_Pair  pair2 = (TT_Kern0_Pair)b;

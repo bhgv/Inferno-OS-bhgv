@@ -312,3 +312,20 @@ styxexit(int n)
 	else
 		exits(nil);
 }
+
+/* Shared-memory helper processes need a join protocol before state can be freed. */
+char*
+styxend(Styxserver *server)
+{
+	USED(server);
+	return "Plan9 helper-process shutdown is not implemented";
+}
+
+/* EN/RU: This port has no borrowed native readiness-fd adapter yet.
+ * Этот port пока не поддерживает borrowed native readiness fd. */
+int
+styxnotifyfd(Styxserver *server, int fd)
+{
+    USED(server); USED(fd);
+    return -1;
+}

@@ -37,7 +37,7 @@ unit += (ROOT/'libinterp/tests/array-reuse-native.c').read_text().split('#define
 unit += '''
 void (*optab[256])(void);
 char exBounds[]="bounds";
-char exOp[]="opcode";
+char exOp[]="opcode", exCompile[]="compile";
 #define OP(name) void name(void) // Real decoded opcode entry.
 '''
 unit += '\n\n'.join(function(HEAP, signature) for signature in (

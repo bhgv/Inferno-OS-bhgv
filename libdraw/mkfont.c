@@ -1,15 +1,22 @@
 #include "lib9.h"
 #include "draw.h"
+#include "kernel.h"
 
-/*
- * Cobble fake font using existing subfont
- */
+
+/* Adopt one caller-owned Subfont reference only after a complete synthetic Font is ready. */
 Font*
 mkfont(Subfont *subfont, Rune min)
 {
 	Font *font;
 	Cachefont *c;
 
+	if(subfont == nil || subfont->bits == nil || subfont->info == nil ||
+	   subfont->bits->display == nil || subfont->bits->display->closing ||
+	   subfont->ref <= 0 || subfont->n <= 0 || subfont->height == 0 ||
+	   min > Runemax || (Rune)(subfont->n-1) > Runemax-min){
+		kwerrstr("mkfont: invalid subfont or Unicode range");
+		return nil;
+	}
 	font = malloc(sizeof(Font));
 	if(font == 0)
 		return 0;

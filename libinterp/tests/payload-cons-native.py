@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compare raw and pointer list constructors with actual AMD64 allocator-call handlers."""
 import os
+import platform
 from pathlib import Path
 import re
 import shlex
@@ -29,6 +30,11 @@ heap = Path(os.environ.get('CONS_HEAP_SOURCE', ROOT/'libinterp/heap.c')).read_te
 parts = [function(heap, 'Heap*\nnheap(')]
 parts += [function(xec, sig) for sig in ('List*\ncons(', 'OP(consm)', 'OP(consp)')]
 unit = (ROOT/'libinterp/tests/payload-cons-native.c').read_text().replace('IMPLEMENTATION', '\n\n\n'.join(parts))
+backend = os.environ.get('NATIVE64_ARCH') or {'x86_64': 'amd64', 'amd64': 'amd64', 'aarch64': 'arm64', 'arm64': 'arm64', 'riscv64': 'riscv64'}.get(platform.machine().lower())
+if backend not in ('amd64', 'arm64', 'riscv64'):
+    raise ValueError('unsupported native cons target')
+unit = unit.replace('comp-amd64.c', 'comp-'+backend+'.c')
+runner = shlex.split(os.environ.get('NATIVE64_RUNNER', ''))
 with tempfile.TemporaryDirectory(prefix='payload-cons-native-') as temporary:
     td = Path(temporary)
     target = td/'cons.c'; target.write_text(unit)
@@ -44,4 +50,4 @@ with tempfile.TemporaryDirectory(prefix='payload-cons-native-') as temporary:
         binary = td/('cons'+str(wb))
         includes = ['-I'+str(model)]+['-I'+str(ROOT/p) for p in ('Linux/arm/include','emu/port','include','libinterp')]
         subprocess.run(command+includes+[str(target), '-o', str(binary), '-lm'], check=True)
-        subprocess.run([str(binary)], check=True)
+        subprocess.run(runner+[str(binary)], check=True)

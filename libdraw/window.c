@@ -6,6 +6,8 @@ typedef struct Memimage Memimage;
 
 static int	screenid;
 
+
+/* Reserve only valid same-display screens, with bounded positive native IDs and complete refusal cleanup. */
 Screen*
 allocscreen(Image *image, Image *fill, int public)
 {
@@ -14,6 +16,9 @@ allocscreen(Image *image, Image *fill, int public)
 	int id, try;
 	Display *d;
 
+	if(image == nil || fill == nil || image->display == nil || image->display->closing ||
+	   image->chan == 0 || chantodepth(image->chan) == 0)
+		return nil;
 	d = image->display;
 	if(d != fill->display){
 		kwerrstr("allocscreen: image and fill on different displays");
@@ -30,6 +35,8 @@ allocscreen(Image *image, Image *fill, int public)
 			free(s);
 			return 0;
 		}
+		if(screenid >= 2147483647)
+			screenid = 0;
 		id = ++screenid;
 		a[0] = 'A';
 		BPLONG(a+1, id);
@@ -39,21 +46,31 @@ allocscreen(Image *image, Image *fill, int public)
 		if(flushimage(d, 0) != -1)
 			break;
 	}
+	if(try == 25){
+		free(s);
+		return nil;
+	}
 	s->display = d;
 	s->id = id;
 	s->image = image;
-//	assert(s->image && s->image->chan != 0);
 
 	s->fill = fill;
+	s->chan = image->chan;
 	return s;
 }
 
+
+/* Retain the validated channel independently of unavailable public-screen image owners. */
 Screen*
 publicscreen(Display *d, int id, ulong chan)
 {
 	uchar *a;
 	Screen *s;
 
+	if(d == nil || d->closing || id <= 0 || chan == 0 || chantodepth(chan) == 0){
+		kwerrstr("publicscreen: invalid display, screen ID or channel");
+		return nil;
+	}
 	s = malloc(sizeof(Screen));
 	if(s == 0)
 		return 0;
@@ -73,33 +90,35 @@ publicscreen(Display *d, int id, ulong chan)
 	s->id = id;
 	s->image = 0;
 	s->fill = 0;
+	s->chan = chan;
 	return s;
 }
 
+/* Consume the local Screen even if its best-effort server-side release cannot be sent. */
 int
 freescreen(Screen *s)
 {
 	uchar *a;
-	Display *d;
+	Display *display;
+	int result;
 
-	if(s == 0)
+	if(s == nil)
 		return 0;
-	d = s->display;
-	a = bufimage(d, 1+4);
-	if(a == 0)
-		return -1;
-	a[0] = 'F';
-	BPLONG(a+1, s->id);
-	/*
-	 * flush(1) because screen is likely holding last reference to
-	 * window, and want it to disappear visually.
-	 */
-	if(flushimage(d, 1) < 0)
-		return -1;
+	display = s->display;
+	a = bufimage(display, 5);
+	result = -1;
+	if(a != nil){
+		a[0] = 'F';
+		BPLONG(a+1, s->id);
+		if(flushimage(display, 1) >= 0)
+			result = 1;
+	}
 	free(s);
-	return 1;
+	return result;
 }
 
+
+/* Attach only a successfully constructed native window to its refresh source. */
 Image*
 allocwindow(Screen *s, Rectangle r, int ref, ulong val)
 {
@@ -109,13 +128,20 @@ allocwindow(Screen *s, Rectangle r, int ref, ulong val)
 	return i;
 }
 
+
+/* Public screens have no image owner; use their retained native channel and publish only success. */
 Image*
 _allocwindow(Image *i, Screen *s, Rectangle r, int ref, ulong val)
 {
 	Display *d;
 
+	if(s == nil || s->display == nil || s->display->closing || s->id <= 0 ||
+	   s->chan == 0 || chantodepth(s->chan) == 0){
+		kwerrstr("allocwindow: invalid screen descriptor");
+		return nil;
+	}
 	d = s->display;
-	i = _allocimage(i, d, r, s->image->chan, 0, val, s->id, ref);
+	i = _allocimage(i, d, r, s->chan, 0, val, s->id, ref);
 	if(i == 0)
 		return 0;
 	i->screen = s;
@@ -124,73 +150,116 @@ _allocwindow(Image *i, Screen *s, Rectangle r, int ref, ulong val)
 	return i;
 }
 
-static
-void
+
+/* Validate the complete native vector before reserving its one ordered window packet. */
+static void
 topbottom(Image **w, int n, int top)
 {
 	int i;
 	uchar *b;
 	Display *d;
 
-	if(n<0 || n>(Displaybufsize-100)/4){
-		_drawprint(2, "top/bottom: ridiculous number of windows\n");
+	if(n < 0 || n > (Displaybufsize-100)/4 || (n != 0 && w == nil)){
+		kwerrstr("top/bottom: invalid window vector");
 		return;
 	}
-	if(n==0)
+	if(n == 0)
 		return;
-	/* check that all images are on the same display; only it can check the screens */
+	if(w[0] == nil || w[0]->display == nil)
+		return;
 	d = w[0]->display;
-	for(i=1; i<n; i++)
-		if(w[i]->display != d){
-			_drawprint(2, "top/bottom: windows not on same display\n");
+	for(i = 1; i < n; i++)
+		if(w[i] == nil || w[i]->display != d){
+			kwerrstr("top/bottom: windows not on same display");
 			return;
 		}
 	b = bufimage(d, 1+1+2+4*n);
-	if (b == 0) {
-		_drawprint(2, "top/bottom: no bufimage\n");
+	if(b == nil)
 		return;
-	}
 	b[0] = 't';
 	b[1] = top;
 	BPSHORT(b+2, n);
-	for(i=0; i<n; i++)
+	for(i = 0; i < n; i++)
 		BPLONG(b+4+4*i, w[i]->id);
 }
 
+
+/* Send one window to the bottom without changing caller ownership. */
 void
 bottomwindow(Image *w)
 {
 	topbottom(&w, 1, 0);
 }
 
+
+/* Send one window to the top without changing caller ownership. */
 void
 topwindow(Image *w)
 {
 	topbottom(&w, 1, 1);
 }
 
+
+/* Preserve caller order in a multi-window bottom request. */
 void
 bottomnwindows(Image **w, int n)
 {
 	topbottom(w, n, 0);
 }
 
+
+/* Preserve caller order in a multi-window top request. */
 void
 topnwindows(Image **w, int n)
 {
 	topbottom(w, n, 1);
 }
 
+
+/* Translate into checked local rectangles before issuing any server command or mutating the image. */
+static int
+windoworiginrect(Rectangle source, vlong dx, vlong dy, Rectangle *result)
+{
+	vlong values[4];
+	int i;
+
+	values[0] = (vlong)source.min.x+dx;
+	values[1] = (vlong)source.min.y+dy;
+	values[2] = (vlong)source.max.x+dx;
+	values[3] = (vlong)source.max.y+dy;
+	for(i = 0; i < 4; i++)
+		if(values[i] < (vlong)-2147483647-1 || values[i] > 2147483647)
+			return 0;
+	result->min.x = values[0];
+	result->min.y = values[1];
+	result->max.x = values[2];
+	result->max.y = values[3];
+	return 1;
+}
+
+
+/* Return failure for every transport refusal; publish checked local geometry only after the final flush. */
 int
 originwindow(Image *w, Point log, Point scr)
 {
 	uchar *b;
-	Point delta;
+	vlong dx, dy;
+	Rectangle r, clip;
 
-	flushimage(w->display, 0);
+	if(w == nil || w->display == nil)
+		return -1;
+	dx = (vlong)log.x-w->r.min.x;
+	dy = (vlong)log.y-w->r.min.y;
+	if(!windoworiginrect(w->r, dx, dy, &r) ||
+	   !windoworiginrect(w->clipr, dx, dy, &clip)){
+		kwerrstr("originwindow: coordinate overflow");
+		return -1;
+	}
+	if(flushimage(w->display, 0) < 0)
+		return -1;
 	b = bufimage(w->display, 1+4+2*4+2*4);
 	if(b == nil)
-		return 0;
+		return -1;
 	b[0] = 'o';
 	BPLONG(b+1, w->id);
 	BPLONG(b+5, log.x);
@@ -199,8 +268,7 @@ originwindow(Image *w, Point log, Point scr)
 	BPLONG(b+17, scr.y);
 	if(flushimage(w->display, 1) < 0)
 		return -1;
-	delta = subpt(log, w->r.min);
-	w->r = rectaddpt(w->r, delta);
-	w->clipr = rectaddpt(w->clipr, delta);
+	w->r = r;
+	w->clipr = clip;
 	return 1;
 }

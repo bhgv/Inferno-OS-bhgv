@@ -1,5 +1,7 @@
 #include "lib9.h"
 
+/* Modern ARM32 Bionic provides this entry point, including in its static libc. */
+#if !defined(__ANDROID__) || !defined(__arm__) || __ANDROID_API__ < 21
 #define UVLONG_MAX	(~(uvlong)0)
 
 /* Consume all digits and saturate only beyond the full unsigned 64-bit range. */
@@ -93,3 +95,4 @@ Return:
 		return -n;
 	return n;
 }
+#endif

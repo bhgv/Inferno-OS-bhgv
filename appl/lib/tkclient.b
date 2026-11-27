@@ -53,7 +53,7 @@ toplevel(ctxt: ref Draw->Context, topconfig: string, title: string, buts: int): 
 		opts = "-borderwidth 1 -relief raised ";
 	top := tk->toplevel(wm.ctxt.display, opts+topconfig);
 	if (top == nil) {
-		sys->fprint(sys->fildes(2), "wmlib: window creation failed (top %ux, i %ux)\n", top, top.image);
+		sys->fprint(sys->fildes(2), "wmlib: window creation failed\n");
 		raise "fail:window creation failed";
 	}
 	top.ctxt = wm;
@@ -104,10 +104,12 @@ wmctl(top: ref Tk->Toplevel, req: string): string
 	# old-style requests: pass them back around in proper form.
 	"move" =>
 		# move x y
-		titlebar->sendctl(top, "!move . -1 " + req[next:]);
+		move := "!move . -1 " + req[next:];
+		titlebar->sendctl(top, move);
 	"size" =>
 		minsz := titlebar->minsize(top);
-		titlebar->sendctl(top, "!size . -1 " + string minsz.x + " " + string minsz.y);
+		size := "!size . -1 " + string minsz.x + " " + string minsz.y;
+		titlebar->sendctl(top, size);
 	"ok" or
 	"help" =>
 		;
@@ -124,7 +126,8 @@ wmctl(top: ref Tk->Toplevel, req: string): string
 		top.screenr = r;
 	"haskbdfocus" =>
 		in := int qword(req, next).t0 != 0;
-		cmd(top, "focus -global " + string in);
+		focus := "focus -global " + string in;
+		cmd(top, focus);
 		cmd(top, "update");
 	"task" =>
 		(r, nil) := splitqword(req, next);
@@ -158,8 +161,9 @@ wmreq1(top: ref Tk->Toplevel, c, req: string, e: int): string
 		if(name == nil || reqid == nil)
 			return "bad arg count";
 	}
-	if(top.ctxt.connfd != nil){
-		if(sys->fprint(top.ctxt.connfd, "%s", req) == -1)
+	connfd := top.ctxt.connfd;
+	if(connfd != nil){
+		if(sys->fprint(connfd, "%s", req) == -1)
 			return sys->sprint("%r");
 		if(req[0] == '!')
 			recvimage(top, name, reqid);
@@ -192,7 +196,8 @@ wmreq1(top: ref Tk->Toplevel, c, req: string, e: int): string
 		else
 			i = top.image.screen.newwindow(s2r(req, e).t0, Draw->Refbackup, Draw->Red);
 	}
-	tk->putimage(top, name+" "+reqid, i, nil);
+	imagekey := name+" "+reqid;
+	tk->putimage(top, imagekey, i, nil);
 	return nil;
 }
 
@@ -203,7 +208,8 @@ recvimage(top: ref Tk->Toplevel, name, reqid: string)
 		cmd(top, name + " suspend");
 		i = <-top.ctxt.images;
 	}
-	tk->putimage(top, name+" "+reqid, i, nil);
+	imagekey := name+" "+reqid;
+	tk->putimage(top, imagekey, i, nil);
 }
 
 settitle(top: ref Tk->Toplevel, name: string): string
@@ -216,16 +222,19 @@ handler(top: ref Tk->Toplevel, stop: chan of int)
 	ctxt := top.ctxt;
 	if(stop == nil)
 		stop = chan of int;
-	for(;;)alt{
-	c := <-ctxt.kbd =>
-		tk->keyboard(top, c);
-	p := <-ctxt.ptr =>
-		tk->pointer(top, *p);
-	c := <-ctxt.ctl or
-	c = <-top.wreq =>
-		wmctl(top, c);
-	<-stop =>
-		exit;
+	for(;;){
+		wreq := top.wreq;
+		alt{
+		c := <-ctxt.kbd =>
+			tk->keyboard(top, c);
+		p := <-ctxt.ptr =>
+			tk->pointer(top, *p);
+		c := <-ctxt.ctl or
+		c = <-wreq =>
+			wmctl(top, c);
+		<-stop =>
+			exit;
+		}
 	}
 }
 

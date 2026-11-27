@@ -3,6 +3,7 @@
 #include	"error.h"
 #include	"interp.h"
 #include "legacy-native-abi.h"
+#include "native64-scalar-boot.h"
 #include	"kernel.h"
 #include	"draw.h"
 #include	"version.h"
@@ -24,8 +25,9 @@
 	char**		rebootargv;
 	static	char	*imod = "/dis/emuinit.dis";
 extern	char*	hosttype;
-	char*	tkfont = nil;	/* for libtk/utils.c */
-	int	tkstylus = 1;	/* libinterp/tk.c */
+extern	char*	tkfont;	/* owned by libtk/utils.c */
+extern	int	tkstylus;	/* owned by libinterp/tk.c */
+extern	int	dontcompile;	/* owned by libinterp/load.c */
 extern	int	mflag;
 	int	dflag = 0;
 	int vflag = 0;
@@ -264,6 +266,7 @@ nofence(void)
 
 
 /* Read bounded startup text and quote the root as one complete Plan 9 argument. */
+#ifndef DIS_NATIVE64_AWM_BOOT
 static char*
 loadcmdstr(char *root)
 {
@@ -283,8 +286,9 @@ loadcmdstr(char *root)
 	}
 	command[bytes] = '\0';
 	fclose(file);
-	return smprint("-r%q %s", root, command);
+	return smprint("-r%q -g%dx%d %s", root, Xsize, Ysize, command);
 }
+#endif
 
 
 /* Parse startup options within the argument vector before initializing the emulator. */
@@ -303,14 +307,16 @@ amain(void)
 	else
 		is_run = 1;
 
+	tkstylus = 1;
+	dontcompile = 1;
 	if(coherence == nil)
 		coherence = nofence;
 	quotefmtinstall();
 //	savestartup(argc, argv);
 
-	/* The runtime tree belongs in shared storage and is never installed by the launcher. */
+	/* Android starts from the shared runtime prepared by the launcher. */
 	if(inferno_android_root(rootdir, sizeof(rootdir)) != 0){
-		LOGE("Cannot access /sdcard/Inferno; check shared-storage permissions");
+		LOGE("Cannot access /sdcard/Inferno (errno=%d); check shared-storage permissions", errno);
 		is_run = 0;
 		return;
 	}
@@ -323,11 +329,15 @@ amain(void)
 		fclose(f);
 	}
 
+#ifdef DIS_NATIVE64_AWM_BOOT
+	opt = smprint("-r%q -g%dx%d wm/awm /dis/wm/awmpanel-keyboard.dis", rootdir, Xsize, Ysize);
+#else
 	opt = loadcmdstr(rootdir);
 	if(opt == nil || opt[0] == '\0'){
 		free(opt);
 		opt = smprint("-r%q -g%dx%d wm/awm", rootdir, Xsize, Ysize);
 	}
+#endif
 	if(opt == nil){
 		LOGE("Cannot allocate Inferno startup command");
 		is_run = 0;
@@ -348,11 +358,20 @@ amain(void)
 	if(opt)
 		free(opt);
 
+#ifdef DIS_NATIVE64_AWM_BOOT
+	if(!dis64selectlaunch("dis64-calls")){
+		LOGE("Cannot select Android ARM64 native64 AWM startup");
+		is_run = 0;
+		return;
+	}
+	LOGI("Starting Android ARM64 native64 AWM with panel");
+#else
 	if(!legacynativeabi()){
 		LOGE("Installed legacy builtin tables require int32/ref32; native64 registration is not enabled");
 		is_run = 0;
 		return;
 	}
+#endif
 
 //	option(argc, argv, usage);
 	displaychan = strtochan("x8r8g8b8");

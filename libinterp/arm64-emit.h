@@ -2537,7 +2537,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		/* Bound all decoded slots before reading owners, indices or descriptors. */
 		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
 		a64ptr(&b, 10, abi->d); a64pcspan(&b, 10, abi->wordbytes, -1);
-		a64ptr(&b, 11, abi->m); a64pcspan(&b, 11, abi->wordbytes, -1);
+		a64ptr(&b, 11, abi->m); a64pcspan(&b, 11, 8, -1);
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8); a64guard(&b, 0xb500006c);
 		a64put(&b, 0xb100059f); a64guard(&b, 0x54000061);
 		/* A negative index must reject before any array header is inspected. */
@@ -2566,7 +2566,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		done=b.n; a64put(&b, 0x14000000);
 		b.code[empty] |= (b.n-empty)<<5; a64put(&b, 0xaa0d03ee);
 		b.code[done] |= b.n-done;
-		a64ptr(&b, 11, abi->m); a64store(&b, 14, abi->wordbytes);
+		a64ptr(&b, 11, abi->m); a64store(&b, 14, 8);
 	}else if(p.kind == LeafFixedFrame){
 		/* Frame temporary slots may have only four-byte alignment, even in WORD64. */
 		if(abi->fp < 0 || abi->fp > 2047 || abi->fp%8 || abi->fixedtmp < 0 || abi->fixedtmp > 2047) return 0;
@@ -2754,7 +2754,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 		a64ptr(&b, 9, abi->s); a64pcspan(&b, 9, 8, -1);
 		a64ptr(&b, 10, abi->d); a64pcspan(&b, 10, abi->wordbytes, -1);
 		if(p.kind == LeafIndex){
-			a64ptr(&b, 11, abi->m); a64pcspan(&b, 11, abi->wordbytes, -1);
+			a64ptr(&b, 11, abi->m); a64pcspan(&b, 11, 8, -1);
 		}
 		a64ptr(&b, 9, abi->s); a64load(&b, 12, 9, 8);
 		if(p.kind == LeafLength){
@@ -2790,7 +2790,7 @@ leafemit(u32int *out, int cap, LeafLayout *abi, int op)
 			a64put(&b, 0xb10005bf); a64guard(&b, 0x54000061);
 			a64put(&b, 0xab000000U | 14<<16 | scale<<10 | 13<<5 | 14);
 			a64guard(&b, 0x54000063); /* no native address carry */
-			a64ptr(&b, 11, abi->m); a64store(&b, 14, abi->wordbytes);
+			a64ptr(&b, 11, abi->m); a64store(&b, 14, 8);
 		}
 	}else if(p.kind == LeafRealPower){
 		/* Preflight complete slots before loads, conversions or FP effects. */

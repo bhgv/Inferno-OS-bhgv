@@ -146,7 +146,7 @@ devsrv.$O:	$ROOT/libinterp/runt.h\
 		$INTERP
 devtk.$O:	$INTERP
 # Caller leases inline frame validation; rebuild the owner when that contract changes.
-dis.$O: $ROOT/include/native64-caller.h $ROOT/include/native64-frame-cell.h $ROOT/include/native64-model.h $ROOT/include/dis-layout.h
+dis.$O: $ROOT/include/dis64-managed-trial.h $ROOT/include/native64-caller.h $ROOT/include/native64-frame-cell.h $ROOT/include/native64-model.h $ROOT/include/dis-layout.h
 dis.$O:	$INTERP
 discall.$O:	$INTERP
 exception.$O:	$INTERP
@@ -188,5 +188,14 @@ main.$O amain.$O: $ROOT/include/legacy-native-abi.h
 # inferno.c consumes the same generated Sys types as the owning interpreter.
 inferno.$O:	$NATIVE64_BOOT_SYS_HEADERS
 
-$ROOT/libinterp/sys-native64.h:D: $ROOT/module/sys.m
+$ROOT/libinterp/sys-native64.h:D: $ROOT/module/sys.m $ROOT/limbo/native64.c
 	limbo -H $ROOT/module/sys.m > $target.tmp && mv $target.tmp $target
+
+# Direct GUI C calls must use the same generated Frame64 declarations as their owners.
+devgui.$O: $NATIVE64_BOOT_GUI_HEADERS
+
+$ROOT/libinterp/gui-native64.h:D: $ROOT/module/gui-native64.m $ROOT/module/sys.m $ROOT/module/draw.m $ROOT/module/tk.m
+	limbo -H -I$ROOT/module $ROOT/module/gui-native64.m > $target.tmp && mv $target.tmp $target
+
+inferno.$O: $ROOT/include/native64-sys-fixed.h
+devsrv.$O: $NATIVE64_BOOT_SYS_HEADERS

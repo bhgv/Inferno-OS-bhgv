@@ -230,6 +230,7 @@ JIT = [
     'libinterp/tests/buffered-transfer-jit.py',
     'libinterp/tests/mapped-preflight-jit.py',
     'libinterp/tests/array-slot-jit.py',
+    'libinterp/tests/array-pointer-width.py',
     'libinterp/tests/mapped-copy-edges-jit.py',
     'libinterp/tests/fixed-slot-jit.py',
     'libinterp/tests/raw-copy-edges-jit.py',

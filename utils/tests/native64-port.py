@@ -46,6 +46,9 @@ def main():
     parser.add_argument('--test-cc', default='', help='owning C gate compiler command; defaults to CROSS gcc (use dynamic libc for GNU --wrap=free fixtures)')
     parser.add_argument('--runner', default='', help='target execution command, e.g. qemu-aarch64 -L /sysroot')
     parser.add_argument('--test-cflags', default='-O3 -g -DNDEBUG -fno-strict-aliasing', help='additional owning C gate flags; add UBSan where available')
+    parser.add_argument('--styx-server',type=Path,help='optional native loopback fixture with count/user arguments for guest mount acceptance')
+    parser.add_argument('--emuinit-boot',action='store_true',help='include the explicit complete checked emuinit startup profile')
+    parser.add_argument('--pair-boot-only', action='store_true', help='build the complete console and run only the paired boot gate')
     args = parser.parse_args()
     build = args.build_root.resolve()
     tools = args.host_tools.resolve()
@@ -76,8 +79,9 @@ def main():
                NATIVE64_CFLAGS=args.test_cflags, CC=args.test_cc or shlex.join([args.cross+'gcc']))
     configure_command = [sys.executable, str(build/'utils/configure.py'), '--host', 'linux', '--arch', args.arch,
                          '--root', str(build), '--console', '--native64-scalar-boot', '--native64-math-boot',
-                         '--native64-sys-io-boot', '--native64-caller-guard', '--cross', args.cross,
+                         '--native64-sys-io-boot', '--native64-freetype-boot', '--native64-caller-guard', '--cross', args.cross,
                          '--output', str(build/'mkconfig')]
+    if args.emuinit_boot:configure_command+=['--native64-emuinit-boot']
     run(configure_command, build, env, logs/'configure.log')
     binary = build/'Linux'/args.arch/'bin'; binary.mkdir(parents=True, exist_ok=True)
     (binary.parent/'lib').mkdir(exist_ok=True)
@@ -88,8 +92,191 @@ def main():
         target.symlink_to(tools/name)
     run([str(tools/'mk'), 'CONF=emu-g', 'CONFLIST=emu-g'], build/'emu/Linux', env, logs/'mk.log')
     tests = build/'utils/tests'
+    mountenv = dict(env, CFLAGS=args.test_cflags)
+    for script, controls in [('mnt-tags.py', (None, '--signed-shift-control')),
+                             ('mnt-version-read.py', (None, '--early-return-control'))]:
+        for control in controls:
+            command = [sys.executable, str(build/'emu/port/tests'/script)]
+            gateenv = mountenv
+            label = script[:-3]+str(control)
+            if control:
+                command += [control]
+            if control == '--signed-shift-control':
+                # This deliberate C undefined behavior needs UBSan. Keep the
+                # control on the native build host, including when the target
+                # toolchain (notably RV64) has no sanitizer runtime. Positive
+                # tag allocation and version-reader gates still run on target.
+                gateenv = dict(mountenv, CC='cc', NATIVE64_RUNNER='',
+                               CFLAGS='-O1 -g -fsanitize=undefined -fno-sanitize-recover=all')
+                label += '-host-ubsan'
+            run(command, build, gateenv, logs/(label+'.log'))
+    run([sys.executable, str(tests/'dis64-pair-boot.py'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--sys-clock', '--limbo', str(tools/'limbo')],
+        build, env, logs/'pair-boot.log')
+    if args.emuinit_boot:
+        run([sys.executable,str(tests/'native64-emuinit-boot.py'),'--emu',str(build/'emu/Linux/o.emu-g'),'--limbo',str(tools/'limbo'),'--runner',args.runner],build,env,logs/'emuinit-boot.log')
+    if args.pair_boot_only:
+        print('PASS classic-mk console and Dis64 pair boot')
+        return
+    run([sys.executable, str(tests/'awm-native64-data.py'), '--limbo', str(tools/'limbo')], build, env, logs/'awm-startup-data.log')
+    for control in ('scalar', 'map', 'clone', 'array-map', 'array-clone', 'array-value'):
+        source = 'appl/wm/awm.b' if not control.startswith('array-') else ('appl/cmd/sh/sh.b' if control == 'array-value' else 'appl/lib/titlebar.b')
+        run([sys.executable, str(tests/'awm-native64-data.py'), '--limbo', str(tools/'limbo'),
+             '--source', source, '--control', control], build, env, logs/('awm-data-'+control+'.log'))
+    run([sys.executable, str(tests/'dis64-sys-string-gc.py'), '--limbo', str(tools/'limbo')], build, env, logs/'sys-string-gc.log')
+    run([sys.executable, str(tests/'dis64-sys-flow-gc.py'), '--limbo', str(tools/'limbo')], build, env, logs/'sys-flow-gc.log')
+    run([sys.executable, str(tests/'dis64-sys-groups-gc.py'), '--limbo', str(tools/'limbo')], build, env, logs/'sys-groups-gc.log')
+    run([sys.executable, str(tests/'dis64-sys-fixed-gc.py'), '--limbo', str(tools/'limbo')], build, env, logs/'sys-fixed-gc.log')
+    run([str(tools/'mk'), 'install'], build/'libdraw', env, logs/'mk-libdraw.log')
+    builtinenv = dict(env, NATIVE64_LIMBO=str(tools/'limbo'))
+    run([sys.executable, str(tests/'native64-builtins.py'), '--sets', '--port-aliases'],
+        build, builtinenv, logs/'builtin-port-aliases.log')
     run([sys.executable, str(tests/'native64-scalar-boot.py'), '--root', str(build),
-         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--math', '--sys-io'], build, env, logs/'boot.log')
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--math', '--sys-io', '--freetype'], build, env, logs/'boot.log')
+    run([sys.executable, str(tests/'dis64-call-boot.py'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'call-boot.log')
+    run([sys.executable, str(tests/'dis64-source-call-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'source-call-boot.log')
+    run([sys.executable, str(tests/'dis64-scalar-client-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'scalar-client-boot.log')
+    for script in ('dis64-scalar-client-producer.py', 'dis64-scalar-client-proof.py', 'dis64-scalar-client.py'):
+        run([sys.executable, str(tests/script), '--limbo', str(tools/'limbo')], build, env, logs/(script+'.log'))
+    for control in ('leaf', 'bridge'):
+        run([sys.executable, str(tests/'dis64-scalar-client.py'), '--limbo', str(tools/'limbo'),
+             '--case', 'single', '--route-control', control], build, env, logs/('scalar-client-route-'+control+'.log'))
+    for control in ('initialized', 'result', 'map'):
+        run([sys.executable, str(tests/'dis64-scalar-client-proof.py'), '--limbo', str(tools/'limbo'), '--control', control],
+            build, env, logs/('scalar-client-proof-'+control+'.log'))
+    run([sys.executable, str(tests/'dis64-scalar-client-boot.py'), '--cfg', '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'scalar-client-cfg-boot.log')
+    run([sys.executable, str(tests/'dis64-scalar-client.py'), '--cfg', '--limbo', str(tools/'limbo')],
+        build, env, logs/'scalar-client-cfg.log')
+    for control in (None, 'join', 'load', 'boundary', 'high'):
+        command = [sys.executable, str(tests/'dis64-scalar-client-cfg-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('scalar-client-cfg-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-scalar-client-boot.py'), '--numeric', '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'scalar-client-numeric-boot.log')
+    run([sys.executable, str(tests/'dis64-scalar-client.py'), '--numeric', '--limbo', str(tools/'limbo')],
+        build, env, logs/'scalar-client-numeric.log')
+    run([sys.executable, str(tests/'dis64-scalar-client-numeric-producer.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'scalar-client-numeric-producer.log')
+    for control in (None, 'source', 'result', 'initialized'):
+        command = [sys.executable, str(tests/'dis64-scalar-client-numeric-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('scalar-client-numeric-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-scalar-client-boot.py'), '--managed', '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'scalar-client-managed-boot.log')
+    run([sys.executable, str(tests/'dis64-scalar-client.py'), '--managed', '--gc', '--limbo', str(tools/'limbo')],
+        build, env, logs/'scalar-client-managed-gc.log')
+    run([sys.executable, str(tests/'dis64-scalar-client-managed-producer.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'scalar-client-managed-producer.log')
+    for control, case in [('frame', 'list-cons-head-tail'), ('list', 'list-loop')]:
+        run([sys.executable, str(tests/'dis64-scalar-client.py'), '--managed', '--gc-control', control, '--case', case,
+             '--limbo', str(tools/'limbo')], build, env, logs/('scalar-client-gc-'+control+'.log'))
+    for control in (None, 'class', 'tail', 'seed', 'alias'):
+        command = [sys.executable, str(tests/'dis64-scalar-client-managed-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('scalar-client-managed-proof-'+str(control)+'.log'))
+    if args.styx_server:
+        (build/'mnt').mkdir(exist_ok=True)
+        run([sys.executable, str(tests/'dis64-sys-mount.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+             '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner, '--server', str(args.styx_server.resolve())],
+            build, env, logs/'sys-guest-mount.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'command-init-gc.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'callee-frame', '--case', 'callee-cons',
+         '--limbo', str(tools/'limbo')], build, env, logs/'command-init-callee-gc-control.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'context-map', '--case', 'fields-native',
+         '--limbo', str(tools/'limbo')], build, env, logs/'context-field-gc-control.log')
+    for role in ('source', 'destination'):
+        run([sys.executable, str(tests/'dis64-command.py'), '--field-offset-control', role, '--case', 'fields-native',
+             '--limbo', str(tools/'limbo')], build, env, logs/('context-field-'+role+'-offset-control.log'))
+    for control in (None, 'offset', 'owner', 'role'):
+        command = [sys.executable, str(tests/'dis64-context-fields-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('context-field-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-command.py'), '--reference-width-control', '--case', 'branches-context-distinct',
+         '--limbo', str(tools/'limbo')], build, env, logs/'reference-width-control.log')
+    for control in (None, 'offset', 'nil', 'owner', 'roles', 'classification'):
+        command = [sys.executable, str(tests/'dis64-reference-branches-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('reference-branches-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-client-literal-scalar.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'client-literal-scalar.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'mp-tail', '--case', 'literals-arguments',
+         '--limbo', str(tools/'limbo')], build, env, logs/'client-literals-mp-control.log')
+    for value in ('empty', 'signed-runes'):
+        run([sys.executable, str(tests/'dis64-command.py'), '--materialize-only', '--literal-wire', value,
+             '--case', 'literals-context', '--limbo', str(tools/'limbo')], build, env, logs/('client-literal-wire-'+value+'.log'))
+    run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'codec-array', '--case', 'codecs-bytes-alias',
+         '--limbo', str(tools/'limbo')], build, env, logs/'client-codec-array-gc-control.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--gc-control', 'array-backing', '--case', 'arrays-slice-drop-root',
+         '--limbo', str(tools/'limbo')], build, env, logs/'client-array-backing-gc-control.log')
+    for control in (None, 'descriptor', 'unused', 'classes'):
+        command = [sys.executable, str(tests/'dis64-client-arrays-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('client-arrays-proof-'+str(control)+'.log'))
+    for control in (None, 'classes'):
+        command = [sys.executable, str(tests/'dis64-client-codecs-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('client-codecs-proof-'+str(control)+'.log'))
+    for control in (None, 'classes'):
+        command = [sys.executable, str(tests/'dis64-client-string-write-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('client-string-write-proof-'+str(control)+'.log'))
+    for control in (None, 'unused', 'descriptor', 'budget', 'classes'):
+        command = [sys.executable, str(tests/'dis64-client-literals-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('client-literals-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-command-alias.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'command-alias-boot.log')
+    run([sys.executable, str(tests/'dis64-command-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'command-init-boot.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--chain', '--limbo', str(tools/'limbo')],
+        build, env, logs/'command-chain-gc.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--chain', '--chain-owner-control', '--case', 'chain-required',
+         '--limbo', str(tools/'limbo')], build, env, logs/'command-chain-owner-control.log')
+    run([sys.executable, str(tests/'dis64-command.py'), '--chain', '--gc-control', 'callee-frame', '--case', 'chain-owned',
+         '--limbo', str(tools/'limbo')], build, env, logs/'command-chain-gc-control.log')
+    for control in (None, 'load', 'export'):
+        command = [sys.executable, str(tests/'dis64-command-chain-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('command-chain-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-command-chain-boot.py'), '--limbo', str(tools/'limbo'), '--root', str(build),
+         '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner], build, env, logs/'command-chain-boot.log')
+    run([sys.executable, str(tests/'dis64-command-producer.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'command-init-producer.log')
+    for control in (None, 'hash', 'class', 'arguments', 'export'):
+        command = [sys.executable, str(tests/'dis64-command-proof.py'), '--limbo', str(tools/'limbo')]
+        if control: command += ['--control', control]
+        run(command, build, env, logs/('command-init-proof-'+str(control)+'.log'))
+    run([sys.executable, str(tests/'dis64-source-calls.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'source-call-files.log')
+    run([sys.executable, str(tests/'dis64-source-calls-unit.py')], build, env, logs/'source-call-writer-ir.log')
+    run([sys.executable, str(tests/'dis64-chain-check.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'source-call-dag-check.log')
+    run([sys.executable, str(tests/'dis64-library-files.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'library-files.log')
+    run([sys.executable, str(tests/'dis64-library-check.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'library-proof.log')
+    run([sys.executable, str(tests/'dis64-scalar-requests.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'scalar-requests.log')
+    run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'library-namespace.log')
+    run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo'), '--iload'],
+        build, env, logs/'library-iload.log')
+    for control in ('copy', 'pin', 'route'):
+        run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo'), '--iload', '--iload-control', control],
+            build, env, logs/('library-iload-'+control+'.log'))
+    run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo'), '--disabled'],
+        build, env, logs/'library-namespace-disabled.log')
+    for control in ('admission', 'close', 'acquire', 'profile'):
+        run([sys.executable, str(tests/'dis64-library-namespace.py'), '--limbo', str(tools/'limbo'), '--control', control],
+            build, env, logs/('library-namespace-'+control+'.log'))
+    for control in ('module', 'signature', 'entry', 'atomic'):
+        run([sys.executable, str(tests/'dis64-library-files.py'), '--limbo', str(tools/'limbo'), '--control', control],
+            build, env, logs/('library-control-'+control+'.log'))
     run([sys.executable, str(tests/'native64-limbo-boot.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'limbo-boot.log')
@@ -103,6 +290,54 @@ def main():
     run([sys.executable, str(tests/'dis64-setup-targets.py')], build, env, logs/'dis64-setup-targets.log')
     run([sys.executable, str(tests/'dis64-tuple-layout.py')], build, env, logs/'dis64-tuple-layout.log')
     run([sys.executable, str(tests/'dis64-copy-layout.py')], build, env, logs/'dis64-copy-layout.log')
+    catalog = [sys.executable, str(tests/'dis64-local-catalog.py')]
+    run(catalog, build, env, logs/'local-catalog.log')
+    flow = [sys.executable, str(tests/'dis64-local-flow.py')]
+    run(flow, build, env, logs/'local-flow.log')
+    for control in ('branch', 'fallthrough', 'calls', 'cycle', 'depth'):
+        run(flow+['--control', control], build, env, logs/('local-flow-'+control+'.log'))
+    state = [sys.executable, str(tests/'dis64-local-state.py')]
+    run(state, build, env, logs/'local-state.log')
+    for control in ('arguments', 'binding', 'reuse', 'kind', 'boolean', 'return', 'retire',
+                    'join', 'canonical', 'preparation', 'address', 'identity', 'result'):
+        run(state+['--control', control], build, env, logs/('local-state-'+control+'.log'))
+    cfg = [sys.executable, str(tests/'dis64-local-cfg.py')]
+    run(cfg, build, env, logs/'local-cfg.log')
+    for control in ('entry', 'unreachable', 'setup', 'site', 'join', 'capacity', 'limit', 'reset'):
+        run(cfg+['--control', control], build, env, logs/('local-cfg-'+control+'.log'))
+    operands = [sys.executable, str(tests/'dis64-local-operands.py')]
+    run(operands, build, env, logs/'local-operands.log')
+    for control in ('narrow', 'width', 'tail', 'overlap', 'kind', 'bool', 'implicit', 'shift',
+                    'unreachable', 'atomic', 'capacity', 'publication'):
+        run(operands+['--control', control], build, env, logs/('local-operands-'+control+'.log'))
+    initialized = [sys.executable, str(tests/'dis64-local-initialized.py')]
+    run(initialized, build, env, logs/'local-initialized.log')
+    for control in ('intersection', 'source', 'middle', 'self_read', 'seed', 'parameter_kind',
+                    'parameter_span', 'requeue', 'capacity', 'budget', 'reset', 'unreachable', 'publication'):
+        run(initialized+['--control', control], build, env, logs/('local-initialized-'+control+'.log'))
+    bound = [sys.executable, str(tests/'dis64-bound-numeric.py')]
+    run(bound, build, env, logs/'bound-numeric.log')
+    for control in ('symbol', 'entry', 'frame', 'signature', 'framebytes', 'interval', 'rebase',
+                    'root_return', 'callee_exit', 'fence', 'output_capacity', 'work_capacity', 'budget', 'atomic'):
+        run(bound+['--control', control], build, env, logs/('bound-numeric-'+control+'.log'))
+    returns = [sys.executable, str(tests/'dis64-bound-return.py')]
+    run(returns, build, env, logs/'bound-return.log')
+    for control in ('symbol', 'entry', 'frame', 'signature', 'framebytes', 'interval', 'rebase',
+                    'root_return', 'callee_exit', 'fence', 'output_capacity', 'work_capacity', 'budget',
+                    'atomic', 'base', 'secondary', 'store_kind', 'bool', 'void', 'source', 'cut',
+                    'branch', 'terminal', 'exists', 'reachable', 'return_budget'):
+        run(returns+['--control', control], build, env, logs/('bound-return-'+control+'.log'))
+    calls = [sys.executable, str(tests/'dis64-bound-call.py')]
+    run(calls, build, env, logs/'bound-call.log')
+    for control in ('symbol', 'entry', 'frame', 'signature', 'callee_exit', 'work_capacity',
+                    'output_capacity', 'budget', 'steps', 'atomic', 'pointer_temp', 'frame_type',
+                    'call_pointer', 'bind_owner', 'bind_source', 'bind_destination', 'bind_width',
+                    'argument_offset', 'argument_source', 'argument_complete', 'pending', 'linear',
+                    'ready', 'result_kind', 'result_write', 'leaf_return', 'leaf_address',
+                    'conversion_source', 'conversion_destination'):
+        run(calls+['--control', control], build, env, logs/('bound-call-'+control+'.log'))
+    for control in ('entries', 'tail'):
+        run(catalog+['--control', control], build, env, logs/('local-catalog-'+control+'.log'))
     run([sys.executable, str(tests/'dis64-inline.py'), '--limbo', str(tools/'limbo'),
          '--root', str(build), '--emu', str(build/'emu/Linux/o.emu-g'), '--runner', args.runner],
         build, env, logs/'dis64-inline.log')
@@ -126,6 +361,298 @@ def main():
     calls = [sys.executable, str(tests/'native64-local-calls.py')]
     run(calls, build, env, logs/'local-calls.log')
     run(calls+['--control'], build, env, logs/'local-calls-control.log')
+    run([sys.executable, str(tests/'native64-typed-calls.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-local-calls.log')
+    run([sys.executable, str(tests/'native64-typed-tail.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-forwarding-calls.log')
+    run([sys.executable, str(tests/'dis64-typed-tail-unit.py')],
+        build, env, logs/'typed-forwarding-ir.log')
+    run([sys.executable, str(tests/'native64-typed-local.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-local-result-calls.log')
+    run([sys.executable, str(tests/'dis64-typed-local-unit.py')],
+        build, env, logs/'typed-local-result-ir.log')
+    run([sys.executable, str(tests/'native64-typed-multi.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-multiple-calls.log')
+    run([sys.executable, str(tests/'dis64-typed-multi-unit.py')],
+        build, env, logs/'typed-multiple-call-ir.log')
+    run([sys.executable, str(tests/'native64-typed-tables.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-tables.log')
+    run([sys.executable, str(tests/'native64-typed-string-tables.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-string-tables.log')
+    run([sys.executable, str(tests/'native64-typed-string-imports.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-string-imports.log')
+    run([sys.executable, str(tests/'native64-typed-loads.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-loads.log')
+    run([sys.executable, str(tests/'native64-typed-files.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-files.log')
+    run([sys.executable, str(tests/'native64-typed-command-files.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-command-files.log')
+    run([sys.executable, str(tests/'native64-typed-managed-files.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-managed-files.log')
+    run([sys.executable, str(tests/'native64-typed-lists.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-lists.log')
+    run([sys.executable, str(tests/'native64-typed-argv.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-argv.log')
+    run([sys.executable, str(tests/'native64-typed-local-loads.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-local-loads.log')
+    run([sys.executable, str(tests/'native64-typed-pairs.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-pairs.log')
+    run([sys.executable, str(tests/'native64-typed-raises.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-raises.log')
+    run([sys.executable, str(tests/'native64-typed-primary.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-primary.log')
+    run([sys.executable, str(tests/'native64-typed-concat-args.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-concat-args.log')
+    run([sys.executable, str(tests/'native64-emuinit-unquoted.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'emuinit-unquoted.log')
+    run([sys.executable, str(tests/'native64-emuinit-fd.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'emuinit-fd.log')
+    run([sys.executable, str(tests/'native64-emuinit-fstat.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'emuinit-fstat.log')
+    run([sys.executable, str(tests/'native64-emuinit-fstat.py'), '--limbo', str(tools/'limbo'), '--stat'],
+        build, env, logs/'emuinit-stat.log')
+    run([sys.executable, str(tests/'native64-emuinit-bytes.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'emuinit-bytes.log')
+    run([sys.executable, str(tests/'native64-emuinit-getenv.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'emuinit-getenv.log')
+    run([sys.executable, str(tests/'native64-sys-program.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'sys-program.log')
+    run([sys.executable, str(tests/'native64-emuinit-full.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'emuinit-full.log')
+    run([sys.executable,str(tests/'native64-coordinate-format.py'),'--limbo',str(tools/'limbo')],build,env,logs/'coordinate-format.log')
+    run([sys.executable,str(tests/'native64-context-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'context-fields.log')
+    run([sys.executable,str(tests/'native64-wmcontext-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmcontext-alt.log')
+    run([sys.executable,str(tests/'native64-alt-pairs.py'),'--limbo',str(tools/'limbo')],build,env,logs/'alt-pairs.log')
+    run([sys.executable,str(tests/'native64-alt-replies.py'),'--limbo',str(tools/'limbo')],build,env,logs/'alt-replies.log')
+    run([sys.executable,str(tests/'native64-alt-requests.py'),'--limbo',str(tools/'limbo')],build,env,logs/'alt-requests.log')
+    run([sys.executable,str(tests/'native64-fileio-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'fileio-alt.log')
+    run([sys.executable,str(tests/'native64-client-channels.py'),'--limbo',str(tools/'limbo')],build,env,logs/'client-channels.log')
+    run([sys.executable,str(tests/'native64-field-reference.py'),'--limbo',str(tools/'limbo')],build,env,logs/'field-reference.log')
+    run([sys.executable,str(tests/'native64-local-image-geometry.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-image-geometry.log')
+    run([sys.executable,str(tests/'native64-window-list.py'),'--limbo',str(tools/'limbo')],build,env,logs/'window-list.log')
+    run([sys.executable,str(tests/'native64-window-geometry-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'window-geometry-args.log')
+    run([sys.executable,str(tests/'native64-geometry-results.py'),'--limbo',str(tools/'limbo')],build,env,logs/'geometry-results.log')
+    run([sys.executable,str(tests/'native64-window-image-result.py'),'--limbo',str(tools/'limbo')],build,env,logs/'window-image-result.log')
+    run([sys.executable,str(tests/'native64-window-image-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'window-image-args.log')
+    run([sys.executable,str(tests/'native64-local-geometry-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-geometry-args.log')
+    run([sys.executable,str(tests/'native64-local-geometry-results.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-geometry-results.log')
+    run([sys.executable,str(tests/'native64-rect-list.py'),'--limbo',str(tools/'limbo')],build,env,logs/'rect-list.log')
+    run([sys.executable,str(tests/'native64-format-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'format-fields.log')
+    run([sys.executable,str(tests/'native64-call-prep.py'),'--limbo',str(tools/'limbo')],build,env,logs/'call-prep.log')
+    run([sys.executable,str(tests/'native64-aprint.py'),'--limbo',str(tools/'limbo')],build,env,logs/'aprint.log')
+    run([sys.executable,str(tests/'native64-aprint-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'aprint-alt.log')
+    run([sys.executable,str(tests/'native64-wmsrv-module.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmsrv-module.log')
+    run([sys.executable,str(tests/'native64-wmclient-geometry.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmclient-geometry.log')
+    run([sys.executable,str(tests/'native64-wmclient-module.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmclient-module.log')
+    run([sys.executable,str(tests/'native64-titlebar-module.py'),'--limbo',str(tools/'limbo')],build,env,logs/'titlebar-module.log')
+    run([sys.executable,str(tests/'native64-aggregate-result.py'),'--limbo',str(tools/'limbo')],build,env,logs/'aggregate-result.log')
+    run([sys.executable,str(tests/'native64-winplace-module.py'),'--limbo',str(tools/'limbo')],build,env,logs/'winplace-module.log')
+    run([sys.executable,str(tests/'native64-wmlib-snarf.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmlib-snarf.log')
+    run([sys.executable,str(tests/'native64-awm-startup.py'),'--limbo',str(tools/'limbo')],build,env,logs/'awm-startup.log')
+    run([sys.executable,str(tests/'native64-string-word.py'),'--limbo',str(tools/'limbo')],build,env,logs/'string-word.log')
+    run([sys.executable,str(tests/'native64-string-library.py'),'--limbo',str(tools/'limbo')],build,env,logs/'string-library.log')
+    run([sys.executable,str(tests/'native64-bufio-library.py'),'--limbo',str(tools/'limbo')],build,env,logs/'bufio-library.log')
+    run([sys.executable,str(tests/'native64-wmsrv-queues.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmsrv-queues.log')
+    run([sys.executable,str(tests/'native64-wmsrv-windows.py'),'--limbo',str(tools/'limbo')],build,env,logs/'wmsrv-windows.log')
+    run([sys.executable,str(tests/'native64-mp-client-nil.py'),'--limbo',str(tools/'limbo')],build,env,logs/'mp-client-nil.log')
+    run([sys.executable,str(tests/'native64-pointer-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-args.log')
+    run([sys.executable,str(tests/'native64-pointer-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-fields.log')
+    run([sys.executable,str(tests/'native64-pointer-new.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-new.log')
+    run([sys.executable,str(tests/'native64-pointer-result.py'),'--limbo',str(tools/'limbo')],build,env,logs/'pointer-result.log')
+    run([sys.executable,str(tests/'native64-client-compare.py'),'--limbo',str(tools/'limbo')],build,env,logs/'client-compare.log')
+    run([sys.executable,str(tests/'native64-client-cursor.py'),'--limbo',str(tools/'limbo')],build,env,logs/'client-cursor.log')
+    run([sys.executable,str(tests/'native64-client-cursor-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'client-cursor-args.log')
+    run([sys.executable,str(tests/'native64-client-flags.py'),'--limbo',str(tools/'limbo')],build,env,logs/'client-flags.log')
+    run([sys.executable,str(tests/'native64-client-id.py'),'--limbo',str(tools/'limbo')],build,env,logs/'client-id.log')
+    run([sys.executable,str(tests/'native64-channel-nil.py'),'--limbo',str(tools/'limbo')],build,env,logs/'channel-nil.log')
+    run([sys.executable,str(tests/'native64-head-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'head-args.log')
+    run([sys.executable,str(tests/'native64-int-head-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'int-head-args.log')
+    run([sys.executable,str(tests/'native64-local-int-head-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-int-head-args.log')
+    run([sys.executable,str(tests/'native64-image-arrays.py'),'--limbo',str(tools/'limbo')],build,env,logs/'image-arrays.log')
+    run([sys.executable,str(tests/'native64-awm-call-cluster.py'),'--limbo',str(tools/'limbo')],build,env,logs/'awm-call-cluster.log')
+    run([sys.executable,str(tests/'native64-alt.py'),'--limbo',str(tools/'limbo')],build,env,logs/'alt.log')
+    run([sys.executable,str(tests/'native64-local-concat.py'),'--limbo',str(tools/'limbo')],build,env,logs/'local-concat.log')
+    run([sys.executable,str(tests/'native64-process-exit.py'),'--limbo',str(tools/'limbo')],build,env,logs/'process-exit.log')
+    run([sys.executable,str(tests/'native64-integer-lists.py'),'--limbo',str(tools/'limbo')],build,env,logs/'integer-lists.log')
+    run([sys.executable,str(tests/'native64-channel-transfer.py'),'--limbo',str(tools/'limbo')],build,env,logs/'channel-transfer.log')
+    run([sys.executable,str(tests/'native64-list-prefix.py'),'--limbo',str(tools/'limbo')],build,env,logs/'list-prefix.log')
+    run([sys.executable,str(tests/'native64-spawn.py'),'--limbo',str(tools/'limbo')],build,env,logs/'spawn.log')
+    run([sys.executable,str(tests/'native64-mapped-channels.py'),'--limbo',str(tools/'limbo')],build,env,logs/'mapped-channels.log')
+    run([sys.executable,str(tests/'native64-channel-new.py'),'--limbo',str(tools/'limbo')],build,env,logs/'channel-new.log')
+    run([sys.executable,str(tests/'native64-string-prep.py'),'--limbo',str(tools/'limbo')],build,env,logs/'string-prep.log')
+    run([sys.executable,str(tests/'native64-context-new.py'),'--limbo',str(tools/'limbo')],build,env,logs/'context-new.log')
+    run([sys.executable,str(tests/'native64-geometry-args.py'),'--limbo',str(tools/'limbo')],build,env,logs/'geometry-args.log')
+    run([sys.executable,str(tests/'native64-window-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'window-fields.log')
+    run([sys.executable,str(tests/'native64-draw-fields.py'),'--limbo',str(tools/'limbo')],build,env,logs/'draw-fields.log')
+    run([sys.executable,str(tests/'native64-channel-triples.py'),'--limbo',str(tools/'limbo')],build,env,logs/'channel-triples.log')
+    run([sys.executable,str(tests/'native64-list-call.py'),'--limbo',str(tools/'limbo')],build,env,logs/'list-call.log')
+    run([sys.executable, str(tests/'native64-typed-module.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-module-exports-mcall.log')
+    run([sys.executable, str(tests/'native64-typed-external.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-source-external-mcall.log')
+    run([sys.executable, str(tests/'dis64-typed-external-unit.py')],
+        build, env, logs/'typed-source-external-ir.log')
+    run([sys.executable, str(tests/'native64-typed-imports.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'typed-owned-imports.log')
+    results = [sys.executable, str(tests/'native64-result-calls.py')]
+    binding = [sys.executable, str(tests/'native64-disc-binding.py')]
+    run(binding, build, env, logs/'disc-binding.log')
+    for control in ('mode', 'jit', 'image'):
+        run(binding+['--control', control], build, env, logs/('disc-binding-'+control+'.log'))
+    loader_mode = [sys.executable, str(tests/'native64-loader-mode.py')]
+    run(loader_mode, build, env, logs/'loader-mode.log')
+    run(loader_mode+['--control'], build, env, logs/'loader-mode-control.log')
+    run([sys.executable, str(build/'libinterp/tests/loader-snapshots.py')],
+        build, env, logs/'loader-snapshots.log')
+    loader_branch = [sys.executable, str(tests/'native64-loader-branch.py')]
+    run(loader_branch, build, env, logs/'loader-branch.log')
+    for control in ('width', 'bounds'):
+        run(loader_branch+['--control', control], build, env, logs/('loader-branch-'+control+'.log'))
+    font_bridge = [sys.executable, str(tests/'native64-freetype.py')]
+    run(font_bridge, build, env, logs/'freetype-bridge.log')
+    for control in ('vm-transform', 'native-transform', 'pitch', 'limits', 'result', 'sort'):
+        run(font_bridge+['--control', control], build, env, logs/('freetype-'+control+'.log'))
+    run([sys.executable, str(tests/'native64-freetype-register.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'freetype-register.log')
+    run([sys.executable, str(tests/'native64-geometry.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'geometry.log')
+    run([sys.executable, str(tests/'native64-draw-scalars.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'draw-scalars.log')
+    run([sys.executable, str(tests/'native64-pixels.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'pixels.log')
+    run([sys.executable, str(tests/'native64-polygons.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'polygons.log')
+    run([sys.executable, str(tests/'native64-curves.py')], build, env, logs/'curves.log')
+    run([sys.executable, str(tests/'native64-primitives.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'primitives.log')
+    run([sys.executable, str(tests/'native64-text.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'text.log')
+    run([sys.executable, str(tests/'native64-refresh.py')], build, env, logs/'refresh.log')
+    run([sys.executable, str(tests/'native64-display-close.py')], build, env, logs/'display-close.log')
+    graphics_init = [sys.executable, str(tests/'native64-graphics-init.py')]
+    for module in ('prefab', 'freetype'):
+        run(graphics_init+['--module', module, '--limbo', str(tools/'limbo')], build, env, logs/('graphics-init-'+module+'.log'))
+        controls = ('retirement', 'publication', 'registration')+(('face-map', 'glyph-map') if module == 'freetype' else ())
+        for control in controls:
+            run(graphics_init+['--module', module, '--control', control], build, env, logs/('graphics-init-'+module+'-'+control+'.log'))
+    run([sys.executable, str(build/'libinterp/tests/gui-type-maps.py')], build, env, logs/'gui-type-maps.log')
+    loader_init = [sys.executable, str(tests/'native64-loader-init.py')]
+    run(loader_init, build, env, logs/'loader-init.log')
+    for control in ('retirement', 'publication', 'registration'):
+        run(loader_init+['--control', control], build, env, logs/('loader-init-'+control+'.log'))
+    draw_init = [sys.executable, str(tests/'native64-draw-init.py')]
+    run(draw_init, build, env, logs/'draw-init.log')
+    for control in ('retirement', 'publication', 'registration'):
+        run(draw_init+['--control', control], build, env, logs/('draw-init-'+control+'.log'))
+    bezier_consumers = [sys.executable, str(tests/'native64-bezier-consumers.py'), '--limbo', str(tools/'limbo')]
+    run(bezier_consumers, build, env, logs/'bezier-consumers.log')
+    for control in ('capture', 'source', 'flush', 'operator', 'radius', 'foreign', 'unlock'):
+        run(bezier_consumers+['--control', control], build, env, logs/('bezier-consumers-'+control+'.log'))
+    numeric_storage = [sys.executable, str(tests/'dis64-numeric-storage.py')]
+    run(numeric_storage, build, env, logs/'numeric-storage.log')
+    for control in ('map', 'frame', 'fp', 'data', 'interfaces'):
+        run(numeric_storage+['--control', control], build, env, logs/('numeric-storage-'+control+'.log'))
+    numeric_module = [sys.executable, str(tests/'dis64-numeric-module.py')]
+    run(numeric_module, build, env, logs/'numeric-module.log')
+    for control in ('entry', 'path', 'partial', 'lease'):
+        run(numeric_module+['--control', control], build, env, logs/('numeric-module-'+control+'.log'))
+    numeric_exec = [sys.executable, str(tests/'dis64-numeric-exec.py')]
+    run(numeric_exec, build, env, logs/'numeric-exec.log')
+    run(numeric_exec+['--control'], build, env, logs/'numeric-exec-decline.log')
+    numeric_fault = [sys.executable, str(tests/'dis64-numeric-fault.py')]
+    run(numeric_fault, build, env, logs/'numeric-fault.log')
+    for control in ('lease', 'mapping'):
+        run(numeric_fault+['--control', control], build, env, logs/('numeric-fault-'+control+'.log'))
+    numeric_gc = [sys.executable, str(tests/'dis64-numeric-gc.py')]
+    run(numeric_gc, build, env, logs/'numeric-gc.log')
+    run(numeric_gc+['--provider'], build, env, logs/'numeric-provider.log')
+    run(numeric_gc+['--calls'], build, env, logs/'numeric-provider-call.log')
+    for control in ('mp', 'frame'):
+        run(numeric_gc+['--control', control], build, env, logs/('numeric-gc-'+control+'.log'))
+    storage_attach = [sys.executable, str(tests/'dis64-storage-attach.py')]
+    run(storage_attach, build, env, logs/'dis64-storage-attach.log')
+    for control in ('type', 'data', 'mark', 'ordinal', 'atomic', 'cached'):
+        run(storage_attach+['--control', control], build, env, logs/('dis64-storage-attach-'+control+'.log'))
+    module_mptype = [sys.executable, str(tests/'native64-module-mptype.py')]
+    run(module_mptype, build, env, logs/'native64-module-mptype.log')
+    for control in ('ordinal', 'descriptor', 'source', 'instance'):
+        run(module_mptype+['--control', control], build, env, logs/('native64-module-mptype-'+control+'.log'))
+    storage_clone = [sys.executable, str(tests/'dis64-storage-clone.py')]
+    run(storage_clone, build, env, logs/'dis64-storage-clone.log')
+    for control in ('retain', 'pin', 'copy', 'release', 'partial', 'reserve'):
+        run(storage_clone+['--control', control], build, env, logs/('dis64-storage-clone-'+control+'.log'))
+    storage_owner = [sys.executable, str(tests/'dis64-storage-owner.py')]
+    run(storage_owner, build, env, logs/'dis64-storage-owner.log')
+    for control in ('map', 'pin', 'release', 'types', 'data', 'preflight'):
+        run(storage_owner+['--control', control], build, env, logs/('dis64-storage-owner-'+control+'.log'))
+    python_storage = [sys.executable, str(tests/'dis64-python-storage.py')]
+    run(python_storage, build, env, logs/'dis64-python-storage.log')
+    for control in ('types', 'data', 'imports', 'exports', 'code', 'module'):
+        run(python_storage+['--control', control], build, env, logs/('dis64-python-storage-'+control+'.log'))
+    storage_image = [sys.executable, str(tests/'dis64-storage-image.py')]
+    run(storage_image, build, env, logs/'dis64-storage-image.log')
+    for control in ('types', 'data', 'imports', 'exports', 'code', 'module'):
+        run(storage_image+['--control', control], build, env, logs/('dis64-storage-image-'+control+'.log'))
+    native_screen_channel = [sys.executable, str(ROOT/'libdraw/tests/screen-channel.py')]
+    run(native_screen_channel, build, env, logs/'native-screen-channel.log')
+    for control in ('owned', 'public', 'channel', 'publication', 'attachment', 'validation'):
+        run(native_screen_channel+['--control', control], build, env, logs/('native-screen-channel-'+control+'.log'))
+    native_display_init = [sys.executable, str(ROOT/'libdraw/tests/display-init.py')]
+    run(native_display_init, build, env, logs/'native-display-init.log')
+    for control in ('memory', 'channel', 'image', 'lock', 'descriptor', 'path', 'diagnostic', 'complete'):
+        run(native_display_init+['--control', control], build, env, logs/('native-display-init-'+control+'.log'))
+    display_allocate = [sys.executable, str(tests/'native64-display-allocate.py'), '--limbo', str(tools/'limbo')]
+    run(display_allocate, build, env, logs/'display-allocate.log')
+    for control in ('input', 'publication', 'image', 'display', 'unlock', 'root', 'edges'):
+        run(display_allocate+['--control', control], build, env, logs/('display-allocate-'+control+'.log'))
+    run([sys.executable, str(tests/'native64-draw-owners.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'draw-owners.log')
+    run([sys.executable, str(tests/'native64-draw-owners.py'), '--attach-only', '--limbo', str(tools/'limbo')],
+        build, env, logs/'draw-attach.log')
+    font_cache = [sys.executable, str(ROOT/'libdraw/tests/font-cache.py')]
+    run(font_cache, build, env, logs/'font-cache.log')
+    for model in ('signed', 'unsigned'):
+        run(font_cache+['--char-model', model], build, env, logs/('font-cache-'+model+'.log'))
+    for control in ('extent', 'geometry', 'publication', 'flush', 'capacity'):
+        run(font_cache+['--control', control], build, env, logs/('font-cache-'+control+'.log'))
+    subfont_geometry = [sys.executable, str(ROOT/'libdraw/tests/subfont-geometry.py')]
+    run(subfont_geometry, build, env, logs/'subfont-geometry.log')
+    for model in ('signed', 'unsigned'):
+        run(subfont_geometry+['--char-model', model], build, env, logs/('subfont-geometry-'+model+'.log'))
+    for control in ('metrics', 'placement', 'width'):
+        run(subfont_geometry+['--control', control], build, env, logs/('subfont-geometry-'+control+'.log'))
+    default_font = [sys.executable, str(ROOT/'libdraw/tests/default-font.py')]
+    run(default_font, build, env, logs/'default-font.log')
+    for model in ('signed', 'unsigned'):
+        run(default_font+['--char-model', model], build, env, logs/('default-font-'+model+'.log'))
+    for control in ('immutable', 'extent', 'pixels', 'rollback', 'range', 'transfer', 'bearing'):
+        run(default_font+['--control', control], build, env, logs/('default-font-'+control+'.log'))
+    font_input = [sys.executable, str(ROOT/'libdraw/tests/font-loading.py')]
+    run(font_input, build, env, logs/'font-input.log')
+    for control in ('range', 'separator', 'unicode', 'offset'):
+        run(font_input+['--control', control], build, env, logs/('font-input-'+control+'.log'))
+    run([sys.executable, str(tests/'native64-channels.py'), '--limbo', str(tools/'limbo')],
+        build, env, logs/'channels.log')
+    run([sys.executable, str(tests/'dis64-call-goldens.py')], build, env, logs/'call-goldens.log')
+    run([sys.executable, str(tests/'dis64-call-infer.py')], build, env, logs/'call-inference.log')
+    run([sys.executable, str(tests/'dis64-call-construct.py')], build, env, logs/'call-construction.log')
+    run([sys.executable, str(tests/'dis64-file-calls.py')], build, env, logs/'file-calls.log')
+    for control in ('cache', 'seal', 'proof-route'):
+        run([sys.executable, str(tests/'dis64-file-calls.py'), '--control', control], build, env, logs/('file-calls-'+control+'.log'))
+    run(results, build, env, logs/'result-calls.log')
+    for control in ('width', 'priority', 'ordinary', 'guard_mode', 'direct', 'entry', 'cache'):
+        run(results+['--control', control], build, env, logs/('result-calls-'+control+'.log'))
+    run(results+['--instrument'], build, env, logs/'result-instrument.log')
+    run(results+['--instrument', '--instrument-source'], build, env, logs/'result-instrument-source.log')
+    run(results+['--instrument', '--control', 'priority'], build, env, logs/'result-instrument-priority.log')
+    handlers = [sys.executable, str(tests/'native64-local-handlers.py')]
+    run(handlers, build, env, logs/'local-handlers.log')
+    for control in ('pending', 'registers'):
+        run(handlers+['--control', control], build, env, logs/('local-handlers-'+control+'.log'))
+    fresh = [sys.executable, str(tests/'native64-fresh-handlers.py')]
+    run(fresh, build, env, logs/'fresh-handlers.log')
+    for control in ('publication', 'map'):
+        run(fresh+['--control', control], build, env, logs/('fresh-handlers-'+control+'.log'))
     vm = [sys.executable, str(tests/'native64-live-vm.py')]
     run(vm, build, env, logs/'live-vm.log')
     for control in ('enter', 'unwind'):
@@ -137,8 +664,11 @@ def main():
     if args.arch in ('arm64', 'riscv64'):
         run([sys.executable, str(tests/'native64-runtime.py'), '--arch', args.arch, '--system', 'Linux', '--cc', env['CC'],
              '--runner', args.runner], build, env, logs/(args.arch+'-runtime.log'))
+    if args.arch == 'riscv64':
+        run([sys.executable, str(build/'libinterp/tests/riscv-dispatch.py'), '--cc', env['CC'],
+             '--runner', args.runner], build, env, logs/'riscv-complete-tails.log')
     print('PASS clean classic-mk native64 boot/lease gates; logs: '+str(logs))
-    print('Scope: self-checking scalar programs and trusted C fixtures; file CALL/MCALL and full shell startup remain closed.')
+    print('Scope: self-checking scalar programs and trusted C fixtures; default file calls/MCALL and full shell startup remain closed; dis64-calls is explicit bounded opt-in.')
 
 
 if __name__ == '__main__':

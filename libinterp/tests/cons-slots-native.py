@@ -36,7 +36,7 @@ unit = '#define TEST_LEAF_DISPATCH_RUNTIME // Link the real complete C executor.
 unit += (ROOT/'libinterp/tests/payload-cons-native.c').read_text().split('#define OP(name)')[0]
 unit += '''
 void (*optab[256])(void);
-char exOp[]="opcode";
+char exOp[]="opcode", exCompile[]="compile";
 #define OP(name) void name(void) // Real decoded opcode entry.
 '''
 unit += function(HEAP, 'Heap*\nnheap(')

@@ -25,12 +25,12 @@ struct Dis64Bindings {
 };
 
 
-/* Decode one extent-bounded record without assigning absent fields wire sentinels. */
+/* Read record coordinates and the bounded signature span without decoding its version. */
 static int
-dis64bindingread(const unsigned char *data, unsigned int bytes, unsigned int exports,
-	unsigned int parameters, Dis64Binding *result, unsigned int *used)
+dis64bindingrecord(const unsigned char *data, unsigned int bytes, unsigned int exports,
+	Dis64Binding *result, unsigned int *used)
 {
-	Dis64Binding binding;
+	Dis64Binding binding = {0};
 	unsigned int header, signaturebytes;
 
 	if(data == 0 || result == 0 || used == 0 || exports > 1 || (unsigned int)-1 != 0xffffffffU)
@@ -38,7 +38,6 @@ dis64bindingread(const unsigned char *data, unsigned int bytes, unsigned int exp
 	header = exports ? 16 : 12;
 	if(bytes < header)
 		return 0;
-	binding.module = binding.entry = binding.frame = 0;
 	if(exports){
 		binding.symbol = dis64u32(data);
 		binding.entry = dis64u32(data+4);
@@ -48,14 +47,30 @@ dis64bindingread(const unsigned char *data, unsigned int bytes, unsigned int exp
 		binding.symbol = dis64u32(data+4);
 	}
 	signaturebytes = dis64u32(data+header-4);
-	if(signaturebytes > bytes-header ||
-	   !dis64signaturecheck(data+header, signaturebytes, parameters, &binding.signature))
+	if(signaturebytes > bytes-header)
 		return 0;
+	binding.signature.data = data+header;
+	binding.signature.bytes = signaturebytes;
 	*result = binding;
 	*used = header+signaturebytes;
 	return 1;
 }
 
+/* Decode one accepted scalar record, publishing only after its signature passes. */
+static int
+dis64bindingread(const unsigned char *data, unsigned int bytes, unsigned int exports,
+	unsigned int parameters, Dis64Binding *result, unsigned int *used)
+{
+	Dis64Binding binding;
+	unsigned int extent;
+
+	if(result == 0 || used == 0 || !dis64bindingrecord(data, bytes, exports, &binding, &extent) ||
+	   !dis64signaturecheck(binding.signature.data, binding.signature.bytes, parameters, &binding.signature))
+		return 0;
+	*result = binding;
+	*used = extent;
+	return 1;
+}
 
 /* Check IDs and export frame shape; runtime roots/call offsets are separate gates. */
 static int

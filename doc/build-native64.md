@@ -222,9 +222,9 @@ The existing minimum-block/coalescing checks remain active.
 ## Trusted Sys I/O startup (INFERNO-0046)
 
 The explicit scalar runtime can additionally initialize native64 Sys descriptors
-and register eight fixed-frame Sys exports: byte2char, char2byte, utfbytes, read,
-readn, write, pread and pwrite. This is a selected trusted C profile, not the full
-Sys module and not a file-import admission change. Complex I/O bodies stay in C.
+and register thirteen fixed-frame Sys exports. The set includes byte2char, char2byte,
+utfbytes, read, readn, write, pread, pwrite, pctl, file2chan, millisec, open and fildes. These entries
+use the trusted C registration path.
 
 ```
 python3 utils/configure.py --host linux --target linux --arch arm64 --console \
@@ -242,7 +242,7 @@ Default and externally selected native64 Sys declarations retain the existing
 registration refusal. Explicit conflicting header selectors fail compilation.
 
 Real Linux ARM64 static/QEMU and x64 hosted emulators now initialize Sys, register
-Math and the eight-entry Sys profile, and finish both pilot modules with JIT off
+Math and the thirteen-entry Sys profile, and finish both pilot modules with JIT off
 and on. Require the selected startup markers and continued closed admission:
 
 ```
@@ -250,10 +250,106 @@ python3 utils/tests/native64-scalar-boot.py --math --sys-io \
   --emu /build/emu/Linux/o.emu-g --root /build --runner qemu-aarch64
 ```
 
-The test still rejects `$Sys`, `$Math` and legacy images. It does not invoke these
-eight exports from a Dis64 file. No generic CALL/MCALL, builtin import, typed
-variadic wire metadata or general shell startup is enabled. Scalar file execution
-is still the43-op np0 profile. Native dispatch counts remain unchanged.
+Ordinary file admission still rejects builtin modules and legacy images.
+The explicit Sys pilot accepts checked `millisec`, `sleep` and `dup` imports
+and bounded call sequences. An optional initial LOAD binds those imports at execution
+time from a managed module-name cell to a mapped module-result cell. Run a pilot image with `emu -c 1 -d /clock.dis64 -P '$Sys'`
+and repeat with `-c 0` for the interpreter. The paired boot test with
+`--sys-clock` generates the image and checks both modes. The pilot
+reserves `$Sys` as an explicit provider selector and shares the
+existing indirect LEA encoding with the local result binder.
+
+The real `limbo -64` backend and file loader accept Word comparisons,
+`if/else`, conditional fixed Sys calls, loops, `break`/`continue`, and early
+`return` from the void entry function. All six integer comparisons are
+supported. A descending fixed-point analysis intersects initialization facts
+at joins and loop headers; a backedge cannot manufacture a value missing on
+the first iteration. Call results needed across control flow are copied into
+stable Word cells instead of aliasing the most recent temporary result.
+
+A branch can skip a complete call but cannot enter its argument/result setup
+or re-enter the initial LOAD. All code, including the final exit, must be
+structurally reachable. The verifier's work is bounded; runtime iteration
+counts/termination are not proved. Existing limits remain 32 static call
+sites, 64 scalar steps (including branches and saved-result copies), three
+persistent Word locals and an 80-byte entry frame. Managed/variadic arguments,
+exceptions and general exported functions remain outside this profile.
+
+For example, save this as `flow.b`:
+
+```limbo
+implement Flow;
+include "sys.m";
+Flow: module { init: fn(); };
+init()
+{
+    sys := load Sys Sys->PATH;
+    count := 0;
+    value := -1;
+    for(; count < 3; count++) {
+        if(count == 1)
+            value = sys->sleep(0);
+    }
+    if(value < 0)
+        return;
+    value = sys->sleep(value);
+}
+```
+
+Compile and run it with the real native64 console built above:
+
+```sh
+/host/tools/limbo -I /src/module -64 -o /build/flow.dis64 flow.b
+/build/emu/Linux/o.emu-g -c 0 -v -r /build -d /flow.dis64 -P '$Sys'
+```
+
+Repeat with `-c 1` to request JIT mode; the test does not claim that the Sys
+caller itself completed in machine code rather than the guarded interpreter.
+This uses the ordinary Dis64 file constructor, LOAD/import resolution,
+FRAME/MCALL execution and scheduler cleanup. It is independent of the private
+variadic argument transport and does not enable ordinary AWM startup.
+
+Run the focused serialized-code gate with:
+
+```sh
+python3 utils/tests/dis64-pair-boot.py --root /build \
+  --emu /build/emu/Linux/o.emu-g --limbo /host/tools/limbo --sys-flow-only
+```
+
+Nested expressions of these fixed integer calls also use the real backend.
+For example, the following body can replace `init()` in `flow.b`:
+
+```limbo
+init()
+{
+    sys := load Sys Sys->PATH;
+    value := sys->dup(sys->dup(-1, -1), sys->sleep(0));
+    value++;
+    value /= value;  # Expected zero divide: the outer dup returns -1.
+}
+```
+
+Limbo evaluates inner calls before preparing the outer call. The producer
+preserves an earlier result when it is read after a later call, including
+argument stores and implicit reads such as `++`. It also accepts the compiler's
+reuse of a dead scalar temporary as a frame-pointer slot: native frame pointers
+and remapped Word values occupy separate storage. The runtime still prepares
+one call at a time. Short-circuit `&&`/`||` conditions use the same checked
+branch/call boundaries. Stable results and ordinary locals share the existing
+three-cell budget; larger expressions can be refused. Flat callers without
+overlapping result lifetimes retain their existing code layout. This uses the
+existing opcodes, structural signatures and section layouts.
+
+`--runner`, `CC` and `NATIVE64_CFLAGS` select cross execution/checker compilation.
+The full `--sys-clock` gate also runs these cases. Tests execute compiled
+conditions, conditional calls, stable result identities, early returns,
+loop trip counts, break/continue and native-PC relocation after saved return
+copies; check signed16 middle operands; reject malformed control flow before
+scheduling; compare the shared flow check against an independent set-based
+reference on 256 deterministic graphs; and require an active
+intersection-to-union removal control to
+detect a local defined on only one branch. Existing wire tags and section
+layouts are unchanged.
 
 Additional gates separate registration ownership from actual callback behavior:
 
@@ -265,11 +361,13 @@ python3 utils/tests/native64-sys.py --limbo /host/tools/limbo
 
 All support the same NATIVE64_ARCH/CC/NATIVE64_CFLAGS/NATIVE64_RUNNER environment.
 The registration gate compiles both complete owning production units, executes
-the actual registration and constructor bodies, validates the eight published
-names/types/maps, dispatches bounded identity callbacks, fails every21 constructor
-allocation, rejects descriptor initialization before allocation, and retries.
-The callback/descriptor boundary is explicitly bounded there: use the separate
-Sys handler/initializer gates for actual implementation evidence. Registration
+the actual registration and constructor bodies, validates the thirteen published
+names, types and maps, fails all 31 constructor allocations individually, rejects
+descriptor initialization before allocation, and retries. It dispatches the
+production millisec handler through the registered export using a deterministic
+host clock and rejects invalid result cells before reading the clock. The other
+callbacks are bounded identity probes. Separate Sys handler and initializer
+gates cover their implementation behavior. Registration
 failure does not retire already published canonical Sys descriptors; sysinit's
 idempotent retry contract owns those process-lifetime descriptors.
 
@@ -647,7 +745,7 @@ reproduction and unchanged JIT/file-admission statistics.
 
 ## Compile scalar Limbo source to Dis64 (series 0054)
 
-Rebuild native tools from current sources. `limbo -6` emits the existing43-op np0
+Rebuild native tools from current sources. `limbo -64` emits the existing43-op np0
 profile for one pointer-free void init() with int/big/real storage. The classic
 limbo mkfile includes the new backend and its codec dependencies; makemk.sh also
 builds it through its ordinary source list. The clean port driver now checks real
@@ -715,3 +813,99 @@ JIT processes and checks remapped targets/source rows; CI also consumes all67
 products through the unchanged FlashVM reader. See
 [scope, limits and reproduction](dis64-scalar-cases.md). Console archives now
 also contain the self-checking Native64Case source, image and diagnostic map.
+
+## Private local-call preflights (series0073–0075)
+
+The clean port driver now also runs three separate private gates after classic
+mk build. These do not enable file calls:
+
+| Gate | Checked boundary | Independent cases | Removal controls |
+|---|---|---:|---:|
+| `dis64-local-catalog.py` | Raw metadata and caller/callee geometry |628|2|
+| `dis64-local-flow.py` | Abstract function ownership and bounded call graph |1540|5|
+| `dis64-local-state.py` | Abstract preparation, arguments, typed result and joins |98032|13|
+
+For a focused host run from the repository root:
+
+```
+python3 utils/tests/dis64-local-catalog.py
+python3 utils/tests/dis64-local-flow.py
+python3 utils/tests/dis64-local-state.py
+```
+
+The state gate defaults to optimized nonrecovering UBSan. As with the other
+portable C gates, `CC`, `NATIVE64_CFLAGS`, `NATIVE64_RUNNER` and
+`NATIVE64_TMPDIR` select compiler, flags, target executor and scratch directory.
+The full native64-port matrix runs all semantic removal controls as well as the
+normal oracles. Look for `local-state.log` and `local-state-*.log` in the console
+artifact's complete gate logs.
+
+The state model consumes trusted semantic facts, not wire instructions. The
+catalog/control/state gates still need decoded-operand/CFG composition, numeric
+local definite assignment, setup-interior ownership and callee result guarantees,
+followed by whole-file C/RX positive/refusal goldens. FLASHVM-0063 accepts the
+initial subset design but opens no loader path or registry IDs. See
+[state scope](dis64-local-state.md) and [agreed subset](dis64-local-call-proposal.md).
+
+## Entry-seeded semantic CFG (series0076)
+
+`python3 utils/tests/dis64-local-cfg.py` checks4005 semantic graphs against an
+independent DFS oracle. Native64-port additionally runs eight semantic removal
+controls and preserves `local-cfg.log` plus `local-cfg-*.log`. Cross-target compiler,
+runner, flags and temporary-directory variables are the same as for the other
+portable preflights. The Python fixture imports `dis64-local-state.py`; copy both
+when replaying selected sources.
+
+The checker resets scratch, seeds zero entry state and requires exact joins;
+unknown/unreachable malformed events and setup-interior targets refuse. Its
+work budget counts processed nodes and edge comparisons. Numeric source/span
+proofs and actual decoded file operands remain separate. See
+[precise CFG scope](dis64-local-cfg.md) and [series0076](native64-series0076.md).
+
+## Actual typed scalar operands (series0077)
+
+`python3 utils/tests/dis64-local-operands.py` decodes actual scalar code bytes
+against an independent Python parser/type-role model:17544 payload/layout cases
+plus direct invalid-width/wide-offset probes. The complete port driver also
+runs12 semantic removal controls, including an extra-record publication probe. Logs are `local-operands.log` and
+`local-operands-*.log`; compiler/runner/flags/scratch variables match other C gates.
+
+This remains a private adapter under trusted local declarations. It derives
+read/write roles but not numeric initialization or whole callable admission.
+The shared slot-helper width/narrowing repair is exercised in the same fixture.
+See [scope](dis64-local-operands.md) and [series0077](native64-series0077.md).
+
+## Numeric definite initialization (series0078)
+
+`python3 utils/tests/dis64-local-initialized.py` compares actual scalar CFGs and
+incoming signatures against a synchronous fixed-point set oracle:2029 cases,
+with13 semantic removal controls in native64-port. It imports the existing raw
+operand oracle. Compiler/runner/flags/scratch variables match other C gates.
+Logs are `local-initialized.log` and `local-initialized-*.log`.
+
+Canonical incoming arguments seed exact prefix slots; locals do not initialize
+by declaration. Numeric joins intersect, losses requeue nodes, and all reads
+precede writes. Deterministic information-budget and hard visit/queue bounds
+refuse transactionally. Context/catalog binding and callee return guarantees
+remain separate. See [scope](dis64-local-initialized.md) and
+[series0078](native64-series0078.md).
+
+## Full Android ARM64 GUI native build
+
+The ordinary framebuffer Draw/Tk graph can now be compiled and linked with a
+modern NDK. See [the full GUI build reproduction](android-arm64-gui-build.md).
+This is separate from scalar APK probes; AWM startup remains blocked by native
+builtin ABI and general managed compiler/runtime admission.
+
+
+The explicit managed file profile also supports self-contained void entries
+with multiple independent serialized String literals. See [the runnable String tutorial](dis64-managed-literals.md)
+and its [Russian version](dis64-managed-literals.ru.md) for ownership, limits
+and complete-emulator/GC checks. This remains separate from ordinary `-64`
+managed linkage and Android AWM startup.
+
+See [named user-defined modules](dis64-managed-modules.md) / [пользовательские модули](dis64-managed-modules.ru.md) for the same checked shapes with arbitrary interface and method names.
+
+The private managed file profile also executes fixed String-to-Word `Sys->werrstr` through the real builtin LOAD and native frame. See [the tutorial](dis64-sys-string.md) / [русский пример](dis64-sys-string.ru.md). General mixed/variadic calls and AWM remain pending.
+
+Commands and libraries share the module/link model: LOAD does not invoke init; sh calls the exported function explicitly. See [module loading](dis64-module-loading.md) / [загрузка модулей](dis64-module-loading.ru.md). The fixed native String group supports werrstr/chdir/remove through the shared loader and generated Sys exports; general signatures and AWM remain pending.

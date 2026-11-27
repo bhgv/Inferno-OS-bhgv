@@ -33,6 +33,7 @@ resultmalloc(size_t bytes)
     return failpin ? nil : malloc(bytes);
 }
 
+#undef malloc // Android headers may name Inferno native storage privately.
 #define malloc(bytes) resultmalloc(bytes) // Only the complete collector body below uses this boundary.
 '''
     source = source.replace(collector, allocation+collector+'\n#undef malloc\n', 1)

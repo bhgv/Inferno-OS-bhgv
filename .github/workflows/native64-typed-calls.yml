@@ -1,0 +1,627 @@
+name: Native64 source-derived module calls
+on:
+  push:
+    branches: [experiment]
+    paths:
+      - '.github/workflows/native64-typed-calls.yml'
+      - 'makemk.sh'
+      - 'mkfiles/**'
+      - 'Linux/**'
+      - 'Android/**'
+      - 'limbo/**'
+      - 'module/**'
+      - 'include/**'
+      - 'libinterp/**'
+      - 'emu/port/**'
+      - 'utils/tests/native64-local-calls.*'
+      - 'utils/tests/native64-typed*'
+      - 'utils/tests/dis64-typed*'
+      - 'utils/tests/dis64-command*'
+      - 'appl/cmd/sh/sh.y'
+      - 'utils/tests/awm-native64-*'
+      - 'utils/tests/dis64-layout.py'
+      - 'utils/tests/native64-callsites.py'
+      - 'utils/tests/native64-sys-program*'
+      - 'utils/tests/native64-coordinate-format*'
+      - 'utils/tests/native64-context-fields*'
+      - 'utils/tests/native64-context-new*'
+      - 'utils/tests/native64-string-prep*'
+      - 'utils/tests/native64-channel-new*'
+      - 'utils/tests/native64-mapped-channels*'
+      - 'utils/tests/native64-spawn*'
+      - 'utils/tests/native64-list-prefix*'
+      - 'utils/tests/native64-channel-transfer*'
+      - 'utils/tests/native64-integer-lists*'
+      - 'utils/tests/native64-process-exit*'
+      - 'utils/tests/native64-local-concat*'
+      - 'utils/tests/native64-alt*'
+      - 'utils/tests/native64-wmcontext-alt*'
+      - 'utils/tests/native64-alt-pairs*'
+      - 'utils/tests/native64-alt-replies*'
+      - 'utils/tests/native64-alt-requests*'
+      - 'utils/tests/native64-fileio-alt*'
+      - 'utils/tests/native64-client-channels*'
+      - 'utils/tests/native64-field-reference*'
+      - 'utils/tests/native64-local-image-geometry*'
+      - 'utils/tests/native64-window-list*'
+      - 'utils/tests/native64-window-geometry-args*'
+      - 'utils/tests/native64-geometry-results*'
+      - 'utils/tests/native64-window-image-result*'
+      - 'utils/tests/native64-window-image-args*'
+      - 'utils/tests/native64-local-geometry-args*'
+      - 'utils/tests/native64-local-geometry-results*'
+      - 'utils/tests/native64-rect-list*'
+      - 'utils/tests/native64-format-fields*'
+      - 'utils/tests/native64-call-prep*'
+      - 'utils/tests/native64-aprint*'
+      - 'utils/tests/native64-wmsrv-module*'
+      - 'utils/tests/native64-wmclient-geometry*'
+      - 'utils/tests/native64-wmclient-module*'
+      - 'utils/tests/native64-titlebar-module*'
+      - 'utils/tests/native64-aggregate-result*'
+      - 'utils/tests/native64-tokenize*'
+      - 'utils/tests/native64-winplace-module*'
+      - 'utils/tests/native64-wmlib-snarf*'
+      - 'utils/tests/native64-awm-startup*'
+      - 'utils/tests/native64-string-word*'
+      - 'utils/tests/native64-string-library*'
+      - 'utils/tests/native64-bufio-library*'
+      - 'utils/tests/native64-wmsrv-queues*'
+      - 'utils/tests/native64-wmsrv-windows*'
+      - 'utils/tests/native64-mp-client-nil*'
+      - 'utils/tests/native64-pointer-args*'
+      - 'utils/tests/native64-pointer-fields*'
+      - 'utils/tests/native64-pointer-new*'
+      - 'utils/tests/native64-pointer-result*'
+      - 'utils/tests/native64-client-compare*'
+      - 'utils/tests/native64-client-flags*'
+      - 'utils/tests/native64-client-id*'
+      - 'utils/tests/native64-channel-nil*'
+      - 'utils/tests/native64-head-args*'
+      - 'utils/tests/native64-int-head-args*'
+      - 'utils/tests/native64-local-int-head-args*'
+      - 'utils/tests/native64-image-arrays*'
+      - 'utils/tests/native64-root-arrays*'
+      - 'utils/tests/native64-word-arrays*'
+      - 'utils/tests/native64-mixed-arrays*'
+      - 'utils/tests/native64-record-fields*'
+      - 'utils/tests/native64-field-arrays*'
+      - 'utils/tests/native64-awm-call-cluster*'
+      - 'utils/tests/native64-client-cursor*'
+      - 'utils/tests/native64-geometry-args*'
+      - 'utils/tests/native64-window-fields*'
+      - 'utils/tests/native64-draw-fields*'
+      - 'utils/tests/native64-channel-triples*'
+      - 'utils/tests/native64-list-call*'
+      - 'utils/tests/native64-emuinit-full*'
+      - 'utils/tests/dis64-variadic*'
+      - 'utils/tests/classic-array-initializers.py'
+      - 'appl/wm/awm.b'
+      - 'appl/wm/atoolbar.b'
+      - 'appl/lib/**'
+      - 'appl/cmd/emuinit.b'
+      - 'appl/cmd/sh/sh.b'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native64-typed-calls-${{ github.ref }}
+  cancel-in-progress: false # Finish the active typed matrix; retain the latest pending source batch.
+jobs:
+  calls:
+    name: Typed module calls ${{ matrix.arch }}
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            host: ubuntu-22.04
+            compiler: gcc
+            runner: ''
+            flags: '-O2 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'
+          - arch: arm64
+            host: ubuntu-22.04-arm
+            compiler: gcc
+            runner: ''
+            flags: '-O2 -g -DNDEBUG -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'
+          - arch: riscv64
+            host: ubuntu-22.04
+            compiler: riscv64-linux-gnu-gcc
+            runner: 'qemu-riscv64 -R 0x10000000000 -L /usr/riscv64-linux-gnu'
+            flags: '-O2 -g -DNDEBUG -fno-strict-aliasing'
+    env:
+      NATIVE64_ARCH: ${{ matrix.arch }}
+      NATIVE64_RUNNER: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap native compiler and target tools
+        run: |
+          if [ "$NATIVE64_ARCH" = arm64 ]; then
+            test "$(uname -m)" = aarch64
+          fi
+          if [ "$NATIVE64_ARCH" = riscv64 ]; then
+            sudo apt-get -o Acquire::Retries=3 update
+            sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user
+          fi
+          MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+      - name: Execute RV64 numeric table emitter and cache proofs on the host
+        if: matrix.arch == 'riscv64'
+        env:
+          CC: gcc
+          CFLAGS: '-O1 -g -fno-strict-aliasing -fsanitize=undefined -fno-sanitize-recover=all'
+        run: |
+          python3 -m pip install --disable-pip-version-check unicorn==2.1.4
+          python3 libinterp/tests/riscv-tables.py
+          python3 libinterp/tests/riscv-runtime.py
+          python3 libinterp/tests/riscv-cache.py
+      - name: Check Limbo Command interface aliases and managed calls
+        env:
+          CC: ${{ matrix.compiler }}
+          NATIVE64_CFLAGS: ${{ matrix.flags }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/typed-call-logs"
+          python3 utils/tests/dis64-command-alias.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias.log"
+          python3 utils/tests/dis64-command.py --limbo "$RUNNER_TEMP/host-tools/limbo" --implementation Wm \
+            --case consume-two --case callee-cons --case source-context --case load-no-init --case explicit-init-error --case local-once 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias-gc.log"
+          python3 utils/tests/dis64-command.py --limbo "$RUNNER_TEMP/host-tools/limbo" --implementation Wm --chain \
+            --case chain-scalar --case chain-owned --case chain-command 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias-chain.log"
+      - name: Construct and clone real AWM startup data
+        env:
+          CC: ${{ matrix.compiler }}
+          NATIVE64_CFLAGS: ${{ matrix.flags }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/typed-call-logs"
+          python3 utils/tests/awm-native64-data.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/awm-data.log"
+          for control in scalar map clone; do
+            python3 utils/tests/awm-native64-data.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+              --source appl/wm/awm.b --control "$control" 2>&1 \
+              | tee "$RUNNER_TEMP/typed-call-logs/awm-data-$control.log"
+          done
+          for control in array-map array-clone array-value; do
+            source=appl/lib/titlebar.b
+            if [ "$control" = array-value ]; then source=appl/cmd/sh/sh.b; fi
+            python3 utils/tests/awm-native64-data.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+              --source "$source" --control "$control" 2>&1 \
+              | tee "$RUNNER_TEMP/typed-call-logs/awm-data-$control.log"
+          done
+      - name: Execute source-derived typed calls and active refusal controls
+        env:
+          CC: ${{ matrix.compiler }}
+          NATIVE64_CFLAGS: ${{ matrix.flags }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/typed-call-logs"
+          for gate in tables string-tables string-imports loads files command-files managed-files lists argv local-loads pairs raises primary concat-args calls tail local multi module external imports; do
+            python3 "utils/tests/native64-typed-$gate.py" --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+              | tee "$RUNNER_TEMP/typed-call-logs/$gate.log"
+          done
+          python3 utils/tests/native64-emuinit-unquoted.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-unquoted.log"
+          python3 utils/tests/native64-emuinit-fd.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fd.log"
+          python3 utils/tests/native64-emuinit-fstat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fstat.log"
+          python3 utils/tests/native64-emuinit-fstat.py --limbo "$RUNNER_TEMP/host-tools/limbo" --stat 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-stat.log"
+          python3 utils/tests/native64-emuinit-bytes.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-bytes.log"
+          python3 utils/tests/native64-emuinit-getenv.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-getenv.log"
+          python3 utils/tests/native64-sys-program.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/sys-program.log"
+          python3 utils/tests/native64-emuinit-full.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-full.log"
+          python3 utils/tests/native64-coordinate-format.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/coordinate-format.log"
+          python3 utils/tests/native64-context-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/context-fields.log"
+          python3 utils/tests/native64-wmcontext-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmcontext-alt.log"
+          python3 utils/tests/native64-alt-pairs.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/alt-pairs.log"
+          python3 utils/tests/native64-alt-replies.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/alt-replies.log"
+          python3 utils/tests/native64-alt-requests.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/alt-requests.log"
+          python3 utils/tests/native64-fileio-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/fileio-alt.log"
+          python3 utils/tests/native64-client-channels.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-channels.log"
+          python3 utils/tests/native64-field-reference.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/field-reference.log"
+          python3 utils/tests/native64-local-image-geometry.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-image-geometry.log"
+          python3 utils/tests/native64-window-list.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/window-list.log"
+          python3 utils/tests/native64-window-geometry-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/window-geometry-args.log"
+          python3 utils/tests/native64-geometry-results.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/geometry-results.log"
+          python3 utils/tests/native64-window-image-result.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/window-image-result.log"
+          python3 utils/tests/native64-window-image-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/window-image-args.log"
+          python3 utils/tests/native64-local-geometry-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-geometry-args.log"
+          python3 utils/tests/native64-local-geometry-results.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-geometry-results.log"
+          python3 utils/tests/native64-rect-list.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/rect-list.log"
+          python3 utils/tests/native64-format-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/format-fields.log"
+          python3 utils/tests/native64-call-prep.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/call-prep.log"
+          python3 utils/tests/native64-aprint.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/aprint.log"
+          python3 utils/tests/native64-aprint-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/aprint-alt.log"
+          python3 utils/tests/native64-wmsrv-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-module.log"
+          python3 utils/tests/native64-wmclient-geometry.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmclient-geometry.log"
+          python3 utils/tests/native64-wmclient-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmclient-module.log"
+          python3 utils/tests/native64-titlebar-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/titlebar-module.log"
+          python3 utils/tests/native64-aggregate-result.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/aggregate-result.log"
+          python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/tokenize.log"
+          python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" --local 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/tokenize-local.log"
+          python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" --forward-import 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/tokenize-forward-import.log"
+          python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" --root-pair 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/tokenize-root-pair.log"
+          python3 utils/tests/native64-root-pair-import.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/root-pair-import.log"
+          python3 utils/tests/native64-winplace-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/winplace-module.log"
+          python3 utils/tests/native64-wmlib-snarf.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmlib-snarf.log"
+          python3 utils/tests/native64-awm-startup.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/awm-startup.log"
+          python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/string-word.log"
+          python3 utils/tests/native64-string-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/string-library.log"
+          python3 utils/tests/native64-bufio-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/bufio-library.log"
+          python3 utils/tests/native64-wmsrv-queues.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-queues.log"
+          python3 utils/tests/native64-wmsrv-windows.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-windows.log"
+          python3 utils/tests/native64-mp-client-nil.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/mp-client-nil.log"
+          python3 utils/tests/native64-pointer-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/pointer-args.log"
+          python3 utils/tests/native64-pointer-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/pointer-fields.log"
+          python3 utils/tests/native64-pointer-new.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/pointer-new.log"
+          python3 utils/tests/native64-pointer-result.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/pointer-result.log"
+          python3 utils/tests/native64-client-compare.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-compare.log"
+          python3 utils/tests/native64-client-cursor.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-cursor.log"
+          python3 utils/tests/native64-client-cursor-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-cursor-args.log"
+          python3 utils/tests/native64-client-flags.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-flags.log"
+          python3 utils/tests/native64-client-id.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-id.log"
+          python3 utils/tests/native64-channel-nil.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/channel-nil.log"
+          python3 utils/tests/native64-head-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/head-args.log"
+          python3 utils/tests/native64-int-head-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/int-head-args.log"
+          python3 utils/tests/native64-local-int-head-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-int-head-args.log"
+          python3 utils/tests/native64-image-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/image-arrays.log"
+          python3 utils/tests/native64-root-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/root-arrays.log"
+          python3 utils/tests/native64-word-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/word-arrays.log"
+          python3 utils/tests/native64-mixed-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/mixed-arrays.log"
+          python3 utils/tests/native64-record-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/record-fields.log"
+          python3 utils/tests/native64-field-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/field-arrays.log"
+          python3 utils/tests/native64-awm-call-cluster.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/awm-call-cluster.log"
+          python3 utils/tests/native64-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/alt.log"
+          python3 utils/tests/native64-local-concat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-concat.log"
+          python3 utils/tests/native64-process-exit.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/process-exit.log"
+          python3 utils/tests/native64-integer-lists.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/integer-lists.log"
+          python3 utils/tests/native64-channel-transfer.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/channel-transfer.log"
+          python3 utils/tests/native64-list-prefix.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/list-prefix.log"
+          python3 utils/tests/native64-spawn.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/spawn.log"
+          python3 utils/tests/native64-mapped-channels.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/mapped-channels.log"
+          python3 utils/tests/native64-channel-new.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/channel-new.log"
+          python3 utils/tests/native64-string-prep.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/string-prep.log"
+          python3 utils/tests/native64-context-new.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/context-new.log"
+          python3 utils/tests/native64-geometry-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/geometry-args.log"
+          python3 utils/tests/native64-window-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/window-fields.log"
+          python3 utils/tests/native64-draw-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/draw-fields.log"
+          python3 utils/tests/native64-channel-triples.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/channel-triples.log"
+          python3 utils/tests/native64-list-call.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/list-call.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: typed-module-calls-${{ matrix.arch }}
+          path: ${{ runner.temp }}/typed-call-logs
+          if-no-files-found: warn
+          retention-days: 14
+  bionic:
+    name: Typed module calls Android ARM64 Bionic
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      NATIVE64_ARCH: arm64
+      NATIVE64_RUNNER: qemu-aarch64
+      NATIVE64_CFLAGS: '-O2 -g -DNDEBUG -fno-strict-aliasing -static'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare pinned Android toolchain and native compiler
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends qemu-user
+          curl -fL --retry 3 https://dl.google.com/android/repository/android-ndk-r27c-linux.zip -o "$RUNNER_TEMP/ndk.zip"
+          echo "59c2f6dc96743b5daf5d1626684640b20a6bd2b1d85b13156b90333741bad5cc  $RUNNER_TEMP/ndk.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/ndk.zip" -d "$RUNNER_TEMP"
+          MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+      - name: Verify Bionic headers and native pointer width
+        run: |
+          clang="$RUNNER_TEMP/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang"
+          printf '%s\n' '#include <sys/cdefs.h>' '#include <stdio.h>' \
+            '#ifndef __BIONIC__' '#error Android Bionic headers required' '#endif' \
+            'int main(void){if(sizeof(void*)!=8 || sizeof(int)!=4)return 1;puts("PASS ARM64/Bionic pointer64 int32");return 0;}' \
+            > "$RUNNER_TEMP/bionic-probe.c"
+          "$clang" -O2 -static "$RUNNER_TEMP/bionic-probe.c" -o "$RUNNER_TEMP/bionic-probe"
+          qemu-aarch64 "$RUNNER_TEMP/bionic-probe"
+      - name: Check Limbo Command interface aliases and managed calls against Bionic
+        run: |
+          set -o pipefail
+          export CC="$RUNNER_TEMP/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang -I$GITHUB_WORKSPACE/Android/arm64/include -I$GITHUB_WORKSPACE/Android/arm/include"
+          mkdir -p "$RUNNER_TEMP/typed-call-logs"
+          python3 utils/tests/dis64-command-alias.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias.log"
+          python3 utils/tests/dis64-command.py --limbo "$RUNNER_TEMP/host-tools/limbo" --implementation Wm \
+            --case consume-two --case callee-cons --case source-context --case load-no-init --case explicit-init-error --case local-once 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias-gc.log"
+          python3 utils/tests/dis64-command.py --limbo "$RUNNER_TEMP/host-tools/limbo" --implementation Wm --chain \
+            --case chain-scalar --case chain-owned --case chain-command 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/command-alias-chain.log"
+      - name: Construct and clone real AWM startup data against ARM64 Bionic
+        run: |
+          set -o pipefail
+          export CC="$RUNNER_TEMP/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang -I$GITHUB_WORKSPACE/Android/arm64/include -I$GITHUB_WORKSPACE/Android/arm/include"
+          mkdir -p "$RUNNER_TEMP/typed-call-logs"
+          python3 utils/tests/awm-native64-data.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/awm-data.log"
+          for control in scalar map clone; do
+            python3 utils/tests/awm-native64-data.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+              --source appl/wm/awm.b --control "$control" 2>&1 \
+              | tee "$RUNNER_TEMP/typed-call-logs/awm-data-$control.log"
+          done
+          for control in array-map array-clone array-value; do
+            source=appl/lib/titlebar.b
+            if [ "$control" = array-value ]; then source=appl/cmd/sh/sh.b; fi
+            python3 utils/tests/awm-native64-data.py --limbo "$RUNNER_TEMP/host-tools/limbo" \
+              --source "$source" --control "$control" 2>&1 \
+              | tee "$RUNNER_TEMP/typed-call-logs/awm-data-$control.log"
+          done
+      - name: Execute typed calls and refusal controls against ARM64 Bionic
+        run: |
+          set -o pipefail
+          export CC="$RUNNER_TEMP/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang -I$GITHUB_WORKSPACE/Android/arm64/include -I$GITHUB_WORKSPACE/Android/arm/include"
+          mkdir -p "$RUNNER_TEMP/typed-call-logs"
+          for gate in tables string-tables string-imports loads files command-files managed-files lists argv local-loads pairs raises primary concat-args calls tail local multi module external imports; do
+            python3 "utils/tests/native64-typed-$gate.py" --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+              | tee "$RUNNER_TEMP/typed-call-logs/$gate.log"
+          done
+          python3 utils/tests/native64-emuinit-unquoted.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-unquoted.log"
+          python3 utils/tests/native64-emuinit-fd.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fd.log"
+          python3 utils/tests/native64-emuinit-fstat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-fstat.log"
+          python3 utils/tests/native64-emuinit-fstat.py --limbo "$RUNNER_TEMP/host-tools/limbo" --stat 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-stat.log"
+          python3 utils/tests/native64-emuinit-bytes.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-bytes.log"
+          python3 utils/tests/native64-emuinit-getenv.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-getenv.log"
+          python3 utils/tests/native64-sys-program.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/sys-program.log"
+          python3 utils/tests/native64-emuinit-full.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/emuinit-full.log"
+          python3 utils/tests/native64-coordinate-format.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/coordinate-format.log"
+          python3 utils/tests/native64-context-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/context-fields.log"
+          python3 utils/tests/native64-wmcontext-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmcontext-alt.log"
+          python3 utils/tests/native64-alt-pairs.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/alt-pairs.log"
+          python3 utils/tests/native64-alt-replies.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/alt-replies.log"
+          python3 utils/tests/native64-alt-requests.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/alt-requests.log"
+          python3 utils/tests/native64-fileio-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/fileio-alt.log"
+          python3 utils/tests/native64-client-channels.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-channels.log"
+          python3 utils/tests/native64-field-reference.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/field-reference.log"
+          python3 utils/tests/native64-local-image-geometry.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-image-geometry.log"
+          python3 utils/tests/native64-window-list.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/window-list.log"
+          python3 utils/tests/native64-window-geometry-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/window-geometry-args.log"
+          python3 utils/tests/native64-geometry-results.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/geometry-results.log"
+          python3 utils/tests/native64-window-image-result.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/window-image-result.log"
+          python3 utils/tests/native64-window-image-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/window-image-args.log"
+          python3 utils/tests/native64-local-geometry-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-geometry-args.log"
+          python3 utils/tests/native64-local-geometry-results.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-geometry-results.log"
+          python3 utils/tests/native64-rect-list.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/rect-list.log"
+          python3 utils/tests/native64-format-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/format-fields.log"
+          python3 utils/tests/native64-call-prep.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/call-prep.log"
+          python3 utils/tests/native64-aprint.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/aprint.log"
+          python3 utils/tests/native64-aprint-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/aprint-alt.log"
+          python3 utils/tests/native64-wmsrv-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-module.log"
+          python3 utils/tests/native64-wmclient-geometry.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmclient-geometry.log"
+          python3 utils/tests/native64-wmclient-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmclient-module.log"
+          python3 utils/tests/native64-titlebar-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/titlebar-module.log"
+          python3 utils/tests/native64-aggregate-result.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/aggregate-result.log"
+          python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/tokenize.log"
+          python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" --local 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/tokenize-local.log"
+          python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" --forward-import 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/tokenize-forward-import.log"
+          python3 utils/tests/native64-tokenize.py --limbo "$RUNNER_TEMP/host-tools/limbo" --root-pair 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/tokenize-root-pair.log"
+          python3 utils/tests/native64-root-pair-import.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/root-pair-import.log"
+          python3 utils/tests/native64-winplace-module.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/winplace-module.log"
+          python3 utils/tests/native64-wmlib-snarf.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmlib-snarf.log"
+          python3 utils/tests/native64-awm-startup.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/awm-startup.log"
+          python3 utils/tests/native64-string-word.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/string-word.log"
+          python3 utils/tests/native64-string-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/string-library.log"
+          python3 utils/tests/native64-bufio-library.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/bufio-library.log"
+          python3 utils/tests/native64-wmsrv-queues.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-queues.log"
+          python3 utils/tests/native64-wmsrv-windows.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/wmsrv-windows.log"
+          python3 utils/tests/native64-mp-client-nil.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/mp-client-nil.log"
+          python3 utils/tests/native64-pointer-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/pointer-args.log"
+          python3 utils/tests/native64-pointer-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/pointer-fields.log"
+          python3 utils/tests/native64-pointer-new.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/pointer-new.log"
+          python3 utils/tests/native64-pointer-result.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/pointer-result.log"
+          python3 utils/tests/native64-client-compare.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-compare.log"
+          python3 utils/tests/native64-client-cursor.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-cursor.log"
+          python3 utils/tests/native64-client-cursor-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-cursor-args.log"
+          python3 utils/tests/native64-client-flags.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-flags.log"
+          python3 utils/tests/native64-client-id.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/client-id.log"
+          python3 utils/tests/native64-channel-nil.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/channel-nil.log"
+          python3 utils/tests/native64-head-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/head-args.log"
+          python3 utils/tests/native64-int-head-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/int-head-args.log"
+          python3 utils/tests/native64-local-int-head-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-int-head-args.log"
+          python3 utils/tests/native64-image-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/image-arrays.log"
+          python3 utils/tests/native64-root-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/root-arrays.log"
+          python3 utils/tests/native64-word-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/word-arrays.log"
+          python3 utils/tests/native64-mixed-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/mixed-arrays.log"
+          python3 utils/tests/native64-record-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/record-fields.log"
+          python3 utils/tests/native64-field-arrays.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/field-arrays.log"
+          python3 utils/tests/native64-awm-call-cluster.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/awm-call-cluster.log"
+          python3 utils/tests/native64-alt.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/alt.log"
+          python3 utils/tests/native64-local-concat.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/local-concat.log"
+          python3 utils/tests/native64-process-exit.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/process-exit.log"
+          python3 utils/tests/native64-integer-lists.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/integer-lists.log"
+          python3 utils/tests/native64-channel-transfer.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/channel-transfer.log"
+          python3 utils/tests/native64-list-prefix.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/list-prefix.log"
+          python3 utils/tests/native64-spawn.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/spawn.log"
+          python3 utils/tests/native64-mapped-channels.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/mapped-channels.log"
+          python3 utils/tests/native64-channel-new.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/channel-new.log"
+          python3 utils/tests/native64-string-prep.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/string-prep.log"
+          python3 utils/tests/native64-context-new.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/context-new.log"
+          python3 utils/tests/native64-geometry-args.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/geometry-args.log"
+          python3 utils/tests/native64-window-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/window-fields.log"
+          python3 utils/tests/native64-draw-fields.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/draw-fields.log"
+          python3 utils/tests/native64-channel-triples.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/channel-triples.log"
+          python3 utils/tests/native64-list-call.py --limbo "$RUNNER_TEMP/host-tools/limbo" 2>&1 \
+            | tee "$RUNNER_TEMP/typed-call-logs/list-call.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: typed-module-calls-android-arm64-bionic
+          path: ${{ runner.temp }}/typed-call-logs
+          if-no-files-found: warn
+          retention-days: 14

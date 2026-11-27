@@ -54,7 +54,7 @@ def main():
         command(compile_)
         if mapped.read_bytes() != original:
             raise RuntimeError('Nondeterministic source map')
-        command([compiler, '-6', '-o', ordinary, source], env=dict(os.environ, LIMBO_DIS64_TRACE='0'))
+        command([compiler, '-64', '-o', ordinary, source], env=dict(os.environ, LIMBO_DIS64_TRACE='0'))
         if ordinary.read_bytes() != image.read_bytes():
             raise RuntimeError('Tracing changed the executable image')
         lookup = [sys.executable, TOOL, 'lookup', '--image', image, '--map', mapped, '--pc']

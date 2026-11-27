@@ -1,5 +1,7 @@
 #include "lib9.h"
 
+/* Modern ARM32 Bionic provides this entry point, including in its static libc. */
+#if !defined(__ANDROID__) || !defined(__arm__) || __ANDROID_API__ < 21
 /* Accumulate signed conversion bit patterns without host signed overflow. */
 vlong
 strtoll(const char *nptr, char **endptr, int base)
@@ -80,3 +82,4 @@ strtoll(const char *nptr, char **endptr, int base)
 		return (uvlong)0-n;
 	return n;
 }
+#endif

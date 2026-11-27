@@ -79,7 +79,7 @@ def refusals():
     yield 'call-byte-argument', PREFIX+'a: int; helper(x:byte){a+=int x;} init(){helper(byte 7);}'
     yield 'arguments', 'implement FromLimbo; FromLimbo:module{init:fn(a:int);}; init(a:int){a++;}'
     yield 'result', 'implement FromLimbo; FromLimbo:module{init:fn():int;}; init():int{return 3;}'
-    yield 'library', 'implement FromLimbo; FromLimbo:module{run:fn();}; run(){}'
+    yield 'library-with-argument', 'implement FromLimbo; FromLimbo:module{run:fn(a:int);}; run(a:int){a++;}'
     yield 'export', 'implement FromLimbo; FromLimbo:module{init:fn(); extra:fn();}; init(){} extra(){}'
     yield 'global-export', 'implement FromLimbo; FromLimbo:module{init:fn(); a:int;}; init(){a=3;}'
 
@@ -107,11 +107,11 @@ def main():
             legacy, image = work/'legacy.dis', work/(name+' output.dis64')
             subprocess.run(limbo+['-o', str(legacy), str(source)], env=env, check=True)
             before = legacy.read_bytes()
-            subprocess.run(limbo+['-6', '-o', str(image), str(source)], env=env, check=True)
+            subprocess.run(limbo+['-64', '-o', str(image), str(source)], env=env, check=True)
             count = inspect(image.read_bytes())
             if args.reference_limbo:
                 reference = work/'reference.dis64'
-                subprocess.run([str(args.reference_limbo.resolve()), '-6', '-o', str(reference), str(source)], env=env, check=True)
+                subprocess.run([str(args.reference_limbo.resolve()), '-64', '-o', str(reference), str(source)], env=env, check=True)
                 if reference.read_bytes() != image.read_bytes():
                     raise RuntimeError('Target compiler changed portable Dis64 bytes: '+name)
             subprocess.run(limbo+['-o', str(legacy), str(source)], env=env, check=True)
@@ -131,15 +131,15 @@ def main():
             source = work/(name+' refused.b'); source.write_text(text)
             subprocess.run(limbo+['-i', '-o', str(work/'ordinary.dis'), str(source)], env=env, check=True)
             target = work/'refused.dis64'
-            result = subprocess.run(limbo+['-6', '-i', '-o', str(target), str(source)], env=env, capture_output=True, text=True)
+            result = subprocess.run(limbo+['-64', '-i', '-o', str(target), str(source)], env=env, capture_output=True, text=True)
             if result.returncode == 0 or target.exists() or 'Dis64 scalar:' not in result.stdout+result.stderr:
                 raise RuntimeError('Unsupported program was not cleanly refused: '+name+'\n'+result.stdout+result.stderr)
             compilations += 1
         source = work/'default.b'; source.write_text(PREFIX+'init(){}')
-        subprocess.run(limbo+['-6', str(source)], cwd=work, env=env, check=True)
+        subprocess.run(limbo+['-64', str(source)], cwd=work, env=env, check=True)
         inspect((work/'default.dis64').read_bytes())
         for option in ('-S', '-H', '-a', '-g', '-c', '-C'):
-            result = subprocess.run(limbo+['-6', option, str(source)], cwd=work, env=env, capture_output=True, text=True)
+            result = subprocess.run(limbo+['-64', option, str(source)], cwd=work, env=env, capture_output=True, text=True)
             if result.returncode == 0 or 'usage:' not in result.stderr:
                 raise RuntimeError('Incompatible output mode was accepted: '+option)
         print('PASS scalar compiler:', compilations, 'source/refusal cases; legacy unchanged; CLI/default suffix; full OS processes='+str(processes), flush=True)

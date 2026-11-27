@@ -3,6 +3,7 @@
 char exNomem[] = "out of memory: main"; // Match the runtime allocation diagnostic from raise.c.
 
 static void *contextblocks[64]; // Real mallocz allocations owned by Type/vector/map/scratch state.
+static int contextsitethrow; // Protected owned-site constructor unwind injection.
 static int contextlive, contextattempt, contextfailure; // Exact C allocation accounting and refusal point.
 static Native64Arguments *observedcontext; // Caller-owned context observed during retirement.
 static int contextfreediagnostic; // Exercise diagnostic preservation during native output retirement.
@@ -21,6 +22,7 @@ mallocz(ulong bytes, int zero)
 	int i;
 
 	contextattempt++;
+	if(contextattempt == contextsitethrow) error("owned site allocation throw");
 	if(contextattempt == contextfailure)
 		return nil;
 	if(mutate_type && contextattempt == 4)
@@ -409,3 +411,19 @@ main(int argc, char **argv)
 	printf("PASS managed arguments: %d predicates, 264 owner-balanced constructions + 192 combined C transactions, actual heap/Type/collector and partial failures\n", checks);
 	return 0;
 }
+
+#ifdef __BIONIC__
+/* Use Bionic for native storage while observing Inferno's private allocation names. */
+#undef malloc
+#undef free
+#undef calloc
+#undef realloc
+void *malloc_(size_t bytes) { return malloc(bytes); }
+void *calloc_(size_t count, size_t bytes) { return calloc(count, bytes); }
+void *realloc_(void *value, size_t bytes) { return realloc(value, bytes); }
+void free_(void *value) { __wrap_free(value); }
+#define malloc malloc_
+#define free free_
+#define calloc calloc_
+#define realloc realloc_
+#endif

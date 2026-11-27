@@ -14,7 +14,7 @@ for name in ('readsubfont', 'subfont', 'freesubfont', 'subfontcache', 'writesubf
 s = (root/'libdraw/defont.c').read_text()
 parts.append(s[s.index('void\n_unpackinfo'):])
 s = Path(os.environ.get('FONT_SOURCE', root/'libdraw/font.c')).read_text()
-parts.append(s[s.index('static Subfont*\ncf2subfont'):s.index('/* return 1 if load succeeded')])
+parts.append(s[s.index('static Subfont*\ncf2subfont'):s.index('\nint\nloadchar(')])
 unit = (root/'libdraw/tests/subfont-lifecycle.c').read_text().replace('IMPLEMENTATION', '\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='subfont-lifecycle-') as directory:
     target = Path(directory)/'test.c'; target.write_text(unit)

@@ -211,6 +211,7 @@ Draw: module
 		startrefresh:	fn(d: self ref Display);
 		# attach to existing Screen
 		publicscreen:	fn(d: self ref Display, id: int): ref Screen;
+		# A successful attach returns fresh owned handles; existing handle aliases are not rebound.
 		getwindow:	fn(d: self ref Display, winname: string, screen: ref Screen, image: ref Image, backup: int): (ref Screen, ref Image);
 		# image creation
 		newimage:	fn(d: self ref Display, r: Rect, chans: Chans, repl, color: int): ref Image;

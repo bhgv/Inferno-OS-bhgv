@@ -32,4 +32,59 @@ struct Native64SysWriteRequest
 /* Explicit native64 typed output; completion reports status separately from the published write count. */
 int Sys_print64(const Native64SysWriteRequest*);
 int Sys_fprint64(const Native64SysWriteRequest*);
+/* Trusted call-site recipe for one active MFRAME/MCALL frame; no file metadata is accepted. */
+typedef struct Native64SysFrameRequest Native64SysFrameRequest;
+struct Native64SysFrameRequest
+{
+    Prog *prog;
+    void *frame; // Exact pending FRAME/MFRAME target or current entered native callee.
+    Type *type, *caller_type; // Borrowed live complete descriptors owned by the call site.
+    unsigned int result_offset; // Caller field, or FP[32] plus the checked aggregate String field bias.
+    const Native64TailSlot *slots; // Immutable explicit ordered kinds and reference Type identities.
+    unsigned int count;
+    int initial, limit;
+    int inherited; // Explicit FP[32] forwarding to an active ancestor result cell.
+    unsigned int result_contract; // Zero for whole results; closed aggregate for a String field.
+};
+/* Private trusted-C operations; these numeric values are never serialized. */
+typedef enum Native64SysFrameOperation {
+    Native64SysSprint, Native64SysAprint, Native64SysPrint, Native64SysFprint
+} Native64SysFrameOperation;
+/* Bind the caller's full pointer before MCALL; no formatting, allocation or opcode admission. */
+int Sys_bindframe64(const Native64SysFrameRequest*, Native64SysFrameOperation);
+/* Trusted loader/C recipe, owned by the module after successful installation. */
+typedef struct Native64SysFrameSpec Native64SysFrameSpec;
+struct Native64SysFrameSpec {
+    Native64SysFrameOperation operation;
+    Type *type, *caller_type; // Exact identities present in the owning Module's Type table.
+    unsigned int result_offset;
+    const Native64TailSlot *slots;
+    unsigned int count;
+    int initial, limit;
+    int inherited; // Explicit FP[32] forwarding to an active ancestor result cell.
+    unsigned int result_contract; // Zero for whole results; closed aggregate for a String field.
+};
+static int
+native64sysresultshape(unsigned int contract,unsigned int offset,int operation,int inherited)
+{
+ if(!contract)return !inherited||offset==32;
+ if(!inherited||operation!=Native64SysSprint)return 0;
+ return (contract==48&&offset==40)||(contract==80&&offset==32)||(contract==124&&(offset==32||offset==48));
+}
+int Sys_setframes64(Module*, const Native64SysFrameSpec*, unsigned int);
+/* Trusted original-Inst program PCs. Installation owns copies and never patches CODE. */
+typedef struct Native64SysProgramSpec Native64SysProgramSpec;
+struct Native64SysProgramSpec {
+    Native64SysFrameSpec frame;
+    unsigned int bindpc, callpc; // Exact adjacent result bind/MCALL in the owning bytecode module.
+};
+int Sys_setprogram64(Module*, const Native64SysProgramSpec*, unsigned int);
+void Sys_programcall64(void*); // Explicit native trampoline; not an ordinary Sys registry entry.
+int Sys_clearframes64(Module*); // Refuses retirement while an owned call is active.
+int Sys_bindsite64(Module*, unsigned int, Prog*, void*);
+int Sys_callsite64(Module*, unsigned int, Prog*, void*);
+int Sys_sprintframe64(const Native64SysFrameRequest*);
+int Sys_aprintframe64(const Native64SysFrameRequest*);
+int Sys_printframe64(const Native64SysFrameRequest*);
+int Sys_fprintframe64(const Native64SysFrameRequest*);
 #endif

@@ -1,0 +1,118 @@
+{
+  "purpose": "private raw-image scalar inference; public call admission closed",
+  "declarations": "none; numeric kinds derive from raw opcodes and parsed signatures",
+  "cases": [
+    {
+      "name": "1-normal",
+      "bytes": 330,
+      "sha256": "47508a1a5453840e9347c50130e682faa28a89a5c846f3e2216694a25a1a6226",
+      "accept": true,
+      "kind": 1,
+      "result": 42
+    },
+    {
+      "name": "1-unused",
+      "bytes": 329,
+      "sha256": "1e8e3c51fe3cc95d35efa18a3da15963b63980d5f594c63bacf47952260967a8",
+      "accept": true,
+      "kind": 1,
+      "result": 42
+    },
+    {
+      "name": "1-overlap",
+      "bytes": 330,
+      "sha256": "a70b1d5f6bab50598f8deda3bf3e673efefb4fbc1b9fdda173961a8d8a83fc97",
+      "accept": false,
+      "kind": 1,
+      "result": 42
+    },
+    {
+      "name": "1-reinterpret",
+      "bytes": 330,
+      "sha256": "eb537aedcbc50cb708a641aff24cf419e84dbe7a56851f60eadafea0ceffb47a",
+      "accept": false,
+      "kind": 1,
+      "result": 42
+    },
+    {
+      "name": "1-uninitialized",
+      "bytes": 331,
+      "sha256": "f7bb44b41af77f62357aeb826fc5e70166036894975205e1ad66f709f9e2239f",
+      "accept": false,
+      "kind": 1,
+      "result": 42
+    },
+    {
+      "name": "2-normal",
+      "bytes": 330,
+      "sha256": "1368a9bb36beb8e4521436734afa0582b4abd7fa600be1016ac69703d1dc54f2",
+      "accept": true,
+      "kind": 2,
+      "result": 42
+    },
+    {
+      "name": "2-unused",
+      "bytes": 329,
+      "sha256": "b8cc228f8e256d5105f4c268df30228a37df9aabe852b4549be9ef183853b0e8",
+      "accept": true,
+      "kind": 2,
+      "result": 42
+    },
+    {
+      "name": "2-overlap",
+      "bytes": 330,
+      "sha256": "8920d8e70dacdfde724926b837019b2b69f95c3805dd89d981f0082ba69f1c85",
+      "accept": false,
+      "kind": 2,
+      "result": 42
+    },
+    {
+      "name": "2-reinterpret",
+      "bytes": 330,
+      "sha256": "f67f36d8c6257f8da91d39b0ec2fcb0c89a2474451c28d66f3d0d2fbf9482c8e",
+      "accept": false,
+      "kind": 2,
+      "result": 42
+    },
+    {
+      "name": "2-uninitialized",
+      "bytes": 331,
+      "sha256": "07993e2b7a7efc8f6e8fed2a31fe5cdbc972768153727c27efb212b76f90a76b",
+      "accept": false,
+      "kind": 2,
+      "result": 42
+    },
+    {
+      "name": "3-normal",
+      "bytes": 330,
+      "sha256": "982d1de1ff01ec963dccf4c65550ff1533da4f7c83eee5d4785753c11a5d8a83",
+      "accept": true,
+      "kind": 3,
+      "result": 4631107791820423168
+    },
+    {
+      "name": "3-overlap",
+      "bytes": 330,
+      "sha256": "24c25cab18b3bb5bcdd0a23a42d51ffb24675811bad79aa2e55b9febea9f2751",
+      "accept": false,
+      "kind": 3,
+      "result": 4631107791820423168
+    },
+    {
+      "name": "3-reinterpret",
+      "bytes": 330,
+      "sha256": "d71464f8a12fdb2edbe61d1cfa5d0902b8b2b0b66a4c2db401878a22a48bbc30",
+      "accept": false,
+      "kind": 3,
+      "result": 4631107791820423168
+    },
+    {
+      "name": "3-uninitialized",
+      "bytes": 331,
+      "sha256": "323597947c06fa360299d70c63e8ffb248affba8c3d0087820448d3d2e2adfc3",
+      "accept": false,
+      "kind": 3,
+      "result": 4631107791820423168
+    }
+  ]
+}

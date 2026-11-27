@@ -59,13 +59,17 @@ def image(instructions, data=4, frame=64, name='Pilot', initialized=40, datatype
 
 
 # Assemble the unchanged actual constructor/decoder/executor closure for native or cross-target gates.
-def buildunit():
+def buildunit(resultcalls=False):
     heap = (ROOT/'libinterp/heap.c').read_text()
     xec = (ROOT/'libinterp/xec.c').read_text()
     load = (ROOT/'libinterp/load.c').read_text()
     stack = (ROOT/'libinterp/stack.c').read_text()
     emulator = (ROOT/'emu/port/dis.c').read_text()
     parts = [function(emulator, 'int\nkprotect(')]
+    # This scalar constructor never publishes managed-client roots. Scheduler
+    # and collector fixtures supply their own observed/production root services.
+    parts += ['void\n'+name+'(Heap *heap)\n{\n\tUSED(heap);\n\trequire(0);\n}'
+              for name in ('ptradd', 'ptrdel')]
     parts += [function(heap, signature) for signature in (
         'void\nfreeptrs(', 'void\nfreeheap(', 'void\ndestroy(', 'Type*\ndtype(',
         'void\nfreetype(', 'void\ninitmem(', 'Heap*\nheapz(', 'Heap*\nnheap(', 'void\nfreemodlink(')]
@@ -83,7 +87,14 @@ def buildunit():
              'beql', 'bnel', 'bltl', 'blel', 'bgtl', 'bgel',
              'beqf', 'bnef', 'bltf', 'blef', 'bgtf', 'bgef', 'jmp', 'iexit')
     parts += [function(xec, 'OP('+name+')') for name in names]
+    if not resultcalls:
+        parts.extend(function(xec, signature) for signature in
+                     ('static int\nnative64bindresult(', 'int\nnative64lea8step(',
+                      'int\nnative64diallea8step(', 'int\nnative64managedlea8step(', 'int\nnative64stringlea8step('))
     loader = (ROOT/'libinterp/load64.c').read_text()
+    # Non-executable storage leases have their own actual collector/ownership fixture.
+    loader = loader[:loader.index('/* Native staging state is deliberately distinct')]
+    loader=loader.replace('#include "scalar-client.h"',(ROOT/'libinterp/scalar-client.h').read_text())
     parts.append(re.sub(r'^#include[^\n]*\n', '', loader, flags=re.M))
     unit = (ROOT/'libinterp/tests/dis64-runtime.c').read_text()
     unit = unit.replace('IMPLEMENTATION', '\n\n'.join(parts))

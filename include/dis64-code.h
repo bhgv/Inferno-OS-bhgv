@@ -92,9 +92,11 @@ dis64codeslot(unsigned int mode, long offset, unsigned int width,
 {
 	unsigned int extent, at;
 
+	if(width != 4 && width != 8)
+		return 0;
 	if(mode == AIMM)
 		return immediate;
-	if((mode != AMP && mode != AFP) || offset < 0)
+	if((mode != AMP && mode != AFP) || offset < 0 || (unsigned long)offset > 0xffffffffUL)
 		return 0;
 	at = (unsigned int)offset;
 	extent = mode == AMP ? mpbytes : fpbytes;

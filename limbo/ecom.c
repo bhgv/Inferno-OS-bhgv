@@ -1696,7 +1696,8 @@ void
 callcom(Src *src, int op, Node *n, Node *ret)
 {
 	Node frame, tadd, toff, pass, *a, *mod, *ind, *nfn, *args, tmod, tind, *tn;
-	Inst *in,*p;
+	Inst *in,*p, *callframe = nil, *callresult = nil, *callinst = nil;
+    unsigned int callid = 0;
 	Decl *d, *callee;
 	long off;
 	int iop;
@@ -1730,6 +1731,8 @@ callcom(Src *src, int op, Node *n, Node *ret)
 	if(nfn->ty->varargs){
 		nfn->decl = dupdecl(nfn->right->decl);
 		nfn->decl->desc = gendesc(nfn->right->decl, idoffsets(nfn->ty->ids, MaxTemp, MaxAlign), nfn->ty->ids);
+		if(debug['q'])
+			callid = native64callplan(callee, nfn->ty);
 	}
 
 	talloc(&frame, tint, nil);
@@ -1774,6 +1777,8 @@ callcom(Src *src, int op, Node *n, Node *ret)
 		in = genrawop(src, IFRAME, nil, nil, &frame);
 		in->sm = Adesc;
 		in->s.decl = nfn->decl;
+        callframe = in;
+        if(nfn->ty->varargs) in->native64args = nfn->ty;
 	}
 
 	/*
@@ -1821,6 +1826,7 @@ callcom(Src *src, int op, Node *n, Node *ret)
 		toff.val = REGRET*IBY2WD;
 		pass.ty = nfn->ty->tof;
 		p = genrawop(src, ILEA, ret, nil, &pass);
+		callresult = p;
 		p->m.offset = ret->ty->size;	/* for optimizer */
 	}
 
@@ -1831,7 +1837,7 @@ callcom(Src *src, int op, Node *n, Node *ret)
 		iop = IMCALL;
 		if(op == Ospawn)
 			iop = IMSPAWN;
-		genrawop(src, iop, &frame, ind, mod);
+		callinst = genrawop(src, iop, &frame, ind, mod);
 		tfree(&tmod);
 		tfree(&tind);
 	}else if(nfn->op == Odot){
@@ -1847,6 +1853,7 @@ callcom(Src *src, int op, Node *n, Node *ret)
 		in->d.decl = nfn->decl;
 		in->dm = Apc;
 	}
+	if(callid) native64callnote(callid, callframe, callresult, callinst, callee, nfn->ty);
 	tfree(&frame);
 }
 

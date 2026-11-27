@@ -1,0 +1,51 @@
+name: Classic 32-bit console compatibility
+on:
+  push:
+    branches: [experiment]
+    paths:
+      - '.github/workflows/classic32.yml'
+      - 'utils/**'
+      - 'makemk.sh'
+      - 'mkfiles/**'
+      - 'Linux/**'
+      - 'include/**'
+      - 'lib*/**'
+      - 'limbo/**'
+      - 'module/**'
+      - 'emu/**'
+      - 'appl/wm/limboedit.b'
+  pull_request:
+    branches: [experiment]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  console:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native and 32-bit build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-multilib python3
+      - name: Bootstrap native host tools
+        run: MKBOOTSTRAP_LIMBO=1 MKBOOTSTRAP_BINDIR="$RUNNER_TEMP/host-tools" sh makemk.sh
+      - name: Build the classic ELF32 console
+        run: |
+          python3 utils/configure.py --host linux --arch 386 --console
+          mkdir -p Linux/386/bin Linux/386/lib
+          for tool in mk limbo iyacc decgen; do
+            ln -sf "$RUNNER_TEMP/host-tools/$tool" "Linux/386/bin/$tool"
+          done
+          export PATH="$RUNNER_TEMP/host-tools:$PATH"
+          cd emu/Linux
+          mk CONF=emu-g CONFLIST=emu-g
+      - name: Check actual Linux code-page publication
+        run: |
+          CC='cc -m32' python3 emu/Linux/tests/segflush-386.py
+          CC='cc -m32' python3 emu/Linux/tests/segflush-386.py --noexec-control
+      - name: Execute ordinary Dis with interpreter and JIT
+        run: |
+          python3 utils/tests/classic32-boot.py --root "$GITHUB_WORKSPACE" \
+            --emu emu/Linux/o.emu-g --limbo "$RUNNER_TEMP/host-tools/limbo"

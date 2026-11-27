@@ -81,7 +81,7 @@ enum
 	Endmask		= 0x1F
 };
 
-#define	ARROW(a, b, c)	(Endarrow|((a)<<5)|((b)<<14)|((c)<<23))
+#define	ARROW(a, b, c)	(Endarrow|((uint)(a)<<5)|((uint)(b)<<14)|((uint)(c)<<23)) // Pack defined unsigned 32-bit line-end fields.
 
 /*
  * image channel descriptors 
@@ -167,10 +167,11 @@ typedef void	(*Reffn)(Image*, Rectangle, void*);
 
 struct Screen
 {
-	Display	*display;	/* display holding data */
-	int	id;		/* id of system-held Screen */
-	Image	*image;		/* unused; for reference only */
-	Image	*fill;		/* color to paint behind windows */
+	Display	*display;	// Display holding the native protocol connection.
+	int	id;		// ID of the system-held screen.
+	Image	*image;		// Borrowed backing image; absent for a public screen.
+	Image	*fill;		// Borrowed background image; absent for a public screen.
+	ulong	chan;		// Native screen channel, also retained for public screens without image owners.
 };
 
 struct Refreshq
@@ -212,6 +213,7 @@ struct Display
 	void		*limbo;
 	Refreshq	*refhead;
 	Refreshq	*reftail;
+	int		closing; // Native-only close phase; caller holds display exclusion and lifetime.
 };
 
 struct Image
@@ -256,7 +258,7 @@ struct	Fontchar
 	int		x;		/* left edge of bits */
 	uchar		top;		/* first non-zero scan-line */
 	uchar		bottom;		/* last non-zero scan-line + 1 */
-	char		left;		/* offset of baseline */
+	schar		left;		// Signed glyph bearing, independent of the native plain-char model.
 	uchar		width;		/* width of baseline */
 };
 
@@ -389,6 +391,7 @@ extern	ulong	setalpha(ulong, uchar);
  */
 extern Screen*	allocscreen(Image*, Image*, int);
 extern Image*	_allocwindow(Image*, Screen*, Rectangle, int, ulong);
+extern void	attachtowindow(Image*);
 extern Image*	allocwindow(Screen*, Rectangle, int, ulong);
 extern void	bottomnwindows(Image**, int);
 extern void	bottomwindow(Image*);
@@ -534,7 +537,7 @@ extern	int	_cursorfd;
 extern	int	_drawdebug;	/* set to 1 to see errors from flushimage */
 
 #define	BGSHORT(p)		(((p)[0]<<0) | ((p)[1]<<8))
-#define	BGLONG(p)		((BGSHORT(p)<<0) | (BGSHORT(p+2)<<16))
+#define	BGLONG(p)		((uint)BGSHORT(p) | ((uint)BGSHORT(p+2)<<16)) // Decode all unsigned 32-bit wire patterns without signed-shift overflow.
 #define	BPSHORT(p, v)		((p)[0]=(v), (p)[1]=((v)>>8))
 #define	BPLONG(p, v)		(BPSHORT(p, (v)), BPSHORT(p+2, (v)>>16))
 

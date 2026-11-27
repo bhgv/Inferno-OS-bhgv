@@ -375,6 +375,8 @@ closedbgctl(Progctl *ctl, Prog *p)
 		if(o->debug == ctl){
 			o->debug = nil;
 			p->xec = xec;
+			if(p->state == Pdebug)
+				addrun(p);
 		}
 	}
 	qfree(ctl->q);
@@ -1446,9 +1448,7 @@ dbgxec(Prog *p)
 			goto save;
 		}
 		op = fetched.op;
-		vmdecode(&fetched);
-		loadslot = R.s;
-		vmrun(&fetched);
+		vminstrument(&fetched, &loadslot);
 
 		/*
 		 * check notification about new progs

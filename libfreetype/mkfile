@@ -2,6 +2,9 @@
 
 LIB=libfreetype.a
 
+# Own header prerequisites rather than inheriting the Android emulator list.
+HFILES=$ROOT/include/freetype.h
+
 OFILES=\
 	freetype.$O\
 	autohint.$O\

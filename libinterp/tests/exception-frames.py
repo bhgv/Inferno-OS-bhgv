@@ -213,11 +213,15 @@ static void laterhandler(void)
 /* Validate a caller before unwinding a normal frame, including string conversion. */
 static void unwindhandlers(void)
 {
-    int compiled,payload,clear,i;uchar *expanded,*child;Frame header;
+    int compiled,payload,clear,i;uchar *expanded,*child;Frame header;Type parentframe;Type *parenttype;
     for(compiled=0;compiled<2;compiled++)for(payload=0;payload<3;payload++)for(clear=0;clear<2;clear++){
         setup(compiled,0,payload,clear,0,0);
         expanded=malloc(32+2*framesize+32+2*alignment);framecheck(expanded);memset(expanded,0xa5,32+2*framesize+32+2*alignment);
         memcpy(expanded+32+alignment,fp,framesize);free(storage);storage=expanded;fp=storage+32+alignment;
+        /* Attribute alignment padding to the caller descriptor, as real allocated
+         * frames do; an untyped gap is not a valid pending-frame record. */
+        parentframe=frame;parentframe.size+=alignment;parenttype=&parentframe;
+        memmove(fp+O(Frame,t),&parenttype,sizeof(parenttype));
         child=fp+framesize+alignment;memset(child,0,framesize);initmem(&frame,child);
         memset(&header,0,sizeof(header));header.t=&frame;header.fp=fp;
         header.lr=compiled?(Inst*)((uchar*)instructions+1):instructions+1;
@@ -464,8 +468,9 @@ for variant in ('emu','os'):
     if os.environ.get('EXCEPTION_VARIANT') not in (None,variant): continue
     folder = Path(os.environ.get('EXCEPTION_SOURCE_DIR', root/variant/'port'))
     source = (folder/'exception.c').read_text()
-    signatures = ['static int\nematch(', 'static void\nfreeframe(']
+    signatures = ['static int\nematch(']
     if 'static Type*\nframetype(' in source: signatures += ['static Type*\nframetype(']
+    signatures += ['static void\nfreeframe(']
     if 'static int\nexceptionframe(' in source: signatures += ['static int\nexceptionframe(']
     if 'static int\nexceptiontarget(' in source: signatures += ['static int\nexceptiontarget(']
     if 'static ulong\nexceptionpc(' in source: signatures += ['static ulong\nexceptionpc(']

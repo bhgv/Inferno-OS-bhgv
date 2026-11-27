@@ -151,9 +151,12 @@ bridgecompilerentries(void)
 		target = (uintptr)jit->dispatch[op];
 		mappedcheck(target >= first && target < last && target%4 == 0);
 		mappedcheck((jit->entry[op] != nil) == leafop(&operation, op, sizeof(WORD)));
-		if(jit->entry[op] != nil)
+		if(op == ILEA)
+			mappedcheck(jit->entry[op] == jit->dispatch[op] && first < target);
+		else if(jit->entry[op] != nil)
 			mappedcheck((uintptr)jit->entry[op] == first && first < target);
-		n = leafbridgeemit(expected, LeafMax, (void*)cjitexec, op, (void*)jit->entry[op]);
+		n = leafbridgeemit(expected, LeafMax, (void*)cjitexec, op,
+			op == ILEA ? (void*)first : (void*)jit->entry[op]);
 		mappedcheck(n > 0 && target+(uintptr)n*4 == last && !memcmp((void*)target, expected, n*4));
 		before = bridgeallocations;
 		mappedcheck(compile(&module, 1, nil) && module.jit == jit && bridgeallocations == before);
@@ -313,6 +316,8 @@ bridgecachebindings(void)
 			continue;
 		other = op == IADDW ? ISUBW : IADDW;
 		for(mode = 0; mode < 6; mode++){
+			if(op == ILEA && (mode == 1 || mode == 3))
+				continue;
 			if(saved.entry[op] == nil && mode != 2 && mode != 5)
 				continue;
 			switch(mode){
@@ -490,6 +495,11 @@ bridgeroutes(void)
 			for(value = 0; value < 8; value++){
 				memset(cells, 0xa5, sizeof(cells));
 				memset(&R, 0xa5, sizeof(R));
+				if(op == ILEA){
+					static Module owner; // Stable ordinary owner for decoded address operations.
+					bridgelink.m = &owner;
+					R.M = &bridgelink;
+				}
 				input = ((UWORD)1 << (value*4)) ^ (UWORD)-value;
 				R.s = cells+16+shift;
 				R.d = alias == 0 ? cells+64+shift : alias == 1 ? R.s : alias == 2 ? (uchar*)R.s+1 : (uchar*)R.s-1;

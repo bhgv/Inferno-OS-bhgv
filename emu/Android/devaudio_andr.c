@@ -57,7 +57,7 @@ extern bool NativeAudio_enableReverb(bool enabled);
 extern void NativeAudio_createBufferQueueAudioPlayer(int sampleRate, int bufSize);
 extern void NativeAudio_shutdownBufferQueueAudioPlayer();
 
-extern bool NativeAudio_setBufClip(int count, char* buf, int buf_size);
+extern bool NativeAudio_setBufClip(int *nbuf, char* buf, int buf_size);
 
 
 extern bool NativeAudio_createFileAudioPlayer(char *filename);

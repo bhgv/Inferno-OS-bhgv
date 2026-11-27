@@ -40,9 +40,13 @@ init(nil: ref Context, nil: list of string)
 			}
 			break;
 		}
-		for(i := 0; i < n; i++)
-			if(d[i].name[0] >= '0' && d[i].name[0] <= '9')
-				ps(int d[i].name);		
+		for(i := 0; i < n; i++){
+			name := d[i].name;
+			if(name != nil && name[0] >= '0' && name[0] <= '9'){
+				pid := int name;
+				ps(pid);
+			}
+		}
 	}
 }
 
@@ -56,6 +60,8 @@ ps(pid: int)
 	}
 	buf := array[128] of byte;
 	n := sys->read(fd, buf, len buf);
-	if(n > 0)
-		sys->print("%s\n", string buf[0:n]);
+	if(n > 0){
+		line := string buf[0:n];
+		sys->print("%s\n", line);
+	}
 }

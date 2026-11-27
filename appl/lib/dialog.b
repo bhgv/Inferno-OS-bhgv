@@ -37,7 +37,9 @@ localgeom(im: ref Draw->Image): string
 	if (im == nil)
 		return nil;
 
-	return sys->sprint("-x %d -y %d", im.r.min.x+STEP, im.r.min.y+STEP);
+	x := im.r.min.x+STEP;
+	y := im.r.min.y+STEP;
+	return sys->sprint("-x %d -y %d", x, y);
 }
 
 centre(t: ref Toplevel)
@@ -53,8 +55,10 @@ centre(t: ref Toplevel)
 tkcmds(top: ref Tk->Toplevel, a: array of string)
 {
 	n := len a;
-	for(i := 0; i < n; i++)
-		tk->cmd(top, a[i]);
+	for(i := 0; i < n; i++){
+		command := a[i];
+		tk->cmd(top, command);
+	}
 }
 
 dialog_config := array[] of {
@@ -84,50 +88,64 @@ prompt(ctxt: ref Draw->Context,
 	tk->namechan(t, d, "d");
 
 	tkcmds(t, dialog_config);
-	cmd(t, ".top.msg configure -text '" + msg);
-	if (ico != nil)
-		cmd(t, ".top.ico configure -bitmap " + ico);
+	command := ".top.msg configure -text '" + msg;
+	cmd(t, command);
+	if(ico != nil){
+		command = ".top.ico configure -bitmap " + ico;
+		cmd(t, command);
+	}
 
 	n := len labs;
 	for(i := 0; i < n; i++) {
-		cmd(t, "button .bot.button" +
-				string(i) + " -command {send d " +
-				string(i) + "} -text '" + hd labs);
+		number := string i;
+		label := hd labs;
+		button := ".bot.button" + number;
+		command = "button " + button + " -command {send d " + number + "} -text '" + label;
+		cmd(t, command);
 
 		if(i == dflt) {
 			cmd(t, "frame .bot.default -relief sunken -bd 1");
 			cmd(t, "pack .bot.default -side left -expand 1 -padx 10 -pady 8");
-			cmd(t, "pack .bot.button" + string i +
-				" -in .bot.default -side left -padx 10 -pady 8 -ipadx 8 -ipady 4");
-		}
-		else
-			cmd(t, "pack .bot.button" + string i +
-				" -side left -expand 1 -padx 10 -pady 10 -ipadx 8 -ipady 4");
+			command = "pack " + button +
+				" -in .bot.default -side left -padx 10 -pady 8 -ipadx 8 -ipady 4";
+		}else
+			command = "pack " + button +
+				" -side left -expand 1 -padx 10 -pady 10 -ipadx 8 -ipady 4";
+		cmd(t, command);
 		labs = tl labs;
 	}
 
-	if(dflt >= 0)
-		cmd(t, "bind . <Key-\n> {send d " + string dflt + "}");
+	if(dflt >= 0){
+		command = "bind . <Key-\n> {send d " + string dflt + "}";
+		cmd(t, command);
+	}
 
 	e := cmd(t, "variable lasterror");
 	if(e != "") {
-		sys->fprint(sys->fildes(2), "Dialog error: %s\n", e);
+		stderr := sys->fildes(2);
+		sys->fprint(stderr, "Dialog error: %s\n", e);
 		return dflt;
 	}
 	tkclient->onscreen(t, nil);
 	tkclient->startinput(t, "kbd" :: "ptr" :: nil);
 	cmd(t, "update");
 
+	wm := t.ctxt;
+	keys := wm.kbd;
+	pointer := wm.ptr;
+	control := wm.ctl;
+	requests := t.wreq;
 	for(;;) alt {
-	c := <-t.ctxt.kbd =>
+	c := <-keys =>
 		tk->keyboard(t, c);
-	p := <-t.ctxt.ptr =>
+	p := <-pointer =>
 		tk->pointer(t, *p);
-	c := <-t.ctxt.ctl or
-	c = <-t.wreq =>
+	c := <-control or
+	c = <-requests =>
 		tkclient->wmctl(t, c);
 	ans := <-d =>
-		return int ans;
+		index := int ans;
+		return index;
 	tcs := <-tc =>
 		if(tcs == "exit")
 			return dflt;
@@ -147,12 +165,14 @@ getstring_config := array[] of {
 getstring(ctxt: ref Draw->Context, parent: ref Draw->Image, msg: string): string
 {
 	where := localgeom(parent);
-	(t, wmctl) := tkclient->toplevel(ctxt, where + " -borderwidth 2 -relief raised", nil, Tkclient->Popup);
+	config := where + " -borderwidth 2 -relief raised";
+	(t, wmctl) := tkclient->toplevel(ctxt, config, nil, Tkclient->Popup);
 	f := chan of string;
 	tk->namechan(t, f, "f");
 
 	tkcmds(t, getstring_config);
-	cmd(t, ".lab configure -text '" + msg + ":   ");
+	command := ".lab configure -text '" + msg + ":   ";
+	cmd(t, command);
 	tkclient->onscreen(t, nil);
 	tkclient->startinput(t, "kbd" :: "ptr" :: nil);
 
@@ -163,12 +183,16 @@ getstring(ctxt: ref Draw->Context, parent: ref Draw->Image, msg: string): string
 	}
 	cmd(t, "update");
 
+	wm := t.ctxt;
+	keys := wm.kbd;
+	pointer := wm.ptr;
+	control := wm.ctl;
 	for(;;)alt{
-	c := <-t.ctxt.kbd =>
+	c := <-keys =>
 		tk->keyboard(t, c);
-	p := <-t.ctxt.ptr =>
+	p := <-pointer =>
 		tk->pointer(t, *p);
-	c := <-t.ctxt.ctl or
+	c := <-control or
 	c = <-wmctl =>
 		if(c == "exit")
 			return nil;

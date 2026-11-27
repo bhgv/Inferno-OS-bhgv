@@ -41,11 +41,15 @@ def buildunit():
     parts += [function(stack, signature) for signature in ('static int\nstacksize(', 'static ulong\nstackhint(',
               'static Stkext*\nstackextent(', 'static Type*\nstackframe(', 'void\nnewstack(')]
     parts += [function(xec, signature) for signature in ('static void\nunwindstate(', 'void\ndestroystack(',
-              'void\nxec(', 'Prog*\nisave(', 'void\nirestore(', 'static WORD\nshiftcount(')]
+              'void\nxec(', 'Prog*\nisave(', 'void\nirestore(', 'static WORD\nshiftcount(', 'static int\nnative64bindresult(',
+              'int\nnative64lea8step(', 'int\nnative64managedlea8step(')]
     parts += [function(xec, 'int\ncjitexec(').replace('int\ncjitexec(', 'int\nactualcjitexec(', 1)]
     names = ('movw', 'addw', 'divw', 'shlw', 'iexit')
     parts += [function(xec, 'OP('+name+')') for name in names]
-    parts += [re.sub(r'^#include[^\n]*\n', '', (ROOT/'libinterp/load64.c').read_text(), flags=re.M)]
+    # Non-executable storage leases are checked separately with the actual collector.
+    loader = (ROOT/'libinterp/load64.c').read_text().split('/* Native staging state is deliberately distinct')[0]
+    loader=loader.replace('#include "scalar-client.h"',(ROOT/'libinterp/scalar-client.h').read_text())
+    parts += [re.sub(r'^#include[^\n]*\n', '', loader, flags=re.M)]
     parts += [function(scheduler, signature) for signature in ('static Prog**\npidlook(', 'Prog*\ncurrun(', 'int\nnprog(',
               'void\naddrun(', 'Prog*\ndelrun(', 'void\npushrun(', 'static Progs*\ndelgrp(',
               'void\nnewgrp(', 'static void\naddgrp(', 'static int\nnewrootgrp(')]

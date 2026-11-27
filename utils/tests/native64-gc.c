@@ -81,12 +81,14 @@ poolalloc(Pool *pool, ulong bytes)
 
 
 /* Descriptor allocation does not need a C call-site address in this bounded pool. */
+#ifndef __BIONIC__ // Android headers own the inline diagnostic return-address helper.
 uintptr
 getcallerpc(void *pointer)
 {
 	USED(pointer);
 	return 0;
 }
+#endif
 
 
 /* Treat every native pool fault as an active failure. */

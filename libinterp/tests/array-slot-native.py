@@ -8,8 +8,9 @@ import shlex
 import subprocess
 import tempfile
 
-if platform.machine().lower() not in ('x86_64','amd64'):
-    raise RuntimeError('native array-slot execution requires an AMD64 host')
+arch=os.environ.get('NATIVE64_ARCH','amd64')
+if arch not in ('amd64','arm64'):raise ValueError(arch)
+if arch=='amd64' and platform.machine().lower() not in ('x86_64','amd64'):raise RuntimeError('select native architecture/runner')
 
 ROOT = Path(__file__).resolve().parents[2]  # Owning Inferno source tree.
 SOURCE = Path(os.environ.get('ARRAY_SLOT_SOURCE', ROOT / 'libinterp/xec.c')).read_text()  # Committed handlers or baseline override.
@@ -38,6 +39,7 @@ def function(signature):
 
 unit = (ROOT / 'libinterp/tests/array-slot-native.c').read_text()
 parts = [function('static uchar*\narrayaddress('), function('static void\narrayindex(')] + [function('OP(' + name + ')') for name in OPS]
+unit = unit.replace('amd64-emit.h',arch+'-emit.h')
 unit = unit.replace('IMPLEMENTATION', '\n\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='array-slot-native-') as temporary:
     td = Path(temporary)
@@ -48,4 +50,4 @@ with tempfile.TemporaryDirectory(prefix='array-slot-native-') as temporary:
     for wb in (32, 64):
         binary = td / ('word' + str(wb))
         subprocess.run(command + ['-I' + str(ROOT / 'include'), '-I' + os.environ.get('ARRAY_SLOT_EMITTER_DIR', str(ROOT / 'libinterp')), '-D_GNU_SOURCE', '-std=c99', '-DWORD_BITS=' + str(wb), str(source), '-lm', '-o', str(binary)], check=True)
-        subprocess.run([str(binary)], check=True)
+        subprocess.run(shlex.split(os.environ.get('NATIVE64_RUNNER',''))+[str(binary)], check=True)

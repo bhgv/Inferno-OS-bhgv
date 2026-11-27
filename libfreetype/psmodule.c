@@ -125,15 +125,16 @@
 
 
   /* ft_qsort callback to sort the unicode map */
+  /* Match the Inferno sorter callback ABI; compare keys without narrowing. */
   FT_CALLBACK_DEF( int )
-  compare_uni_maps( const void*  a,
-                    const void*  b )
+  compare_uni_maps( void*  a,
+                    void*  b )
   {
     PS_UniMap*  map1 = (PS_UniMap*)a;
     PS_UniMap*  map2 = (PS_UniMap*)b;
 
 
-    return ( map1->unicode - map2->unicode );
+    return map1->unicode < map2->unicode ? -1 : map1->unicode > map2->unicode ? 1 : 0;
   }
 
 

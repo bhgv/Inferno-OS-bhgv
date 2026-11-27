@@ -98,3 +98,16 @@ to this constructor. Complete emulator startup, calling ABI and live GC remain
 unproven.
 The [scheduler fixture](dis64-scheduler.md) separately exercises actual root
 publication, process exit and terminal cleanup under controlled OS boundaries.
+
+## Readable admission implementation
+
+`include/dis64-pilot.h` retains the scalar module gate and its public names.
+Clock-pilot admission is grouped under `include/dis64/pilot/`: `operands.h`
+recomputes validated Word effects and `flow.h` performs bounded reachability and
+initialization analysis. Each handwritten header is below500 lines, has explicit
+control blocks, one statement per line and English/Russian contracts. This split
+removes misleading-indentation diagnostics without changing the admitted profile.
+
+Проверка разбита по назначению: module gate, operands/effects и control flow.
+Лимиты, порядок проверок и результат admission сохранены; новых opcode, runtime
+modes, отключений warnings или обхода проверки не добавлено.
