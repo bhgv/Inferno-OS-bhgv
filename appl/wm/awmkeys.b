@@ -110,9 +110,12 @@ button(top: ref Tk->Toplevel, name, label, code: string)
 		width = 42;
 	if(width < 20)
 		width = 20;
-	size := " -width " + string width;
+	height := 28;
+	if(r.max.y-r.min.y > r.max.x-r.min.x)
+		height = 38;
+	size := " -width " + string width + " -height " + string height;
 	make := "button " + name + " -text {" + label + "}" + size +
-		" -height 28 -bg #dce8f5 -fg #172331 -activebackground #ffffff" +
+		" -bg #dce8f5 -fg #172331 -activebackground #ffffff" +
 		" -takefocus 0 -command {send onscreenkeys " + code + "}";
 	cmd(top, make);
 	pack := "pack " + name + " -side left -expand 1 -fill x -padx 1 -pady 1";

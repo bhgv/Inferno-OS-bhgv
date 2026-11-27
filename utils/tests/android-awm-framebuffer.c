@@ -2,6 +2,7 @@
 #include <android/asset_manager.h>
 #include <android/keycodes.h>
 #include <android/log.h>
+#include <android/native_window.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <pthread.h>
@@ -15,15 +16,17 @@
 #include <unistd.h>
 #include "inferno_storage.h"
 #include "inferno_touch.h"
+#include "inferno_fb_pixels.h"
 #include "../../include/keyboard.h"
 
 enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Desktop = 0x777777 };
 enum View { Vdesktop, Vmenu, Vcalc, VcalcKeysClosed, Vcalcmoved, Vtask, Vabout,
             Vfiles, VfilesKeysClosed, Vkeys, Veditor, VeditFileMenu,
             VeditPicker, VeditConfirm, VeditSource, VeditFunctions, VeditJump,
-            VfilesEditor, VfilesEditorSave };
+            VfilesEditor, VfilesEditorSave, VportraitDesktop, VportraitFiles, VportraitKeys };
 typedef struct Area Area;
 struct Area { int x0, y0, x1, y1; };
+static const IoaViewport wide_view = {{0, 0, Width, Height}, Width, Height};
 static const Area file_path = { 8, 65, 340, 80 };
 static const Area file_preview = { 8, 260, 340, 324 };
 static const Area file_list = { 8, 122, 340, 160 };
@@ -31,7 +34,8 @@ static const Area picker_path = { 8, 250, 340, 264 };
 static const Area picker_list = { 8, 305, 340, 438 };
 int Xsize = Width, Ysize = Height;
 unsigned char *xscreendata;
-static unsigned char snapshot[Width * Height * 4];
+static unsigned char *snapshot;
+static IoaViewport input_view;
 static pthread_mutex_t frame_lock = PTHREAD_MUTEX_INITIALIZER;
 static unsigned int flushes;
 static const char shared_root[] = "/sdcard/Inferno";
@@ -114,7 +118,7 @@ typedef struct { int x, y, buttons; } PointerEvent;
 static const PointerEvent touch_expected[] = {
 	{100,120,1}, {103,122,0}, {103,122,2}, {105,126,2},
 	{106,129,0}, {106,129,4}, {107,130,0},
-	{0,479,1}, {0,479,0},
+	{6,472,1}, {0,479,1}, {0,479,0},
 	{30,60,1}, {30,60,0}, {33,63,257}, {33,63,0},
 	{44,50,1}, {200,50,1}, {44,50,0}, {44,50,1}, {44,50,0}
 };
@@ -146,6 +150,8 @@ test_touch(void)
 		{AMOTION_EVENT_ACTION_MOVE, 0, 2, {{7,225,290},{9,324,339}}},
 		{AMOTION_EVENT_ACTION_UP, 0, 1, {{7,226,290}}},
 		{AMOTION_EVENT_ACTION_DOWN, 0, 1, {{6,-12,800}}},
+		{AMOTION_EVENT_ACTION_DOWN, 0, 1, {{6,6,472}}},
+		{AMOTION_EVENT_ACTION_MOVE, 0, 1, {{6,-12,800}}},
 		{AMOTION_EVENT_ACTION_CANCEL, 0, 0, {{0,0,0}}},
 		{AMOTION_EVENT_ACTION_DOWN, 0, 1, {{8,30,60}}},
 		{AMOTION_EVENT_ACTION_UP, 0, 1, {{8,30,60}}},
@@ -163,7 +169,7 @@ test_touch(void)
 	for(size_t i = 0; i < sizeof(samples)/sizeof(samples[0]); i++){
 		AInputEvent event = samples[i];
 		event.time = (i+1)*INT64_C(50000000);
-		if(!ioa_touch_motion(&touch, &event, Width, Height, expect_pointer))
+		if(!ioa_touch_motion(&touch, &event, &wide_view, expect_pointer))
 			exit(2);
 	}
 	ioa_touch_reset(&touch, expect_pointer);
@@ -220,7 +226,7 @@ test_mouse(void)
 			.source = samples[i].touch ? AINPUT_SOURCE_TOUCHSCREEN : AINPUT_SOURCE_MOUSE,
 			.buttons = samples[i].buttons, .wheel = samples[i].wheel
 		};
-		if(!ioa_pointer_motion(&input, &event, Width, Height, expect_pointer))
+		if(!ioa_pointer_motion(&input, &event, &wide_view, expect_pointer))
 			exit(2);
 	}
 	ioa_pointer_reset(&input, expect_pointer);
@@ -364,7 +370,7 @@ int_refresh(int x0, int y0, int x1, int y1)
 {
 	(void)x0; (void)y0; (void)x1; (void)y1;
 	pthread_mutex_lock(&frame_lock);
-	memcpy(snapshot, xscreendata, sizeof(snapshot));
+	memcpy(snapshot, xscreendata, (size_t)Xsize * Ysize * 4);
 	flushes++;
 	pthread_mutex_unlock(&frame_lock);
 }
@@ -372,7 +378,7 @@ int_refresh(int x0, int y0, int x1, int y1)
 static uint32_t
 pixel(int x, int y)
 {
-	const unsigned char *p = snapshot + (y * Width + x) * 4;
+	const unsigned char *p = snapshot + (y * Xsize + x) * 4;
 	return (uint32_t)p[2] << 16 | (uint32_t)p[1] << 8 | p[0];
 }
 
@@ -389,10 +395,17 @@ editor_has_color(uint32_t color)
 static int
 visible(enum View view)
 {
-	if(pixel(500, 15) != Panel)
-		return 0;
 	if(view == Vmenu)
-		return pixel(600, 65) == Menu;
+		return pixel(Xsize - 2, 15) == Menu;
+	if(pixel(Xsize / 2, 1) != Panel)
+		return 0;
+	if(view == VportraitDesktop)
+		return pixel(Xsize / 2, 65) == Desktop && pixel(Xsize / 2, Ysize - 14) == Desktop;
+	if(view == VportraitFiles)
+		return pixel(380, 70) == 0xdce8f5 && pixel(Xsize / 2, Ysize - 14) == Desktop;
+	if(view == VportraitKeys)
+		return pixel(380, 70) == 0xdce8f5 && pixel(Xsize / 2, Ysize - 220) != Desktop &&
+			pixel(Xsize / 2, Ysize - 14) != Desktop;
 	if(pixel(600, 65) != Desktop)
 		return 0;
 	if(view == Vcalc)
@@ -460,11 +473,11 @@ capture(const char *path, enum View view, unsigned int after)
 			stream = fopen(path, "wb");
 			if(stream == NULL)
 				exit(2);
-			fprintf(stream, "P6\n%d %d\n255\n", Width, Height);
-			for(unsigned int y = 0; y < Height; y++){
-				unsigned char rgb[Width * 3];
-				for(unsigned int x = 0; x < Width; x++){
-					const unsigned char *p = snapshot + (y * Width + x) * 4;
+			fprintf(stream, "P6\n%d %d\n255\n", Xsize, Ysize);
+			for(int y = 0; y < Ysize; y++){
+				unsigned char rgb[Xsize * 3];
+				for(int x = 0; x < Xsize; x++){
+					const unsigned char *p = snapshot + (y * Xsize + x) * 4;
 					rgb[3*x] = p[2];
 					rgb[3*x+1] = p[1];
 					rgb[3*x+2] = p[0];
@@ -490,8 +503,11 @@ pointer_motion(int32_t action, int x, int y, int source, int buttons, float whee
 {
 	static IoaInput input;
 	static int64_t time;
-	AInputEvent event = {action, time += 100000000, 1, {{0,x,y}}, source, buttons, wheel};
-	ioa_pointer_motion(&input, &event, Width, Height, xmouse_btn);
+	ARect frame = input_view.frame;
+	float device_x = frame.left + (x + .5f) * (frame.right - frame.left) / Xsize;
+	float device_y = frame.top + (y + .5f) * (frame.bottom - frame.top) / Ysize;
+	AInputEvent event = {action, time += 100000000, 1, {{0,device_x,device_y}}, source, buttons, wheel};
+	ioa_pointer_motion(&input, &event, &input_view, xmouse_btn);
 }
 
 static void
@@ -590,7 +606,7 @@ test_files(unsigned int painted)
 	uint64_t home, empty, list, first, second;
 	tap(27, 19);
 	painted = capture("awm-menu.ppm", Vmenu, painted);
-	tap(303, 62);
+	tap(301, 20);
 	painted = capture("awm-files.ppm", Vfiles, painted);
 	home = wait_files(file_path, 0, 0, "opening Home");
 	empty = wait_files(file_preview, 0, 0, "opening Files");
@@ -691,7 +707,7 @@ test_editor(void)
 
 	tap(27, 19);
 	painted = capture("awm-editor-menu.ppm", Vmenu, 0);
-	tap(390, 61);
+	tap(369, 20);
 	painted = capture("awm-editor-window.ppm", Veditor, painted);
 	tap(20, 71);
 	painted = capture("awm-editor-file-menu.ppm", VeditFileMenu, painted);
@@ -751,7 +767,7 @@ test_files_editor(void)
 
 	tap(27, 19);
 	painted = capture("awm-files-editor-menu.ppm", Vmenu, 0);
-	tap(300, 61);
+	tap(301, 20);
 	painted = capture("awm-files-editor-home.ppm", Vfiles, painted);
 	home = wait_files(file_path, 0, 0, "opening Home for Edit");
 	tap(62, 148);				/* Limbo is the second directory. */
@@ -793,7 +809,7 @@ observe(void *unused)
 	painted = capture("awm-desktop.ppm", Vdesktop, 0);
 	tap(27, 19);
 	painted = capture("awm-menu.ppm", Vmenu, painted);
-	tap(53, 61);
+	tap(110, 20);
 	painted = capture("awm-calculator.ppm", Vcalc, painted);
 	zero = wait_value(0, 0);
 	tap(84, 171);                    /* Render a directly entered 5 as an oracle. */
@@ -852,7 +868,7 @@ observe(void *unused)
 	painted = capture("awm-calculator-closed.ppm", Vdesktop, painted);
 	tap(27, 19);
 	painted = capture("awm-menu.ppm", Vmenu, painted);
-	tap(186, 61);
+	tap(207, 20);
 	painted = capture("awm-about.ppm", Vabout, painted);
 	tap(65, 125);
 	painted = capture("awm-closed.ppm", Vdesktop, painted);
@@ -862,12 +878,78 @@ observe(void *unused)
 	exit(0);
 }
 
+static void
+test_viewport(void)
+{
+	int width, height;
+	ARect bounds = ioa_content_bounds(945, 2048, (ARect){0, 90, 945, 1970});
+	if(!ioa_screen_size(bounds, 420, &width, &height) || width != 416 || height != 828)
+		abort();
+	ARect resized = {0, 90, 945, 1845};
+	IoaViewport fitted = ioa_viewport(resized, width, height);
+	if(fitted.frame.top != resized.top || fitted.frame.bottom != resized.bottom ||
+	   fitted.frame.left <= resized.left || fitted.frame.right >= resized.right)
+		abort();
+
+	IoaViewport view = ioa_viewport((ARect){2, 1, 6, 5}, 2, 2);
+	const unsigned char source[16] = {1, 2, 3, 0, 4, 5, 6, 0, 7, 8, 9, 0, 10, 11, 12, 0};
+	unsigned char target[6][9][4];
+	memset(target, 0xa5, sizeof(target));
+	ioa_fb_copy(target, 8, 6, 9, WINDOW_FORMAT_RGBX_8888, source, &view);
+	for(int y = 0; y < 6; y++)
+		for(int x = 0; x < 9; x++){
+			const unsigned char *dest = target[y][x];
+			if(x == 8){
+				if(memcmp(dest, "\245\245\245\245", 4) != 0)
+					abort();
+			}else if(ioa_viewport_contains(&view, x, y)){
+				const unsigned char *pixel = source + 4 * (((y - 1) / 2) * 2 + (x - 2) / 2);
+				if(dest[0] != pixel[2] || dest[1] != pixel[1] || dest[2] != pixel[0] || dest[3] != 255)
+					abort();
+			}else if(memcmp(dest, "\0\0\0\377", 4) != 0)
+				abort();
+		}
+	puts("PASS density-based desktop sizing, content insets, resizing, scaled pixels and untouched stride padding");
+}
+
+static void*
+observe_portrait(void *unused)
+{
+	(void)unused;
+	unsigned int painted;
+	uint64_t home;
+
+	painted = capture("portrait-desktop.ppm", VportraitDesktop, 0);
+	tap(27, 19);
+	painted = capture("portrait-apps.ppm", Vmenu, painted);
+	tap(301, 20);
+	painted = capture("portrait-files.ppm", VportraitFiles, painted);
+	home = wait_region(VportraitFiles, file_path, 0, 0, "opening Files in portrait");
+	tap(27, 19);
+	painted = capture("portrait-apps-over-files.ppm", Vmenu, painted);
+	wait_region(Vmenu, file_path, home, 1, "keeping the Files path visible under Apps");
+	tap(27, 19);
+	painted = capture("portrait-files-after-apps.ppm", VportraitFiles, painted);
+	wait_region(VportraitFiles, file_path, home, 1, "keeping the Files path below Apps");
+
+	tap(Xsize - 40, 20);
+	painted = capture("portrait-keyboard.ppm", VportraitKeys, painted);
+	tap(322, Ysize - 20);
+	wait_region(VportraitKeys, file_path, home, 0, "opening Documents with the scaled bottom keyboard");
+	tap(382, Ysize - 20);
+	capture("portrait-keyboard-closed.ppm", VportraitFiles, painted);
+	puts("PASS portrait Apps, Files and scaled keyboard with Android navigation insets");
+	exit(0);
+}
+
 int
 main(int argc, char **argv)
 {
 	pthread_t worker;
-	if(argc != 3)
+	int portrait = argc == 4 && strcmp(argv[3], "portrait") == 0;
+	if(argc != 3 && !portrait)
 		return 2;
+	test_viewport();
 	test_touch();
 	test_mouse();
 	test_keymap();
@@ -928,8 +1010,17 @@ main(int argc, char **argv)
 		return 2;
 	}
 	puts("PASS keyboard and new AWM panel installed beside the previous panel");
-	xscreendata = calloc((size_t)Width * Height, 4);
-	if(xscreendata == NULL || pthread_create(&worker, NULL, observe, NULL) != 0)
+	input_view = wide_view;
+	if(portrait){
+		ARect bounds = ioa_content_bounds(945, 2048, (ARect){0, 90, 945, 1970});
+		if(!ioa_screen_size(bounds, 420, &Xsize, &Ysize))
+			return 2;
+		input_view = ioa_viewport(bounds, Xsize, Ysize);
+	}
+	xscreendata = calloc((size_t)Xsize * Ysize, 4);
+	snapshot = calloc((size_t)Xsize * Ysize, 4);
+	if(xscreendata == NULL || snapshot == NULL ||
+	   pthread_create(&worker, NULL, portrait ? observe_portrait : observe, NULL) != 0)
 		return 2;
 	amain();
 	pthread_join(worker, NULL);

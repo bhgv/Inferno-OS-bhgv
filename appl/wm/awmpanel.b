@@ -32,7 +32,7 @@ init(ctxt: ref Draw->Context, nil: list of string)
 	widgets(top);
 	tkclient->startinput(top, "ptr"::"control"::nil);
 	opened := 0;
-	layout(top, opened);
+	layout(top);
 
 	for(;;){
 		wm := top.ctxt;
@@ -49,7 +49,7 @@ init(ctxt: ref Draw->Context, nil: list of string)
 				break;
 			tkclient->wmctl(top, s);
 			if(len s >= 5 && s[0:5] == "rect ")
-				layout(top, opened);
+				layout(top);
 		<-keyboardclosed =>
 			keyboardopen = 0;
 		s := <-action =>
@@ -89,26 +89,28 @@ widgets(top: ref Tk->Toplevel)
 		"-activebackground #ffffff -takefocus 0 -command {send panel keyboard}");
 	cmd(top, "pack .bar.keyboard -side right -fill y -ipadx 8 -padx 6 -pady 4");
 	cmd(top, "pack .bar -side top -fill x");
-	cmd(top, "frame .launch -height 48 -bg #2c3c51; pack propagate .launch 0");
-	cmd(top, "button .launch.calc -text Calculator -width 114 -bg #dce8f5 -fg #172331 " +
+	cmd(top, "frame .launch -height 40 -bg #2c3c51; pack propagate .launch 0");
+	cmd(top, "button .launch.apps -text Apps -width 50 -bg #dce8f5 -fg #172331 " +
+		"-activebackground #ffffff -takefocus 0 -command {send panel apps}");
+	cmd(top, "button .launch.calc -text Calculator -width 100 -bg #dce8f5 -fg #172331 " +
 		"-activebackground #ffffff -command {send panel calculator}");
-	cmd(top, "button .launch.about -text {About Inferno} -width 114 -bg #dce8f5 -fg #172331 " +
+	cmd(top, "button .launch.about -text {About} -width 86 -bg #dce8f5 -fg #172331 " +
 		"-activebackground #ffffff -command {send panel about}");
-	cmd(top, "button .launch.files -text Files -width 84 -bg #dce8f5 -fg #172331 " +
+	cmd(top, "button .launch.files -text Files -width 64 -bg #dce8f5 -fg #172331 " +
 		"-activebackground #ffffff -command {send panel files}");
-	cmd(top, "button .launch.edit -text Edit -width 84 -bg #dce8f5 -fg #172331 " +
+	cmd(top, "button .launch.edit -text Edit -width 64 -bg #dce8f5 -fg #172331 " +
 		"-activebackground #ffffff -command {send panel edit}");
-	cmd(top, "pack .launch.calc .launch.about .launch.files .launch.edit -side left -fill y -padx 6 -pady 5");
+	cmd(top, "pack .launch.apps .launch.calc .launch.about .launch.files .launch.edit " +
+		"-side left -fill y -padx 4 -pady 4");
 	cmd(top, "pack propagate . 0");
 }
 
 showmenu(top: ref Tk->Toplevel, opened: int)
 {
 	if(opened)
-		cmd(top, "pack .launch -side top -fill x");
+		cmd(top, "pack forget .bar; pack .launch -side top -fill x; update");
 	else
-		cmd(top, "pack forget .launch");
-	layout(top, opened);
+		cmd(top, "pack forget .launch; pack .bar -side top -fill x; update");
 }
 
 calculator(ctxt: ref Draw->Context)
@@ -210,16 +212,15 @@ restore(top: ref Tk->Toplevel, id: string)
 	tkclient->wmctl(top, request);
 }
 
-layout(top: ref Tk->Toplevel, opened: int)
+layout(top: ref Tk->Toplevel)
 {
 	r := top.screenr;
 	w := r.max.x - r.min.x;
 	h := r.max.y - r.min.y;
 	if(w <= 0 || h <= 0)
 		return;
-	size := 40+48*opened;
-	if(h > size)
-		h = size;
+	if(h > 40)
+		h = 40;
 	config := ". configure -x " + string r.min.x + " -y " + string r.min.y +
 		" -width " + string w + " -height " + string h;
 	cmd(top, config);
