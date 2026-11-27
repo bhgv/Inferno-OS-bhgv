@@ -35,9 +35,11 @@ def stage_awm_runtime(core, app, build, mk, env, logs):
     assets = build/'assets'
     run([sys.executable, str(app/'tools/stage-inferno.py'), '--source', str(core),
          '--output', str(assets/'inferno')], app, env, logs/'stage-runtime.log')
-    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'keyboard', 'limboedit', 'edit', 'awmproc', 'awmdebug', 'awmsh'):
+    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'keyboard', 'limboedit', 'edit', 'awmproc', 'awmdebug', 'awmsh', 'help'):
         if not (assets/f'inferno/dis/wm/{module}.dis').is_file():
             raise RuntimeError(f'Missing staged AWM module {module}')
+    if not (assets/'inferno/man/1/INDEX').is_file() or not (assets/'inferno/man/2/INDEX').is_file():
+        raise RuntimeError('Missing Inferno manual indexes')
     if not (assets/'inferno/icons/tk/vitabig.png').is_file():
         raise RuntimeError('Missing Inferno launcher icon')
     if not (assets/'inferno/dis/lib/dialog.dis').is_file():
@@ -95,6 +97,10 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
         entries.append(f'D\t{directory.relative_to(bundle/"inferno").as_posix()}')
         entries.extend(f'F\t{file.relative_to(bundle/"inferno").as_posix()}'
                        for file in sorted(directory.iterdir()))
+    command_fixture = bundle/'inferno/tmp/command-check.txt'
+    command_fixture.parent.mkdir(exist_ok=True)
+    command_fixture.write_text('inferno command output\n', encoding='utf-8')
+    entries.append('F\ttmp/command-check.txt')
     manifest.write_text('\n'.join(entries)+'\n')
     files = build/'sdcard'
     files.mkdir()
@@ -115,7 +121,12 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
     tools_home.mkdir()
     run([runner, str(executable), str(bundle), str(tools_home), 'tools'], logs, env,
         logs/'framebuffer-tools.log', timeout=60)
-
+    help_home = build/'sdcard-help'
+    help_home.mkdir()
+    run([runner, str(executable), str(bundle), str(help_home), 'help'], logs, env,
+        logs/'framebuffer-help.log', timeout=60)
+    if not (help_home/'Inferno/usr/inferno/awm-help-check').is_dir():
+        raise RuntimeError('The Inferno mkdir command did not create its directory')
 
 
 def package_awm(apk_tools, platform, signing_tools, app, build, assets, library, revisions, env, logs):
@@ -354,7 +365,8 @@ def main():
                       awm_android_keyboard_verified=True, awm_screen_keyboard_verified=True,
                       awm_editor_verified=True, awm_files_editor_verified=True,
                       awm_editor_picker_verified=True, awm_portrait_verified=True,
-                      awm_stock_keyboard_verified=True, awm_tools_verified=True)
+                      awm_stock_keyboard_verified=True, awm_tools_verified=True,
+                      awm_manual_commands_verified=True)
         result.write_text(json.dumps(report, indent=2)+'\n')
     if args.apk_sdk:
         report.update(package_awm(apk_tools, platform, signing_tools, app, build, assets, library,

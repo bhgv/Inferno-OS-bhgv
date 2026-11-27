@@ -17,11 +17,11 @@ on:
       - 'appl/wm/awm.b'
       - 'appl/wm/awmpanel.b'
       - 'appl/wm/awmsh.b'
+      - 'appl/wm/help.b'
+      - 'man/**'
       - 'appl/wm/awmdebug.b'
       - 'appl/wm/awmproc.b'
-      - 'appl/cmd/echo.b'
-      - 'appl/cmd/cat.b'
-      - 'appl/cmd/pwd.b'
+      - 'appl/cmd/*.b'
       - 'appl/lib/workdir.b'
       - 'icons/tk/vitabig.png'
       - 'appl/wm/awmcalc.b'
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bhgv/Inferno-OS_Android
-          ref: 2258c29c034990ed9974155b6086b5e48c9cb44b
+          ref: 4fdd9a57e040b57ad81fb95c8e76338151fe18d3
           path: android-app
       - name: Prepare pinned NDK and native build tools
         run: |

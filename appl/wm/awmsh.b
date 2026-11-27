@@ -10,6 +10,7 @@ include "tkclient.m";
 include "string.m";
 	str: String;
 include "sh.m";
+include "awmcommands.m";
 
 Awmsh: module
 {
@@ -86,7 +87,14 @@ init(ctxt: ref Draw->Context, nil: list of string)
 		if(builtin == "exit")
 			tkclient->wmctl(top, "exit");
 		if(builtin == "help"){
-			append(top, "cd [dir]  pwd  ls [dir]  cat file  echo words\nclear  help  exit\nUse single quotes around an argument with spaces.\n");
+			if(tl args != nil)
+				spawn manual(ctxt, args);
+			else{
+				usage := "Built in: cd [dir], ls [dir], clear, help [topic], exit\n" +
+					"Inferno commands: " + Awmcommands + "\n" +
+					"Use single quotes around arguments with spaces.\n";
+				append(top, usage);
+			}
 			break;
 		}
 		pipes := array[2] of ref Sys->FD;
@@ -106,6 +114,13 @@ init(ctxt: ref Draw->Context, nil: list of string)
 		writer = nil;
 		reader = nil;
 	}
+}
+
+manual(ctxt: ref Draw->Context, args: list of string)
+{
+	app := load Command "/dis/wm/help.dis";
+	if(app != nil)
+		app->init(ctxt, args);
 }
 
 widgets(top: ref Tk->Toplevel)

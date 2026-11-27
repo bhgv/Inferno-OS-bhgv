@@ -23,7 +23,8 @@ enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Tools = 0x3
 enum View { Vdesktop, Vmenu, Vtools, Vcalc, VcalcKeysClosed, Vcalcmoved, Vtask, Vabout,
             Vfiles, VfilesKeysClosed, Vkeys, Veditor, VeditFileMenu,
             VeditPicker, VeditConfirm, VeditSource, VeditFunctions, VeditJump,
-            VfilesEditor, VfilesEditorSave, VtoolShell, VtoolProc, VtoolDebug, VportraitDesktop, VportraitFiles, VportraitKeys };
+            VfilesEditor, VfilesEditorSave, VtoolShell, VtoolProc, VtoolDebug, VtoolHelp, VhelpFromShell,
+            VportraitDesktop, VportraitFiles, VportraitKeys };
 typedef struct Area Area;
 struct Area { int x0, y0, x1, y1; };
 static const IoaViewport wide_view = {{0, 0, Width, Height}, Width, Height};
@@ -417,6 +418,10 @@ visible(enum View view)
 		return pixel(180, 72) == 0x0000cc && pixel(300, 265) == 0xdddddd;
 	if(view == VtoolDebug)
 		return pixel(180, 92) == 0x0000cc && pixel(300, 265) == 0xffffff;
+	if(view == VtoolHelp)
+		return pixel(180, 52) == 0x0000cc && pixel(320, 260) == 0xffffff;
+	if(view == VhelpFromShell)
+		return pixel(180, 72) == 0x0000cc && pixel(320, 280) == 0xffffff;
 	if(view == Vcalc)
 		return pixel(195, 78) == 0xffffff;
 	if(view == VcalcKeysClosed)
@@ -603,7 +608,7 @@ wait_region(enum View view, Area area, uint64_t reference, int equal, const char
 			return hash;
 		usleep(50000);
 	}
-	fprintf(stderr, "File browser did not repaint as expected after %s\n", action);
+	fprintf(stderr, "AWM did not repaint as expected after %s\n", action);
 	exit(1);
 }
 
@@ -843,14 +848,25 @@ shell_command(const char *line)
 	for(; *line; line++){
 		if(*line >= 'a' && *line <= 'z')
 			key(AKEYCODE_A + *line - 'a', 0);
+		else if(*line >= '0' && *line <= '9')
+			key(AKEYCODE_0 + *line - '0', 0);
 		else if(*line == ' ')
 			key(AKEYCODE_SPACE, 0);
+		else if(*line == '/')
+			key(AKEYCODE_SLASH, 0);
+		else if(*line == '.')
+			key(AKEYCODE_PERIOD, 0);
+		else if(*line == '(')
+			key(AKEYCODE_9, AMETA_SHIFT_ON);
+		else if(*line == ')')
+			key(AKEYCODE_0, AMETA_SHIFT_ON);
+		else if(*line == '-')
+			key(AKEYCODE_MINUS, 0);
 		else
 			abort();
 	}
 	key(AKEYCODE_ENTER, 0);
 }
-
 static void
 wait_shell_echo(void)
 {
@@ -919,6 +935,71 @@ observe_tools(void *unused)
 	shell_command("pwd");
 	wait_region(VtoolShell, pwd_output, blank, 0, "running a command after continuing");
 	puts("PASS tree launcher, Inferno command output, live process list, debugger attach, step and continue");
+	exit(0);
+}
+
+static void*
+observe_help(void *unused)
+{
+	(void)unused;
+	const Area manual = {2, 106, 339, 245};
+	const Area shell_manual = {2, 126, 339, 265};
+	const Area command_output = {2, 79, 290, 92};
+	unsigned int painted = capture("awm-help-desktop.ppm", Vdesktop, 0);
+	tap(27, 19);
+	painted = capture("awm-help-apps.ppm", Vmenu, painted);
+	tap(207, 20);
+	painted = capture("awm-help-tools.ppm", Vtools, painted);
+	tap(292, 20);
+	painted = capture("awm-help-home.ppm", VtoolHelp, painted);
+	uint64_t home = wait_region(VtoolHelp, manual, 0, 0, "opening the Help home page");
+	shell_command("wm/man");
+	uint64_t man = wait_region(VtoolHelp, manual, home, 0, "opening the wm/man alias");
+	painted = capture("awm-help-man.ppm", VtoolHelp, painted);
+	tap(280, 77);
+	wait_region(VtoolHelp, manual, home, 1, "returning to the Help home page");
+	shell_command("man(1)");
+	wait_region(VtoolHelp, manual, man, 1, "opening the same manual page by section");
+	tap(280, 77);
+	wait_region(VtoolHelp, manual, home, 1, "resetting the manual search");
+	shell_command("sys(2)");
+	uint64_t sys = wait_region(VtoolHelp, manual, home, 0, "opening an indexed Sys manual page");
+	if(sys == man){
+		fputs("Help opened the same page for man(1) and sys(2)\n", stderr);
+		exit(1);
+	}
+	painted = capture("awm-help-sys.ppm", VtoolHelp, painted);
+	tap(373, 52);
+	painted = capture("awm-help-closed.ppm", Vdesktop, painted);
+	tap(27, 19);
+	painted = capture("awm-commands-apps.ppm", Vmenu, painted);
+	tap(207, 20);
+	painted = capture("awm-commands-tools.ppm", Vtools, painted);
+	tap(100, 20);
+	painted = capture("awm-commands-shell.ppm", VtoolShell, painted);
+
+	shell_command("clear");
+	uint64_t blank = wait_region(VtoolShell, command_output, 0, 0, "clearing the Shell");
+	const char *commands[][2] = {
+		{"echo man", "basename /man/1/man"},
+		{"echo /man", "cleanname /man/./1/.."},
+		{"echo inferno command output", "stream /tmp/command-check.txt"},
+	};
+	for(size_t i = 0; i < sizeof(commands)/sizeof(commands[0]); i++){
+		shell_command(commands[i][0]);
+		uint64_t expected = wait_region(VtoolShell, command_output, blank, 0, commands[i][0]);
+		shell_command("clear");
+		wait_region(VtoolShell, command_output, blank, 1, "clearing before the comparison");
+		shell_command(commands[i][1]);
+		wait_region(VtoolShell, command_output, expected, 1, commands[i][1]);
+		shell_command("clear");
+		wait_region(VtoolShell, command_output, blank, 1, "clearing after the comparison");
+	}
+	shell_command("mkdir awm-help-check");
+	shell_command("help wm/man");
+	wait_region(VhelpFromShell, shell_manual, man, 1, "opening the same manual page from Shell");
+	capture("awm-commands-man.ppm", VhelpFromShell, painted);
+	puts("PASS indexed Inferno Help, Shell Help, stock command output and directory creation");
 	exit(0);
 }
 
@@ -1073,7 +1154,8 @@ main(int argc, char **argv)
 	pthread_t worker;
 	int portrait = argc == 4 && strcmp(argv[3], "portrait") == 0;
 	int tools = argc == 4 && strcmp(argv[3], "tools") == 0;
-	if(argc != 3 && !portrait && !tools)
+	int help = argc == 4 && strcmp(argv[3], "help") == 0;
+	if(argc != 3 && !portrait && !tools && !help)
 		return 2;
 	test_viewport();
 	test_touch();
@@ -1099,6 +1181,7 @@ main(int argc, char **argv)
 	puts("PASS shared storage denial, interrupted extraction and ready-tree reuse without assets");
 	const char *document = "/sdcard/Inferno/usr/inferno/Documents/alpha.txt";
 	const char *panel = "/sdcard/Inferno/dis/wm/awmpanel-keyboard.dis";
+	const char *manual = "/sdcard/Inferno/man/1/INDEX";
 	const char *oldpanel = "/sdcard/Inferno/dis/wm/awmpanel.dis";
 	const char *keys = "/sdcard/Inferno/dis/wm/keyboard.dis";
 	const char marker[] = "Previous AWM panel";
@@ -1118,6 +1201,11 @@ main(int argc, char **argv)
 	   unlink(panel) != 0 || ioa_prepare_storage(NULL) != -1 ||
 	   ioa_prepare_storage(&manager) != 0 || ioa_prepare_storage(NULL) != 0){
 		perror("Restore missing AWM panel");
+		return 2;
+	}
+	if(unlink(manual) != 0 || ioa_prepare_storage(NULL) != -1 ||
+	   ioa_prepare_storage(&manager) != 0 || ioa_prepare_storage(NULL) != 0){
+		perror("Restore missing manual pages in an existing shared tree");
 		return 2;
 	}
 	char content[sizeof(local)-1];
@@ -1150,6 +1238,8 @@ main(int argc, char **argv)
 		scenario = observe_portrait;
 	if(tools)
 		scenario = observe_tools;
+	if(help)
+		scenario = observe_help;
 	if(xscreendata == NULL || snapshot == NULL || pthread_create(&worker, NULL, scenario, NULL) != 0)
 		return 2;
 	amain();

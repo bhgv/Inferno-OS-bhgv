@@ -29,6 +29,7 @@ TARG=\
 	edit.dis\
 	filename.dis\
 	getauthinfo.dis\
+	help.dis\
 	keyboard.dis\
 	limboedit.dis\
 	logon.dis\
@@ -77,6 +78,7 @@ MODULES=\
 	wmdeb.m\
 
 SYSMODULES=\
+	awmcommands.m\
 	awmfiles.m\
 	bufio.m\
 	cci.m\

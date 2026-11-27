@@ -60,7 +60,7 @@ init(ctxt: ref Draw->Context, nil: list of string)
 				opened = 2;
 				showmenu(top, opened);
 			}else if(s == "about" || s == "keyboard" || s == "calculator" ||
-				s == "files" || s == "edit" || s == "shell" || s == "processes" || s == "debug"){
+				s == "files" || s == "edit" || s == "shell" || s == "processes" || s == "debug" || s == "help"){
 				opened = 0;
 				showmenu(top, opened);
 				if(s == "about")
@@ -103,11 +103,12 @@ widgets(top: ref Tk->Toplevel)
 		"-side left -fill y -padx 4 -pady 4");
 	cmd(top, "frame .tools -height 40 -bg #344355; pack propagate .tools 0");
 	appsbutton(top, ".tools.apps");
-	cmd(top, "button .tools.shell -text Shell -width 76 -bg #dce8f5 -fg #172331 -command {send panel shell}");
-	cmd(top, "button .tools.proc -text Processes -width 92 -bg #dce8f5 -fg #172331 -command {send panel processes}");
-	cmd(top, "button .tools.debug -text Debug -width 68 -bg #dce8f5 -fg #172331 -command {send panel debug}");
-	cmd(top, "button .tools.about -text About -width 62 -bg #dce8f5 -fg #172331 -command {send panel about}");
-	cmd(top, "pack .tools.apps .tools.shell .tools.proc .tools.debug .tools.about " +
+	cmd(top, "button .tools.shell -text Shell -width 52 -bg #dce8f5 -fg #172331 -command {send panel shell}");
+	cmd(top, "button .tools.proc -text Processes -width 78 -bg #dce8f5 -fg #172331 -command {send panel processes}");
+	cmd(top, "button .tools.debug -text Debug -width 54 -bg #dce8f5 -fg #172331 -command {send panel debug}");
+	cmd(top, "button .tools.help -text Help -width 48 -bg #dce8f5 -fg #172331 -command {send panel help}");
+	cmd(top, "button .tools.about -text About -width 52 -bg #dce8f5 -fg #172331 -command {send panel about}");
+	cmd(top, "pack .tools.apps .tools.shell .tools.proc .tools.debug .tools.help .tools.about " +
 		"-side left -fill y -padx 4 -pady 4");
 	cmd(top, "pack propagate . 0");
 }
@@ -143,6 +144,7 @@ runapp(ctxt: ref Draw->Context, name: string)
 	"shell" => path = "/dis/wm/awmsh.dis";
 	"processes" => path = "/dis/wm/awmproc.dis";
 	"debug" => path = "/dis/wm/awmdebug.dis";
+	"help" => path = "/dis/wm/help.dis";
 	}
 	app := load Command path;
 	if(app == nil)
