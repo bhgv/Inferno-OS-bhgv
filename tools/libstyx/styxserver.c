@@ -44,7 +44,8 @@ struct Fid
 	vlong	offset;	/* in file */
 	int		dri;		/* dirread index */
 	Qid		qid;
-	void	*aux;	/* owned by freefid callback until retirement */
+	void	*aux;	/* owned until retirement */
+	void	(*auxfree)(void*);	/* destructor picked when aux is attached */
 };
 
 struct Walkqid
@@ -406,8 +407,8 @@ deletefid(Client *c, Fid *d)
 			*f = d->next;
 			if(c->current == d)
 				c->current = nil;
-			if(d->aux != nil && c->server->ops->freefid != nil)
-				c->server->ops->freefid(d->aux);
+			if(d->aux != nil && d->auxfree != nil)
+				d->auxfree(d->aux);
 			styxfree(d);
 			return;
 		}
@@ -431,8 +432,8 @@ deletefids(Client *c)
 		decopen(f);
 		if(f->open && c->server->ops->close != nil)
 			c->server->ops->close(f->qid, f->mode);
-		if(f->aux != nil && c->server->ops->freefid != nil)
-			c->server->ops->freefid(f->aux);
+		if(f->aux != nil && f->auxfree != nil)
+			f->auxfree(f->aux);
 		styxfree(f);
 	}
 	c->server->curc = previous;
@@ -888,7 +889,7 @@ dispatch(Client *c)
 				}
 			}
 		}else if(ops->read != nil){
-			if(callbackread(c, fp, &f, &count, isdir))
+			if(callbackdata(c, fp, &f, &count, isdir, Tread))
 				break;
 			if(f.ename == nil)
 				f.type = Rread;
@@ -919,7 +920,11 @@ dispatch(Client *c)
 		f.ename = Eperm;
 		f.type = Rerror;
 		count = f.count;
-		if(ops->write && (f.ename = ops->write(fp->qid, f.data, &count, f.offset)) == nil){
+		isdir = (fp->qid.type&QTDIR) || (file != nil && (file->d.qid.type&QTDIR));
+		if(ops->write && callbackdata(c, fp, &f, &count, isdir, Twrite)){
+			break;
+		}
+		if(f.ename == nil){
 			if(count > f.count)
 				f.ename = "invalid write count";
 			else{
@@ -1043,19 +1048,40 @@ run(Client *c)
 
 /* No implicit sharing or replacement of a native handle is allowed. */
 int
-styxsetaux(Styxserver *server, void *aux)
+styxsetauxowned(Styxserver *server, void *aux, void (*release)(void*))
 {
 	Fid *f;
-	if(server == nil || server->curc == nil || server->ops->freefid == nil || aux == nil)
+	if(server == nil || server->curc == nil || release == nil || aux == nil)
 		return -1;
 	f = server->curc->current;
 	if(f == nil || f->aux != nil)
 		return -1;
 	f->aux = aux;
+	f->auxfree = release;
 	return 0;
 }
 
+/* Preserve the server-wide destructor for callers with homogeneous contexts. */
+int
+styxsetaux(Styxserver *server, void *aux)
+{
+	return server == nil || server->ops == nil ? -1 : styxsetauxowned(server, aux, server->ops->freefid);
+}
+
 /* Return a borrowed native context, never a VM or wire pointer. */
+/* EN/RU: See styxserver.h. / См. styxserver.h. */
+int
+styxcurrentfid(Styxserver *server, u32int *number)
+{
+    Client *client = server ? server->curc : nil;
+    if (!client || !client->current || !number)
+    {
+        return 0;
+    }
+    *number = client->current->fid;
+    return 1;
+}
+
 void*
 styxgetaux(Styxserver *server)
 {
