@@ -66,6 +66,9 @@ TARG=\
 	wmplay.dis\
 	awm.dis\
 	awmcalc.dis\
+	awmdebug.dis\
+	awmproc.dis\
+	awmsh.dis\
 	awmfiles.dis\
 	awmpanel-keyboard.dis\
 	atoolbar.dis\

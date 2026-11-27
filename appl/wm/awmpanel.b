@@ -54,23 +54,24 @@ init(ctxt: ref Draw->Context, nil: list of string)
 			keyboardopen = 0;
 		s := <-action =>
 			if(s == "apps"){
-				opened = !opened;
+				opened = (opened == 0);
 				showmenu(top, opened);
-			}else if(s == "about" || s == "calculator" || s == "files" || s == "edit" || s == "keyboard"){
+			}else if(s == "tools"){
+				opened = 2;
+				showmenu(top, opened);
+			}else if(s == "about" || s == "keyboard" || s == "calculator" ||
+				s == "files" || s == "edit" || s == "shell" || s == "processes" || s == "debug"){
 				opened = 0;
 				showmenu(top, opened);
 				if(s == "about")
 					spawn about(ctxt);
-				else if(s == "calculator")
-					spawn calculator(ctxt);
-				else if(s == "files")
-					spawn files(ctxt);
-				else if(s == "edit")
-					spawn editor(ctxt);
-				else if(!keyboardopen){
-					keyboardopen = 1;
-					spawn keyboard(ctxt, keyboardclosed);
-				}
+				else if(s == "keyboard"){
+					if(!keyboardopen){
+						keyboardopen = 1;
+						spawn keyboard(ctxt, keyboardclosed);
+					}
+				}else
+					spawn runapp(ctxt, s);
 			}else if(len s >= 8 && s[0:8] == "restore "){
 				id := s[8:];
 				restore(top, id);
@@ -82,59 +83,71 @@ init(ctxt: ref Draw->Context, nil: list of string)
 widgets(top: ref Tk->Toplevel)
 {
 	cmd(top, "frame .bar -height 40 -bg #212b38; pack propagate .bar 0");
-	cmd(top, "button .bar.apps -text Apps -bg #dce8f5 -fg #172331 " +
-		"-activebackground #ffffff -takefocus 0 -command {send panel apps}");
-	cmd(top, "pack .bar.apps -side left -fill y -ipadx 10 -padx 6 -pady 4");
+	appsbutton(top, ".bar.apps");
+	cmd(top, "pack .bar.apps -side left -fill y -padx 6 -pady 4");
 	cmd(top, "button .bar.keyboard -text Keyboard -bg #dce8f5 -fg #172331 " +
 		"-activebackground #ffffff -takefocus 0 -command {send panel keyboard}");
 	cmd(top, "pack .bar.keyboard -side right -fill y -ipadx 8 -padx 6 -pady 4");
 	cmd(top, "pack .bar -side top -fill x");
 	cmd(top, "frame .launch -height 40 -bg #2c3c51; pack propagate .launch 0");
-	cmd(top, "button .launch.apps -text Apps -width 50 -bg #dce8f5 -fg #172331 " +
-		"-activebackground #ffffff -takefocus 0 -command {send panel apps}");
+	appsbutton(top, ".launch.apps");
 	cmd(top, "button .launch.calc -text Calculator -width 100 -bg #dce8f5 -fg #172331 " +
 		"-activebackground #ffffff -command {send panel calculator}");
-	cmd(top, "button .launch.about -text {About} -width 86 -bg #dce8f5 -fg #172331 " +
-		"-activebackground #ffffff -command {send panel about}");
+	cmd(top, "button .launch.tools -text Tools -width 86 -bg #dce8f5 -fg #172331 " +
+		"-activebackground #ffffff -command {send panel tools}");
 	cmd(top, "button .launch.files -text Files -width 64 -bg #dce8f5 -fg #172331 " +
 		"-activebackground #ffffff -command {send panel files}");
 	cmd(top, "button .launch.edit -text Edit -width 64 -bg #dce8f5 -fg #172331 " +
 		"-activebackground #ffffff -command {send panel edit}");
-	cmd(top, "pack .launch.apps .launch.calc .launch.about .launch.files .launch.edit " +
+	cmd(top, "pack .launch.apps .launch.calc .launch.tools .launch.files .launch.edit " +
+		"-side left -fill y -padx 4 -pady 4");
+	cmd(top, "frame .tools -height 40 -bg #344355; pack propagate .tools 0");
+	appsbutton(top, ".tools.apps");
+	cmd(top, "button .tools.shell -text Shell -width 76 -bg #dce8f5 -fg #172331 -command {send panel shell}");
+	cmd(top, "button .tools.proc -text Processes -width 92 -bg #dce8f5 -fg #172331 -command {send panel processes}");
+	cmd(top, "button .tools.debug -text Debug -width 68 -bg #dce8f5 -fg #172331 -command {send panel debug}");
+	cmd(top, "button .tools.about -text About -width 62 -bg #dce8f5 -fg #172331 -command {send panel about}");
+	cmd(top, "pack .tools.apps .tools.shell .tools.proc .tools.debug .tools.about " +
 		"-side left -fill y -padx 4 -pady 4");
 	cmd(top, "pack propagate . 0");
 }
 
+appsbutton(top: ref Tk->Toplevel, name: string)
+{
+	make := "button " + name + " -text Apps -width 50 -bg #dce8f5 -fg #172331 " +
+		"-activebackground #ffffff -takefocus 0 -command {send panel apps}";
+	cmd(top, make);
+	icon := name + " configure -bitmap :26:vitabig.png";
+	tk->cmd(top, icon);
+}
+
 showmenu(top: ref Tk->Toplevel, opened: int)
 {
-	if(opened)
-		cmd(top, "pack forget .bar; pack .launch -side top -fill x; update");
-	else
-		cmd(top, "pack forget .launch; pack .bar -side top -fill x; update");
+	case opened {
+	1 =>
+		cmd(top, "pack forget .bar .tools; pack .launch -side top -fill x; update");
+	2 =>
+		cmd(top, "pack forget .bar .launch; pack .tools -side top -fill x; update");
+	* =>
+		cmd(top, "pack forget .launch .tools; pack .bar -side top -fill x; update");
+	}
 }
 
-calculator(ctxt: ref Draw->Context)
+runapp(ctxt: ref Draw->Context, name: string)
 {
-	app := load Command "/dis/wm/awmcalc.dis";
+	path: string;
+	case name {
+	"calculator" => path = "/dis/wm/awmcalc.dis";
+	"files" => path = "/dis/wm/awmfiles.dis";
+	"edit" => path = "/dis/wm/edit.dis";
+	"shell" => path = "/dis/wm/awmsh.dis";
+	"processes" => path = "/dis/wm/awmproc.dis";
+	"debug" => path = "/dis/wm/awmdebug.dis";
+	}
+	app := load Command path;
 	if(app == nil)
-		raise "fail:cannot load Calculator";
-	app->init(ctxt, nil);
-}
-
-files(ctxt: ref Draw->Context)
-{
-	app := load Command "/dis/wm/awmfiles.dis";
-	if(app == nil)
-		raise "fail:cannot load Files";
-	app->init(ctxt, nil);
-}
-
-editor(ctxt: ref Draw->Context)
-{
-	app := load Command "/dis/wm/edit.dis";
-	if(app == nil)
-		raise "fail:cannot load Edit";
-	args := "edit" :: nil;
+		raise "fail:cannot load " + name;
+	args := name :: nil;
 	app->init(ctxt, args);
 }
 

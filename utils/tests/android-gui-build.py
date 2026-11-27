@@ -35,9 +35,11 @@ def stage_awm_runtime(core, app, build, mk, env, logs):
     assets = build/'assets'
     run([sys.executable, str(app/'tools/stage-inferno.py'), '--source', str(core),
          '--output', str(assets/'inferno')], app, env, logs/'stage-runtime.log')
-    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'keyboard', 'limboedit', 'edit'):
+    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'keyboard', 'limboedit', 'edit', 'awmproc', 'awmdebug', 'awmsh'):
         if not (assets/f'inferno/dis/wm/{module}.dis').is_file():
             raise RuntimeError(f'Missing staged AWM module {module}')
+    if not (assets/'inferno/icons/tk/vitabig.png').is_file():
+        raise RuntimeError('Missing Inferno launcher icon')
     if not (assets/'inferno/dis/lib/dialog.dis').is_file():
         raise RuntimeError('Missing staged Dialog module')
     return assets
@@ -109,6 +111,10 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
     phone.mkdir()
     run([runner, str(executable), str(bundle), str(phone), 'portrait'], logs, env,
         logs/'framebuffer-portrait.log', timeout=60)
+    tools_home = build/'sdcard-tools'
+    tools_home.mkdir()
+    run([runner, str(executable), str(bundle), str(tools_home), 'tools'], logs, env,
+        logs/'framebuffer-tools.log', timeout=60)
 
 
 
@@ -348,7 +354,7 @@ def main():
                       awm_android_keyboard_verified=True, awm_screen_keyboard_verified=True,
                       awm_editor_verified=True, awm_files_editor_verified=True,
                       awm_editor_picker_verified=True, awm_portrait_verified=True,
-                      awm_stock_keyboard_verified=True)
+                      awm_stock_keyboard_verified=True, awm_tools_verified=True)
         result.write_text(json.dumps(report, indent=2)+'\n')
     if args.apk_sdk:
         report.update(package_awm(apk_tools, platform, signing_tools, app, build, assets, library,

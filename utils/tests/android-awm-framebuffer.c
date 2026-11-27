@@ -19,11 +19,11 @@
 #include "inferno_fb_pixels.h"
 #include "../../include/keyboard.h"
 
-enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Desktop = 0x777777 };
-enum View { Vdesktop, Vmenu, Vcalc, VcalcKeysClosed, Vcalcmoved, Vtask, Vabout,
+enum { Width = 640, Height = 480, Panel = 0x212b38, Menu = 0x2c3c51, Tools = 0x344355, Desktop = 0x777777 };
+enum View { Vdesktop, Vmenu, Vtools, Vcalc, VcalcKeysClosed, Vcalcmoved, Vtask, Vabout,
             Vfiles, VfilesKeysClosed, Vkeys, Veditor, VeditFileMenu,
             VeditPicker, VeditConfirm, VeditSource, VeditFunctions, VeditJump,
-            VfilesEditor, VfilesEditorSave, VportraitDesktop, VportraitFiles, VportraitKeys };
+            VfilesEditor, VfilesEditorSave, VtoolShell, VtoolProc, VtoolDebug, VportraitDesktop, VportraitFiles, VportraitKeys };
 typedef struct Area Area;
 struct Area { int x0, y0, x1, y1; };
 static const IoaViewport wide_view = {{0, 0, Width, Height}, Width, Height};
@@ -397,10 +397,13 @@ visible(enum View view)
 {
 	if(view == Vmenu)
 		return pixel(Xsize - 2, 15) == Menu;
+	if(view == Vtools)
+		return pixel(Xsize - 2, 15) == Tools;
 	if(pixel(Xsize / 2, 1) != Panel)
 		return 0;
 	if(view == VportraitDesktop)
-		return pixel(Xsize / 2, 65) == Desktop && pixel(Xsize / 2, Ysize - 14) == Desktop;
+		return pixel(Xsize / 2, 65) == Desktop && pixel(Xsize / 2, Ysize - 14) == Desktop &&
+			pixel(27, 12) == 0xee0000;
 	if(view == VportraitFiles)
 		return pixel(380, 70) == 0xdce8f5 && pixel(Xsize / 2, Ysize - 14) == Desktop;
 	if(view == VportraitKeys)
@@ -408,6 +411,12 @@ visible(enum View view)
 			pixel(Xsize / 2, Ysize - 14) != Desktop;
 	if(pixel(600, 65) != Desktop)
 		return 0;
+	if(view == VtoolShell)
+		return pixel(180, 52) == 0x0000cc && pixel(300, 150) == 0xffffff;
+	if(view == VtoolProc)
+		return pixel(180, 72) == 0x0000cc && pixel(300, 265) == 0xdddddd;
+	if(view == VtoolDebug)
+		return pixel(180, 92) == 0x0000cc && pixel(300, 265) == 0xffffff;
 	if(view == Vcalc)
 		return pixel(195, 78) == 0xffffff;
 	if(view == VcalcKeysClosed)
@@ -457,6 +466,7 @@ visible(enum View view)
 		return pixel(300, 303) != Desktop && pixel(300, 465) != Desktop;
 	return pixel(100, 65) == Desktop &&
 		pixel(300, 465) == Desktop &&
+		pixel(27, 12) == 0xee0000 &&
 		(pixel(110, 11) != Panel) == (view == Vtask);
 }
 
@@ -743,11 +753,15 @@ test_editor(void)
 	scroll(200, 125, 6.0f);
 	painted = capture("awm-editor-first-function.ppm", VeditSource, painted);
 
-	tap(123, 172);                   /* The partial identifier on line 7. */
-	key(AKEYCODE_MOVE_END, 0);
-	tap(105, 464);                   /* Left */
+	const Area caret_area = {133, 164, 153, 179};
+	const Area completed_area = {168, 164, 252, 179};
+	uint64_t before = wait_region(VeditSource, caret_area, 0, 0, "recording the identifier before moving the caret");
+	tap(141, 172);
+	wait_region(VeditSource, caret_area, before, 0, "placing the caret in the unique prefix");
+	before = wait_region(VeditSource, completed_area, 0, 0, "recording the empty end of the line");
 	tap(96, 374);                    /* Ctrl */
 	tap(265, 344);                   /* t */
+	wait_region(VeditSource, completed_area, before, 0, "completing the identifier");
 
 	tap(210, 129);                   /* Append to the comment on line 4. */
 	tap(108, 404);
@@ -823,6 +837,91 @@ test_files_editor(void)
 	puts("PASS Files opened the selected source in Edit and refreshed its preview after save and close");
 }
 
+static void
+shell_command(const char *line)
+{
+	for(; *line; line++){
+		if(*line >= 'a' && *line <= 'z')
+			key(AKEYCODE_A + *line - 'a', 0);
+		else if(*line == ' ')
+			key(AKEYCODE_SPACE, 0);
+		else
+			abort();
+	}
+	key(AKEYCODE_ENTER, 0);
+}
+
+static void
+wait_shell_echo(void)
+{
+	for(int attempt = 0; attempt < 120; attempt++){
+		int equal = 1, ink = 0;
+		pthread_mutex_lock(&frame_lock);
+		/* Compare the argument in the command transcript to Echo's output. */
+		for(int y = 0; y < 14; y++)
+			for(int x = 0; x < 56; x++){
+				uint32_t output = pixel(x + 2, y + 92);
+				equal &= output == pixel(x + 58, y + 78);
+				ink |= output == 0;
+			}
+		pthread_mutex_unlock(&frame_lock);
+		if(equal && ink)
+			return;
+		usleep(50000);
+	}
+	fputs("Shell did not render the output from the Inferno Echo module\n", stderr);
+	exit(1);
+}
+
+static void*
+observe_tools(void *unused)
+{
+	(void)unused;
+	const Area stack = {10, 156, 295, 240};
+	const Area debug_status = {1, 131, 287, 145};
+	const Area pwd_output = {2, 121, 104, 133};
+	unsigned int painted;
+	uint64_t before, blank;
+
+	painted = capture("awm-dev-desktop.ppm", Vdesktop, 0);
+	tap(27, 19);
+	painted = capture("awm-dev-apps.ppm", Vmenu, painted);
+	tap(207, 20);
+	painted = capture("awm-dev-tools.ppm", Vtools, painted);
+	tap(100, 20);
+	painted = capture("awm-dev-shell.ppm", VtoolShell, painted);
+	shell_command("echo inferno");
+	wait_shell_echo();
+	painted = capture("awm-dev-shell-echo.ppm", VtoolShell, painted);
+	blank = wait_region(VtoolShell, pwd_output, 0, 0, "recording the empty output line");
+
+	tap(27, 19);
+	painted = capture("awm-dev-apps-again.ppm", Vmenu, painted);
+	tap(207, 20);
+	painted = capture("awm-dev-tools-again.ppm", Vtools, painted);
+	tap(189, 20);
+	painted = capture("awm-dev-processes.ppm", VtoolProc, painted);
+	tap(55, 225);                   /* The idle Shell worker is listed as Awmsh. */
+	tap(100, 98);                   /* Debug the selected process. */
+	painted = capture("awm-dev-debugger.ppm", VtoolDebug, painted);
+	before = wait_region(VtoolDebug, stack, 0, 0, "reading the selected process stack");
+
+	uint64_t attached = wait_region(VtoolDebug, debug_status, 0, 0, "recording the attached debugger status");
+	tap(155, 116);                  /* Step, then wake the Shell blocked in alt. */
+	wait_region(VtoolDebug, debug_status, attached, 0, "waiting for the step request");
+	tap(32, 52);
+	tap(215, 273);                  /* Raise the debugger from its visible bottom edge. */
+	wait_region(VtoolDebug, stack, before, 0, "stepping the process and refreshing its stack");
+	painted = capture("awm-dev-debugger-step.ppm", VtoolDebug, painted);
+	tap(215, 115);                  /* Continue the Shell. */
+	tap(32, 52);
+	painted = capture("awm-dev-shell-continued.ppm", VtoolShell, painted);
+	shell_command("pwd");
+	wait_region(VtoolShell, pwd_output, blank, 0, "running a command after continuing");
+	puts("PASS tree launcher, Inferno command output, live process list, debugger attach, step and continue");
+	exit(0);
+}
+
 static void*
 observe(void *unused)
 {
@@ -893,6 +992,8 @@ observe(void *unused)
 	tap(27, 19);
 	painted = capture("awm-menu.ppm", Vmenu, painted);
 	tap(207, 20);
+	painted = capture("awm-tools.ppm", Vtools, painted);
+	tap(365, 20);
 	painted = capture("awm-about.ppm", Vabout, painted);
 	tap(65, 125);
 	painted = capture("awm-closed.ppm", Vdesktop, painted);
@@ -971,7 +1072,8 @@ main(int argc, char **argv)
 {
 	pthread_t worker;
 	int portrait = argc == 4 && strcmp(argv[3], "portrait") == 0;
-	if(argc != 3 && !portrait)
+	int tools = argc == 4 && strcmp(argv[3], "tools") == 0;
+	if(argc != 3 && !portrait && !tools)
 		return 2;
 	test_viewport();
 	test_touch();
@@ -1043,8 +1145,12 @@ main(int argc, char **argv)
 	}
 	xscreendata = calloc((size_t)Xsize * Ysize, 4);
 	snapshot = calloc((size_t)Xsize * Ysize, 4);
-	if(xscreendata == NULL || snapshot == NULL ||
-	   pthread_create(&worker, NULL, portrait ? observe_portrait : observe, NULL) != 0)
+	void *(*scenario)(void *) = observe;
+	if(portrait)
+		scenario = observe_portrait;
+	if(tools)
+		scenario = observe_tools;
+	if(xscreendata == NULL || snapshot == NULL || pthread_create(&worker, NULL, scenario, NULL) != 0)
 		return 2;
 	amain();
 	pthread_join(worker, NULL);
