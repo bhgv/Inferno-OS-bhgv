@@ -35,7 +35,7 @@ def stage_awm_runtime(core, app, build, mk, env, logs):
     assets = build/'assets'
     run([sys.executable, str(app/'tools/stage-inferno.py'), '--source', str(core),
          '--output', str(assets/'inferno')], app, env, logs/'stage-runtime.log')
-    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'awmkeys', 'limboedit', 'edit'):
+    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'keyboard', 'limboedit', 'edit'):
         if not (assets/f'inferno/dis/wm/{module}.dis').is_file():
             raise RuntimeError(f'Missing staged AWM module {module}')
     if not (assets/'inferno/dis/lib/dialog.dis').is_file():
@@ -101,8 +101,10 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs):
     for fixture in (picker_fixture, edit_fixture):
         edited = files/'Inferno'/fixture.relative_to(bundle/'inferno')
         expected = fixture.read_bytes().replace(b'\tcomple;\n', b'\tcompletion_target;\n')
+        if fixture == picker_fixture:
+            expected = expected.replace(b'# marker\n', b'# marker{}[]:;\n')
         if edited.read_bytes() != expected:
-            raise RuntimeError(f'Edit modified source bytes outside the completed identifier in {fixture.name}')
+            raise RuntimeError(f'Unexpected saved source bytes in {fixture.name}')
     phone = build/'sdcard-portrait'
     phone.mkdir()
     run([runner, str(executable), str(bundle), str(phone), 'portrait'], logs, env,
@@ -345,7 +347,8 @@ def main():
                       awm_android_touch_verified=True, awm_android_mouse_verified=True,
                       awm_android_keyboard_verified=True, awm_screen_keyboard_verified=True,
                       awm_editor_verified=True, awm_files_editor_verified=True,
-                      awm_editor_picker_verified=True, awm_portrait_verified=True)
+                      awm_editor_picker_verified=True, awm_portrait_verified=True,
+                      awm_stock_keyboard_verified=True)
         result.write_text(json.dumps(report, indent=2)+'\n')
     if args.apk_sdk:
         report.update(package_awm(apk_tools, platform, signing_tools, app, build, assets, library,

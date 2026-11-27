@@ -469,7 +469,8 @@ capture(const char *path, enum View view, unsigned int after)
 	for(i = 0; i < 240; i++){
 		pthread_mutex_lock(&frame_lock);
 		painted = flushes;
-		if(painted > after && visible(view)){
+		int ready = painted > after && visible(view);
+		if(ready || i == 239){
 			stream = fopen(path, "wb");
 			if(stream == NULL)
 				exit(2);
@@ -488,6 +489,8 @@ capture(const char *path, enum View view, unsigned int after)
 			if(fclose(stream) != 0)
 				exit(2);
 			pthread_mutex_unlock(&frame_lock);
+			if(!ready)
+				break;
 			printf("PASS %s at framebuffer update %u\n", path, painted);
 			return painted;
 		}
@@ -656,18 +659,18 @@ test_files(unsigned int painted)
 	puts("PASS keyboard navigated Files, opened both entries and returned to Home");
 	tap(600, 19);
 	painted = capture("awm-files-screen-keyboard.ppm", Vkeys, painted);
-	tap(451, 464);                    /* Enter opens the active Documents row. */
+	tap(540, 374);                    /* Enter opens the active Documents row. */
 	wait_files(file_path, home, 0, "opening Documents with the screen keyboard");
-	tap(320, 464);
-	tap(451, 464);                    /* Down + Enter opens the second file. */
-	tap(516, 464);
+	tap(420, 464);
+	tap(540, 374);                    /* Down + Enter opens the second file. */
+	tap(528, 464);
 	painted = capture("awm-files-screen-keyboard-closed.ppm", VfilesKeysClosed, painted);
 	wait_files(file_preview, second, 1, "previewing from the screen keyboard");
 	tap(600, 19);
 	painted = capture("awm-files-screen-keyboard.ppm", Vkeys, painted);
-	tap(385, 464);
+	tap(551, 344);
 	wait_files(file_path, home, 1, "going up with the screen keyboard");
-	tap(516, 464);
+	tap(528, 464);
 	painted = capture("awm-files-screen-keyboard-closed.ppm", VfilesKeysClosed, painted);
 	wait_files(file_preview, empty, 1, "clearing the preview after virtual Back");
 	puts("PASS screen keyboard navigated Files and remained reusable after closing");
@@ -725,21 +728,41 @@ test_editor(void)
 	tap(160, 285);
 	painted = capture("awm-editor-source.ppm", VeditSource, painted);
 
-	key(AKEYCODE_G, AMETA_CTRL_ON);
+	tap(600, 19);
+	painted = capture("awm-editor-keyboard.ppm", Vkeys, painted);
+	tap(96, 374);                    /* Ctrl */
+	tap(283, 374);                   /* g */
 	painted = capture("awm-editor-functions.ppm", VeditFunctions, painted);
-	key(AKEYCODE_DPAD_DOWN, 0);
-	key(AKEYCODE_ENTER, 0);
+	tap(420, 464);                   /* Down */
+	tap(540, 374);                   /* Enter */
 	painted = capture("awm-editor-jump.ppm", VeditJump, painted);
-	key(AKEYCODE_G, AMETA_CTRL_ON);
+	tap(96, 374);
+	tap(283, 374);
 	painted = capture("awm-editor-functions-again.ppm", VeditFunctions, painted);
-	key(AKEYCODE_ENTER, 0);
+	tap(540, 374);
 	scroll(200, 125, 6.0f);
 	painted = capture("awm-editor-first-function.ppm", VeditSource, painted);
 
 	tap(123, 172);                   /* The partial identifier on line 7. */
 	key(AKEYCODE_MOVE_END, 0);
-	key(AKEYCODE_DPAD_LEFT, 0);
-	key(AKEYCODE_T, AMETA_CTRL_ON);
+	tap(105, 464);                   /* Left */
+	tap(96, 374);                    /* Ctrl */
+	tap(265, 344);                   /* t */
+
+	tap(210, 129);                   /* Append to the comment on line 4. */
+	tap(108, 404);
+	painted = capture("awm-editor-keyboard-shift.ppm", Vkeys, painted);
+	tap(465, 344);                   /* { */
+	tap(108, 404);
+	tap(500, 344);                   /* } */
+	tap(465, 344);                   /* [ */
+	tap(500, 344);                   /* ] */
+	tap(108, 404);
+	tap(442, 374);                   /* : */
+	tap(461, 374);                   /* ; */
+
+	tap(528, 464);                   /* Close */
+	painted = capture("awm-editor-keyboard-closed.ppm", VeditSource, painted);
 	tap(20, 71);
 	painted = capture("awm-editor-reopen-menu.ppm", VeditFileMenu, painted);
 	tap(40, 108);
@@ -755,7 +778,7 @@ test_editor(void)
 	wait_editor_save("/sdcard/Inferno/usr/inferno/Documents/zsample.b");
 	tap(350, 52);
 	capture("awm-editor-closed.ppm", Vdesktop, painted);
-	puts("PASS native Edit picked a Limbo file by touch, highlighted it, jumped to a function, and preserved an unsaved completion after cancelling Open");
+	puts("PASS stock screen keyboard typed Limbo punctuation, selected functions and completed an identifier in Edit");
 }
 
 static void
@@ -852,16 +875,17 @@ observe(void *unused)
 	tap(600, 19);
 	painted = capture("awm-screen-keyboard.ppm", Vkeys, painted);
 	tap(600, 19);                     /* Opening again must keep one window. */
-	tap(253, 399);                    /* c */
+	tap(239, 404);                    /* c */
 	wait_value(zero, 1);
-	tap(159, 304);                    /* 2 */
+	tap(158, 314);                    /* 2 */
 	wait_value(two, 1);
-	tap(118, 430);                    /* + */
-	tap(205, 304);                    /* 3 */
+	tap(108, 404);                    /* Shift */
+	tap(496, 314);                    /* + */
+	tap(191, 314);                    /* 3 */
 	wait_value(three, 1);
-	tap(451, 464);                    /* Enter */
+	tap(540, 374);                    /* Enter */
 	wait_value(five, 1);
-	tap(516, 464);
+	tap(528, 464);
 	painted = capture("awm-screen-keyboard-closed.ppm", VcalcKeysClosed, painted);
 	puts("PASS screen keyboard computed 2 + 3 in the focused Calculator and opened only once");
 	tap(110, 283);
@@ -934,9 +958,9 @@ observe_portrait(void *unused)
 
 	tap(Xsize - 40, 20);
 	painted = capture("portrait-keyboard.ppm", VportraitKeys, painted);
-	tap(322, Ysize - 20);
+	tap(374, Ysize - 140);
 	wait_region(VportraitKeys, file_path, home, 0, "opening Documents with the scaled bottom keyboard");
-	tap(382, Ysize - 20);
+	tap(365, Ysize - 20);
 	capture("portrait-keyboard-closed.ppm", VportraitFiles, painted);
 	puts("PASS portrait Apps, Files and scaled keyboard with Android navigation insets");
 	exit(0);
@@ -974,7 +998,7 @@ main(int argc, char **argv)
 	const char *document = "/sdcard/Inferno/usr/inferno/Documents/alpha.txt";
 	const char *panel = "/sdcard/Inferno/dis/wm/awmpanel-keyboard.dis";
 	const char *oldpanel = "/sdcard/Inferno/dis/wm/awmpanel.dis";
-	const char *keys = "/sdcard/Inferno/dis/wm/awmkeys.dis";
+	const char *keys = "/sdcard/Inferno/dis/wm/keyboard.dis";
 	const char marker[] = "Previous AWM panel";
 	const char local[] = "Local document preserved by AWM\n"
 		"01 local line\n02 local line\n03 local line\n04 local line\n"

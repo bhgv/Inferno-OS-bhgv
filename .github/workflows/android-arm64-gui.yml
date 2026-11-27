@@ -18,7 +18,7 @@ on:
       - 'appl/wm/awmpanel.b'
       - 'appl/wm/awmcalc.b'
       - 'appl/wm/awmfiles.b'
-      - 'appl/wm/awmkeys.b'
+      - 'appl/wm/keyboard.b'
       - 'appl/wm/limboedit.b'
       - 'appl/wm/edit.b'
       - 'module/**'
@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: bhgv/Inferno-OS_Android
-          ref: a77e1fcfa58b83734e40673d2a6886d1cc5641f0
+          ref: 2258c29c034990ed9974155b6086b5e48c9cb44b
           path: android-app
       - name: Prepare pinned NDK and native build tools
         run: |

@@ -141,10 +141,11 @@ editor(ctxt: ref Draw->Context)
 keyboard(ctxt: ref Draw->Context, closed: chan of int)
 {
 	{
-		app := load Command "/dis/wm/awmkeys.dis";
+		app := load Command "/dis/wm/keyboard.dis";
 		if(app == nil)
 			raise "fail:cannot load Keyboard";
-		app->init(ctxt, nil);
+		args := "keyboard" :: "-d" :: nil;
+		app->init(ctxt, args);
 	} exception {
 		"*" =>
 			closed <-= 1;

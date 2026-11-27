@@ -67,7 +67,6 @@ TARG=\
 	awm.dis\
 	awmcalc.dis\
 	awmfiles.dis\
-	awmkeys.dis\
 	awmpanel-keyboard.dis\
 	atoolbar.dis\
 
