@@ -20,6 +20,7 @@ typedef struct Client Client;
 typedef struct Fid Fid;
 typedef struct StyxAttach StyxAttach;
 typedef struct StyxRead StyxRead; /* Owned owner-thread deferred byte read. */
+typedef struct StyxRead StyxWrite; /* Owned owner-thread deferred byte write. */
 
 struct Styxserver
 {
@@ -48,8 +49,8 @@ struct Client
 	int		versioned;	/* negative rejects unsupported sessions */
 	Fid		*fids;
 	StyxAttach *attach;	/* staged/pending attach, owned by dispatcher */
-	StyxRead *reads; /* Owned pending byte reads, at most128 per client. */
-	StyxRead *reading; /* Borrowed stack stage only during read callback. */
+	StyxRead *reads; /* Owned pending byte I/O, at most128 per client. */
+	StyxRead *reading; /* Borrowed stack stage during a byte I/O callback. */
 	Fid		*current;	/* borrowed only during one dispatch */
 	char		*uname;	/* uid */
 	char		*aname;	/* attach name */
@@ -106,10 +107,17 @@ void styxfree(void *p);
 void styxdebug(void);
 void styxsetowner(char*);
 
+/* EN: Copy the current wire fid number during a dispatcher callback.
+ * RU: Скопировать номер текущего fid в callback диспетчера. */
+int styxcurrentfid(Styxserver *, u32int *);
+
+
 /* Borrow current fid context; set transfers non-nil ownership only into an empty slot.
  * No automatic cloning: unopened walk clones start empty. Rebuild all consumers. */
 void *styxgetaux(Styxserver *server);
 int styxsetaux(Styxserver *server, void *aux);
+/* Attach an owned context and its individual destructor to the current fid. */
+int styxsetauxowned(Styxserver *server, void *aux, void (*release)(void *));
 
 /* Native owner-thread extension, no wire changes. Defer only inside attach callback.
  * Returned request is caller-owned; release with styxattachfree after retirement.
@@ -163,3 +171,29 @@ int styxreadreply(StyxRead*, void *bytes, ulong count, char *error);
 /* Consume caller ref on owner; freeing a live handle alone does not answer/cancel it.
  * Поглотить caller ref на owner; само освобождение не отвечает/не отменяет запрос. */
 void styxreadfree(StyxRead*);
+
+
+/* EN: Stage one deferred Twrite from the current write callback. On success
+ * set its count to zero and return nil. Copy input before returning. The
+ * request owns no payload. The shared byte I/O quota is 128 per client and
+ * one per fid. Release aux once on retirement, on the server owner. On failure
+ * return nil and leave aux with the caller.
+ * RU: Отложить текущий Twrite из колбэка записи. При успехе обнулить count и
+ * вернуть nil. Скопировать вход до возврата. Запрос не владеет данными.
+ * Общий предел I/O равен 128 на клиента и одному на fid. Освободить aux
+ * один раз у владельца при снятии. При отказе вернуть nil и сохранить aux. */
+StyxWrite *styxdeferwrite(Styxserver *, void *aux, void (*release)(void *));
+
+
+/* EN: Complete a waiting Twrite once on the dispatcher. With nil error,
+ * count is the acknowledged prefix. A non-nil error requires count zero.
+ * Return 1 when retired, 0 on invalid, staged or already retired requests.
+ * RU: Однократно завершить ожидающий Twrite у диспетчера. При nil error
+ * count задаёт подтверждённый префикс. При ошибке count равен нулю.
+ * Вернуть 1 после снятия, 0 для неверного, ещё не принятого или снятого запроса. */
+int styxwritereply(StyxWrite *, ulong count, char *error);
+
+
+/* EN: Consume the caller's owned reference on the dispatcher. NULL is harmless.
+ * RU: Освободить ссылку вызывающего у диспетчера. NULL допустим. */
+void styxwritefree(StyxWrite *);

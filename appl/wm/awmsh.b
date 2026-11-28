@@ -10,12 +10,16 @@ include "tkclient.m";
 include "string.m";
 	str: String;
 include "sh.m";
+include "keyboard.m";
 include "awmcommands.m";
 
 Awmsh: module
 {
 	init: fn(ctxt: ref Draw->Context, argv: list of string);
 };
+
+Historysize: con 32;
+Shellcommands: con "cd clear exit help ls " + Awmcommands;
 
 init(ctxt: ref Draw->Context, nil: list of string)
 {
@@ -43,6 +47,11 @@ init(ctxt: ref Draw->Context, nil: list of string)
 	output := chan of string;
 	done := chan[1] of string;
 	running := 0;
+	history := array[Historysize] of string;
+	next := 0;
+	count := 0;
+	offset := 0;
+	draft: string;
 	for(;;) alt {
 	p := <-wm.ptr =>
 		if(p != nil)
@@ -60,12 +69,45 @@ init(ctxt: ref Draw->Context, nil: list of string)
 			append(top, finished);
 		cmd(top, ".input.line configure -state normal; .input.go configure -state normal; focus .input.line; update");
 	a := <-action =>
-		if(a != "run" || running)
+		if(running)
+			break;
+		if(a == "complete"){
+			complete(top);
+			break;
+		}
+		if(a == "older" || a == "newer"){
+			if(a == "older" && offset < count){
+				if(offset == 0)
+					draft = tk->cmd(top, ".input.line get");
+				offset++;
+			}else if(a == "newer" && offset > 0)
+				offset--;
+			else
+				break;
+			recall := draft;
+			if(offset > 0){
+				slot := (next + Historysize - offset) % Historysize;
+				recall = history[slot];
+			}
+			setline(top, recall);
+			break;
+		}
+		if(a != "run")
 			break;
 		line := tk->cmd(top, ".input.line get");
 		args := str->unquoted(line);
 		if(args == nil)
 			break;
+		last := (next + Historysize - 1) % Historysize;
+		previous := history[last];
+		if(count == 0 || previous != line){
+			history[next] = line;
+			next = (next + 1) % Historysize;
+			if(count < Historysize)
+				count++;
+		}
+		offset = 0;
+		draft = nil;
 		cmd(top, ".input.line delete 0 end");
 		prompt := "; " + line + "\n";
 		append(top, prompt);
@@ -92,6 +134,7 @@ init(ctxt: ref Draw->Context, nil: list of string)
 			else{
 				usage := "Built in: cd [dir], ls [dir], clear, help [topic], exit\n" +
 					"Inferno commands: " + Awmcommands + "\n" +
+					"Tab completes a command name. Up/Down and < > recall commands.\n" +
 					"Use single quotes around arguments with spaces.\n";
 				append(top, usage);
 			}
@@ -131,12 +174,68 @@ widgets(top: ref Tk->Toplevel)
 	cmd(top, "pack .view.s -side right -fill y; pack .view.t -fill both -expand 1");
 	cmd(top, "frame .input; pack .input -fill x");
 	cmd(top, "label .input.prompt -text {;}");
-	cmd(top, "entry .input.line -width 270");
+	cmd(top, "entry .input.line -width 210");
+	cmd(top, "button .input.older -text {<} -width 24 -command {send shell older}");
+	cmd(top, "button .input.newer -text {>} -width 24 -command {send shell newer}");
 	cmd(top, "button .input.go -text Run -command {send shell run}");
 	cmd(top, "pack .input.prompt -side left -padx 4");
-	cmd(top, "pack .input.go -side right -padx 3 -ipady 5");
+	cmd(top, "pack .input.go .input.newer .input.older -side right -padx 3 -ipady 5");
 	cmd(top, "pack .input.line -side left -expand 1 -fill x");
 	cmd(top, "bind .input.line <Key-\n> {send shell run}");
+	cmd(top, "bind .input.line {<Key-\t>} {send shell complete}");
+	up := sys->sprint("bind .input.line <Key-%c> {send shell older}", Keyboard->Up);
+	down := sys->sprint("bind .input.line <Key-%c> {send shell newer}", Keyboard->Down);
+	cmd(top, up);
+	cmd(top, down);
+}
+
+setline(top: ref Tk->Toplevel, line: string)
+{
+	cmd(top, ".input.line delete 0 end");
+	if(line != nil){
+		command := ".input.line insert 0 '" + line;
+		cmd(top, command);
+	}
+	cmd(top, ".input.line icursor end; focus .input.line; update");
+}
+
+complete(top: ref Tk->Toplevel)
+{
+	line := tk->cmd(top, ".input.line get");
+	if(line == nil)
+		return;
+	(nil, names) := sys->tokenize(Shellcommands, " ");
+	count := 0;
+	common := "";
+	choices := "";
+	for(; names != nil; names = tl names){
+		name := hd names;
+		if(!str->prefix(line, name))
+			continue;
+		if(count == 0){
+			common = name;
+			choices = name;
+		}else{
+			n := len common;
+			if(n > len name)
+				n = len name;
+			i := len line;
+			while(i < n && common[i] == name[i])
+				i++;
+			common = common[:i];
+			choices += " " + name;
+		}
+		count++;
+	}
+	if(count == 1){
+		replacement := common + " ";
+		setline(top, replacement);
+	}else if(len common > len line)
+		setline(top, common);
+	else if(count > 1){
+		listing := choices + "\n";
+		append(top, listing);
+	}
 }
 
 execute(ctxt: ref Draw->Context, args: list of string, writer: ref Sys->FD, done: chan of string)

@@ -1,6 +1,6 @@
 /* Copyright (c) 2026 bhgv
- * EN: Original dispatcher/codec tests for bounded deferred read ownership and cancellation.
- * RU: Исходный dispatcher/codec: bounded deferred read ownership и cancellation.
+ * EN: Original dispatcher and codec tests for deferred byte I/O and cancellation.
+ * RU: Проверки исходного диспетчера и кодека для отложенного I/O и отмены.
  */
 #define styxsend capture
 #define styxclosesocket closefixture
@@ -152,10 +152,70 @@ clearhandles(void)
     check(created == released, "missing context release");
     for(i = 0; i < created; i++){
         check(!styxreadreply(requests[i], "late", 4, nil), "retired read revived");
+        check(!styxwritereply(requests[i], 1, nil), "retired write revived");
         styxreadfree(requests[i]);
         requests[i] = nil;
     }
     created = released = 0;
+}
+
+
+/* EN: Defer one three-byte write after checking its input and original offset.
+ * RU: Отложить запись трёх байтов после проверки входа и исходного смещения. */
+static char *writefile(Qid qid, char *bytes, ulong *count, vlong offset)
+{
+    USED(qid.path);
+    check(*count == 3 && !memcmp(bytes, "put", 3) && offset == 0x100000001LL, "write arguments");
+    check(created < 256, "fixture handle capacity");
+    StyxWrite *request = styxdeferwrite(&server, &requests[created], release);
+    check(request && !styxdeferread(&server, nil, nil) && !styxwritereply(request, 1, nil),
+        "write stage rules");
+    requests[created++] = request;
+    *count = 0;
+    return nil;
+}
+
+
+/* EN: Admit a write and read on separate fids, flush by tag and check exact Rwrite.
+ * RU: Принять запись и чтение на разных fid, отменить по тегу и проверить Rwrite. */
+static void writes(void)
+{
+    Client *client = newclient(&server, -1);
+    client->versioned = 1;
+    opened(client, 1)->mode = ORDWR;
+    opened(client, 2);
+    Fcall write = {.type = Twrite, .tag = 3, .fid = 1, .offset = 0x100000001LL, .count = 3, .data = "put"};
+    Fcall read = {.type = Tread, .tag = 4, .fid = 2, .count = 1};
+    mode = 1;
+    sendrequest(client, &write);
+    check(nreply == 0 && created == 1, "deferred Twrite returned early");
+    sendrequest(client, &read);
+    check(nreply == 0 && created == 2, "another fid did not proceed");
+    Fcall flush = {.type = Tflush, .tag = 5, .oldtag = 3};
+    sendrequest(client, &flush);
+    response(0, Rflush, 5, nil);
+    check(released == 1 && !styxwritereply(requests[0], 3, nil) &&
+        styxreadreply(requests[1], "r", 1, nil), "write flush affected the other read");
+    response(1, Rread, 4, "r");
+    clearhandles();
+
+    sendrequest(client, &write);
+    StyxWrite *pending = requests[0];
+    check(!styxreadreply(pending, "r", 1, nil) && !styxwritereply(pending, 4, nil) &&
+        !styxwritereply(pending, 1, Eperm) && styxwritereply(pending, 2, nil), "write acknowledgement limits");
+    response(0, Rwrite, 3, nil);
+    check(GBIT32(responses[0] + 7) == 2, "short write count");
+    clearhandles();
+
+    sendrequest(client, &write);
+    Fcall clunk = {.type = Tclunk, .tag = 6, .fid = 1};
+    sendrequest(client, &clunk);
+    check(nreply == 2 && released == 1, "clunk did not retire the write");
+    response(0, Rerror, 3, nil);
+    response(1, Rclunk, 6, nil);
+    clearhandles();
+    freeclient(client);
+    server.curc = nil;
 }
 
 
@@ -173,13 +233,16 @@ main(void)
     memset(&ops, 0, sizeof(ops));
     memset(table, 0, sizeof(table));
     ops.read = readfile;
+    ops.write = writefile;
     ops.freefid = freecontext;
     server.ops = &ops;
     server.ftab = table;
     client = newclient(&server, -1);
     client->versioned = 1;
     client->msize = 256;
-    opened(client, 0x10001)->aux = &server;
+    Fid *context = opened(client, 0x10001);
+    context->aux = &server;
+    context->auxfree = freecontext;
     opened(client, 0x20001);
     memset(&call, 0, sizeof(call));
     call.type = Tread;
@@ -298,6 +361,7 @@ main(void)
     clearhandles();
     server.curc = nil;
     check(!styxdeferread(&server, nil, nil), "defer outside callback");
-    print("PASS native deferred reads, full-width scope, flush, clunk, reset and quota\n");
+    writes();
+    print("PASS native deferred byte I/O, full-width scope, flush, clunk, reset and quota\n");
     return 0;
 }

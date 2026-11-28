@@ -1,7 +1,9 @@
 /* Copyright (c) 2026 bhgv
- * EN: Bounded owner-thread deferred byte reads, included by original dispatcher.
- * RU: Bounded отложенные byte reads на owner-thread, включаются исходным dispatcher.
+ * EN: Deferred byte reads and writes, owned by the original dispatcher.
+ * RU: Отложенные чтения и записи байтов под управлением исходного диспетчера.
  */
+
+#define STYX_PENDING_DATA_LIMIT 128 /* Maximum deferred data requests for one client. */
 
 /* EN/RU: One request retains scalars and borrowed fid until owner-thread retirement.
  * Один request хранит scalars и borrowed fid до owner-thread retirement. */
@@ -16,6 +18,7 @@ struct StyxRead
     ulong limit; /* Negotiated/request capacity captured before callback. */
     vlong offset; /* Exact original64-bit offset. */
     ushort tag; /* Original leased request tag. */
+    int operation; /* Original Tread or Twrite. */
     int references; /* Dispatcher and caller refs, serialized on native owner. */
     int waiting; /* Callback returned; completion may publish now. */
     int directory; /* Directory callbacks cannot use deferred byte reads. */
@@ -28,7 +31,9 @@ void
 styxreadfree(StyxRead *request)
 {
     if(request != nil && --request->references == 0)
+    {
         free(request);
+    }
 }
 
 
@@ -54,24 +59,33 @@ retireread(StyxRead *request)
 }
 
 
-/* EN/RU: See styxserver.h; allocate only on actual defer, never on synchronous reads.
- * См. styxserver.h; allocation только при defer, не для synchronous reads. */
-StyxRead*
-styxdeferread(Styxserver *server, void *aux, void (*release)(void*))
+/* EN: Create one caller-owned slot for operation and take aux with release
+ * on success. The server borrows the fid and owns the second reference.
+ * RU: Создать ссылку вызывающего для operation и принять aux с release
+ * при успехе. Сервер заимствует fid и владеет второй ссылкой. */
+static StyxRead *deferdata(Styxserver *server, int operation, void *aux, void (*release)(void *))
 {
     StyxRead *stage, *node, *request;
     Client *client;
     int count = 0;
     if(server == nil || (client = server->curc) == nil || (stage = client->reading) == nil ||
-       stage->adopted != nil || stage->directory || !stage->limit || stage->tag == NOTAG)
+       stage->operation != operation || stage->adopted != nil || stage->directory ||
+       !stage->limit || stage->tag == NOTAG)
+    {
         return nil;
-    for(node = client->reads; node != nil; node = node->next){
+    }
+    for(node = client->reads; node != nil; node = node->next)
+    {
         if(node->fid == stage->fid)
+        {
             return nil;
+        }
         count++;
     }
-    if(count >= 128 || (request = calloc(1, sizeof(*request))) == nil)
+    if(count >= STYX_PENDING_DATA_LIMIT || (request = calloc(1, sizeof(*request))) == nil)
+    {
         return nil;
+    }
     *request = *stage;
     request->references = 2;
     request->aux = aux;
@@ -83,12 +97,26 @@ styxdeferread(Styxserver *server, void *aux, void (*release)(void*))
 }
 
 
+/* EN/RU: See styxserver.h. / См. styxserver.h. */
+StyxRead *styxdeferread(Styxserver *server, void *aux, void (*release)(void *))
+{
+    return deferdata(server, Tread, aux, release);
+}
+
+
+/* EN/RU: See styxserver.h. / См. styxserver.h. */
+StyxWrite *styxdeferwrite(Styxserver *server, void *aux, void (*release)(void *))
+{
+    return deferdata(server, Twrite, aux, release);
+}
+
+
 /* EN/RU: See styxserver.h; staged callback cannot complete/reenter the dispatcher.
  * См. styxserver.h; staged callback не завершает/не вызывает dispatcher повторно. */
 Client*
 styxreadclient(StyxRead *request)
 {
-    return request != nil && request->waiting ? request->client : nil;
+    return request != nil && request->operation == Tread && request->waiting ? request->client : nil;
 }
 
 
@@ -119,24 +147,48 @@ styxreadoffset(StyxRead *request)
 }
 
 
-/* EN/RU: See styxserver.h; invalid completion is nonconsuming, valid response retires once.
- * См. styxserver.h; invalid completion не поглощает request, valid завершает один раз. */
-int
-styxreadreply(StyxRead *request, void *bytes, ulong count, char *error)
+/* EN: Finish a live request using a confirmed count and optional read bytes
+ * or an error. Borrow payload and error for encoding. Invalid input keeps it live.
+ * RU: Завершить живой запрос с подтверждённым count, байтами чтения или ошибкой.
+ * Заимствовать данные и ошибку до кодирования. При неверном входе сохранить запрос. */
+static int replydata(StyxRead *request, void *bytes, ulong count, char *error)
 {
-    Client *client = styxreadclient(request);
     Fcall reply;
-    if(client == nil || count > request->limit || (count && (bytes == nil || error != nil)))
+    if(request == nil || !request->waiting || request->client == nil || count > request->limit ||
+       (count && (error != nil || (request->operation == Tread && bytes == nil))))
+    {
         return 0;
+    }
     memset(&reply, 0, sizeof(reply));
     reply.tag = request->tag;
-    reply.type = error != nil ? Rerror : Rread;
+    reply.type = error != nil ? Rerror : request->operation + 1;
     reply.ename = error;
     reply.count = count;
     reply.data = bytes;
-    wr(client, &reply);
+    wr(request->client, &reply);
     retireread(request);
     return 1;
+}
+
+
+/* EN/RU: See styxserver.h. / См. styxserver.h. */
+int styxreadreply(StyxRead *request, void *bytes, ulong count, char *error)
+{
+    return request != nil && request->operation == Tread && replydata(request, bytes, count, error);
+}
+
+
+/* EN/RU: See styxserver.h. / См. styxserver.h. */
+int styxwritereply(StyxWrite *request, ulong count, char *error)
+{
+    return request != nil && request->operation == Twrite && replydata(request, nil, count, error);
+}
+
+
+/* EN/RU: See styxserver.h. / См. styxserver.h. */
+void styxwritefree(StyxWrite *request)
+{
+    styxreadfree(request);
 }
 
 
@@ -179,7 +231,7 @@ cancelreads(Client *client, Fid *fid)
         next = request->next;
         if(fid == nil || request->fid == fid){
             if(fid != nil && !(client->state & CDISC))
-                styxreadreply(request, nil, 0, "fid retired");
+                replydata(request, nil, 0, "fid retired");
             else
                 retireread(request);
         }
@@ -187,10 +239,11 @@ cancelreads(Client *client, Fid *fid)
 }
 
 
-/* EN/RU: Stage scalars on stack; existing read callback remains synchronous unless it opts in.
- * Scalars на stack; существующий read callback synchronous пока сам не выберет defer. */
-static int
-callbackread(Client *client, Fid *fid, Fcall *call, ulong *count, int directory)
+/* EN: Stage the data callback for fid using call and its count. Directory
+ * requests and zero-byte operations cannot defer. Return 1 on successful defer.
+ * RU: Подготовить колбэк I/O для fid из call и count. Запросы каталогов
+ * и нулевой длины не откладываются. Вернуть 1 при принятом отложенном запросе. */
+static int callbackdata(Client *client, Fid *fid, Fcall *call, ulong *count, int directory, int operation)
 {
     StyxRead stage, *request;
     memset(&stage, 0, sizeof(stage));
@@ -199,18 +252,33 @@ callbackread(Client *client, Fid *fid, Fcall *call, ulong *count, int directory)
     stage.limit = call->count;
     stage.offset = call->offset;
     stage.tag = call->tag;
+    stage.operation = operation;
     stage.directory = directory;
     client->reading = &stage;
-    call->ename = client->server->ops->read(fid->qid, client->data, count, call->offset);
+    if (operation == Tread)
+    {
+        call->ename = client->server->ops->read(fid->qid, client->data, count, call->offset);
+    }
+    else
+    {
+        call->ename = client->server->ops->write(fid->qid, call->data, count, call->offset);
+    }
     client->reading = nil;
     request = stage.adopted;
     if(request == nil)
+    {
         return 0;
+    }
     request->waiting = 1;
     if(call->ename == nil && *count == 0)
+    {
         return 1;
+    }
     if(call->ename == nil)
-        call->ename = "deferred read returned immediate data";
+    {
+        call->ename = operation == Tread ? "deferred read returned immediate data" :
+            "deferred write returned immediate count";
+    }
     retireread(request);
     return 0;
 }

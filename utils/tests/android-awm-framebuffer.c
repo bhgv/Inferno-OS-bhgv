@@ -24,7 +24,7 @@ enum View { Vdesktop, Vmenu, Vtools, Vcalc, VcalcKeysClosed, Vcalcmoved, Vtask, 
             Vfiles, VfilesKeysClosed, Vkeys, Veditor, VeditFileMenu,
             VeditPicker, VeditConfirm, VeditSource, VeditFunctions, VeditJump,
             VfilesEditor, VfilesEditorSave, VtoolShell, VtoolProc, VtoolDebug, VtoolHelp, VhelpFromShell,
-            VportraitDesktop, VportraitFiles, VportraitKeys, VclassicCalc, VclassicHelp };
+            VportraitDesktop, VportraitFiles, VportraitKeys, VclassicCalc, VclassicHelp, VhistoryShell };
 typedef struct Area Area;
 struct Area { int x0, y0, x1, y1; };
 static const IoaViewport wide_view = {{0, 0, Width, Height}, Width, Height};
@@ -414,6 +414,9 @@ visible(enum View view)
 		return 0;
 	if(view == VtoolShell)
 		return pixel(180, 52) == 0x0000cc && pixel(300, 150) == 0xffffff;
+	if(view == VhistoryShell)
+		return (pixel(180, 52) == 0x0000cc || pixel(180, 52) == 0x666699) &&
+			pixel(300, 150) == 0xffffff;
 	if(view == VtoolProc)
 		return pixel(180, 72) == 0x0000cc && pixel(300, 265) == 0xdddddd;
 	if(view == VtoolDebug)
@@ -847,7 +850,7 @@ test_files_editor(void)
 }
 
 static void
-shell_command(const char *line)
+shell_keys(const char *line)
 {
 	for(; *line; line++){
 		if(*line >= 'a' && *line <= 'z')
@@ -866,9 +869,17 @@ shell_command(const char *line)
 			key(AKEYCODE_0, AMETA_SHIFT_ON);
 		else if(*line == '-')
 			key(AKEYCODE_MINUS, 0);
+		else if(*line == '\'')
+			key(AKEYCODE_APOSTROPHE, 0);
 		else
 			abort();
 	}
+}
+
+static void
+shell_command(const char *line)
+{
+	shell_keys(line);
 	key(AKEYCODE_ENTER, 0);
 }
 static void
@@ -1004,6 +1015,47 @@ observe_help(void *unused)
 	wait_region(VhelpFromShell, shell_manual, man, 1, "opening the same manual page from Shell");
 	capture("awm-commands-man.ppm", VhelpFromShell, painted);
 	puts("PASS indexed Inferno Help, Shell Help, stock command output and directory creation");
+	exit(0);
+}
+
+static void*
+observe_history(void *variant)
+{
+	const int classic = variant != NULL;
+	const int entry_y = classic ? 239 : 229;
+	const Area entry = {18, entry_y-8, 242, entry_y+8};
+	unsigned int painted = capture("history-desktop.ppm", Vdesktop, 0);
+	tap(27, 19);
+	painted = capture("history-apps.ppm", Vmenu, painted);
+	tap(207, 20);
+	painted = capture("history-tools.ppm", Vtools, painted);
+	tap(100, 20);
+	painted = capture("history-shell.ppm", VhistoryShell, painted);
+
+	shell_keys("mkd");
+	key(AKEYCODE_TAB, 0);
+	shell_command("'history first'");
+	shell_keys("mkdir history-draft");
+	uint64_t draft = wait_region(VhistoryShell, entry, 0, 0, "entering the first draft");
+	key(AKEYCODE_DPAD_UP, 0);
+	uint64_t recalled = wait_region(VhistoryShell, entry, draft, 0, "recalling the completed command");
+	key(AKEYCODE_DPAD_DOWN, 0);
+	wait_region(VhistoryShell, entry, draft, 1, "restoring the first draft with Down");
+	key(AKEYCODE_ENTER, 0);
+
+	shell_keys("mkdir history-touch");
+	draft = wait_region(VhistoryShell, entry, 0, 0, "entering a draft for the history buttons");
+	tap(303, entry_y);
+	wait_region(VhistoryShell, entry, draft, 0, "recalling the latest command by touch");
+	tap(303, entry_y);
+	wait_region(VhistoryShell, entry, recalled, 1, "reaching the older command with its original quotes");
+	tap(333, entry_y);
+	wait_region(VhistoryShell, entry, recalled, 0, "moving forward within history");
+	tap(333, entry_y);
+	wait_region(VhistoryShell, entry, draft, 1, "restoring the second draft by touch");
+	key(AKEYCODE_ENTER, 0);
+	capture("history-executed.ppm", VhistoryShell, painted);
+	puts("PASS AWM Shell Tab completion and keyboard and touch history with draft restoration");
 	exit(0);
 }
 
@@ -1197,7 +1249,8 @@ main(int argc, char **argv)
 	int tools = argc == 4 && strcmp(argv[3], "tools") == 0;
 	int help = argc == 4 && strcmp(argv[3], "help") == 0;
 	int classic = argc == 4 && strcmp(argv[3], "classic") == 0;
-	if(argc != 3 && !portrait && !tools && !help && !classic)
+	int history = argc == 4 && (strcmp(argv[3], "history") == 0 || strcmp(argv[3], "history-classic") == 0);
+	if(argc != 3 && !portrait && !tools && !help && !classic && !history)
 		return 2;
 	test_viewport();
 	test_touch();
@@ -1222,7 +1275,8 @@ main(int argc, char **argv)
 	}
 	puts("PASS shared storage denial, interrupted extraction and ready-tree reuse without assets");
 	const char *document = "/sdcard/Inferno/usr/inferno/Documents/alpha.txt";
-	const char *panel = "/sdcard/Inferno/dis/wm/awmpanel-keyboard.dis";
+	const char *panel = "/sdcard/Inferno/dis/wm/awmpanel-history.dis";
+	const char *shell = "/sdcard/Inferno/dis/wm/awmsh-history.dis";
 	const char *manual = "/sdcard/Inferno/man/1/INDEX";
 	const char *oldpanel = "/sdcard/Inferno/dis/wm/awmpanel.dis";
 	const char *keys = "/sdcard/Inferno/dis/wm/keyboard.dis";
@@ -1240,7 +1294,7 @@ main(int argc, char **argv)
 	}
 	file = fopen(document, "w");
 	if(file == NULL || fputs(local, file) < 0 || fclose(file) != 0 ||
-	   unlink(panel) != 0 || ioa_prepare_storage(NULL) != -1 ||
+	   unlink(panel) != 0 || unlink(shell) != 0 || ioa_prepare_storage(NULL) != -1 ||
 	   ioa_prepare_storage(&manager) != 0 || ioa_prepare_storage(NULL) != 0){
 		perror("Restore missing AWM panel");
 		return 2;
@@ -1266,6 +1320,15 @@ main(int argc, char **argv)
 		return 2;
 	}
 	puts("PASS keyboard and new AWM panel installed beside the previous panel");
+	int history_classic = history && strcmp(argv[3], "history-classic") == 0;
+	if(history_classic){
+		file = fopen("/sdcard/Inferno/lib/startup/cmd_line.txt", "w");
+		if(file == NULL || fputs("wm/awm /dis/wm/awmpanel-keyboard.dis\n", file) < 0 || fclose(file) != 0)
+			return 2;
+		file = fopen("/sdcard/Inferno/dis/wm/awmpanel-keyboard.dis", "w");
+		if(file == NULL || fputs(marker, file) < 0 || fclose(file) != 0)
+			return 2;
+	}
 	input_view = wide_view;
 	if(portrait){
 		ARect bounds = ioa_content_bounds(945, 2048, (ARect){0, 90, 945, 1970});
@@ -1284,7 +1347,10 @@ main(int argc, char **argv)
 		scenario = observe_help;
 	if(classic)
 		scenario = observe_classic;
-	if(xscreendata == NULL || snapshot == NULL || pthread_create(&worker, NULL, scenario, NULL) != 0)
+	void *variant = history_classic ? argv[3] : NULL;
+	if(history)
+		scenario = observe_history;
+	if(xscreendata == NULL || snapshot == NULL || pthread_create(&worker, NULL, scenario, variant) != 0)
 		return 2;
 	amain();
 	pthread_join(worker, NULL);

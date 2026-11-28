@@ -1,1 +1,1 @@
-wm/awm /dis/wm/awmpanel-keyboard.dis
+wm/awm /dis/wm/awmpanel-history.dis

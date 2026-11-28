@@ -7,7 +7,7 @@ ALT=runpy.run_path(str(ROOT/'utils/tests/native64-aprint-alt.py'));G,CMD=ALT['G'
 MODULES=(('boot','Emuinit','appl/cmd/emuinit.b',4),('arg','Arg','appl/lib/arg.b',8),('awm','Wm','appl/wm/awm.b',20),('string','String','appl/lib/string.b',21),('wmsrv','Wmsrv','appl/lib/wmsrv.b',34),('wmclient','Wmclient','appl/lib/wmclient.b',21),('winplace','Winplace','appl/lib/winplace.b',21),('wmlib','Wmlib','appl/lib/wmlib.b',25),('titlebar','Titlebar','appl/lib/titlebar.b',7))
 PANEL_MODULES=(('tkclient','Tkclient','appl/lib/tkclient.b',16),('awmpanel','Awmpanel','appl/wm/awmpanel.b',13),('awmcalc','Awmcalc','appl/wm/awmcalc.b',6),('awmfiles','Awmfiles','appl/wm/awmfiles.b',11),('keyboard','Keybd','appl/wm/keyboard.b',12),('limboedit','Limboedit','appl/wm/limboedit.b',15),('dialog','Dialog','appl/lib/dialog.b',6),('edit','WmEdit','appl/wm/edit.b',40),
  ('awmproc','Awmproc','appl/wm/awmproc.b',6),('awmdebug','Awmdebug','appl/wm/awmdebug.b',8),
- ('awmsh','Awmsh','appl/wm/awmsh.b',9),('wmhelp','WmHelp','appl/wm/help.b',11),
+ ('awmsh','Awmsh','appl/wm/awmsh.b',11),('wmhelp','WmHelp','appl/wm/help.b',11),
  ('workdir','Workdir','appl/lib/workdir.b',1),('names','Names','appl/lib/names.b',8))
 
 def command_modules():
@@ -65,7 +65,7 @@ def generate(limbo,w,metadata=None,panel=False):
   if prefix!='atoolbar':
    dispath='/dis/emuinit.dis' if prefix=='boot' else '/dis/'+str(Path(path).relative_to('appl').with_suffix('.dis'))
    if path.startswith('appl/cmd/') and prefix!='boot':dispath=dispath.replace('/dis/cmd/','/dis/',1)
-   if prefix=='awmpanel':dispath='/dis/wm/awmpanel-keyboard.dis'
+   if prefix in ('awmpanel','awmsh'):dispath='/dis/wm/'+prefix+'-history.dis'
    modules.append('{&'+prefix+'_spec,'+prefix+'_variadics,'+str(nv)+',"'+dispath+'"}')
   summaries.append((prefix,count,len(imports),nv))
   if (prefix,name,path,count) in MODULES or prefix=='limboedit':

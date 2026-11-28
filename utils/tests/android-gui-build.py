@@ -39,7 +39,8 @@ def stage_awm_runtime(core, app, build, mk, env, logs):
     assets = build/'assets'
     run([sys.executable, str(app/'tools/stage-inferno.py'), '--source', str(core),
          '--output', str(assets/'inferno')], app, env, logs/'stage-runtime.log')
-    for module in ('awmpanel-keyboard', 'awmcalc', 'awmfiles', 'keyboard', 'limboedit', 'edit', 'awmproc', 'awmdebug', 'awmsh', 'help'):
+    for module in ('awmpanel-history', 'awmcalc', 'awmfiles', 'keyboard', 'limboedit',
+                   'edit', 'awmproc', 'awmdebug', 'awmsh-history', 'help'):
         if not (assets/f'inferno/dis/wm/{module}.dis').is_file():
             raise RuntimeError(f'Missing staged AWM module {module}')
     if not (assets/'inferno/man/1/INDEX').is_file() or not (assets/'inferno/man/2/INDEX').is_file():
@@ -107,6 +108,20 @@ def test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs, 
     command_fixture.write_text('inferno command output\n', encoding='utf-8')
     entries.append('F\ttmp/command-check.txt')
     manifest.write_text('\n'.join(entries)+'\n')
+    history_home = build/'sdcard-history'
+    history_home.mkdir()
+    history_scenario = 'history-classic' if abi == 'armeabi-v7a' else 'history'
+    run([runner, str(executable), str(bundle), str(history_home), history_scenario],
+        logs, env, logs/'framebuffer-history.log', timeout=60)
+    installed = history_home/'Inferno'
+    for name in ('history first', 'history-draft', 'history-touch'):
+        if not (installed/'usr/inferno'/name).is_dir():
+            raise RuntimeError(f'Shell history and completion did not execute mkdir for {name!r}')
+    if abi == 'armeabi-v7a':
+        if (installed/'dis/wm/awmpanel-keyboard.dis').read_bytes() != b'Previous AWM panel':
+            raise RuntimeError('The ARMv7 migration overwrote the previous panel')
+        if (installed/'lib/startup/cmd_line.txt').read_bytes() != b'wm/awm /dis/wm/awmpanel-keyboard.dis\n':
+            raise RuntimeError('The ARMv7 migration overwrote the previous startup file')
     files = build/'sdcard'
     files.mkdir()
     if abi == 'armeabi-v7a':
@@ -385,6 +400,7 @@ def main():
         test_awm_framebuffer(llvm, runner, archives, assets, app, build, env, logs, args.abi)
         report.update(awm_started=True, awm_panel_interaction_verified=True,
                       awm_shared_storage_verified=True, awm_manual_verified=True,
+                      awm_shell_history_verified=True,
                       awm_android_touch_verified=True, awm_android_mouse_verified=True,
                       awm_android_keyboard_verified=True)
         if not classic:

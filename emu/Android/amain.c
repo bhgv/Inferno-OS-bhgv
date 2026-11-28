@@ -270,6 +270,7 @@ nofence(void)
 static char*
 loadcmdstr(char *root)
 {
+	static const char oldpanel[] = "wm/awm /dis/wm/awmpanel-keyboard.dis";
 	char path[MAXROOT+64], command[4096];
 	size_t bytes;
 	FILE *file;
@@ -286,6 +287,12 @@ loadcmdstr(char *root)
 	}
 	command[bytes] = '\0';
 	fclose(file);
+	/* Upgrade the previous bundled default while honoring custom startup commands. */
+	if(strncmp(command, oldpanel, sizeof(oldpanel)-1) == 0 &&
+	   strspn(command+sizeof(oldpanel)-1, "\r\n") == strlen(command+sizeof(oldpanel)-1) &&
+	   snprintf(path, sizeof(path), "%s/dis/wm/awmpanel-history.dis", root) < sizeof(path) &&
+	   access(path, R_OK) == 0)
+		return smprint("-r%q -g%dx%d wm/awm /dis/wm/awmpanel-history.dis", root, Xsize, Ysize);
 	return smprint("-r%q -g%dx%d %s", root, Xsize, Ysize, command);
 }
 #endif
@@ -330,7 +337,7 @@ amain(void)
 	}
 
 #ifdef DIS_NATIVE64_AWM_BOOT
-	opt = smprint("-r%q -g%dx%d wm/awm /dis/wm/awmpanel-keyboard.dis", rootdir, Xsize, Ysize);
+	opt = smprint("-r%q -g%dx%d wm/awm /dis/wm/awmpanel-history.dis", rootdir, Xsize, Ysize);
 #else
 	opt = loadcmdstr(rootdir);
 	if(opt == nil || opt[0] == '\0'){

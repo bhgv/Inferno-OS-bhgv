@@ -70,8 +70,10 @@ TARG=\
 	awmdebug.dis\
 	awmproc.dis\
 	awmsh.dis\
+	awmsh-history.dis\
 	awmfiles.dis\
 	awmpanel-keyboard.dis\
+	awmpanel-history.dis\
 	atoolbar.dis\
 
 MODULES=\
@@ -87,6 +89,7 @@ SYSMODULES=\
 	draw.m\
 	filepat.m\
 	html.m\
+	keyboard.m\
 	keyring.m\
 	limboedit.m\
 	man.m\
@@ -116,5 +119,11 @@ DISBIN=$ROOT/dis/wm
 
 awmpanel-keyboard.dis: awmpanel.dis
 	cp awmpanel.dis $target
+
+awmpanel-history.dis: awmpanel.dis
+	cp awmpanel.dis $target
+
+awmsh-history.dis: awmsh.dis
+	cp awmsh.dis $target
 
 edit.install edit.installall:V: $DISBIN/edit.dis $DISBIN/limboedit.dis

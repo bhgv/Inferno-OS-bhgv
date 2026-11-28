@@ -141,7 +141,7 @@ runapp(ctxt: ref Draw->Context, name: string)
 	"calculator" => path = "/dis/wm/awmcalc.dis";
 	"files" => path = "/dis/wm/awmfiles.dis";
 	"edit" => path = "/dis/wm/edit.dis";
-	"shell" => path = "/dis/wm/awmsh.dis";
+	"shell" => path = "/dis/wm/awmsh-history.dis";
 	"processes" => path = "/dis/wm/awmproc.dis";
 	"debug" => path = "/dis/wm/awmdebug.dis";
 	"help" => path = "/dis/wm/help.dis";
